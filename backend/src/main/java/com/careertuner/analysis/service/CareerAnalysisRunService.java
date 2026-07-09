@@ -14,6 +14,9 @@ import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 import com.careertuner.analysis.domain.CareerAnalysisRun;
 import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
 import com.careertuner.analysis.mapper.CareerAnalysisRunMapper;
+import com.careertuner.analysis.ai.prompt.CareerTrendPromptCatalog;
+import com.careertuner.applicationcase.service.AiUsageLogService;
+import com.careertuner.dashboard.ai.prompt.DashboardInsightPromptCatalog;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -32,6 +35,7 @@ public class CareerAnalysisRunService {
 
     private final CareerAnalysisRunMapper mapper;
     private final ObjectMapper objectMapper;
+    private final AiUsageLogService aiUsageLogService;
 
     /**
      * 같은 입력 지문(fingerprint)의 최신 실행을 재사용 후보로 반환한다.
@@ -74,6 +78,7 @@ public class CareerAnalysisRunService {
                 .inputFingerprint(fingerprint)
                 .result(json(result))
                 .model(usage.model())
+                .promptVersion(promptVersion(analysisType))
                 .inputTokens(usage.inputTokens())
                 .outputTokens(usage.outputTokens())
                 .tokenUsage(usage.totalTokens())
@@ -82,16 +87,29 @@ public class CareerAnalysisRunService {
                 .createdAt(LocalDateTime.now())
                 .build();
         mapper.insert(run);
-        mapper.insertAiUsageLog(
+        if ("DASHBOARD_SUMMARY".equals(analysisType)) {
+            mapper.insertDashboardInsight(
+                    userId,
+                    run.getId(),
+                    summaryText(result),
+                    status,
+                    usage.model(),
+                    usage.totalTokens());
+        }
+        if ("SUCCESS".equals(status)) {
+            aiUsageLogService.recordSuccessValues(
                 userId,
+                null,
                 analysisType,
-                status,
                 usage.model(),
                 usage.inputTokens(),
                 usage.outputTokens(),
                 usage.totalTokens(),
-                creditUsed,
-                errorMessage);
+                creditUsed);
+        } else {
+            mapper.insertAiUsageLog(userId, analysisType, status, usage.model(), usage.inputTokens(),
+                    usage.outputTokens(), usage.totalTokens(), 0, errorMessage);
+        }
         return CareerAnalysisRunResponse.from(run);
     }
 
@@ -126,5 +144,19 @@ public class CareerAnalysisRunService {
         } catch (JacksonException exception) {
             return "{}";
         }
+    }
+
+    private String summaryText(Object result) {
+        try {
+            return objectMapper.valueToTree(result).path("summary").asText("");
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private static String promptVersion(String analysisType) {
+        return "DASHBOARD_SUMMARY".equals(analysisType)
+                ? DashboardInsightPromptCatalog.VERSION
+                : CareerTrendPromptCatalog.VERSION;
     }
 }

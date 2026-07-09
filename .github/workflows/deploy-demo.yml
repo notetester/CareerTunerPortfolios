@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: deploy-demo
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-push-demo:
@@ -21,12 +21,12 @@ jobs:
 
     steps:
       - name: Checkout private source repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -63,7 +63,7 @@ jobs:
           echo "No obvious secret patterns found."
 
       - name: Checkout public demo repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: notetester/CareerTunerDemo
           token: ${{ secrets.DEMO_REPO_TOKEN }}
@@ -72,10 +72,13 @@ jobs:
       - name: Replace public demo contents
         run: |
           cd demo-repo
+          # README.md 와 docs/(스크린샷 등 데모 리포 자체 문서)는 배포 시 보존한다
           find . -mindepth 1 \
             ! -path './.git' \
             ! -path './.git/*' \
             ! -name 'README.md' \
+            ! -path './docs' \
+            ! -path './docs/*' \
             -exec rm -rf {} +
           cp -R ../frontend/dist/. .
           touch .nojekyll

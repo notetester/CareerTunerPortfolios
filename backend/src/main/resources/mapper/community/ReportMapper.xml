@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.ReportMapper">
+
+    <!-- 게시글 신고 중복 조회 -->
+    <select id="findPostReport" resultType="com.careertuner.community.domain.PostReport">
+        SELECT *
+          FROM post_report
+         WHERE reporter_id = #{reporterId}
+           AND post_id = #{postId}
+         LIMIT 1
+    </select>
+
+    <!-- 게시글 신고 등록 -->
+    <insert id="insertPostReport" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO post_report (reporter_id, post_id, reason, detail, status)
+        VALUES (#{reporterId}, #{postId}, #{reason}, #{detail}, #{status})
+    </insert>
+
+    <!-- 게시글 누적 신고 수 +1(자동 블러 판정) -->
+    <update id="incrementPostReportCount">
+        UPDATE community_post SET report_count = report_count + 1 WHERE id = #{postId}
+    </update>
+
+    <!-- 댓글 신고 중복 조회 -->
+    <select id="findCommentReport" resultType="com.careertuner.community.domain.CommentReport">
+        SELECT *
+          FROM comment_report
+         WHERE reporter_id = #{reporterId}
+           AND comment_id = #{commentId}
+         LIMIT 1
+    </select>
+
+    <!-- 댓글 신고 등록 -->
+    <insert id="insertCommentReport" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO comment_report (reporter_id, comment_id, reason, detail, status)
+        VALUES (#{reporterId}, #{commentId}, #{reason}, #{detail}, #{status})
+    </insert>
+
+    <update id="incrementCommentReportCount">
+        UPDATE community_comment SET report_count = report_count + 1 WHERE id = #{commentId}
+    </update>
+
+</mapper>

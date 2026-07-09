@@ -22,8 +22,11 @@ public class AdminCareerAnalysisRun {
     private String inputSnapshot;
     private String result;
     private String model;
+    private String promptVersion;
     private int tokenUsage;
     private String errorMessage;
     private boolean retryable;
     private LocalDateTime createdAt;
+    private int memoCount;
+    private LocalDateTime latestMemoAt;
 }

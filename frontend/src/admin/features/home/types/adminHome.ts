@@ -12,5 +12,13 @@ export interface AdminHomeSummary {
   fitAnalysisFailures: number;
   unanalyzedApplications: number;
   newAnalysesLast7Days: number;
+  /** 최신 적합도 분석이 비정상(FAILED/FALLBACK)으로 노출 중인 건수. */
+  degradedLatestAnalyses: number;
+  /** 재분석 필요(REANALYSIS) 메모가 달린 분석 수. */
+  reanalysisRequests: number;
+  /** 장기/대시보드 실행 이력의 비정상 건수. */
+  careerRunFailures: number;
+  /** review-first evidence gate 가 검토 필요(REVIEW_REQUIRED)로 판정한 최신 분석 수(R3 검토 큐). */
+  reviewRequiredAnalyses: number;
   shortcuts: AdminHomeShortcut[];
 }

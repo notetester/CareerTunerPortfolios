@@ -1,210 +1,112 @@
 package com.careertuner.fitanalysis.ai;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.Duration;
 
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 import com.careertuner.analysis.ai.provider.CareerAnalysisOpenAiClient;
 import com.careertuner.analysis.ai.provider.CareerAnalysisOpenAiClient.StructuredResponse;
 import com.careertuner.fitanalysis.ai.prompt.FitAnalysisPromptCatalog;
 
-import tools.jackson.databind.JsonNode;
-
 /**
- * API 키가 있으면 실제 구조화 AI 분석을 실행하고, 없으면 결정적 mock으로 전체 흐름을 유지한다.
+ * 적합도 분석의 OpenAI 단계 — 폴백 체인의 마지막 실 LLM provider(내부 mock 폴백이 최종 안전망).
+ *
+ * <p><b>뉴로-심볼릭(OSS 경로와 동일 계약)</b>: 판단값(fitScore/matched/missing/applyDecision 등)은 서버
+ * 규칙엔진({@link MockFitAnalysisAiService}) skeleton 이 소유하고, OpenAI 는 설명 JSON 만 생성한다
+ * ({@code FIT_EXPLAIN_SYSTEM_PROMPT}). 조립·grounding 검사는 {@link FitExplainAssembler} 를 Claude 단계와 공유.
+ *
+ * <p>키가 없으면 결정적 mock(=규칙엔진 전체 결과)을 그대로 반환하고, 호출/검증(grounding 포함)이 실패하면
+ * skeleton 값으로 FALLBACK 결과를 만들어 화면이 깨지지 않게 한다.
  */
-@Primary
 @Service
 public class OpenAiFitAnalysisAiService implements FitAnalysisAiService {
 
     private final CareerAnalysisOpenAiClient openAiClient;
-    private final MockFitAnalysisAiService mockService;
+    private final MockFitAnalysisAiService ruleEngine;
+    private final FitExplainAssembler assembler;
 
-    public OpenAiFitAnalysisAiService(CareerAnalysisOpenAiClient openAiClient, MockFitAnalysisAiService mockService) {
+    public OpenAiFitAnalysisAiService(CareerAnalysisOpenAiClient openAiClient,
+                                      MockFitAnalysisAiService ruleEngine,
+                                      FitExplainAssembler assembler) {
         this.openAiClient = openAiClient;
-        this.mockService = mockService;
+        this.ruleEngine = ruleEngine;
+        this.assembler = assembler;
     }
 
     @Override
     public FitAnalysisAiResult generate(FitAnalysisAiCommand command) {
         if (!openAiClient.configured()) {
-            return mockService.generate(command);
+            return ruleEngine.generate(command);
         }
 
+        // 1) 판단값은 규칙엔진이 결정론으로 계산(서버 권위).
+        FitAnalysisAiResult skeleton = ruleEngine.generate(command);
         try {
+            // 2) OpenAI 는 skeleton 값을 입력으로 받아 설명만 생성.
             StructuredResponse response = openAiClient.request(
-                    "fit_analysis",
-                    schema(),
-                    FitAnalysisPromptCatalog.SYSTEM_PROMPT,
-                    FitAnalysisPromptCatalog.userPrompt(
-                            command.companyName(),
-                            command.jobTitle(),
-                            String.join(", ", command.requiredSkills()),
-                            String.join(", ", command.preferredSkills()),
-                            command.duties(),
-                            String.join(", ", command.profileSkills()),
-                            String.join(", ", command.profileCertificates()),
-                            command.desiredJob()));
-
-            JsonNode payload = response.payload();
-            return new FitAnalysisAiResult(
-                    Math.max(0, Math.min(100, payload.path("fitScore").asInt(0))),
-                    strings(payload.path("matchedSkills")),
-                    strings(payload.path("missingSkills")),
-                    strings(payload.path("recommendedStudy")),
-                    strings(payload.path("recommendedCertificates")),
-                    text(payload.path("strategy")),
-                    strings(payload.path("scoreBasis")),
-                    gaps(payload.path("gapRecommendations")),
-                    roadmap(payload.path("learningRoadmap")),
-                    certificates(payload.path("certificateRecommendations")),
-                    strings(payload.path("strategyActions")),
-                    response.usage(),
-                    "SUCCESS",
-                    null,
-                    false);
+                    FitExplainAssembler.EXPLAIN_SCHEMA_NAME,
+                    assembler.explainSchema(),
+                    FitAnalysisPromptCatalog.FIT_EXPLAIN_SYSTEM_PROMPT,
+                    assembler.explainUserPrompt(command, skeleton));
+            // 3) 검증(fitSummary/grounding) + 병합. 위반 시 예외 → 아래 FALLBACK.
+            return assembler.assemble(command, skeleton, response.payload(), response.usage());
         } catch (RuntimeException exception) {
-            FitAnalysisAiResult fallback = mockService.generate(command);
-            return new FitAnalysisAiResult(
-                    fallback.fitScore(),
-                    fallback.matchedSkills(),
-                    fallback.missingSkills(),
-                    fallback.recommendedStudy(),
-                    fallback.recommendedCertificates(),
-                    fallback.strategy(),
-                    fallback.scoreBasis(),
-                    fallback.gapRecommendations(),
-                    fallback.learningRoadmap(),
-                    fallback.certificateRecommendations(),
-                    fallback.strategyActions(),
-                    new com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage("mock-fallback", 0, 0, 0, true),
-                    "FALLBACK",
-                    exception.getMessage(),
-                    true);
+            return mockFallback(skeleton, exception);
         }
     }
 
-    private List<String> strings(JsonNode node) {
-        if (node == null || !node.isArray()) {
-            return List.of();
+    /**
+     * per-attempt 타임아웃(최소 보장) + 체인 데드라인을 클라이언트로 전달하는 오버로드.
+     *
+     * <p>이 tier 는 폴백 체인의 <b>최종 안전망</b>이라 절대 예외를 던지지 않는다: 키가 없거나 호출/검증이
+     * 실패하면 내부 Mock(=규칙엔진 결정론 결과)으로 폴백한다. {@code perAttemptTimeout} 은 이 tier 의 첫
+     * 시도가 절대 못 잘리는 최소 보장이고, {@code chainDeadlineNanos} 는 재시도 증폭만 억제하는 보조 상한이다.
+     */
+    public FitAnalysisAiResult generate(FitAnalysisAiCommand command,
+                                        Duration perAttemptTimeout,
+                                        long chainDeadlineNanos) {
+        if (!openAiClient.configured()) {
+            return ruleEngine.generate(command);
         }
-        List<String> values = new ArrayList<>();
-        for (JsonNode item : node) {
-            String value = item.asText("").trim();
-            if (!value.isBlank()) {
-                values.add(value);
-            }
+
+        // 1) 판단값은 규칙엔진이 결정론으로 계산(서버 권위).
+        FitAnalysisAiResult skeleton = ruleEngine.generate(command);
+        try {
+            // 2) OpenAI 는 skeleton 값을 입력으로 받아 설명만 생성(per-attempt 타임아웃 + 체인 데드라인 전달).
+            StructuredResponse response = openAiClient.request(
+                    FitExplainAssembler.EXPLAIN_SCHEMA_NAME,
+                    assembler.explainSchema(),
+                    FitAnalysisPromptCatalog.FIT_EXPLAIN_SYSTEM_PROMPT,
+                    assembler.explainUserPrompt(command, skeleton),
+                    perAttemptTimeout,
+                    chainDeadlineNanos);
+            // 3) 검증(fitSummary/grounding) + 병합. 위반 시 예외 → 아래 FALLBACK.
+            return assembler.assemble(command, skeleton, response.payload(), response.usage());
+        } catch (RuntimeException exception) {
+            return mockFallback(skeleton, exception);
         }
-        return values;
     }
 
-    private String text(JsonNode node) {
-        return node == null ? "" : node.asText("");
-    }
-
-    private Map<String, Object> schema() {
-        Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("fitScore", Map.of("type", "integer"));
-        properties.put("matchedSkills", stringArray());
-        properties.put("missingSkills", stringArray());
-        properties.put("recommendedStudy", stringArray());
-        properties.put("recommendedCertificates", stringArray());
-        properties.put("strategy", Map.of("type", "string"));
-        properties.put("scoreBasis", stringArray());
-        properties.put("gapRecommendations", Map.of(
-                "type", "array",
-                "items", objectSchema(Map.of(
-                        "skill", string(),
-                        "category", enumString("REQUIRED_MISSING", "PREFERRED_GAP", "LONG_TERM_GROWTH"),
-                        "priority", enumString("HIGH", "MEDIUM", "LOW"),
-                        "reason", string()))));
-        properties.put("learningRoadmap", Map.of(
-                "type", "array",
-                "items", objectSchema(Map.of(
-                        "skill", string(),
-                        "title", string(),
-                        "practiceTask", string(),
-                        "expectedDuration", string(),
-                        "priority", enumString("HIGH", "MEDIUM", "LOW"),
-                        "sortOrder", Map.of("type", "integer")))));
-        properties.put("certificateRecommendations", Map.of(
-                "type", "array",
-                "items", objectSchema(Map.of(
-                        "name", string(),
-                        "priority", enumString("HIGH", "MEDIUM", "LOW"),
-                        "reason", string()))));
-        properties.put("strategyActions", stringArray());
-        return Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "properties", properties,
-                "required", List.copyOf(properties.keySet()));
-    }
-
-    private Map<String, Object> stringArray() {
-        return Map.of("type", "array", "items", string());
-    }
-
-    private Map<String, Object> string() {
-        return Map.of("type", "string");
-    }
-
-    private Map<String, Object> enumString(String... values) {
-        return Map.of("type", "string", "enum", List.of(values));
-    }
-
-    private Map<String, Object> objectSchema(Map<String, Object> properties) {
-        return Map.of(
-                "type", "object",
-                "additionalProperties", false,
-                "properties", properties,
-                "required", List.copyOf(properties.keySet()));
-    }
-
-    private List<FitGapRecommendation> gaps(JsonNode node) {
-        List<FitGapRecommendation> values = new ArrayList<>();
-        if (node != null && node.isArray()) {
-            for (JsonNode item : node) {
-                values.add(new FitGapRecommendation(
-                        item.path("skill").asText(""),
-                        item.path("category").asText("LONG_TERM_GROWTH"),
-                        item.path("priority").asText("LOW"),
-                        item.path("reason").asText("")));
-            }
-        }
-        return values;
-    }
-
-    private List<FitLearningRoadmapItem> roadmap(JsonNode node) {
-        List<FitLearningRoadmapItem> values = new ArrayList<>();
-        if (node != null && node.isArray()) {
-            for (JsonNode item : node) {
-                values.add(new FitLearningRoadmapItem(
-                        item.path("skill").asText(""),
-                        item.path("title").asText(""),
-                        item.path("practiceTask").asText(""),
-                        item.path("expectedDuration").asText(""),
-                        item.path("priority").asText("MEDIUM"),
-                        item.path("sortOrder").asInt(values.size() + 1)));
-            }
-        }
-        return values;
-    }
-
-    private List<FitCertificateRecommendation> certificates(JsonNode node) {
-        List<FitCertificateRecommendation> values = new ArrayList<>();
-        if (node != null && node.isArray()) {
-            for (JsonNode item : node) {
-                values.add(new FitCertificateRecommendation(
-                        item.path("name").asText(""),
-                        item.path("priority").asText("LOW"),
-                        item.path("reason").asText("")));
-            }
-        }
-        return values;
+    /** 최종 안전망: skeleton(=규칙엔진 결정론 결과)로 화면 보장. 판단값은 애초에 skeleton 소유라 동일하다. */
+    private FitAnalysisAiResult mockFallback(FitAnalysisAiResult skeleton, RuntimeException exception) {
+        return new FitAnalysisAiResult(
+                skeleton.fitScore(),
+                skeleton.matchedSkills(),
+                skeleton.missingSkills(),
+                skeleton.recommendedStudy(),
+                skeleton.recommendedCertificates(),
+                skeleton.strategy(),
+                skeleton.scoreBasis(),
+                skeleton.gapRecommendations(),
+                skeleton.learningRoadmap(),
+                skeleton.certificateRecommendations(),
+                skeleton.strategyActions(),
+                skeleton.conditionMatrix(),
+                skeleton.applyDecision(),
+                new CareerAnalysisAiUsage("mock-fallback", 0, 0, 0, true),
+                "FALLBACK",
+                exception.getMessage(),
+                true);
     }
 }

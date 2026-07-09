@@ -18,6 +18,28 @@
         <result property="missingSkills" column="missing_skills"/>
         <result property="fitScore" column="fit_score"/>
         <result property="analyzedAt" column="analyzed_at"/>
+        <result property="matchedSkills" column="matched_skills"/>
+        <result property="certificateRecommendations" column="certificate_recommendations"/>
+        <result property="strategy" column="strategy"/>
+        <result property="status" column="status"/>
+        <result property="conditionMatrix" column="condition_matrix"/>
+        <result property="analysisConfidence" column="analysis_confidence"/>
+        <result property="applyDecision" column="apply_decision"/>
+    </resultMap>
+
+    <resultMap id="AdminAnalysisFailureResultMap" type="com.careertuner.admin.analytics.domain.AdminAnalysisFailureSource">
+        <result property="source" column="source"/>
+        <result property="refId" column="ref_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="userEmail" column="user_email"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="status" column="status"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="model" column="model"/>
+        <result property="promptVersion" column="prompt_version"/>
+        <result property="retryable" column="retryable"/>
+        <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <resultMap id="AdminDailyUsageResultMap" type="com.careertuner.admin.analytics.domain.AdminDailyUsageSource">
@@ -40,6 +62,32 @@
         <result property="errorMessage" column="error_message"/>
         <result property="retryable" column="retryable"/>
         <result property="createdAt" column="created_at"/>
+        <result property="memoCount" column="memo_count"/>
+        <result property="latestMemoAt" column="latest_memo_at"/>
+    </resultMap>
+
+    <resultMap id="AdminCareerRunMemoResultMap" type="com.careertuner.admin.analytics.domain.AdminCareerRunMemo">
+        <id property="id" column="id"/>
+        <result property="careerAnalysisRunId" column="career_analysis_run_id"/>
+        <result property="adminUserId" column="admin_user_id"/>
+        <result property="adminName" column="admin_name"/>
+        <result property="adminEmail" column="admin_email"/>
+        <result property="memoType" column="memo_type"/>
+        <result property="content" column="content"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="AdminUserTimelineResultMap" type="com.careertuner.admin.analytics.domain.AdminUserTimelineSource">
+        <result property="eventType" column="event_type"/><result property="refId" column="ref_id"/>
+        <result property="summary" column="summary"/><result property="status" column="status"/>
+        <result property="score" column="score"/><result property="createdAt" column="created_at"/>
+    </resultMap>
+    <resultMap id="AdminPromptPerformanceResultMap" type="com.careertuner.admin.analytics.domain.AdminPromptPerformanceSource">
+        <result property="promptKey" column="prompt_key"/><result property="promptVersion" column="prompt_version"/>
+        <result property="totalCount" column="total_count"/><result property="successCount" column="success_count"/>
+        <result property="fallbackCount" column="fallback_count"/><result property="failedCount" column="failed_count"/>
+        <result property="averageTokenUsage" column="average_token_usage"/>
     </resultMap>
 
     <select id="countUsers" resultType="int">
@@ -95,7 +143,14 @@
             ac.job_title,
             fa.missing_skills,
             fa.fit_score,
-            fa.created_at AS analyzed_at
+            fa.created_at AS analyzed_at,
+            fa.matched_skills,
+            fa.certificate_recommendations,
+            fa.strategy,
+            fa.status,
+            fa.condition_matrix,
+            fa.analysis_confidence,
+            fa.apply_decision
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
@@ -118,11 +173,82 @@
         ORDER BY usage_date
     </select>
 
+    <!-- 분석 실패 큐: 적합도 분석과 장기/대시보드 실행 이력의 비정상 결과를 합쳐 최신순으로 본다. -->
+    <select id="findAnalysisFailures" resultMap="AdminAnalysisFailureResultMap">
+        SELECT *
+        FROM (
+            SELECT
+                'FIT_ANALYSIS' AS source,
+                fa.id AS ref_id,
+                users.name AS user_name,
+                users.email AS user_email,
+                ac.company_name,
+                ac.job_title,
+                fa.status,
+                fa.error_message,
+                fa.model,
+                0 AS retryable,
+                fa.created_at
+            FROM fit_analysis fa
+            INNER JOIN application_case ac ON ac.id = fa.application_case_id
+            INNER JOIN users ON users.id = ac.user_id
+            WHERE fa.status != 'SUCCESS'
+
+            UNION ALL
+
+            SELECT
+                run.analysis_type AS source,
+                run.id AS ref_id,
+                users.name AS user_name,
+                users.email AS user_email,
+                NULL AS company_name,
+                NULL AS job_title,
+                run.status,
+                run.error_message,
+                run.model,
+                run.retryable,
+                run.created_at
+            FROM career_analysis_run run
+            INNER JOIN users ON users.id = run.user_id
+            WHERE run.status != 'SUCCESS'
+        ) failures
+        ORDER BY created_at DESC
+        LIMIT 100
+    </select>
+
+    <insert id="upsertQualityFlag">
+        INSERT INTO analysis_quality_flag (target_type, target_id, flag_type, severity, memo, resolved)
+        VALUES (#{targetType}, #{targetId}, #{flagType}, #{severity}, #{memo}, 0)
+        ON DUPLICATE KEY UPDATE severity = VALUES(severity), memo = VALUES(memo)
+    </insert>
+
+    <select id="isQualityFlagResolved" resultType="boolean">
+        SELECT COALESCE(MAX(resolved), 0)
+        FROM analysis_quality_flag
+        WHERE target_type = #{targetType} AND target_id = #{targetId} AND flag_type = #{flagType}
+    </select>
+
+    <update id="resolveQualityFlag">
+        UPDATE analysis_quality_flag
+        SET resolved = 1
+        WHERE target_type = #{targetType} AND target_id = #{targetId} AND flag_type = #{flagType}
+    </update>
+
     <select id="findCareerAnalysisRuns" resultMap="AdminCareerAnalysisRunMap">
         SELECT
             run.*,
             users.name AS user_name,
-            users.email AS user_email
+            users.email AS user_email,
+            (
+                SELECT COUNT(*)
+                FROM admin_career_run_memo memo_count_source
+                WHERE memo_count_source.career_analysis_run_id = run.id
+            ) AS memo_count,
+            (
+                SELECT MAX(latest_memo.updated_at)
+                FROM admin_career_run_memo latest_memo
+                WHERE latest_memo.career_analysis_run_id = run.id
+            ) AS latest_memo_at
         FROM career_analysis_run run
         INNER JOIN users ON users.id = run.user_id
         <if test="userId != null">
@@ -131,4 +257,118 @@
         ORDER BY run.created_at DESC, run.id DESC
         LIMIT 300
     </select>
+
+    <select id="findUserTimeline" resultMap="AdminUserTimelineResultMap">
+        SELECT * FROM (
+            SELECT 'FIT_ANALYSIS' AS event_type, fa.id AS ref_id,
+                   CONCAT(ac.company_name, ' ', ac.job_title, ' 적합도 분석') AS summary,
+                   fa.status, fa.fit_score AS score, fa.created_at
+            FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
+            WHERE ac.user_id = #{userId}
+            UNION ALL
+            SELECT 'LEARNING_TASK' AS event_type, task.id AS ref_id,
+                   CONCAT(task.skill, ' 학습 과제: ', task.title) AS summary,
+                   IF(task.completed, 'COMPLETED', 'ACTIVE') AS status, NULL AS score, task.created_at
+            FROM fit_analysis_learning_task task
+            INNER JOIN fit_analysis fa ON fa.id = task.fit_analysis_id
+            INNER JOIN application_case ac ON ac.id = fa.application_case_id
+            WHERE ac.user_id = #{userId}
+            UNION ALL
+            SELECT run.analysis_type AS event_type, run.id AS ref_id,
+                   IF(run.analysis_type = 'DASHBOARD_SUMMARY', '대시보드 요약 생성', '장기 취업 경향 분석') AS summary,
+                   run.status, NULL AS score, run.created_at
+            FROM career_analysis_run run WHERE run.user_id = #{userId}
+        ) timeline
+        ORDER BY created_at DESC, ref_id DESC
+        LIMIT 200
+    </select>
+
+    <select id="findPromptPerformance" resultMap="AdminPromptPerformanceResultMap">
+        SELECT prompt_key, COALESCE(prompt_version, '버전 미기록') AS prompt_version,
+               COUNT(*) AS total_count,
+               SUM(status = 'SUCCESS') AS success_count,
+               SUM(status = 'FALLBACK') AS fallback_count,
+               SUM(status = 'FAILED') AS failed_count,
+               ROUND(AVG(token_usage)) AS average_token_usage
+        FROM (
+            SELECT 'FIT_ANALYSIS' AS prompt_key, fa.prompt_version, fa.status, COALESCE(usage_log.token_usage, 0) AS token_usage
+            FROM fit_analysis fa
+            LEFT JOIN ai_usage_log usage_log ON usage_log.application_case_id = fa.application_case_id
+                AND usage_log.feature_type = 'FIT_ANALYSIS'
+                AND usage_log.id = (SELECT MAX(latest_usage.id) FROM ai_usage_log latest_usage
+                                WHERE latest_usage.application_case_id = fa.application_case_id
+                                  AND latest_usage.feature_type = 'FIT_ANALYSIS')
+            UNION ALL
+            SELECT run.analysis_type AS prompt_key, run.prompt_version, run.status, run.token_usage
+            FROM career_analysis_run run
+        ) prompt_runs
+        GROUP BY prompt_key, prompt_version
+        ORDER BY prompt_key, prompt_version DESC
+    </select>
+
+    <select id="findCareerAnalysisRunById" resultMap="AdminCareerAnalysisRunMap">
+        SELECT
+            run.*,
+            users.name AS user_name,
+            users.email AS user_email
+        FROM career_analysis_run run
+        INNER JOIN users ON users.id = run.user_id
+        WHERE run.id = #{runId}
+    </select>
+
+    <!-- 실행 이력 운영 메모 (career_analysis_run 단위, admin_fit_analysis_memo 패턴) -->
+    <select id="findMemosByRunId" resultMap="AdminCareerRunMemoResultMap">
+        SELECT
+            memo.id,
+            memo.career_analysis_run_id,
+            memo.admin_user_id,
+            users.name AS admin_name,
+            users.email AS admin_email,
+            memo.memo_type,
+            memo.content,
+            memo.created_at,
+            memo.updated_at
+        FROM admin_career_run_memo memo
+        INNER JOIN users ON users.id = memo.admin_user_id
+        WHERE memo.career_analysis_run_id = #{runId}
+        ORDER BY memo.updated_at DESC, memo.id DESC
+    </select>
+
+    <select id="findMemoByIdAndRunId" resultMap="AdminCareerRunMemoResultMap">
+        SELECT
+            memo.id,
+            memo.career_analysis_run_id,
+            memo.admin_user_id,
+            users.name AS admin_name,
+            users.email AS admin_email,
+            memo.memo_type,
+            memo.content,
+            memo.created_at,
+            memo.updated_at
+        FROM admin_career_run_memo memo
+        INNER JOIN users ON users.id = memo.admin_user_id
+        WHERE memo.id = #{id}
+          AND memo.career_analysis_run_id = #{runId}
+    </select>
+
+    <insert id="insertMemo" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO admin_career_run_memo
+            (career_analysis_run_id, admin_user_id, memo_type, content)
+        VALUES
+            (#{careerAnalysisRunId}, #{adminUserId}, #{memoType}, #{content})
+    </insert>
+
+    <update id="updateMemo">
+        UPDATE admin_career_run_memo
+        SET memo_type = #{memoType},
+            content = #{content}
+        WHERE id = #{id}
+          AND career_analysis_run_id = #{careerAnalysisRunId}
+    </update>
+
+    <delete id="deleteMemo">
+        DELETE FROM admin_career_run_memo
+        WHERE id = #{id}
+          AND career_analysis_run_id = #{runId}
+    </delete>
 </mapper>

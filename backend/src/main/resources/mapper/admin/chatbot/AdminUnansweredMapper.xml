@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.chatbot.mapper.AdminUnansweredMapper">
+
+    <!-- 상태별 행 전체(임베딩 포함) — 군집화는 서비스에서. 최신순(대표 선정 tie-break 안정화용). -->
+    <select id="findRowsByStatus" resultType="com.careertuner.admin.chatbot.dto.UnansweredRow">
+        SELECT id, question, question_norm, top_similarity, best_faq_id, embedding, created_at
+          FROM chatbot_unanswered_question
+         WHERE status = #{status}
+         ORDER BY created_at DESC, id DESC
+    </select>
+
+    <!-- best FAQ 표시용 요약. ids 비면 호출하지 않는다(서비스에서 가드). -->
+    <select id="findFaqBriefByIds" resultType="com.careertuner.admin.chatbot.dto.FaqBrief">
+        SELECT id, question, category
+          FROM faq
+         WHERE id IN
+        <foreach collection="ids" item="fid" open="(" separator="," close=")">
+            #{fid}
+        </foreach>
+    </select>
+
+    <!-- 대표 행의 현재 상태(군집 재구성용). -->
+    <select id="findStatusById" resultType="string">
+        SELECT status
+          FROM chatbot_unanswered_question
+         WHERE id = #{id}
+    </select>
+
+    <!--
+        군집 멤버 행들을 일괄 상태변경(토픽 단위 처리).
+        CONVERTED(2단계 전환 완료)는 보존하고 나머지만 옮긴다.
+    -->
+    <update id="updateStatusByIds">
+        UPDATE chatbot_unanswered_question
+           SET status = #{status}
+         WHERE status &lt;&gt; 'CONVERTED'
+           AND id IN
+        <foreach collection="ids" item="rid" open="(" separator="," close=")">
+            #{rid}
+        </foreach>
+    </update>
+
+    <!-- 공백 질문 드릴: 대표 id 의 질문 원문 + 발생 대화 id. -->
+    <select id="findMetaById" resultType="com.careertuner.admin.chatbot.dto.UnansweredMeta">
+        SELECT question, conversation_id
+          FROM chatbot_unanswered_question
+         WHERE id = #{id}
+    </select>
+
+    <!-- 발생 대화의 메모리 JSON(있으면). 없거나 비면 null/'[]'. -->
+    <select id="findConversationMessages" resultType="string">
+        SELECT messages_json
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+</mapper>

@@ -11,14 +11,33 @@
         SELECT * FROM users WHERE email = #{email}
     </select>
 
+    <select id="findByLoginIdentifier" resultType="com.careertuner.user.domain.User">
+        SELECT * FROM users
+        WHERE email = #{identifier}
+           OR login_id = #{identifier}
+        ORDER BY CASE WHEN email = #{identifier} THEN 0 ELSE 1 END
+        LIMIT 1
+    </select>
+
     <select id="countByEmail" resultType="int">
         SELECT COUNT(*) FROM users WHERE email = #{email}
     </select>
 
+    <select id="countByLoginId" resultType="int">
+        SELECT COUNT(*) FROM users WHERE login_id = #{loginId}
+    </select>
+
+    <select id="countByEmailExcludingId" resultType="int">
+        SELECT COUNT(*)
+          FROM users
+         WHERE email = #{email}
+           AND id != #{id}
+    </select>
+
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO users (email, password, password_enabled, name, email_verified,
+        INSERT INTO users (email, login_id, password, password_enabled, name, email_verified,
                            user_type, role, status, plan, credit)
-        VALUES (#{email}, #{password}, #{passwordEnabled}, #{name}, #{emailVerified},
+        VALUES (#{email}, #{loginId}, #{password}, #{passwordEnabled}, #{name}, #{emailVerified},
                 #{userType}, #{role}, #{status}, #{plan}, #{credit})
     </insert>
 
@@ -26,11 +45,71 @@
         UPDATE users SET last_login_at = NOW() WHERE id = #{id}
     </update>
 
+    <update id="touchLastLoginAndResetFailures">
+        UPDATE users
+        SET last_login_at = NOW(),
+            failed_login_count = 0,
+            last_failed_login_at = NULL
+        WHERE id = #{id}
+    </update>
+
+    <update id="increaseFailedLogin">
+        UPDATE users
+        SET failed_login_count = failed_login_count + 1,
+            last_failed_login_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="activateExpiredBlock">
+        UPDATE users
+        SET status = 'ACTIVE',
+            blocked_reason = NULL,
+            blocked_until = NULL,
+            status_changed_at = NOW(),
+            status_changed_by = NULL
+        WHERE id = #{id}
+          AND status = 'BLOCKED'
+          AND blocked_until IS NOT NULL
+          AND blocked_until &lt;= NOW()
+    </update>
+
+    <update id="lockForFailedLogin">
+        UPDATE users
+        SET status = 'BLOCKED',
+            blocked_reason = #{reason},
+            blocked_until = #{blockedUntil},
+            status_changed_at = NOW(),
+            status_changed_by = NULL
+        WHERE id = #{id}
+    </update>
+
+    <update id="releaseDormant">
+        UPDATE users
+        SET status = 'ACTIVE',
+            dormant_at = NULL,
+            status_changed_at = NOW(),
+            status_changed_by = NULL
+        WHERE id = #{id}
+          AND status = 'DORMANT'
+    </update>
+
     <update id="markEmailVerified">
         UPDATE users SET email_verified = 1 WHERE id = #{id}
     </update>
 
+    <update id="updateEmailAndMarkVerified">
+        UPDATE users
+           SET email = #{email},
+               email_verified = 1,
+               updated_at = NOW()
+         WHERE id = #{id}
+    </update>
+
     <update id="updatePassword">
         UPDATE users SET password = #{password}, password_enabled = 1 WHERE id = #{id}
+    </update>
+
+    <update id="markPhoneVerified">
+        UPDATE users SET phone = #{phone}, phone_verified = 1 WHERE id = #{id}
     </update>
 </mapper>

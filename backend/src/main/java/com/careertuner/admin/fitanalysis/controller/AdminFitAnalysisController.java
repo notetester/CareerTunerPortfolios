@@ -12,15 +12,19 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.common.grid.PageResult;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisDetailResponse;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListItemResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisListQuery;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoRequest;
+import com.careertuner.admin.fitanalysis.dto.AdminGateReviewRequest;
 import com.careertuner.admin.fitanalysis.dto.AdminFitAnalysisMemoResponse;
+import com.careertuner.admin.fitanalysis.dto.AdminGateStatsResponse;
 import com.careertuner.admin.fitanalysis.service.AdminFitAnalysisService;
-import com.careertuner.common.exception.BusinessException;
-import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -34,9 +38,27 @@ public class AdminFitAnalysisController {
     private final AdminFitAnalysisService adminFitAnalysisService;
 
     @GetMapping
-    public ApiResponse<List<AdminFitAnalysisListItemResponse>> list(@AuthenticationPrincipal AuthUser authUser) {
+    public ApiResponse<PageResult<AdminFitAnalysisListItemResponse>> list(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(name = "reviewRequiredOnly", required = false, defaultValue = "false") boolean reviewRequiredOnly,
+            @RequestParam(name = "query", required = false) String query,
+            @RequestParam(name = "band", required = false, defaultValue = "ALL") String band,
+            @RequestParam(name = "result", required = false, defaultValue = "ALL") String result,
+            @RequestParam(name = "memoOnly", required = false, defaultValue = "false") boolean memoOnly,
+            @RequestParam(name = "reanalysisOnly", required = false, defaultValue = "false") boolean reanalysisOnly,
+            @RequestParam(name = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(name = "size", required = false, defaultValue = "20") int size) {
         requireAdmin(authUser);
-        return ApiResponse.ok(adminFitAnalysisService.list());
+        AdminFitAnalysisListQuery listQuery = new AdminFitAnalysisListQuery(
+                reviewRequiredOnly, query, band, result, memoOnly, reanalysisOnly, page, size);
+        return ApiResponse.ok(adminFitAnalysisService.list(listQuery));
+    }
+
+    /** gate 통계: 운영 gate reason 분포 관측. 리터럴 경로라 아래 GET /{id} 와 충돌하지 않는다. */
+    @GetMapping("/gate-stats")
+    public ApiResponse<AdminGateStatsResponse> gateStats(@AuthenticationPrincipal AuthUser authUser) {
+        requireAdmin(authUser);
+        return ApiResponse.ok(adminFitAnalysisService.getGateStats());
     }
 
     @GetMapping("/{id}")
@@ -44,6 +66,15 @@ public class AdminFitAnalysisController {
                                                            @PathVariable Long id) {
         requireAdmin(authUser);
         return ApiResponse.ok(adminFitAnalysisService.get(id));
+    }
+
+    /** gate review workflow: 검토 완료/재분석 요청/대기 되돌리기 처리(+선택 메모). */
+    @PatchMapping("/{id}/gate-review")
+    public ApiResponse<AdminFitAnalysisDetailResponse> reviewGate(@AuthenticationPrincipal AuthUser authUser,
+                                                                  @PathVariable Long id,
+                                                                  @Valid @RequestBody AdminGateReviewRequest request) {
+        requireAdmin(authUser);
+        return ApiResponse.ok(adminFitAnalysisService.reviewGate(id, authUser.id(), request));
     }
 
     @GetMapping("/{id}/memos")
@@ -80,8 +111,6 @@ public class AdminFitAnalysisController {
     }
 
     private static void requireAdmin(AuthUser authUser) {
-        if (!"ADMIN".equals(authUser.role())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "관리자만 접근할 수 있습니다.");
-        }
+        AdminAccess.requireAdmin(authUser);
     }
 }

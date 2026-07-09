@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Briefcase, RefreshCw, Sparkles, Target, Users, Video } from "lucide-react";
+import { BarChart3, Briefcase, RefreshCw, ShieldAlert, Sparkles, Target, Users, Video } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
@@ -38,6 +38,7 @@ export function AdminOpsDashboardPage() {
         { label: "적합도 분석", value: overview.totalFitAnalyses, sub: "누적 생성", icon: Target },
         { label: "면접 세션", value: overview.totalInterviewSessions, sub: "누적", icon: Video },
         { label: "이번 달 AI 호출", value: overview.aiCallsThisMonth, sub: "ai_usage_log 기준", icon: Sparkles },
+        { label: "근거 검토 대기", value: overview.reviewRequiredAnalyses, sub: "최신 지원 건 기준", icon: ShieldAlert },
       ]
     : [];
 
@@ -46,7 +47,7 @@ export function AdminOpsDashboardPage() {
       <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-8 sm:px-6">
         <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <Badge className="mb-2 bg-slate-900 text-white">C 관리자</Badge>
+            <Badge className="mb-2 bg-foreground text-background">C 관리자</Badge>
             <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
               <BarChart3 className="size-6 text-blue-600" />
               운영 종합 대시보드
@@ -63,14 +64,14 @@ export function AdminOpsDashboardPage() {
 
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 5 }).map((_, index) => (
+            {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="h-28 animate-pulse rounded-lg bg-slate-200" />
             ))}
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {cards.map((card) => (
-              <Card key={card.label} className="border-slate-200 bg-white">
+              <Card key={card.label} className="border-slate-200 bg-card">
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-slate-500">{card.label}</span>

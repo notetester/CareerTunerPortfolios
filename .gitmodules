@@ -1,0 +1,15 @@
+[submodule "docs/storyboard"]
+	path = docs/storyboard
+	url = https://github.com/notetester/CareerTunerDocs.git
+	branch = main
+	ignore = dirty
+[submodule "docs/ai-reports"]
+	path = docs/ai-reports
+	url = https://github.com/notetester/CareerTunerAIDocs.git
+	branch = main
+	ignore = dirty
+[submodule "docs/ai-artifacts"]
+	path = docs/ai-artifacts
+	url = https://github.com/notetester/CareerTunerAI.git
+	branch = main
+	ignore = dirty

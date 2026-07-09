@@ -11,6 +11,8 @@ public class AdminJobAnalysisRow {
     private Long applicationCaseId;
     private Long jobPostingId;
     private Integer jobPostingRevision;
+    private Integer latestJobPostingRevision;
+    private Boolean staleAgainstLatestPosting;
     private Long userId;
     private String userEmail;
     private String companyName;
@@ -23,6 +25,8 @@ public class AdminJobAnalysisRow {
     private String qualifications;
     private String difficulty;
     private String summary;
+    private String evidence;
+    private String ambiguousConditions;
     private LocalDateTime confirmedAt;
     private String adminMemo;
     private LocalDateTime createdAt;

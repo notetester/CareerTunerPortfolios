@@ -11,10 +11,10 @@
     <insert id="insertCompanyAnalysis" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO company_analysis
             (application_case_id, job_posting_id, job_posting_revision, company_summary, recent_issues, industry,
-             competitors, interview_points, sources)
+             competitors, interview_points, sources, verified_facts, ai_inferences, source_type, checked_at, refresh_recommended_at)
         VALUES
             (#{applicationCaseId}, #{jobPostingId}, #{jobPostingRevision}, #{companySummary}, #{recentIssues}, #{industry},
-             #{competitors}, #{interviewPoints}, #{sources})
+             #{competitors}, #{interviewPoints}, #{sources}, #{verifiedFacts}, #{aiInferences}, #{sourceType}, #{checkedAt}, #{refreshRecommendedAt})
     </insert>
 
     <select id="findLatestCompanyAnalysisByCaseId" resultType="com.careertuner.companyanalysis.domain.CompanyAnalysis">
@@ -46,6 +46,8 @@
             competitors = #{competitors},
             interview_points = #{interviewPoints},
             sources = #{sources},
+            verified_facts = #{verifiedFacts},
+            ai_inferences = #{aiInferences},
             confirmed_at = #{confirmedAt}
         WHERE id = #{id} AND application_case_id = #{applicationCaseId}
     </update>

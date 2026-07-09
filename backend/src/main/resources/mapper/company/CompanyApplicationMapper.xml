@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.company.mapper.CompanyApplicationMapper">
+
+    <sql id="columns">
+        a.id, a.user_id, a.company_name, a.business_number, a.contact, a.description,
+        a.status, a.reject_reason, a.reviewed_by, a.reviewed_at, a.created_at, a.updated_at
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id"
+            parameterType="com.careertuner.company.domain.CompanyApplication">
+        INSERT INTO company_application
+            (user_id, company_name, business_number, contact, description, status)
+        VALUES
+            (#{userId}, #{companyName}, #{businessNumber}, #{contact}, #{description}, #{status})
+    </insert>
+
+    <select id="findById" resultType="com.careertuner.company.domain.CompanyApplication">
+        SELECT <include refid="columns"/>,
+               u.email AS applicant_email,
+               u.name  AS applicant_name
+          FROM company_application a
+          JOIN users u ON u.id = a.user_id
+         WHERE a.id = #{id}
+    </select>
+
+    <!-- 승인 트랜잭션 전용 비관적 잠금. JOIN 없이 신청 행만 잠근다. -->
+    <select id="findByIdForUpdate" resultType="com.careertuner.company.domain.CompanyApplication">
+        SELECT <include refid="columns"/>
+          FROM company_application a
+         WHERE a.id = #{id}
+           FOR UPDATE
+    </select>
+
+    <select id="findLatestByUserId" resultType="com.careertuner.company.domain.CompanyApplication">
+        SELECT <include refid="columns"/>
+          FROM company_application a
+         WHERE a.user_id = #{userId}
+         ORDER BY a.id DESC
+         LIMIT 1
+    </select>
+
+    <select id="countPendingByUserId" resultType="int">
+        SELECT COUNT(*)
+          FROM company_application
+         WHERE user_id = #{userId}
+           AND status = 'PENDING'
+    </select>
+
+    <select id="findAll" resultType="com.careertuner.company.domain.CompanyApplication">
+        SELECT <include refid="columns"/>,
+               u.email AS applicant_email,
+               u.name  AS applicant_name
+          FROM company_application a
+          JOIN users u ON u.id = a.user_id
+        <where>
+            <if test="status != null">a.status = #{status}</if>
+        </where>
+         ORDER BY a.id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- PENDING 상태에서만 확정 — 동시 처리 경합 시 0건 갱신으로 감지 가능 -->
+    <update id="review">
+        UPDATE company_application
+           SET status        = #{status},
+               reject_reason = #{rejectReason},
+               reviewed_by   = #{reviewedBy},
+               reviewed_at   = NOW()
+         WHERE id = #{id}
+           AND status = 'PENDING'
+    </update>
+
+    <!-- ── users / user_role_change_history — 기업 승인 트랜잭션 전용 ── -->
+
+    <select id="selectUserRoleForUpdate" resultType="string">
+        SELECT role FROM users WHERE id = #{userId} FOR UPDATE
+    </select>
+
+    <select id="selectUserRole" resultType="string">
+        SELECT role FROM users WHERE id = #{userId}
+    </select>
+
+    <update id="updateUserRole">
+        UPDATE users SET role = #{role} WHERE id = #{userId}
+    </update>
+
+    <insert id="insertRoleChangeHistory">
+        INSERT INTO user_role_change_history (user_id, previous_role, new_role, reason, changed_by)
+        VALUES (#{userId}, #{previousRole}, #{newRole}, #{reason}, #{changedBy})
+    </insert>
+
+</mapper>

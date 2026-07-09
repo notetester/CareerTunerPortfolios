@@ -19,5 +19,8 @@ public class RefreshToken {
     private String token;
     private LocalDateTime expiredAt;
     private boolean revoked;
+    private LocalDateTime revokedAt;
+    private String ipAddress;
+    private String userAgent;
     private LocalDateTime createdAt;
 }

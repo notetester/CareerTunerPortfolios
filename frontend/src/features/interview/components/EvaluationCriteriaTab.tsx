@@ -8,7 +8,7 @@ export function EvaluationCriteriaTab() {
         <h2 className="mb-4 font-bold text-slate-800">답변 평가 항목</h2>
         <div className="space-y-3">
           {EVALUATION_CRITERIA.map((e) => (
-            <div key={e.label} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div key={e.label} className="rounded-xl border border-slate-200 bg-card p-3">
               <div className="text-sm font-semibold text-slate-800">{e.label}</div>
               <div className="mt-0.5 text-xs text-slate-500">{e.desc}</div>
             </div>

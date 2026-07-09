@@ -14,13 +14,51 @@
     </insert>
 
     <select id="findSessionsByUserId" resultType="com.careertuner.interview.domain.InterviewSession">
-        SELECT s.*
+        SELECT s.*,
+               (SELECT ROUND(AVG(a.score))
+                  FROM interview_answer a
+                  JOIN interview_question q ON q.id = a.question_id
+                 WHERE q.interview_session_id = s.id
+                   AND a.score IS NOT NULL) AS avg_answer_score,
+               (SELECT ROUND(AVG(m.score))
+                  FROM interview_media_analysis m
+                 WHERE m.interview_session_id = s.id
+                   AND m.kind = 'VOICE') AS avg_voice_score
         FROM interview_session s
         JOIN application_case ac ON ac.id = s.application_case_id
         WHERE ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
-        ORDER BY s.created_at DESC, s.id DESC
+          AND s.deleted_at IS NULL
+        ORDER BY COALESCE(s.last_resumed_at, s.created_at) DESC, s.id DESC
+        LIMIT #{limit} OFFSET #{offset}
     </select>
+
+    <select id="countSessionsByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+          AND s.deleted_at IS NULL
+    </select>
+
+    <update id="softDeleteSession">
+        UPDATE interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        SET s.deleted_at = NOW()
+        WHERE s.id = #{id}
+          AND ac.user_id = #{userId}
+          AND s.deleted_at IS NULL
+    </update>
+
+    <update id="touchSessionResumed">
+        UPDATE interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        SET s.last_resumed_at = NOW()
+        WHERE s.id = #{id}
+          AND ac.user_id = #{userId}
+          AND s.deleted_at IS NULL
+    </update>
 
     <select id="findSessionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewSession">
         SELECT s.*
@@ -52,10 +90,25 @@
     <!-- ── 질문 ── -->
     <insert id="insertQuestion" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO interview_question
-            (interview_session_id, question, question_type, sort_order)
+            (interview_session_id, parent_question_id, question, question_type, sort_order)
         VALUES
-            (#{interviewSessionId}, #{question}, #{questionType}, #{sortOrder})
+            (#{interviewSessionId}, #{parentQuestionId}, #{question}, #{questionType}, #{sortOrder})
     </insert>
+
+    <update id="updateQuestionModelAnswer">
+        <!-- first-writer-wins: 모범답안은 한 번 정해지면 덮어쓰지 않는다.
+             백그라운드 일괄 생성과 평가/조회 시 지연 생성이 경쟁해도 채점 기준 = 표시 = 복기가 항상 일치한다. -->
+        UPDATE interview_question
+        SET model_answer = #{modelAnswer}
+        WHERE id = #{id}
+          AND (model_answer IS NULL OR model_answer = '')
+    </update>
+
+    <select id="findMaxSortOrder" resultType="java.lang.Integer">
+        SELECT MAX(sort_order)
+        FROM interview_question
+        WHERE interview_session_id = #{sessionId}
+    </select>
 
     <delete id="deleteQuestionsBySessionId">
         DELETE FROM interview_question
@@ -63,10 +116,15 @@
     </delete>
 
     <select id="findQuestionsBySessionId" resultType="com.careertuner.interview.domain.InterviewQuestion">
-        SELECT *
-        FROM interview_question
-        WHERE interview_session_id = #{sessionId}
-        ORDER BY sort_order, id
+        <!-- 꼬리질문(반박)을 부모 본질문 바로 밑에 인접 배치한다.
+             정렬: 부모 sort_order 로 그룹 → 같은 그룹은 본질문(0) 먼저·꼬리(1) 뒤 → sort_order/id -->
+        SELECT q.*
+        FROM interview_question q
+        LEFT JOIN interview_question p ON p.id = q.parent_question_id
+        WHERE q.interview_session_id = #{sessionId}
+        ORDER BY COALESCE(p.sort_order, q.sort_order),
+                 (q.parent_question_id IS NOT NULL),
+                 q.sort_order, q.id
     </select>
 
     <select id="findQuestionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewQuestion">
@@ -95,6 +153,14 @@
         ORDER BY q.sort_order, a.id
     </select>
 
+    <select id="findLatestAnswerByQuestionId" resultType="com.careertuner.interview.domain.InterviewAnswer">
+        SELECT *
+        FROM interview_answer
+        WHERE question_id = #{questionId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
     <!-- ── AI 사용량 ── -->
     <insert id="insertAiUsageLog" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_usage_log
@@ -104,4 +170,19 @@
             (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
              #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
     </insert>
+
+    <!-- ── 에이전트 트레이스 ── -->
+    <insert id="insertAgentStep" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO interview_agent_step
+            (interview_session_id, question_id, step_no, agent, action, status, summary, detail, elapsed_ms)
+        VALUES
+            (#{interviewSessionId}, #{questionId}, #{stepNo}, #{agent}, #{action}, #{status}, #{summary}, #{detail}, #{elapsedMs})
+    </insert>
+
+    <select id="findAgentStepsBySessionId" resultType="com.careertuner.interview.domain.InterviewAgentStep">
+        SELECT *
+        FROM interview_agent_step
+        WHERE interview_session_id = #{sessionId}
+        ORDER BY id
+    </select>
 </mapper>

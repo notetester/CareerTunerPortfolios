@@ -1,14 +1,26 @@
 package com.careertuner.admin.companyanalysis.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisRow;
+import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisSearchCriteria;
+import com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisSummary;
 
 @Mapper
 public interface AdminCompanyAnalysisMapper {
 
-    List<AdminCompanyAnalysisRow> findCompanyAnalyses(@Param("limit") int limit);
+    List<AdminCompanyAnalysisRow> findCompanyAnalyses(@Param("criteria") AdminCompanyAnalysisSearchCriteria criteria);
+
+    AdminCompanyAnalysisSummary summarizeCompanyAnalyses(@Param("criteria") AdminCompanyAnalysisSearchCriteria criteria);
+
+    int updateMetadata(@Param("id") Long id,
+                       @Param("sourceType") String sourceType,
+                       @Param("checkedAt") LocalDateTime checkedAt,
+                       @Param("refreshRecommendedAt") LocalDateTime refreshRecommendedAt,
+                       @Param("clearCheckedAt") boolean clearCheckedAt,
+                       @Param("clearRefreshRecommendedAt") boolean clearRefreshRecommendedAt);
 }

@@ -3,12 +3,20 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.admin.jobanalysis.mapper.AdminJobAnalysisMapper">
 
-    <select id="findJobAnalyses" resultType="com.careertuner.admin.jobanalysis.dto.AdminJobAnalysisRow">
+    <sql id="JobAnalysisSelect">
         SELECT
             ja.id,
             ja.application_case_id,
             ja.job_posting_id,
             ja.job_posting_revision,
+            latest_posting.latest_job_posting_revision AS latest_job_posting_revision,
+            CASE
+                WHEN latest_posting.latest_job_posting_revision IS NOT NULL
+                    AND ja.job_posting_revision IS NOT NULL
+                    AND ja.job_posting_revision &lt; latest_posting.latest_job_posting_revision
+                THEN TRUE
+                ELSE FALSE
+            END AS stale_against_latest_posting,
             ac.user_id,
             u.email AS user_email,
             ac.company_name,
@@ -21,13 +29,101 @@
             ja.qualifications,
             ja.difficulty,
             ja.summary,
+            ja.evidence,
+            ja.ambiguous_conditions,
             ja.confirmed_at,
             ja.admin_memo,
             ja.created_at
         FROM job_analysis ja
         JOIN application_case ac ON ja.application_case_id = ac.id
         JOIN users u ON ac.user_id = u.id
-        ORDER BY ja.created_at DESC, ja.id DESC
-        LIMIT #{limit}
+        LEFT JOIN (
+            SELECT application_case_id, MAX(revision) AS latest_job_posting_revision
+            FROM job_posting
+            GROUP BY application_case_id
+        ) latest_posting ON latest_posting.application_case_id = ja.application_case_id
+    </sql>
+
+    <sql id="JobAnalysisWhere">
+        WHERE 1 = 1
+        <if test="criteria.keyword != null">
+            AND (
+                ac.company_name LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ac.job_title LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR u.email LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ja.summary LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ja.duties LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ja.qualifications LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR CAST(ja.required_skills AS CHAR) LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR CAST(ja.preferred_skills AS CHAR) LIKE CONCAT('%', #{criteria.keyword}, '%')
+            )
+        </if>
+        <if test="criteria.difficulty != null">
+            AND UPPER(ja.difficulty) = #{criteria.difficulty}
+        </if>
+        <if test="criteria.confirmed != null and criteria.confirmed">
+            AND ja.confirmed_at IS NOT NULL
+        </if>
+        <if test="criteria.confirmed != null and !criteria.confirmed">
+            AND ja.confirmed_at IS NULL
+        </if>
+        <if test="criteria.hasMemo != null and criteria.hasMemo">
+            AND ja.admin_memo IS NOT NULL AND TRIM(ja.admin_memo) &lt;&gt; ''
+        </if>
+        <if test="criteria.hasMemo != null and !criteria.hasMemo">
+            AND (ja.admin_memo IS NULL OR TRIM(ja.admin_memo) = '')
+        </if>
+        <if test="criteria.applicationCaseId != null">
+            AND ja.application_case_id = #{criteria.applicationCaseId}
+        </if>
+        <if test="criteria.userId != null">
+            AND ac.user_id = #{criteria.userId}
+        </if>
+        <if test="criteria.createdFrom != null">
+            AND ja.created_at &gt;= #{criteria.createdFrom}
+        </if>
+        <if test="criteria.createdTo != null">
+            AND ja.created_at &lt; DATE_ADD(#{criteria.createdTo}, INTERVAL 1 DAY)
+        </if>
+    </sql>
+
+    <sql id="JobAnalysisOrderBy">
+        <choose>
+            <when test="criteria.sort == 'CREATED_AT_ASC'">ORDER BY ja.created_at ASC, ja.id ASC</when>
+            <when test="criteria.sort == 'CONFIRMED_AT_DESC'">ORDER BY ja.confirmed_at DESC, ja.id DESC</when>
+            <when test="criteria.sort == 'CONFIRMED_AT_ASC'">ORDER BY ja.confirmed_at IS NULL, ja.confirmed_at ASC, ja.id ASC</when>
+            <when test="criteria.sort == 'DIFFICULTY_DESC'">ORDER BY ja.difficulty IS NULL, ja.difficulty DESC, ja.id DESC</when>
+            <when test="criteria.sort == 'DIFFICULTY_ASC'">ORDER BY ja.difficulty IS NULL, ja.difficulty ASC, ja.id ASC</when>
+            <when test="criteria.sort == 'COMPANY_NAME_DESC'">ORDER BY ac.company_name DESC, ja.id DESC</when>
+            <when test="criteria.sort == 'COMPANY_NAME_ASC'">ORDER BY ac.company_name ASC, ja.id ASC</when>
+            <otherwise>ORDER BY ja.created_at DESC, ja.id DESC</otherwise>
+        </choose>
+    </sql>
+
+    <select id="findJobAnalyses" resultType="com.careertuner.admin.jobanalysis.dto.AdminJobAnalysisRow">
+        <include refid="JobAnalysisSelect"/>
+        <include refid="JobAnalysisWhere"/>
+        <include refid="JobAnalysisOrderBy"/>
+        LIMIT #{criteria.limit} OFFSET #{criteria.offset}
+    </select>
+
+    <select id="summarizeJobAnalyses" resultType="com.careertuner.admin.jobanalysis.dto.AdminJobAnalysisSummary">
+        SELECT
+            COUNT(*) AS total_count,
+            COALESCE(SUM(CASE WHEN ja.confirmed_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS confirmed_count,
+            COALESCE(SUM(CASE WHEN ja.confirmed_at IS NULL THEN 1 ELSE 0 END), 0) AS unconfirmed_count,
+            COALESCE(SUM(CASE WHEN UPPER(ja.difficulty) IN ('EASY', 'LOW') THEN 1 ELSE 0 END), 0) AS easy_count,
+            COALESCE(SUM(CASE WHEN UPPER(ja.difficulty) IN ('MEDIUM', 'NORMAL') THEN 1 ELSE 0 END), 0) AS medium_count,
+            COALESCE(SUM(CASE WHEN UPPER(ja.difficulty) IN ('HARD', 'HIGH') THEN 1 ELSE 0 END), 0) AS hard_count,
+            COALESCE(SUM(CASE
+                WHEN ja.difficulty IS NULL OR TRIM(ja.difficulty) = ''
+                    OR UPPER(ja.difficulty) NOT IN ('EASY', 'LOW', 'MEDIUM', 'NORMAL', 'HARD', 'HIGH')
+                THEN 1 ELSE 0
+            END), 0) AS unknown_difficulty_count,
+            COALESCE(SUM(CASE WHEN ja.admin_memo IS NOT NULL AND TRIM(ja.admin_memo) &lt;&gt; '' THEN 1 ELSE 0 END), 0) AS memo_count
+        FROM job_analysis ja
+        JOIN application_case ac ON ja.application_case_id = ac.id
+        JOIN users u ON ac.user_id = u.id
+        <include refid="JobAnalysisWhere"/>
     </select>
 </mapper>

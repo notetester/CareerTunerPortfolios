@@ -1,0 +1,38 @@
+package com.careertuner.admin.ticket.mapper;
+
+import java.util.List;
+
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+
+import com.careertuner.admin.ticket.dto.AdminTicketListResponse;
+import com.careertuner.admin.ticket.dto.AdminTicketMessageResponse;
+
+@Mapper
+public interface AdminTicketMapper {
+
+    List<AdminTicketListResponse> findAll(@Param("status") String status);
+
+    AdminTicketListResponse findById(@Param("id") Long id);
+
+    Long findUserIdById(@Param("id") Long id);
+
+    /** 해당 회원의 모든 문의 이력(최근순) — 회원 요약 컨텍스트용. */
+    List<AdminTicketListResponse> findByUserId(@Param("userId") Long userId);
+
+    List<AdminTicketMessageResponse> findMessages(@Param("ticketId") Long ticketId);
+
+    String findInternalMemo(@Param("ticketId") Long ticketId);
+
+    void updateTicket(@Param("id") Long id,
+                      @Param("status") String status,
+                      @Param("priority") String priority);
+
+    void insertMessage(@Param("ticketId") Long ticketId,
+                       @Param("senderType") String senderType,
+                       @Param("senderId") Long senderId,
+                       @Param("content") String content,
+                       @Param("internal") boolean internal);
+
+    void updateStatus(@Param("id") Long id, @Param("status") String status);
+}

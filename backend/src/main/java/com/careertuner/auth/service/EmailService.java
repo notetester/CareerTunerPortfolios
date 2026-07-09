@@ -39,6 +39,17 @@ public class EmailService {
         send(to, "[CareerTuner] 비밀번호 재설정 안내", resetHtml(link), link);
     }
 
+    /** 아이디 찾기 링크 발송. 링크 안에서 마스킹된 로그인 아이디만 보여준다. */
+    public void sendFindIdEmail(String to, String token) {
+        String link = props.getApp().getFrontendUrl() + "/auth/find-id/result?token=" + token;
+        send(to, "[CareerTuner] 아이디 확인 안내", findIdHtml(link), link);
+    }
+
+    public void sendDormantReleaseEmail(String to, String token) {
+        String link = props.getApp().getFrontendUrl() + "/auth/release-dormant?token=" + token;
+        send(to, "[CareerTuner] 휴면 계정 해제 안내", dormantHtml(link), link);
+    }
+
     private void send(String to, String subject, String html, String linkForDevLog) {
         boolean smtpUnset = smtpUsername == null || smtpUsername.isBlank();
         if (props.getMail().isDevMode() || smtpUnset) {
@@ -79,6 +90,28 @@ public class EmailService {
                   <p>아래 버튼을 눌러 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다.</p>
                   <p><a href="%s" style="display:inline-block;padding:12px 20px;background:#030213;color:#fff;border-radius:8px;text-decoration:none">비밀번호 재설정</a></p>
                   <p style="color:#717182;font-size:12px">본인이 요청하지 않았다면 이 메일을 무시하세요.</p>
+                </div>
+                """.formatted(link);
+    }
+
+    private String findIdHtml(String link) {
+        return """
+                <div style="font-family:sans-serif;max-width:480px;margin:auto">
+                  <h2>CareerTuner 아이디 확인</h2>
+                  <p>아래 버튼을 눌러 로그인 아이디 힌트를 확인하세요. 링크는 30분 동안 유효합니다.</p>
+                  <p><a href="%s" style="display:inline-block;padding:12px 20px;background:#030213;color:#fff;border-radius:8px;text-decoration:none">아이디 힌트 확인</a></p>
+                  <p style="color:#717182;font-size:12px">본인이 요청하지 않았다면 이 메일을 무시하세요.</p>
+                </div>
+                """.formatted(link);
+    }
+
+    private String dormantHtml(String link) {
+        return """
+                <div style="font-family:sans-serif;max-width:480px;margin:auto">
+                  <h2>CareerTuner 휴면 계정 해제</h2>
+                  <p>아래 버튼을 눌러 휴면 상태를 해제해 주세요. 링크는 1시간 동안 유효합니다.</p>
+                  <p><a href="%s" style="display:inline-block;padding:12px 20px;background:#030213;color:#fff;border-radius:8px;text-decoration:none">휴면 해제하기</a></p>
+                  <p style="color:#717182;font-size:12px">본인이 요청하지 않았다면 이 메일을 무시해 주세요.</p>
                 </div>
                 """.formatted(link);
     }

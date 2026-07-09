@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.notification.mapper.AdminRecipientMapper">
+
+    <!-- 관리자 알림 팬아웃 대상: 활성 관리자(userId) 목록 -->
+    <select id="findActiveAdminIds" resultType="long">
+        SELECT id
+        FROM users
+        WHERE role IN ('ADMIN', 'SUPER_ADMIN')
+          AND status = 'ACTIVE'
+        ORDER BY id
+    </select>
+
+    <!-- 타입별 팬아웃 대상: (필요 권한 실효 보유 ADMIN ∪ SUPER_ADMIN) − opt-out.
+         - SUPER_ADMIN 은 권한 필터를 건너뛴다(전체 통과 원칙, opt-out 은 적용).
+         - permissionCodes 가 null 이면 종전대로 활성 관리자 전원(매핑 없는 type 하위호환).
+         - opt-out: notification_preference.categories_json 의 "admin.{TYPE}" 키가 false 인 관리자 제외.
+           키에 점(.)이 포함되므로 JSON 경로는 큰따옴표로 감싼다. -->
+    <select id="findAdminIdsForType" resultType="long">
+        SELECT u.id
+          FROM users u
+         WHERE u.status = 'ACTIVE'
+           AND (
+                u.role = 'SUPER_ADMIN'
+            <choose>
+                <when test="permissionCodes != null and !permissionCodes.isEmpty()">
+                OR (u.role = 'ADMIN' AND (
+                        EXISTS (
+                            SELECT 1
+                              FROM admin_user_permission aup
+                              JOIN admin_permission_policy app
+                                ON app.permission_code = aup.permission_code
+                               AND app.active = 1
+                             WHERE aup.user_id = u.id
+                               AND aup.revoked_at IS NULL
+                               AND aup.permission_code IN
+                            <foreach collection="permissionCodes" item="code" open="(" separator="," close=")">
+                                #{code}
+                            </foreach>
+                        )
+                        OR EXISTS (
+                            SELECT 1
+                              FROM admin_user_group aug
+                              JOIN admin_permission_group apg
+                                ON apg.group_code = aug.group_code
+                               AND apg.active = 1
+                              JOIN admin_permission_group_item agi
+                                ON agi.group_code = aug.group_code
+                              JOIN admin_permission_policy app2
+                                ON app2.permission_code = agi.permission_code
+                               AND app2.active = 1
+                             WHERE aug.user_id = u.id
+                               AND aug.revoked_at IS NULL
+                               AND agi.permission_code IN
+                            <foreach collection="permissionCodes" item="code" open="(" separator="," close=")">
+                                #{code}
+                            </foreach>
+                        )
+                    ))
+                </when>
+                <otherwise>
+                OR u.role = 'ADMIN'
+                </otherwise>
+            </choose>
+           )
+           AND NOT EXISTS (
+                SELECT 1
+                  FROM notification_preference np
+                 WHERE np.user_id = u.id
+                   AND JSON_UNQUOTE(JSON_EXTRACT(
+                           np.categories_json,
+                           CONCAT('$."', #{optOutKey}, '"'))) = 'false'
+           )
+         ORDER BY u.id
+    </select>
+
+</mapper>

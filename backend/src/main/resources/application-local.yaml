@@ -1,0 +1,29 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  local 프로파일 — 전부 내 PC 에서 (DB localhost + Ollama localhost)
+#
+#  실행:
+#    SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+#    또는 .\gradlew.bat bootRun --args='--spring.profiles.active=local'
+#
+#  프로파일은 "호스트 기본값 묶음"일 뿐이다 — 동일 이름의 환경변수(DB_HOST 등)를
+#  설정하면 프로파일 기본값보다 항상 우선한다(기존 env override 동작 유지).
+#  프로파일 전체 목록·컴포넌트별 전환 방법: docs/ENVIRONMENTS.md, config/environments.json
+# ─────────────────────────────────────────────────────────────────────────────
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:team1}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:dbuser}
+    password: ${DB_PASSWORD:1234}
+
+# 로컬 Ollama 를 직접 사용(4090 미접속 환경). 폴백 후보도 자기 자신이라 리졸버는 사실상 no-op.
+ai:
+  ollama:
+    base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+    fallback-base-urls: ${AI_OLLAMA_FALLBACK_BASE_URLS:http://localhost:11434}
+
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+
+# 프런트/리다이렉트 주소는 base(application.yaml) 기본값이 이미 localhost — 재정의 불필요.

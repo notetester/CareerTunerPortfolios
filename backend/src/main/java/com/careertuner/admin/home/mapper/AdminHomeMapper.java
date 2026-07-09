@@ -16,4 +16,16 @@ public interface AdminHomeMapper {
 
     /** 최근 7일 내 새로 생성된 적합도 분석 수. */
     int countNewAnalysesLast7Days();
+
+    /** 지원 건별 최신 적합도 분석이 비정상(FAILED/FALLBACK) 상태로 노출 중인 건수. */
+    int countDegradedLatestAnalyses();
+
+    /** 재분석 필요(REANALYSIS) 운영 메모가 달린 적합도 분석 수. */
+    int countReanalysisRequests();
+
+    /** review-first evidence gate 가 REVIEW_REQUIRED 로 판정한, 지원 건별 최신 적합도 분석 수(검토 큐 크기). */
+    int countReviewRequiredAnalyses();
+
+    /** 장기 경향/대시보드 요약 실행 이력의 비정상(FAILED/FALLBACK) 건수. */
+    int countCareerRunFailures();
 }

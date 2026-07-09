@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.notification.mapper.NotificationPreferenceMapper">
+
+    <select id="findByUserId" resultType="com.careertuner.notification.domain.NotificationPreference">
+        SELECT * FROM notification_preference WHERE user_id = #{userId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO notification_preference
+            (user_id, push_enabled, email_enabled, categories_json, rules_json, keywords_json, quiet_hours_start, quiet_hours_end)
+        VALUES
+            (#{userId}, #{pushEnabled}, #{emailEnabled}, #{categoriesJson}, #{rulesJson}, #{keywordsJson}, #{quietHoursStart}, #{quietHoursEnd})
+        ON DUPLICATE KEY UPDATE
+            push_enabled      = VALUES(push_enabled),
+            email_enabled     = VALUES(email_enabled),
+            categories_json   = VALUES(categories_json),
+            rules_json        = VALUES(rules_json),
+            keywords_json     = VALUES(keywords_json),
+            quiet_hours_start = VALUES(quiet_hours_start),
+            quiet_hours_end   = VALUES(quiet_hours_end)
+    </insert>
+
+</mapper>

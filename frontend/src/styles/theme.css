@@ -1,50 +1,93 @@
 @custom-variant dark (&:is(.dark *));
 
+/* ───────────────────────────────────────────────────────────
+   CareerTuner 디자인 시스템 — Linear/Vercel 프리미엄
+   라이트(:root, Vercel) / 다크(.dark, Linear). 단일 출처: /design.md
+   shadcn 시맨틱 토큰 이름은 유지하고 값만 새 팔레트로 매핑.
+   ─────────────────────────────────────────────────────────── */
+
 :root {
   --font-size: 16px;
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
+
+  /* surfaces */
+  --background: #fafafa;
+  --foreground: #16171a;
   --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.0058 264.53);
-  --secondary-foreground: #030213;
-  --muted: #ececf0;
-  --muted-foreground: #717182;
-  --accent: #e9ebef;
-  --accent-foreground: #030213;
-  --destructive: #d4183d;
+  --card-foreground: #16171a;
+  --popover: #ffffff;
+  --popover-foreground: #16171a;
+
+  /* brand accent (단일 액센트) */
+  --primary: #5e6ad2;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f0f0f2;
+  --secondary-foreground: #16171a;
+  --muted: #f0f0f2;
+  --muted-foreground: #6b6c76;
+
+  /* shadcn accent = 중립 호버 (브랜드색 아님) */
+  --accent: #f0f0f2;
+  --accent-foreground: #16171a;
+
+  --destructive: #cf222e;
   --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.1);
+
+  --border: #e7e7eb;
   --input: transparent;
-  --input-background: #f3f3f5;
+  --input-background: #ffffff;
   --switch-background: #cbced4;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
+  --ring: #5e6ad2;
+
+  /* 확장 토큰 (Linear/Vercel 깊이·텍스트 위계) */
+  --surface-2: #f6f6f8;
+  --surface-3: #ececed;
+  --border-strong: #d6d6dc;
+  --edge: transparent;            /* 라이트는 엣지 대신 그림자 */
+  --accent-2: #5046c8;            /* 링크·활성 (라이트는 더 진하게) */
+  --accent-soft: rgba(94, 106, 210, 0.10);
+  --ink-2: #3f4046;
+  --ink-3: #6b6c76;
+  --ink-4: #9a9ba4;
+  --shadow-card: 0 1px 2px rgba(17,17,26,0.05), 0 4px 14px -4px rgba(17,17,26,0.06);
+  --shadow-pop: 0 1px 2px rgba(17,17,26,0.04), 0 28px 60px -28px rgba(17,17,26,0.18);
+
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #030213;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.75rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #16171a;
+  --sidebar-primary: #5e6ad2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f0f2;
+  --sidebar-accent-foreground: #16171a;
+  --sidebar-border: #e7e7eb;
+  --sidebar-ring: #5e6ad2;
 
-  /* Brand */
-  --brand-blue: #2563eb;
-  --brand-indigo: #4f46e5;
-  --gradient-brand: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
-  --gradient-brand-soft: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%);
+  /* Brand (액센트 계열로 수렴 — 기존 blue/indigo 잔재 제거) */
+  --brand-blue: #5e6ad2;
+  --brand-indigo: #5046c8;
+  --gradient-brand: linear-gradient(135deg, #5e6ad2 0%, #7170ff 100%);
+  --gradient-brand-soft: linear-gradient(135deg, #eef0fb 0%, #f3f2fd 100%);
+
+  /* AI 오케스트레이터 전용 강조색(인디고→바이올렛) — 일반 모드(brand)와 시각적으로 또렷이 구분.
+     챗봇 위젯의 모드 전환 신호에만 쓴다(인라인 style var(--orch-*)). design_handoff_orchestrator_widget 기준. */
+  --orch-indigo: #4338ca;
+  --orch-violet: #6d28d9;
+  --orch-point: #7c3aed;
+  --orch-label: #5b21b6;
+  --orch-surface: #f3effe;       /* 선택 카드/아이콘 배경 */
+  --orch-header-tint: #f7f5ff;   /* 헤더 틴트 */
+  --orch-chat-bg: #f6f5fc;       /* 채팅 배경 */
+  --orch-input-bg: #f1eefb;      /* 입력 배경 */
+  --orch-track: #e7e1f7;         /* 진행바 track */
+  --gradient-orchestrator: linear-gradient(135deg, #4338ca, #6d28d9);
+  --gradient-orchestrator-bar: linear-gradient(90deg, #4338ca, #7c3aed);
 
   /* Community category colors */
   --cat-job-bg: #eff6ff;        --cat-job-fg: #2563eb;
@@ -56,60 +99,93 @@
   --cat-free-bg: #eef2ff;       --cat-free-fg: #4f46e5;
 
   /* Admin accent */
-  --accent-subtle: #eff6ff;
-  --accent: #2563eb;
+  --accent-subtle: #eef0fb;
 
   /* Status */
-  --success: #16a34a;
+  --success: #1a7f37;
   --success-foreground: #ffffff;
   --success-50: #f0fdf4;
-  --warning: #f59e0b;
+  --warning: #9a6700;
   --warning-50: #fffbeb;
   --danger-50: #fef2f2;
   --info-50: #eff6ff;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  /* surfaces (Linear) */
+  --background: #08090a;
+  --foreground: #f7f8f8;
+  --card: #141517;
+  --card-foreground: #f7f8f8;
+  --popover: #141517;
+  --popover-foreground: #f7f8f8;
+
+  --primary: #5e6ad2;
+  --primary-foreground: #ffffff;
+
+  --secondary: #1a1b1e;
+  --secondary-foreground: #f7f8f8;
+  --muted: #1a1b1e;
+  --muted-foreground: #8a8f98;
+
+  --accent: #1f2024;
+  --accent-foreground: #f7f8f8;
+
+  --destructive: #d8635d;
+  --destructive-foreground: #ffffff;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.08);
+  --input-background: #1a1b1e;
+  --ring: #7170ff;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
+
+  /* 확장 토큰 (다크) */
+  --surface-2: #1a1b1e;
+  --surface-3: #202125;
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --edge: rgba(255, 255, 255, 0.06);   /* 상단 라이트 엣지 */
+  --accent-2: #7170ff;
+  --accent-soft: rgba(113, 112, 255, 0.14);
+  --ink-2: #c2c7d0;
+  --ink-3: #9aa0aa;
+  --ink-4: #797e88;
+  --shadow-card: inset 0 1px 0 var(--edge);
+  --shadow-pop: inset 0 1px 0 var(--edge), 0 30px 80px -40px rgba(0,0,0,0.9);
+
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --sidebar: #0d0e10;
+  --sidebar-foreground: #f7f8f8;
+  --sidebar-primary: #7170ff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1a1b1e;
+  --sidebar-accent-foreground: #f7f8f8;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #7170ff;
 
   /* Brand dark */
-  --gradient-brand: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-  --gradient-brand-soft: linear-gradient(135deg, oklch(0.205 0.02 264) 0%, oklch(0.205 0.02 277) 100%);
-  --brand-blue: #3b82f6;
-  --brand-indigo: #6366f1;
+  --gradient-brand: linear-gradient(135deg, #5e6ad2 0%, #7170ff 100%);
+  --gradient-brand-soft: linear-gradient(135deg, #16171a 0%, #1a1b1e 100%);
+  --brand-blue: #7170ff;
+  --brand-indigo: #828fff;
+
+  /* 오케스트레이터(다크) — 그라데이션은 그대로 선명하게, 표면만 어둡게 */
+  --orch-indigo: #4338ca;
+  --orch-violet: #6d28d9;
+  --orch-point: #8b5cf6;
+  --orch-label: #c4b5fd;
+  --orch-surface: rgba(124, 58, 237, 0.18);
+  --orch-header-tint: rgba(124, 58, 237, 0.12);
+  --orch-chat-bg: #0d0e12;
+  --orch-input-bg: rgba(124, 58, 237, 0.14);
+  --orch-track: rgba(124, 58, 237, 0.24);
+  --gradient-orchestrator: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --gradient-orchestrator-bar: linear-gradient(90deg, #6366f1, #8b5cf6);
 
   /* Category dark */
   --cat-job-bg: rgba(37,99,235,0.16);       --cat-job-fg: #93c5fd;
@@ -118,23 +194,23 @@
   --cat-pass-bg: rgba(220,38,38,0.16);       --cat-pass-fg: #fca5a5;
   --cat-portfolio-bg: rgba(234,88,12,0.16);  --cat-portfolio-fg: #fdba74;
   --cat-cert-bg: rgba(13,148,136,0.16);      --cat-cert-fg: #5eead4;
-  --cat-free-bg: rgba(79,70,229,0.16);       --cat-free-fg: #a5b4fc;
+  --cat-free-bg: rgba(113,112,255,0.16);     --cat-free-fg: #c9c8ff;
 
   /* Admin accent dark */
-  --accent-subtle: rgba(37,99,235,0.12);
+  --accent-subtle: rgba(113,112,255,0.12);
 
-  /* Status dark */
-  --success: #22c55e;
+  /* Status dark — 채도·명도 낮춰 다크에서 안 튀게 (Linear 톤) */
+  --success: #4f8f66;
   --success-foreground: #052e16;
-  --success-50: rgba(22,163,74,0.16);
-  --warning: #fbbf24;
-  --warning-50: rgba(245,158,11,0.1);
-  --danger-50: rgba(220,38,38,0.1);
-  --info-50: rgba(37,99,235,0.1);
+  --success-50: rgba(79,143,102,0.12);
+  --warning: #b58a40;
+  --warning-50: rgba(181,138,64,0.12);
+  --danger-50: rgba(214,99,93,0.12);
+  --info-50: rgba(113,112,255,0.10);
 }
 
 @theme inline {
-  --font-sans: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont,
+  --font-sans: "Wanted Sans Variable", "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont,
     "Apple SD Gothic Neo", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -162,6 +238,17 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+
+  /* 확장 토큰 → 유틸리티 (bg-surface-2, text-ink-3, text-accent-2, border-border-strong ...) */
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-strong: var(--border-strong);
+  --color-accent-2: var(--accent-2);
+  --color-accent-soft: var(--accent-soft);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -174,6 +261,78 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* ── Tailwind 팔레트 브리지 ──
+     페이지에 하드코딩된 slate/gray/zinc/blue/indigo 색을 시맨틱 토큰에 매핑.
+     → 페이지 파일을 수정하지 않고 다크/라이트가 자동 대응된다. (design.md §7)
+     주의: bg-white(흰색)는 매핑 불가(text-white 필요) → bg-card로 치환.
+           bg-slate-800/900/950 등 '의도적 다크 배경'은 foreground로 매핑돼 다크에서 뒤집히므로 개별 수정. */
+  --color-slate-50: var(--surface-2);
+  --color-slate-100: var(--muted);
+  --color-slate-200: var(--border);
+  --color-slate-300: var(--border-strong);
+  --color-slate-400: var(--ink-4);
+  --color-slate-500: var(--ink-3);
+  --color-slate-600: var(--ink-2);
+  --color-slate-700: var(--ink-2);
+  --color-slate-800: var(--foreground);
+  --color-slate-900: var(--foreground);
+  --color-slate-950: var(--foreground);
+  --color-gray-50: var(--surface-2);
+  --color-gray-100: var(--muted);
+  --color-gray-200: var(--border);
+  --color-gray-300: var(--border-strong);
+  --color-gray-400: var(--ink-4);
+  --color-gray-500: var(--ink-3);
+  --color-gray-600: var(--ink-2);
+  --color-gray-700: var(--ink-2);
+  --color-gray-800: var(--foreground);
+  --color-gray-900: var(--foreground);
+  --color-gray-950: var(--foreground);
+  --color-zinc-50: var(--surface-2);
+  --color-zinc-100: var(--muted);
+  --color-zinc-200: var(--border);
+  --color-zinc-300: var(--border-strong);
+  --color-zinc-400: var(--ink-4);
+  --color-zinc-500: var(--ink-3);
+  --color-zinc-600: var(--ink-2);
+  --color-zinc-700: var(--ink-2);
+  --color-zinc-800: var(--foreground);
+  --color-zinc-900: var(--foreground);
+  --color-zinc-950: var(--foreground);
+  --color-blue-50: var(--accent-soft);
+  --color-blue-100: var(--accent-soft);
+  --color-blue-300: var(--accent-2);
+  --color-blue-400: var(--accent-2);
+  --color-blue-500: var(--primary);
+  --color-blue-600: var(--primary);
+  --color-blue-700: var(--accent-2);
+  --color-blue-800: var(--accent-2);
+  --color-indigo-50: var(--accent-soft);
+  --color-indigo-100: var(--accent-soft);
+  --color-indigo-400: var(--accent-2);
+  --color-indigo-500: var(--primary);
+  --color-indigo-600: var(--primary);
+  --color-indigo-700: var(--accent-2);
+
+  /* 상태색(green/amber/red/orange/yellow/emerald/rose) → 무채색.
+     사용자 요청: 색 뱃지 전면 제거(Linear 모노톤). 배경=surface-2, 글씨/아이콘=ink-3.
+     실제 파괴적 액션(삭제·폼 에러)은 shadcn --destructive(bg-destructive) 가 담당하므로 빨강 유지됨. */
+  --color-amber-50: var(--surface-2);   --color-amber-100: var(--surface-2);   --color-amber-200: var(--surface-2);
+  --color-amber-400: var(--ink-3);  --color-amber-500: var(--ink-3);  --color-amber-600: var(--ink-3);  --color-amber-700: var(--ink-3);  --color-amber-800: var(--ink-3);  --color-amber-900: var(--ink-3);
+  --color-yellow-50: var(--surface-2);  --color-yellow-100: var(--surface-2);  --color-yellow-400: var(--ink-3); --color-yellow-500: var(--ink-3); --color-yellow-600: var(--ink-3); --color-yellow-700: var(--ink-3); --color-yellow-800: var(--ink-3);
+  --color-orange-50: var(--surface-2);  --color-orange-100: var(--surface-2);  --color-orange-400: var(--ink-3); --color-orange-500: var(--ink-3); --color-orange-600: var(--ink-3); --color-orange-700: var(--ink-3);
+  --color-green-50: var(--surface-2);   --color-green-100: var(--surface-2);   --color-green-200: var(--surface-2); --color-green-400: var(--ink-3); --color-green-500: var(--ink-3); --color-green-600: var(--ink-3); --color-green-700: var(--ink-3); --color-green-800: var(--ink-3);
+  --color-emerald-50: var(--surface-2); --color-emerald-100: var(--surface-2); --color-emerald-400: var(--ink-3); --color-emerald-500: var(--ink-3); --color-emerald-600: var(--ink-3); --color-emerald-700: var(--ink-3);
+  --color-red-50: var(--surface-2);     --color-red-100: var(--surface-2);     --color-red-200: var(--surface-2); --color-red-400: var(--ink-3); --color-red-500: var(--ink-3); --color-red-600: var(--ink-3); --color-red-700: var(--ink-3); --color-red-800: var(--ink-3);
+  --color-rose-50: var(--surface-2);    --color-rose-100: var(--surface-2);    --color-rose-500: var(--ink-3); --color-rose-600: var(--ink-3); --color-rose-700: var(--ink-3);
+  /* 잡색(보라/청록/하늘/핑크) → 단일 액센트로 수렴 */
+  --color-purple-50: var(--accent-soft);  --color-purple-100: var(--accent-soft); --color-purple-400: var(--accent-2); --color-purple-500: var(--accent-2); --color-purple-600: var(--accent-2); --color-purple-700: var(--accent-2); --color-purple-800: var(--accent-2);
+  --color-violet-50: var(--accent-soft);  --color-violet-100: var(--accent-soft); --color-violet-500: var(--accent-2); --color-violet-600: var(--accent-2); --color-violet-700: var(--accent-2);
+  --color-fuchsia-500: var(--accent-2);   --color-fuchsia-600: var(--accent-2);   --color-pink-50: var(--accent-soft); --color-pink-100: var(--accent-soft); --color-pink-500: var(--accent-2); --color-pink-600: var(--accent-2);
+  --color-sky-50: var(--accent-soft);     --color-sky-100: var(--accent-soft);    --color-sky-500: var(--accent-2); --color-sky-600: var(--accent-2);
+  --color-cyan-50: var(--accent-soft);    --color-cyan-500: var(--accent-2);      --color-cyan-600: var(--accent-2);
+  --color-teal-50: var(--accent-soft);    --color-teal-100: var(--accent-soft);   --color-teal-500: var(--accent-2); --color-teal-600: var(--accent-2); --color-teal-700: var(--accent-2);
 }
 
 @layer base {
@@ -187,11 +346,16 @@
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
     overflow-x: hidden;
+    /* 안드로이드 WebView(앱)가 좁은 화면에서 텍스트를 임의 확대(font boosting)해
+       레이아웃이 깨지는 것을 막는다. 시스템 글자 배율은 그대로 존중된다. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   /**
   * Default typography styles for HTML elements (h1-h4, p, label, button, input).
   * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
+  * 헤드라인 weight 600 + 음수 자간 (Linear/Vercel).
   */
 
   html {
@@ -200,20 +364,23 @@
 
   h1 {
     font-size: var(--text-2xl);
-    font-weight: 700;
-    line-height: 1.3;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
   }
 
   h2 {
     font-size: var(--text-xl);
-    font-weight: 700;
-    line-height: 1.35;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.015em;
   }
 
   h3 {
     font-size: var(--text-lg);
     font-weight: 600;
     line-height: 1.4;
+    letter-spacing: -0.01em;
   }
 
   h4 {

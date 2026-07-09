@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.support.mapper.FaqMapper">
+
+    <select id="findAll" resultType="com.careertuner.support.domain.Faq">
+        SELECT *
+          FROM faq
+         WHERE is_published = 1
+        <if test="category != null">
+           AND category = #{category}
+        </if>
+         ORDER BY sort_order, id
+    </select>
+
+</mapper>

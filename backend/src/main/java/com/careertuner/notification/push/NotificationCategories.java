@@ -1,0 +1,190 @@
+package com.careertuner.notification.push;
+
+import java.util.List;
+import java.util.Map;
+
+/** 알림 type → 사용자 카테고리 매핑(프런트 notification.ts 의 TYPE_TO_CATEGORY 와 동일 기준). */
+public final class NotificationCategories {
+
+    /** 사용자가 on/off 할 수 있는 카테고리(관리자 전용 제외). */
+    public static final List<String> USER_CATEGORIES =
+            List.of("ai_analysis", "interview", "correction", "community", "messenger",
+                    "recommendation", "billing", "notice", "marketing");
+
+    /** 사용자가 세부 채널을 조정할 수 있는 알림 type 목록. */
+    public static final List<String> USER_RULE_TYPES = List.of(
+            "PROFILE_ANALYZED",
+            "JOB_ANALYSIS_COMPLETE",
+            "COMPANY_ANALYSIS_COMPLETE",
+            "FIT_ANALYSIS_COMPLETE",
+            "CAREER_TREND_COMPLETE",
+            "JOB_POSTING_EXTRACTION_SUCCEEDED",
+            "JOB_POSTING_EXTRACTION_REVIEW_REQUIRED",
+            "JOB_POSTING_EXTRACTION_FAILED",
+            "QUESTIONS_GENERATED",
+            "INTERVIEW_REPORT_READY",
+            "CORRECTION_COMPLETE",
+            "COMMENT",
+            "COMMENT_REPLY",
+            "COMMENT_HIDDEN",
+            "COMMENT_RESTORED",
+            "COMMENT_REMOVED",
+            "LIKE",
+            "LIKE_ANON",
+            "POST_DISLIKE",
+            "POST_DISLIKE_ANON",
+            "POST_RECOMMEND",
+            "POST_RECOMMEND_ANON",
+            "POST_DISRECOMMEND",
+            "POST_DISRECOMMEND_ANON",
+            "COMMENT_LIKE",
+            "COMMENT_LIKE_ANON",
+            "COMMENT_DISLIKE",
+            "COMMENT_DISLIKE_ANON",
+            "COMMENT_RECOMMEND",
+            "COMMENT_RECOMMEND_ANON",
+            "COMMENT_DISRECOMMEND",
+            "COMMENT_DISRECOMMEND_ANON",
+            "POST_BOOKMARK",
+            "POST_BOOKMARK_ANON",
+            "POST_SCRAP",
+            "POST_SCRAP_ANON",
+            "POST_WATCH_COMMENT",
+            "COMMENT_WATCH_REPLY",
+            "POST_HIDDEN",
+            "POST_REMOVED",
+            "POST_RESTORED",
+            "POST_SUMMARY_READY",
+            "FRIEND_REQUEST",
+            "FRIEND_ACCEPTED",
+            "ROOM_INVITE",
+            "ROOM_MESSAGE",
+            "NOTE_MESSAGE",
+            "ROOM_MENTION",
+            "INTERVIEW_DISPATCH",
+            "RECOMMENDED_JOB",
+            "RECOMMENDED_POST",
+            "CREDIT_LOW",
+            "PAYMENT_COMPLETE",
+            "PAYMENT_SCHEDULED",
+            "SUBSCRIPTION_CANCELED",
+            "CREDIT_RECHARGED",
+            "REFUND_RESULT",
+            "SCHEDULE_REMINDER",
+            "NOTICE",
+            "TICKET_ANSWERED",
+            "ACCOUNT_BLOCKED",
+            "MFA_LOGIN_APPROVAL",
+            "COMPANY_APPLY_RESULT",
+            "JOB_POSTING_REVIEW_RESULT",
+            "MARKETING_AD");
+
+    /**
+     * 발신자 관계(모르는 사람/친구/기업/운영자)별 세부 on/off 를 지원하는 알림 type.
+     * 이 목록의 알림은 생성 시 sender_relation 이 기록되고, 설정의 rules[type].senders 로 걸러진다.
+     */
+    public static final List<String> RELATION_AWARE_TYPES = List.of(
+            "COMMENT",
+            "COMMENT_REPLY",
+            "ROOM_MESSAGE",
+            "NOTE_MESSAGE",
+            "ROOM_MENTION",
+            "ROOM_INVITE",
+            // 커뮤니티 리액션 — 관계별(모르는 사람/친구/기업) 수신 필터 지원
+            "LIKE", "LIKE_ANON",
+            "POST_DISLIKE", "POST_DISLIKE_ANON",
+            "POST_RECOMMEND", "POST_RECOMMEND_ANON",
+            "POST_DISRECOMMEND", "POST_DISRECOMMEND_ANON",
+            "COMMENT_LIKE", "COMMENT_LIKE_ANON",
+            "COMMENT_DISLIKE", "COMMENT_DISLIKE_ANON",
+            "COMMENT_RECOMMEND", "COMMENT_RECOMMEND_ANON",
+            "COMMENT_DISRECOMMEND", "COMMENT_DISRECOMMEND_ANON",
+            "POST_BOOKMARK", "POST_BOOKMARK_ANON",
+            "POST_SCRAP", "POST_SCRAP_ANON");
+
+    private static final Map<String, String> TYPE_TO_CATEGORY = Map.ofEntries(
+            Map.entry("PROFILE_ANALYZED", "ai_analysis"),
+            Map.entry("JOB_ANALYSIS_COMPLETE", "ai_analysis"),
+            Map.entry("COMPANY_ANALYSIS_COMPLETE", "ai_analysis"),
+            Map.entry("FIT_ANALYSIS_COMPLETE", "ai_analysis"),
+            Map.entry("CAREER_TREND_COMPLETE", "ai_analysis"),
+            Map.entry("JOB_POSTING_EXTRACTION_SUCCEEDED", "ai_analysis"),
+            Map.entry("JOB_POSTING_EXTRACTION_REVIEW_REQUIRED", "ai_analysis"),
+            Map.entry("JOB_POSTING_EXTRACTION_FAILED", "ai_analysis"),
+            Map.entry("QUESTIONS_GENERATED", "interview"),
+            Map.entry("INTERVIEW_REPORT_READY", "interview"),
+            Map.entry("CORRECTION_COMPLETE", "correction"),
+            Map.entry("COMMENT", "community"),
+            Map.entry("COMMENT_REPLY", "community"),
+            Map.entry("COMMENT_HIDDEN", "community"),
+            Map.entry("COMMENT_RESTORED", "community"),
+            Map.entry("COMMENT_REMOVED", "community"),
+            Map.entry("LIKE", "community"),
+            Map.entry("LIKE_ANON", "community"),
+            Map.entry("POST_DISLIKE", "community"),
+            Map.entry("POST_DISLIKE_ANON", "community"),
+            Map.entry("POST_RECOMMEND", "community"),
+            Map.entry("POST_RECOMMEND_ANON", "community"),
+            Map.entry("POST_DISRECOMMEND", "community"),
+            Map.entry("POST_DISRECOMMEND_ANON", "community"),
+            Map.entry("COMMENT_LIKE", "community"),
+            Map.entry("COMMENT_LIKE_ANON", "community"),
+            Map.entry("COMMENT_DISLIKE", "community"),
+            Map.entry("COMMENT_DISLIKE_ANON", "community"),
+            Map.entry("COMMENT_RECOMMEND", "community"),
+            Map.entry("COMMENT_RECOMMEND_ANON", "community"),
+            Map.entry("COMMENT_DISRECOMMEND", "community"),
+            Map.entry("COMMENT_DISRECOMMEND_ANON", "community"),
+            Map.entry("POST_BOOKMARK", "community"),
+            Map.entry("POST_BOOKMARK_ANON", "community"),
+            Map.entry("POST_SCRAP", "community"),
+            Map.entry("POST_SCRAP_ANON", "community"),
+            Map.entry("POST_WATCH_COMMENT", "community"),
+            Map.entry("COMMENT_WATCH_REPLY", "community"),
+            Map.entry("POST_HIDDEN", "community"),
+            Map.entry("POST_REMOVED", "community"),
+            Map.entry("POST_RESTORED", "community"),
+            Map.entry("POST_SUMMARY_READY", "community"),
+            // 이미지 검열 산출물 — 프런트 TYPE_TO_CATEGORY 와 동일하게 community.
+            // 누락 시 of() 가 기본값 "notice" 를 돌려줘 "공지/문의" 를 끈 사용자의 푸시가 엉뚱하게 막혔다.
+            Map.entry("POST_IMAGE_BLURRED", "community"),
+            Map.entry("COMMUNITY_STRIKE_WARNING", "community"),
+            Map.entry("FRIEND_REQUEST", "messenger"),
+            Map.entry("FRIEND_ACCEPTED", "messenger"),
+            Map.entry("ROOM_INVITE", "messenger"),
+            Map.entry("ROOM_MESSAGE", "messenger"),
+            Map.entry("NOTE_MESSAGE", "messenger"),
+            Map.entry("ROOM_MENTION", "messenger"),
+            Map.entry("INTERVIEW_DISPATCH", "interview"),
+            Map.entry("RECOMMENDED_JOB", "recommendation"),
+            Map.entry("RECOMMENDED_POST", "recommendation"),
+            Map.entry("CREDIT_LOW", "billing"),
+            Map.entry("PAYMENT_COMPLETE", "billing"),
+            Map.entry("PAYMENT_SCHEDULED", "billing"),
+            Map.entry("SUBSCRIPTION_CANCELED", "billing"),
+            Map.entry("CREDIT_RECHARGED", "billing"),
+            Map.entry("REFUND_RESULT", "billing"),
+            Map.entry("SCHEDULE_REMINDER", "notice"),
+            Map.entry("NOTICE", "notice"),
+            Map.entry("TICKET_ANSWERED", "notice"),
+            Map.entry("ACCOUNT_BLOCKED", "notice"),
+            Map.entry("MFA_LOGIN_APPROVAL", "notice"),
+            Map.entry("COMPANY_APPLY_RESULT", "notice"),
+            Map.entry("JOB_POSTING_REVIEW_RESULT", "notice"),
+            Map.entry("MARKETING_AD", "marketing"),
+            // 관리자 전용(USER_CATEGORIES 에는 넣지 않아 사용자가 토글할 수 없다)
+            Map.entry("NEW_REPORT", "admin"),
+            Map.entry("NEW_TICKET", "admin"),
+            Map.entry("NEW_USER", "admin"),
+            Map.entry("NEW_COMPANY_APPLICATION", "admin"),
+            Map.entry("NEW_JOB_POSTING_REVIEW", "admin"),
+            Map.entry("LOW_CONFIDENCE_REPORT", "admin"),
+            Map.entry("TICKET_DRAFT_READY", "admin"));
+
+    private NotificationCategories() {
+    }
+
+    public static String of(String type) {
+        return TYPE_TO_CATEGORY.getOrDefault(type, "notice");
+    }
+}

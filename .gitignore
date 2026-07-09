@@ -36,14 +36,23 @@ dist-ssr/
 .vite/
 
 # ----- Capacitor (mobile, phase 3) -----
-frontend/android/
+# Android is now a first-class native project because permissions, push,
+# deep links, signing, icons, and manifest customizations are managed in repo.
 frontend/ios/
 
 # ----- Env / secrets -----
 .env
 .env.*
 !.env.example
+# 데모/목 모드 플래그(비밀 아님, VITE_USE_MOCK=true). dev:mock/build:mock 가 클론 후 바로 동작하도록 커밋.
+!.env.mock
+# 환경 프로파일 모드(비밀 없음 — 호스트 주소만). docs/ENVIRONMENTS.md 참고. 팀 공유를 위해 커밋.
+!.env.localhost
+!.env.tailscale
+!.env.aws
+!.env.domain
 *.local
+backend/src/main/resources/application.yaml
 
 # ----- Local uploads -----
 .uploads/
@@ -52,8 +61,16 @@ backend/.uploads/
 # ----- AI tools (개인 로컬 설정) -----
 AGENTS.local.md
 CLAUDE.local.md
+
+# ----- Personal local docs -----
+personal/
+personal_*.zip
+docs/면접AI_워크플로우_의사결정.md
+
 # ----- Logs -----
 *.log
+backend/logs/
+backend/data/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -61,3 +78,31 @@ pnpm-debug.log*
 
 # ----- Claude Code -----
 .claude/
+
+# ----- Local agent files -----
+.agents/
+
+# ----- Submodule working-tree contents -----
+# The parent repo tracks only the gitlink pointer for these paths.
+# Files inside are owned by each submodule repository.
+docs/storyboard/*
+docs/ai-reports/*
+docs/ai-artifacts/*
+
+
+# 로컬 키 주입 스크립트 (키 포함 — 절대 커밋 금지)
+backend/run-local.bat
+run-local.bat
+
+# ----- Python (ml 워커 등) -----
+# .pyc/__pycache__ 는 .py 로부터 자동 생성되는 빌드 산출물이라 추적하지 않는다.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# ----- 로컬 스크래치/검증 산출물 (커밋 금지) -----
+# 평가 스크립트·OCR 회귀셋·실행 로그 등 로컬 전용 작업물. (기존엔 일부 *.log 만 무시돼 .txt/.py/.json 이 커밋될 수 있었음)
+.tmp/

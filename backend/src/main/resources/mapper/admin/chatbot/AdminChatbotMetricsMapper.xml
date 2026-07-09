@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.chatbot.mapper.AdminChatbotMetricsMapper">
+
+    <!-- 기간 내 상태별 행(군집화 입력). created_at ∈ [from, toExclusive). 컬럼은 UnansweredRow 와 동일(snake→camel 자동매핑). -->
+    <select id="findRowsByStatusAndRange" resultType="com.careertuner.admin.chatbot.dto.UnansweredRow">
+        SELECT id, question, question_norm, top_similarity, best_faq_id, embedding, created_at
+          FROM chatbot_unanswered_question
+         WHERE status = #{status}
+           AND created_at &gt;= #{from}
+           AND created_at &lt; #{toExclusive}
+         ORDER BY created_at DESC, id DESC
+    </select>
+
+    <!-- 일자별 DISTINCT question_norm 수(스파크라인). 별칭은 예약어 회피 위해 백틱. -->
+    <select id="countDailyDistinctNorm" resultType="com.careertuner.admin.chatbot.dto.ChatbotMetricPoint">
+        SELECT DATE(created_at) AS `date`, COUNT(DISTINCT question_norm) AS `count`
+          FROM chatbot_unanswered_question
+         WHERE status = #{status}
+           AND created_at &gt;= #{from}
+           AND created_at &lt; #{toExclusive}
+         GROUP BY DATE(created_at)
+         ORDER BY `date`
+    </select>
+
+</mapper>

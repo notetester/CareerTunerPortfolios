@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.payment.mapper.PaymentMapper">
+
+    <insert id="insertPayment" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO payment
+            (user_id, provider, product_type, product_code, order_id, payment_key, amount, plan, credit_amount,
+             policy_snapshot_json, status)
+        VALUES
+            (#{userId}, #{provider}, #{productType}, #{productCode}, #{orderId}, #{paymentKey}, #{amount}, #{plan},
+             #{creditAmount}, #{policySnapshotJson}, #{status})
+    </insert>
+
+    <select id="findByOrderId" resultType="com.careertuner.payment.domain.Payment">
+        SELECT id,
+               user_id,
+               provider,
+               product_type,
+               product_code,
+               order_id,
+               payment_key,
+               amount,
+               plan,
+               credit_amount,
+               policy_snapshot_json,
+               status,
+               paid_at,
+               created_at
+          FROM payment
+         WHERE order_id = #{orderId}
+    </select>
+
+    <select id="existsByPaymentKey" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM payment
+             WHERE payment_key = #{paymentKey}
+        )
+    </select>
+
+    <update id="markPaidIfReady">
+        UPDATE payment
+           SET payment_key = #{paymentKey},
+               status = 'PAID',
+               paid_at = CURRENT_TIMESTAMP
+         WHERE order_id = #{orderId}
+           AND status = 'READY'
+    </update>
+
+    <update id="markCanceledIfReady">
+        UPDATE payment
+           SET status = 'CANCELED'
+         WHERE order_id = #{orderId}
+           AND status = 'READY'
+    </update>
+
+    <select id="findUserCredit" resultType="int">
+        SELECT credit
+          FROM users
+         WHERE id = #{userId}
+    </select>
+</mapper>

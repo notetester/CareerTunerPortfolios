@@ -1,0 +1,30 @@
+/* ===== AdminTerms v2 — 조항 에디터 + 버전 이력 ===== */
+
+.tv-clause { border: 1px solid var(--av-line-soft); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+.tv-clause__h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--av-track);
+  border-bottom: 1px solid var(--av-line-soft); }
+.tv-clause__no { font-size: 11.5px; font-weight: 700; color: var(--av-blue); white-space: nowrap; }
+.tv-clause__t { flex: 1; border: none; background: none; font-size: 13px; font-weight: 650; color: var(--av-ink); }
+.tv-clause__t:focus { outline: none; }
+.tv-clause__t::placeholder { color: #cbd5e1; }
+.tv-clause__tools { display: flex; gap: 2px; }
+.tv-clause__tools button { width: 24px; height: 24px; border: none; background: none; border-radius: 5px;
+  cursor: pointer; color: var(--av-ink-3); display: flex; align-items: center; justify-content: center; }
+.tv-clause__tools button:hover { background: var(--av-line-soft); color: var(--av-ink); }
+.tv-clause__tools svg { width: 13px; height: 13px; stroke-width: 2; }
+.tv-clause__b { width: 100%; border: none; background: none; resize: vertical; min-height: 72px;
+  font-size: 12.5px; line-height: 1.75; color: var(--av-ink-2); padding: 10px 12px; font-family: inherit; }
+.tv-clause__b:focus { outline: none; }
+
+.tv-add { width: 100%; border: 1px dashed var(--av-line); border-radius: 8px;
+  background: none; padding: 9px; font-size: 12px; font-weight: 600; color: var(--av-ink-3); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 2px; }
+.tv-add:hover { border-color: var(--av-ink-3); color: var(--av-ink); }
+.tv-add svg { width: 13px; height: 13px; stroke-width: 2.2; }
+
+.tv-ver { align-items: flex-start; }
+.tv-ver .av-list__t { white-space: normal; }
+.tv-ver__badge { font-size: 10.5px; font-weight: 650; border-radius: 99px; padding: 1px 8px; white-space: nowrap; }
+.tv-ver__badge.live { color: #15803d; background: #f0fdf4; }
+.tv-ver__badge.next { color: var(--av-blue); background: var(--av-blue-soft); }
+.tv-ver__badge.old { color: var(--av-ink-3); background: var(--av-track); }

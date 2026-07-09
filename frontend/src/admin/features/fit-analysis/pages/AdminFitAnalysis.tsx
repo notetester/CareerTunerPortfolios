@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -17,15 +18,19 @@ import {
 } from "lucide-react";
 import {
   createAdminFitAnalysisMemo,
+  patchAdminGateReview,
   deleteAdminFitAnalysisMemo,
   getAdminFitAnalyses,
   getAdminFitAnalysis,
+  getAdminGateStats,
   updateAdminFitAnalysisMemo,
 } from "../api/adminFitAnalysisApi";
+import GateStatsPanel from "../components/GateStatsPanel";
 import type {
   AdminFitAnalysisDetail,
   AdminFitAnalysisListItem,
   AdminFitAnalysisMemo,
+  AdminGateStats,
 } from "../types/adminFitAnalysis";
 
 const memoTypeOptions = [
@@ -33,6 +38,10 @@ const memoTypeOptions = [
   { value: "QUALITY", label: "품질 확인" },
   { value: "USER_INQUIRY", label: "문의 대응" },
   { value: "REANALYSIS", label: "재분석 필요" },
+  { value: "PROMPT_ISSUE", label: "프롬프트 이슈" },
+  { value: "DATA_ISSUE", label: "데이터 이슈" },
+  { value: "SCORE_DISPUTE", label: "점수 이의" },
+  { value: "CERT_RECOMMENDATION_ISSUE", label: "자격증 추천 이슈" },
 ];
 
 const statusLabel: Record<string, string> = {
@@ -59,7 +68,17 @@ function scoreTone(score: number | null) {
   return "text-red-500";
 }
 
+// review-first evidence gate(R3) 상태 뱃지. R3 이전 분석(gateStatus=null)은 뱃지를 그리지 않는다.
+function gateBadge(status: string | null): { label: string; cls: string } | null {
+  if (status === "REVIEW_REQUIRED") return { label: "검토 필요", cls: "bg-orange-100 text-orange-700" };
+  if (status === "REJECTED") return { label: "반려", cls: "bg-red-100 text-red-700" };
+  if (status === "PASSED") return { label: "근거 통과", cls: "bg-green-100 text-green-700" };
+  return null;
+}
+
 export default function AdminFitAnalysisPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedAnalysisId = Number(searchParams.get("analysisId"));
   const [items, setItems] = useState<AdminFitAnalysisListItem[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<AdminFitAnalysisDetail | null>(null);
@@ -71,17 +90,66 @@ export default function AdminFitAnalysisPage() {
   const [editingMemo, setEditingMemo] = useState<AdminFitAnalysisMemo | null>(null);
   const [savingMemo, setSavingMemo] = useState(false);
   const [query, setQuery] = useState("");
+  // query 입력은 서버 요청을 유발하므로 ~300ms 디바운스한 값으로만 refetch 한다.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  // 점수 구간/분석 상태/메모 보유 필터(서버측 필터링).
+  const [bandFilter, setBandFilter] = useState("ALL");
+  const [resultFilter, setResultFilter] = useState("ALL");
+  const [memoOnly, setMemoOnly] = useState(false);
+  const [reanalysisOnly, setReanalysisOnly] = useState(false);
+  // review-first evidence gate 검토 필요(REVIEW_REQUIRED) 항목만 보기(서버측 필터).
+  const [reviewOnly, setReviewOnly] = useState(false);
+  // 서버측 페이지네이션 상태. page 는 1-based, size 는 페이지당 건수.
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  // gate 통계 요약. 목록과 독립적으로 로딩하고, 실패해도 목록을 막지 않는다.
+  const [gateStats, setGateStats] = useState<AdminGateStats | null>(null);
+  const [loadingGateStats, setLoadingGateStats] = useState(true);
+  const [gateStatsError, setGateStatsError] = useState<string | null>(null);
+
+  // 현재 필터+페이지를 그대로 담은 서버 요청 파라미터. 뮤테이션 후 재조회에도 재사용한다.
+  const listParams = useMemo(
+    () => ({
+      reviewRequiredOnly: reviewOnly,
+      query: debouncedQuery,
+      band: bandFilter,
+      result: resultFilter,
+      memoOnly,
+      reanalysisOnly,
+      page,
+      size: PAGE_SIZE,
+    }),
+    [reviewOnly, debouncedQuery, bandFilter, resultFilter, memoOnly, reanalysisOnly, page],
+  );
+
+  // query 입력 디바운스(~300ms). 타이핑 중에는 서버 요청을 보내지 않는다.
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // 필터(페이지 제외)가 바뀌면 항상 1페이지로 되돌린다.
+  useEffect(() => {
+    setPage(1);
+  }, [reviewOnly, debouncedQuery, bandFilter, resultFilter, memoOnly, reanalysisOnly]);
 
   useEffect(() => {
     let ignore = false;
     setLoadingList(true);
     setError(null);
 
-    getAdminFitAnalyses()
+    // 필터·페이지네이션을 모두 서버로 위임한다. 응답 items 만 렌더링한다.
+    getAdminFitAnalyses(listParams)
       .then((data) => {
         if (ignore) return;
-        setItems(data);
-        setSelectedId(data[0]?.id ?? null);
+        setItems(data.items);
+        setTotal(data.total);
+        setTotalPages(data.totalPages);
+        setSelectedId((current) =>
+          current != null && data.items.some((item) => item.id === current) ? current : data.items[0]?.id ?? null,
+        );
       })
       .catch((requestError) => {
         if (!ignore) setError(requestError instanceof Error ? requestError.message : "적합도 분석 목록을 불러오지 못했습니다.");
@@ -93,7 +161,34 @@ export default function AdminFitAnalysisPage() {
     return () => {
       ignore = true;
     };
+  }, [listParams]);
+
+  useEffect(() => {
+    let ignore = false;
+    setLoadingGateStats(true);
+    setGateStatsError(null);
+
+    getAdminGateStats()
+      .then((data) => {
+        if (!ignore) setGateStats(data);
+      })
+      .catch((requestError) => {
+        if (!ignore) setGateStatsError(requestError instanceof Error ? requestError.message : "gate 통계를 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!ignore) setLoadingGateStats(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (Number.isFinite(requestedAnalysisId) && items.some((item) => item.id === requestedAnalysisId)) {
+      setSelectedId(requestedAnalysisId);
+    }
+  }, [items, requestedAnalysisId]);
 
   useEffect(() => {
     if (selectedId == null) {
@@ -121,6 +216,7 @@ export default function AdminFitAnalysisPage() {
     };
   }, [selectedId]);
 
+  // 집계는 서버가 넘겨준 '현재 페이지' items 기준이다. 전체 기준이 아니므로 라벨에 명시한다.
   const averageScore = useMemo(() => {
     const scored = items.filter((item) => item.fitScore != null);
     if (scored.length === 0) return 0;
@@ -130,11 +226,7 @@ export default function AdminFitAnalysisPage() {
   const memoSummary = useMemo(() => {
     return items.reduce((sum, item) => sum + item.memoCount, 0);
   }, [items]);
-  const visibleItems = useMemo(() => {
-    const value = query.trim().toLowerCase();
-    if (!value) return items;
-    return items.filter((item) => `${item.companyName} ${item.jobTitle} ${item.userName} ${item.userEmail}`.toLowerCase().includes(value));
-  }, [items, query]);
+  const detailGateReasons = detail?.gateReasons ?? [];
 
   function resetMemoForm() {
     setMemoType("GENERAL");
@@ -160,12 +252,33 @@ export default function AdminFitAnalysisPage() {
         await createAdminFitAnalysisMemo(detail.id, { memoType, content: memoContent });
       }
       const refreshedDetail = await getAdminFitAnalysis(detail.id);
-      const refreshedItems = await getAdminFitAnalyses();
+      const refreshedPage = await getAdminFitAnalyses(listParams);
       setDetail(refreshedDetail);
-      setItems(refreshedItems);
+      setItems(refreshedPage.items);
+      setTotal(refreshedPage.total);
+      setTotalPages(refreshedPage.totalPages);
       resetMemoForm();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "운영 메모를 저장하지 못했습니다.");
+    } finally {
+      setSavingMemo(false);
+    }
+  }
+
+  // gate review workflow: 처리 상태 변경(검토 완료/재분석 요청/대기 되돌리기) 후 상세·목록 갱신.
+  async function submitGateReview(reviewStatus: string) {
+    if (!detail) return;
+    setSavingMemo(true);
+    setError(null);
+    try {
+      const refreshed = await patchAdminGateReview(detail.id, { reviewStatus });
+      setDetail(refreshed);
+      const refreshedPage = await getAdminFitAnalyses(listParams);
+      setItems(refreshedPage.items);
+      setTotal(refreshedPage.total);
+      setTotalPages(refreshedPage.totalPages);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "gate 검토 상태를 변경하지 못했습니다.");
     } finally {
       setSavingMemo(false);
     }
@@ -179,9 +292,11 @@ export default function AdminFitAnalysisPage() {
     try {
       await deleteAdminFitAnalysisMemo(detail.id, memo.id);
       const refreshedDetail = await getAdminFitAnalysis(detail.id);
-      const refreshedItems = await getAdminFitAnalyses();
+      const refreshedPage = await getAdminFitAnalyses(listParams);
       setDetail(refreshedDetail);
-      setItems(refreshedItems);
+      setItems(refreshedPage.items);
+      setTotal(refreshedPage.total);
+      setTotalPages(refreshedPage.totalPages);
       if (editingMemo?.id === memo.id) resetMemoForm();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "운영 메모를 삭제하지 못했습니다.");
@@ -206,11 +321,11 @@ export default function AdminFitAnalysisPage() {
           </div>
           <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
             {[
-              { label: "분석 결과", value: `${items.length}건` },
-              { label: "평균 점수", value: `${averageScore}점` },
-              { label: "운영 메모", value: `${memoSummary}건` },
+              { label: "분석 결과", value: `${total}건` },
+              { label: "이 페이지 평균 점수", value: `${averageScore}점` },
+              { label: "이 페이지 운영 메모", value: `${memoSummary}건` },
             ].map((stat) => (
-              <Card key={stat.label} className="border border-slate-200 bg-white">
+              <Card key={stat.label} className="border border-slate-200 bg-card">
                 <CardContent className="p-3">
                   <div className="text-[11px] font-semibold text-slate-400">{stat.label}</div>
                   <div className="mt-1 text-xl font-black text-slate-900">{stat.value}</div>
@@ -229,8 +344,10 @@ export default function AdminFitAnalysisPage() {
           </Card>
         )}
 
+        <GateStatsPanel stats={gateStats} loading={loadingGateStats} error={gateStatsError} />
+
         <section className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <ClipboardList className="size-4 text-blue-600" />
@@ -238,21 +355,59 @@ export default function AdminFitAnalysisPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <label className="mb-3 flex items-center gap-2 rounded-md border border-slate-200 px-3">
+              <label className="mb-2 flex items-center gap-2 rounded-md border border-slate-200 px-3">
                 <Search className="size-4 text-slate-400" />
                 <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="사용자·기업·직무 검색" className="h-10 w-full bg-transparent text-sm outline-none" />
               </label>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <select
+                  value={bandFilter}
+                  onChange={(event) => setBandFilter(event.target.value)}
+                  className="h-9 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600"
+                >
+                  <option value="ALL">전체 점수</option>
+                  <option value="HIGH">80점 이상</option>
+                  <option value="MID_HIGH">70-79점</option>
+                  <option value="MID">50-69점</option>
+                  <option value="LOW">50점 미만</option>
+                </select>
+                <select
+                  value={resultFilter}
+                  onChange={(event) => setResultFilter(event.target.value)}
+                  className="h-9 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600"
+                >
+                  <option value="ALL">전체 상태</option>
+                  <option value="SUCCESS">성공</option>
+                  <option value="FAIL">실패·Fallback</option>
+                </select>
+                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600">
+                  <input type="checkbox" checked={memoOnly} onChange={(event) => setMemoOnly(event.target.checked)} />
+                  메모 있는 항목만
+                </label>
+                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 text-xs font-semibold text-amber-700">
+                  <input type="checkbox" checked={reanalysisOnly} onChange={(event) => setReanalysisOnly(event.target.checked)} />
+                  재분석 필요만
+                </label>
+                <label className="flex h-9 cursor-pointer items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2 text-xs font-semibold text-orange-700">
+                  <input type="checkbox" checked={reviewOnly} onChange={(event) => setReviewOnly(event.target.checked)} />
+                  검토 필요만
+                </label>
+                <span className="text-[11px] text-slate-400">총 {total}건</span>
+              </div>
               {loadingList ? (
                 <div className="flex items-center gap-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
                   <Loader2 className="size-4 animate-spin" />
                   목록을 불러오는 중입니다.
                 </div>
-              ) : visibleItems.length > 0 ? (
-                visibleItems.map((item) => (
+              ) : items.length > 0 ? (
+                items.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setSelectedId(item.id)}
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      setSearchParams({ analysisId: String(item.id) }, { replace: true });
+                    }}
                     className={`w-full rounded-lg border p-3 text-left transition-colors ${
                       selectedId === item.id ? "border-blue-300 bg-blue-50" : "border-slate-100 bg-slate-50 hover:border-blue-200"
                     }`}
@@ -269,6 +424,10 @@ export default function AdminFitAnalysisPage() {
                       <Badge className="bg-slate-100 text-slate-600">{statusLabel[item.applicationStatus] ?? item.applicationStatus}</Badge>
                       <Badge className={item.status === "SUCCESS" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}>{item.status}</Badge>
                       {item.memoCount > 0 && <Badge className="bg-indigo-100 text-indigo-700">메모 {item.memoCount}</Badge>}
+                      {item.reanalysisRequested && <Badge className="bg-amber-100 text-amber-700">재분석 필요</Badge>}
+                      {gateBadge(item.gateStatus) && (
+                        <Badge className={gateBadge(item.gateStatus)!.cls}>{gateBadge(item.gateStatus)!.label}</Badge>
+                      )}
                     </div>
                     <Progress value={item.fitScore ?? 0} className="mt-2 h-1.5" />
                   </button>
@@ -276,12 +435,41 @@ export default function AdminFitAnalysisPage() {
               ) : (
                 <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">적합도 분석 결과가 아직 없습니다.</div>
               )}
+
+              {/* 서버측 페이지네이션: 이전/다음으로 page 상태를 바꾸면 refetch 된다. */}
+              {totalPages > 1 && (
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                  <span className="text-[11px] text-slate-400">
+                    페이지 {page} / {totalPages} · 총 {total}건
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                      disabled={loadingList || page <= 1}
+                    >
+                      이전
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                      disabled={loadingList || page >= totalPages}
+                    >
+                      다음
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
           <div className="space-y-5">
             {loadingDetail ? (
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardContent className="flex items-center gap-2 p-5 text-sm text-slate-500">
                   <Loader2 className="size-4 animate-spin" />
                   상세를 불러오는 중입니다.
@@ -289,7 +477,7 @@ export default function AdminFitAnalysisPage() {
               </Card>
             ) : detail ? (
               <>
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center justify-between gap-3 text-base">
                       <span>{detail.companyName} · {detail.jobTitle}</span>
@@ -302,7 +490,7 @@ export default function AdminFitAnalysisPage() {
                         { label: "사용자", value: `${detail.userName} (${detail.userEmail})` },
                         { label: "지원 상태", value: statusLabel[detail.applicationStatus] ?? detail.applicationStatus },
                         { label: "분석 시각", value: formatDateTime(detail.createdAt) },
-                        { label: "모델/상태", value: `${detail.model || "mock"} · ${detail.status}` },
+                        { label: "모델/프롬프트/상태", value: `${detail.model || "mock"} · ${detail.promptVersion || "버전 미기록"} · ${detail.status}` },
                       ].map((row) => (
                         <div key={row.label} className="rounded-lg bg-slate-50 p-3">
                           <div className="text-[11px] font-semibold text-slate-400">{row.label}</div>
@@ -310,6 +498,85 @@ export default function AdminFitAnalysisPage() {
                         </div>
                       ))}
                     </div>
+
+                    {detail.gateStatus && (
+                      <div
+                        className={`rounded-lg border p-3 text-sm ${
+                          detail.gateStatus === "REVIEW_REQUIRED"
+                            ? "border-orange-200 bg-orange-50 text-orange-800"
+                            : detail.gateStatus === "REJECTED"
+                              ? "border-red-200 bg-red-50 text-red-800"
+                              : "border-green-200 bg-green-50 text-green-800"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center gap-2 font-bold">
+                          <AlertCircle className="size-4" />
+                          근거 검토(evidence gate): {gateBadge(detail.gateStatus)?.label ?? detail.gateStatus}
+                          {detail.gateMaxSeverity && (
+                            <Badge className="bg-white/70 text-slate-700">심각도 {detail.gateMaxSeverity}</Badge>
+                          )}
+                          {detail.gateReasonCount > 0 && (
+                            <Badge className="bg-white/70 text-slate-700">지적 {detail.gateReasonCount}건</Badge>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed">
+                          {detail.gateStatus === "REVIEW_REQUIRED"
+                            ? "AI 설명이 미보유 역량을 보유로 단정했을 가능성이 있어 자동 확정 대상이 아닙니다. 점수·지원 판단은 변경되지 않습니다."
+                            : detail.gateStatus === "REJECTED"
+                              ? "핵심 계약 필드가 깨져 재생성 검토가 필요합니다. 점수·지원 판단은 변경되지 않습니다."
+                              : "근거 검토를 통과한 분석입니다."}
+                          {detail.evidenceGateVersion ? ` (정책 ${detail.evidenceGateVersion})` : ""}
+                        </p>
+                        {detailGateReasons.length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {detailGateReasons.map((gateReason, index) => (
+                              <li
+                                key={`${gateReason.type}:${gateReason.claim}:${index}`}
+                                className="flex items-start gap-2 rounded bg-white/60 px-2 py-1 text-xs"
+                              >
+                                <span
+                                  className={`shrink-0 rounded px-1.5 py-0.5 font-bold ${
+                                    gateReason.severity === "critical"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-amber-100 text-amber-700"
+                                  }`}
+                                >
+                                  {gateReason.severity}
+                                </span>
+                                <span>
+                                  <strong>{gateReason.claim}</strong> · {gateReason.reason}{" "}
+                                  <span className="text-slate-400">({gateReason.type})</span>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {detail.gateReviewStatus && detail.gateReviewStatus !== "PENDING" && (
+                          <div className="mt-2 text-xs font-semibold">
+                            처리: {detail.gateReviewStatus === "RESOLVED" ? "검토 완료" : "재분석 요청"}
+                            {detail.gateReviewerName ? ` · ${detail.gateReviewerName}` : ""}
+                            {detail.gateReviewedAt ? ` · ${formatDateTime(detail.gateReviewedAt)}` : ""}
+                          </div>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {detail.gateReviewStatus === "PENDING" && (
+                            <>
+                              <Button type="button" size="sm" onClick={() => void submitGateReview("RESOLVED")} disabled={savingMemo}>
+                                검토 완료
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={() => void submitGateReview("REANALYSIS_REQUESTED")} disabled={savingMemo}>
+                                재분석 요청
+                              </Button>
+                            </>
+                          )}
+                          {detail.gateReviewStatus && detail.gateReviewStatus !== "PENDING" && (
+                            <Button type="button" size="sm" variant="outline" onClick={() => void submitGateReview("PENDING")} disabled={savingMemo}>
+                              검토 대기로 되돌리기
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid gap-4 lg:grid-cols-2">
                       <SkillBox title="매칭 역량" icon="match" items={detail.matchedSkills} />
@@ -325,6 +592,9 @@ export default function AdminFitAnalysisPage() {
                       <StructuredJsonBox title="입력 스냅샷" value={detail.sourceSnapshot} />
                       <StructuredJsonBox title="부족 역량 구조화 결과" value={detail.gapRecommendations} />
                       <StructuredJsonBox title="자격증 구조화 결과" value={detail.certificateRecommendations} />
+                      <StructuredJsonBox title="요구조건-스펙 비교 매트릭스" value={detail.conditionMatrix} />
+                      <StructuredJsonBox title="분석 신뢰도" value={detail.analysisConfidence} />
+                      <StructuredJsonBox title="지원 판단 카드" value={detail.applyDecision} />
                       <div className="rounded-lg border border-slate-100 p-4">
                         <div className="mb-3 text-sm font-bold text-slate-800">학습 체크리스트</div>
                         <div className="space-y-2">
@@ -350,7 +620,7 @@ export default function AdminFitAnalysisPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base">
                       <MessageSquareText className="size-4 text-indigo-600" />
@@ -363,7 +633,7 @@ export default function AdminFitAnalysisPage() {
                         <select
                           value={memoType}
                           onChange={(event) => setMemoType(event.target.value)}
-                          className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                          className="h-10 rounded-md border border-slate-200 bg-card px-3 text-sm font-semibold text-slate-700"
                         >
                           {memoTypeOptions.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
@@ -373,7 +643,7 @@ export default function AdminFitAnalysisPage() {
                           value={memoContent}
                           onChange={(event) => setMemoContent(event.target.value)}
                           placeholder="운영 메모를 입력하세요"
-                          className="min-h-24 flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400"
+                          className="min-h-24 flex-1 rounded-md border border-slate-200 bg-card px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400"
                         />
                       </div>
                       <div className="mt-2 flex justify-end gap-2">
@@ -422,7 +692,7 @@ export default function AdminFitAnalysisPage() {
                 </Card>
               </>
             ) : (
-              <Card className="border border-slate-200 bg-white">
+              <Card className="border border-slate-200 bg-card">
                 <CardContent className="p-5 text-sm text-slate-500">선택된 적합도 분석 결과가 없습니다.</CardContent>
               </Card>
             )}
@@ -437,7 +707,7 @@ function StructuredJsonBox({ title, value }: { title: string; value: string | nu
   return (
     <div className="rounded-lg border border-slate-100 p-4">
       <div className="mb-3 text-sm font-bold text-slate-800">{title}</div>
-      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-950 p-3 text-xs leading-5 text-slate-200">
+      <pre className="max-h-52 overflow-auto whitespace-pre-wrap break-all rounded bg-[#0b0c0e] p-3 text-xs leading-5 text-[#e6e6e6]">
         {value || "저장된 결과 없음"}
       </pre>
     </div>

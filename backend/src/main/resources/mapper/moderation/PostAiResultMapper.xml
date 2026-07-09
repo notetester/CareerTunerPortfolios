@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.moderation.mapper.PostAiResultMapper">
+
+    <!-- PENDING 삽입 또는 재시도 시 상태 초기화 + attempt_count 증가 -->
+    <insert id="upsertPending">
+        INSERT INTO post_ai_result (post_id, task_type, status, attempt_count)
+        VALUES (#{postId}, #{taskType}, 'PENDING', 1)
+        ON DUPLICATE KEY UPDATE
+            status = 'PENDING', result_json = NULL, error_message = NULL,
+            completed_at = NULL, created_at = CURRENT_TIMESTAMP,
+            attempt_count = attempt_count + 1
+    </insert>
+
+    <!-- 검열 성공 시 결과 저장 -->
+    <update id="complete">
+        UPDATE post_ai_result
+           SET status = 'COMPLETED', result_json = #{resultJson}, model = #{model},
+               error_message = NULL, completed_at = NOW()
+         WHERE post_id = #{postId} AND task_type = #{taskType}
+    </update>
+
+    <!-- 검열 실패 시 에러 기록 -->
+    <update id="fail">
+        UPDATE post_ai_result
+           SET status = 'FAILED', error_message = #{errorMessage}, completed_at = NOW()
+         WHERE post_id = #{postId} AND task_type = #{taskType}
+    </update>
+
+    <!-- 판정 불성립(전 provider 실패 mock 폴백/confidence 누락) — 재시도 대상에 남는다.
+         result_json 은 판정이 아니므로 비운다(관리자 toxic 필터 오염 방지). -->
+    <update id="markUnmoderated">
+        UPDATE post_ai_result
+           SET status = 'UNMODERATED', result_json = NULL, model = #{model},
+               error_message = #{reason}, completed_at = NOW()
+         WHERE post_id = #{postId} AND task_type = #{taskType}
+    </update>
+
+    <!-- 단건 조회 -->
+    <select id="findByPostIdAndTaskType" resultType="com.careertuner.community.moderation.domain.PostAiResult">
+        SELECT id, post_id, task_type, status, result_json, model,
+               error_message, attempt_count, created_at, completed_at
+          FROM post_ai_result
+         WHERE post_id = #{postId} AND task_type = #{taskType}
+    </select>
+
+    <!-- 사용자별 최근(window) 블러 처리 글 수 — flagged 배열이 비어있지 않은 IMAGE_MODERATION 결과를 센다 -->
+    <select id="countBlurredByUserSince" resultType="int">
+        SELECT COUNT(*)
+          FROM post_ai_result ar
+          JOIN community_post cp ON cp.id = ar.post_id
+         WHERE cp.user_id = #{userId}
+           AND ar.task_type = 'IMAGE_MODERATION'
+           AND ar.status = 'COMPLETED'
+           AND ar.completed_at >= #{since}
+           AND JSON_LENGTH(ar.result_json, '$.flagged') > 0
+    </select>
+
+    <!-- 검열 목록 조회 (관리자) -->
+    <select id="findModerationList" resultType="com.careertuner.community.moderation.domain.ModerationView">
+        SELECT cp.id           AS post_id,
+               cp.title,
+               cp.category     AS post_category,
+               cp.status       AS post_status,
+               cp.is_anonymous AS anonymous,
+               cp.user_id      AS author_id,
+               u.name          AS author_name,
+               ar.result_json,
+               ar.model,
+               ar.attempt_count,
+               ar.status       AS ai_status,
+               cp.created_at,
+               ar.completed_at
+          FROM post_ai_result ar
+          JOIN community_post cp ON ar.post_id = cp.id
+          LEFT JOIN users u ON cp.user_id = u.id
+         WHERE ar.task_type = 'MODERATION'
+        <if test="status != null and status != ''">
+           AND cp.status = #{status}
+        </if>
+        <if test="toxic != null">
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = #{toxic}
+        </if>
+         ORDER BY ar.completed_at DESC, cp.created_at DESC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <!-- 검열 목록 카운트 (관리자) -->
+    <select id="countModerationList" resultType="int">
+        SELECT COUNT(*)
+          FROM post_ai_result ar
+          JOIN community_post cp ON ar.post_id = cp.id
+         WHERE ar.task_type = 'MODERATION'
+        <if test="status != null and status != ''">
+           AND cp.status = #{status}
+        </if>
+        <if test="toxic != null">
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = #{toxic}
+        </if>
+    </select>
+
+    <!-- 검열 단건 상세 (관리자) -->
+    <select id="findModerationDetail" resultType="com.careertuner.community.moderation.domain.ModerationView">
+        SELECT cp.id           AS post_id,
+               cp.title,
+               cp.content,
+               cp.category     AS post_category,
+               cp.status       AS post_status,
+               cp.is_anonymous AS anonymous,
+               cp.user_id      AS author_id,
+               u.name          AS author_name,
+               ar.result_json,
+               ar.model,
+               ar.attempt_count,
+               ar.status       AS ai_status,
+               cp.created_at,
+               ar.completed_at
+          FROM post_ai_result ar
+          JOIN community_post cp ON ar.post_id = cp.id
+          LEFT JOIN users u ON cp.user_id = u.id
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.post_id = #{postId}
+    </select>
+
+    <!-- AI 판정 카테고리별 통계 -->
+    <select id="countByAiCategory" resultType="map">
+        SELECT JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.category')) AS category,
+               COUNT(*) AS cnt
+          FROM post_ai_result ar
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.status = 'COMPLETED'
+           AND ar.result_json IS NOT NULL
+         GROUP BY category
+    </select>
+
+</mapper>

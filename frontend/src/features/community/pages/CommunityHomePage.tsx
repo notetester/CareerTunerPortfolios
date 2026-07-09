@@ -1,63 +1,208 @@
 import { useState, useEffect, useMemo } from "react";
-import { PenSquare } from "lucide-react";
+import { useSearchParams, useParams, useNavigate } from "react-router";
+import { PenLine, Lock, BookOpen, UserRound } from "lucide-react";
 import { PostList } from "../components/PostList";
-import { PostFilters, type SortKey, type PeriodKey } from "../components/PostFilters";
+import { Pager } from "../components/Pager";
+import { PostFilters, type SortKey } from "../components/PostFilters";
 import { HotPostsSidebar } from "../components/HotPostsSidebar";
 import { PostDetailView } from "../components/PostDetailView";
 import { PostEditorForm } from "../components/PostEditorForm";
+import { CommunityGuidelinesPage } from "./CommunityGuidelinesPage";
 import { CATEGORIES } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
-import type { CommunityPost } from "../types/community";
+import { useLoginDialog } from "../hooks/useLoginDialog";
+import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import type { CommunityPost, CommunityCategory } from "../types/community";
+import { CATEGORY_META } from "../types/community";
+import type { PostEditData } from "../components/PostEditorForm";
 import "../styles/community.css";
 
-type ViewMode = "list" | "detail" | "write";
+type ViewMode = "list" | "detail" | "write" | "edit" | "guidelines";
 
-const PERIOD_MAX: Record<PeriodKey, number> = { all: Infinity, today: 0, week: 7, month: 31 };
+/** URL ?sort= 값이 유효한 정렬 키인지 — 헤더 "인기글"(?sort=likes) 등 딥링크 진입에 쓴다. */
+function toSortKey(v: string | null): SortKey | null {
+  return v === "recent" || v === "likes" || v === "comments" || v === "personalized" ? v : null;
+}
 
 export function CommunityHomePage() {
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { postId: postIdParam } = useParams();
+  const navigate = useNavigate();
+  const deepLinkPostId = postIdParam ? Number(postIdParam) : null;
+  const initialView = searchParams.get("view") === "guidelines"
+    ? "guidelines" as ViewMode
+    : deepLinkPostId != null ? "detail" as ViewMode : "list" as ViewMode;
+  const [viewMode, setViewMode] = useState<ViewMode>(initialView);
+
+  // URL ?view=guidelines 변경 감지
+  useEffect(() => {
+    if (searchParams.get("view") === "guidelines" && viewMode !== "guidelines") {
+      setViewMode("guidelines");
+    }
+  }, [searchParams]);
+
+  // URL ?sort= 로 진입/변경되면 해당 정렬로 연다(헤더 "인기글" → ?sort=likes 딥링크).
+  useEffect(() => {
+    const s = toSortKey(searchParams.get("sort"));
+    if (s) setSort(s);
+  }, [searchParams]);
+
+  // /community/posts/:postId 딥링크(알림 클릭 등) → 상세 뷰로 진입
+  useEffect(() => {
+    if (deepLinkPostId != null && !Number.isNaN(deepLinkPostId)) {
+      setViewMode("detail");
+      window.scrollTo(0, 0);
+    }
+  }, [deepLinkPostId]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
-  const [sort, setSort] = useState<SortKey>("recent");
-  const [period, setPeriod] = useState<PeriodKey>("all");
+  const [editData, setEditData] = useState<PostEditData | null>(null);
+  const [sort, setSort] = useState<SortKey>(toSortKey(searchParams.get("sort")) ?? "recent");
   const [tag, setTag] = useState("");
+  const [page, setPage] = useState(1);
+  const PER = 8;
 
-  const { posts, loading, fetchPosts } = useCommunityStore();
+  const { posts, loading, error, fetchPosts, categoryCounts, fetchCategoryCounts } = useCommunityStore();
+  const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel, isAuthenticated } = useLoginDialog();
 
+  // 검색(keyword)은 서버에서 필터된 posts 로 들어오므로 여기선 정렬만(클라 keyword 필터 제거 — 최신 100건 한정 누락 해소).
+  // 개인화("맞춤")는 서버가 7:3 혼합 순서를 이미 만들어 내려주므로 클라 재정렬을 하지 않는다(서버 순서 보존).
   const filteredPosts = useMemo(() => {
-    const maxDays = PERIOD_MAX[period];
-    const q = tag.trim().toLowerCase();
+    if (sort === "personalized") return posts;
     return posts
-      .filter((p) => (p.daysAgo ?? 0) <= maxDays)
-      .filter((p) => !q || (p.tags ?? []).some((t) => t.toLowerCase().includes(q)))
       .slice()
       .sort((a, b) => {
         if (sort === "recent") return (a.daysAgo ?? 0) - (b.daysAgo ?? 0);
-        const key = sort === "likes" ? "likeCount" : sort === "comments" ? "commentCount" : "viewCount";
+        const key = sort === "likes" ? "likeCount" : "commentCount";
         return (b.stats[key] ?? 0) - (a.stats[key] ?? 0);
       });
-  }, [posts, sort, period, tag]);
+  }, [posts, sort]);
 
-  // 카테고리 바뀔 때마다 목록 다시 불러오기
+  // 비로그인 상태에서 개인화가 선택돼 있으면 최신 정렬로 폴백(옵션 자체는 숨김).
+  useEffect(() => {
+    if (!isAuthenticated && sort === "personalized") setSort("recent");
+  }, [isAuthenticated, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / PER));
+  const cur = Math.min(page, totalPages);
+  const pagePosts = filteredPosts.slice((cur - 1) * PER, cur * PER);
+
+  // 탭/정렬/태그가 바뀌면 1페이지로 리셋
+  useEffect(() => { setPage(1); }, [selectedCategory, sort, tag]);
+
   useEffect(() => {
     const cat = CATEGORIES.find((c) => c.value === selectedCategory);
-    fetchPosts(selectedCategory === "all" ? undefined : cat?.slug);
-  }, [selectedCategory, fetchPosts]);
+    const slug = selectedCategory === "all" ? undefined : cat?.slug;
+    const kw = tag.trim();
+    // 개인화("맞춤")만 서버 정렬을 태운다(7:3 혼합). 나머지 정렬은 클라에서 처리하므로 서버엔 미전달(undefined).
+    // 개인화는 검색어와 함께 쓰지 않는다 — 키워드가 있으면 서버가 기존 LIKE 검색 경로로 폴백한다.
+    const serverSort = sort === "personalized" && !kw ? "personalized" : undefined;
+    // 검색어 입력은 디바운스(300ms)로 서버 조회, 카테고리 변경·검색어 클리어·정렬 전환은 즉시.
+    const t = setTimeout(() => {
+      fetchPosts(slug, serverSort, kw || undefined);
+    }, kw ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [selectedCategory, tag, sort, fetchPosts]);
+
+  // 탭 뱃지용 카테고리별 글 수 (목록과 동일 소스에서 집계)
+  useEffect(() => {
+    fetchCategoryCounts();
+  }, [fetchCategoryCounts]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setViewMode("list");
+      setSelectedPost(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const handlePostClick = (post: CommunityPost) => {
     setSelectedPost(post);
     setViewMode("detail");
+    window.history.pushState({ view: "detail" }, "");
     window.scrollTo(0, 0);
   };
 
   const handleBack = () => {
-    setViewMode("list");
-    setSelectedPost(null);
-    window.scrollTo(0, 0);
+    // 딥링크(/community/posts/:postId)로 진입한 경우 목록 URL로 복귀
+    if (deepLinkPostId != null) {
+      setSelectedPost(null);
+      setViewMode("list");
+      navigate("/community", { replace: true });
+      return;
+    }
+    // 쿼리 파라미터로 진입한 경우 정리
+    if (searchParams.has("view")) {
+      setSearchParams({}, { replace: true });
+      setViewMode("list");
+      return;
+    }
+    window.history.back();
   };
 
-  if (viewMode === "detail") {
-    return <PostDetailView onBack={handleBack} />;
+  // 헤더에서 뺀 보조 진입(내 활동·가이드라인) — 레일과 모바일 유틸 행에서 공유한다.
+  const goActivity = () => requireAuth(() => navigate("/community/activity"));
+  const goGuidelines = () => {
+    setViewMode("guidelines");
+    window.history.pushState({ view: "guidelines" }, "");
+    window.scrollTo(0, 0);
+  };
+  const goWrite = () => requireAuth(() => {
+    setViewMode("write");
+    window.history.pushState({ view: "write" }, "");
+  });
+
+  if (viewMode === "guidelines") {
+    return <CommunityGuidelinesPage onBack={handleBack} />;
+  }
+
+  const detailPostId = selectedPost?.id ?? deepLinkPostId;
+  if (viewMode === "detail" && detailPostId != null) {
+    return (
+      <PostDetailView
+        postId={detailPostId}
+        onBack={handleBack}
+        onEdit={() => {
+          const post = useCommunityStore.getState().currentPost;
+          if (!post) return;
+          const catMeta = CATEGORY_META[post.categoryLabel];
+          setEditData({
+            id: post.id,
+            category: catMeta?.value ?? "free",
+            title: post.title,
+            content: post.content,
+            tags: post.tags ?? [],
+            anonymous: post.author.isAnonymous,
+            interviewReview: post.interviewReview
+              ? {
+                  companyName: post.interviewReview.companyName,
+                  jobRole: post.interviewReview.jobRole,
+                  interviewType: post.interviewReview.interviewType,
+                  difficulty: post.interviewReview.difficulty,
+                  interviewDate: post.interviewReview.interviewDate,
+                  resultStatus: post.interviewReview.resultStatus,
+                  questions: post.interviewReview.questions,
+                }
+              : undefined,
+          });
+          setViewMode("edit");
+          window.history.pushState({ view: "edit" }, "");
+          window.scrollTo(0, 0);
+        }}
+      />
+    );
+  }
+
+  if (viewMode === "edit" && editData) {
+    return (
+      <PostEditorForm
+        editData={editData}
+        onCancel={handleBack}
+        onSubmit={handleBack}
+      />
+    );
   }
 
   if (viewMode === "write") {
@@ -65,62 +210,82 @@ export function CommunityHomePage() {
   }
 
   return (
-    <div className="ct-page">
-      <div className="ct-pagehead">
-        <div className="ct-pagehead__row">
-          <div>
-            <h1>커뮤니티</h1>
-            <p>익명으로 취업·이직·면접 이야기를 나눠보세요.</p>
-          </div>
-          <button className="ct-btn-brand" onClick={() => setViewMode("write")}>
-            <PenSquare /> 글쓰기
-          </button>
-        </div>
-      </div>
-
-      <div className="ct-board__bar">
-        <div className="ct-tabs" role="tablist">
-          {CATEGORIES.map((cat) => (
-            <button
-              key={cat.value}
-              role="tab"
-              aria-selected={selectedCategory === cat.value}
-              className="ct-tab"
-              onClick={() => setSelectedCategory(cat.value)}
-            >
-              {cat.label}
-              {cat.count != null && (
-                <span className="count">{cat.count.toLocaleString()}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <PostFilters
-        sort={sort} period={period} tag={tag}
-        onSortChange={setSort} onPeriodChange={setPeriod} onTagChange={setTag}
-      />
-
-      <div className="ct-grid">
+    <div className="cv-page">
+      <div className="uv-phead">
         <div>
+          <h1>커뮤니티</h1>
+          <p>익명으로 취업·이직·면접 이야기를 나눠보세요</p>
+        </div>
+        <button className="av-btn av-btn--ink" style={{ height: 34, padding: "0 14px" }} onClick={goWrite}>
+          <PenLine /> 글쓰기
+        </button>
+      </div>
+
+      <div className="uv-tabs">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.value}
+            className={"uv-tab" + (selectedCategory === cat.value ? " on" : "")}
+            onClick={() => setSelectedCategory(cat.value)}
+          >
+            {cat.label}
+            {cat.value !== "all" && categoryCounts[cat.slug] != null && (
+              <span className="n num">{categoryCounts[cat.slug].toLocaleString()}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* 모바일: 우측 레일이 숨겨지므로 내 활동·가이드라인 진입로를 여기서 유지한다. */}
+      <div className="cv-mobutil">
+        <button className="av-btn" style={{ height: 32 }} onClick={goActivity}>
+          <UserRound /> 내 활동
+        </button>
+        <button className="av-btn" style={{ height: 32 }} onClick={goGuidelines}>
+          <BookOpen /> 가이드라인
+        </button>
+      </div>
+
+      <div className="cv-grid">
+        <div>
+          <PostFilters
+            sort={sort} tag={tag}
+            onSortChange={setSort} onTagChange={setTag}
+            showPersonalized={isAuthenticated}
+          />
           {loading ? (
-            <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
-              불러오는 중...
+            <p className="av-empty">불러오는 중...</p>
+          ) : error ? (
+            <p className="av-empty" style={{ color: "var(--destructive)" }}>
+              게시글을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
             </p>
           ) : (
             <>
-              <PostList posts={filteredPosts} onPostClick={handlePostClick} />
+              <PostList posts={pagePosts} onPostClick={handlePostClick} />
+              <Pager page={cur} totalPages={totalPages} onPage={setPage} />
               {filteredPosts.length === 0 && (
-                <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
-                  {posts.length === 0 ? "해당 카테고리에 게시글이 없습니다." : "검색 결과가 없습니다."}
+                <p className="av-empty">
+                  {tag.trim() ? "검색 결과가 없습니다." : "해당 카테고리에 게시글이 없습니다."}
                 </p>
               )}
             </>
           )}
         </div>
-        <HotPostsSidebar />
+        <HotPostsSidebar onActivity={goActivity} onGuidelines={goGuidelines} />
       </div>
+
+      {showLoginDialog && (
+        <ConfirmDialog
+          variant="info"
+          icon={<Lock />}
+          title="로그인이 필요해요"
+          description="글을 쓰려면 로그인이 필요합니다. 30초면 시작할 수 있어요."
+          confirmLabel="로그인하기"
+          cancelLabel="둘러보기"
+          onConfirm={onLoginConfirm}
+          onCancel={onLoginCancel}
+        />
+      )}
     </div>
   );
 }

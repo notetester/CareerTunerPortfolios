@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.user.mapper.UserAccountMapper">
+
+    <!-- ── 계정 정보 ── -->
+
+    <select id="findById" resultType="com.careertuner.user.domain.User">
+        SELECT * FROM users WHERE id = #{id}
+    </select>
+
+    <select id="findLinkedProviders" resultType="string">
+        SELECT provider FROM user_social WHERE user_id = #{userId} ORDER BY provider
+    </select>
+
+    <select id="countLinkedProviders" resultType="int">
+        SELECT COUNT(*) FROM user_social WHERE user_id = #{userId}
+    </select>
+
+    <select id="countByLoginId" resultType="int">
+        SELECT COUNT(*) FROM users WHERE login_id = #{loginId}
+    </select>
+
+    <select id="countByEmailExcludingUser" resultType="int">
+        SELECT COUNT(*)
+          FROM users
+         WHERE email = #{email}
+           AND id != #{excludeUserId}
+    </select>
+
+    <select id="countByPhone" resultType="int">
+        SELECT COUNT(*)
+          FROM users
+         WHERE phone = #{phone}
+        <if test="excludeUserId != null">
+           AND id != #{excludeUserId}
+        </if>
+    </select>
+
+    <update id="setLoginIdIfAbsent">
+        UPDATE users
+           SET login_id = #{loginId}
+         WHERE id = #{userId}
+           AND login_id IS NULL
+    </update>
+
+    <update id="updatePhone">
+        UPDATE users SET phone = #{phone} WHERE id = #{userId}
+    </update>
+
+    <delete id="deleteSocial">
+        DELETE FROM user_social
+        WHERE user_id = #{userId} AND provider = #{provider}
+    </delete>
+
+    <!-- ── 이력서 상세 스펙 ── -->
+
+    <resultMap id="resumeDetailMap" type="com.careertuner.user.domain.UserResumeDetail">
+        <id property="userId" column="user_id"/>
+        <result property="educationJson" column="education_json"/>
+        <result property="careerJson" column="career_json"/>
+        <result property="certificateJson" column="certificate_json"/>
+        <result property="languageJson" column="language_json"/>
+        <result property="awardJson" column="award_json"/>
+        <result property="activityJson" column="activity_json"/>
+        <result property="skillJson" column="skill_json"/>
+        <result property="portfolioJson" column="portfolio_json"/>
+        <result property="desiredConditionJson" column="desired_condition_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="findResumeDetail" resultMap="resumeDetailMap">
+        SELECT * FROM user_resume_detail WHERE user_id = #{userId}
+    </select>
+
+    <insert id="upsertResumeDetail" parameterType="com.careertuner.user.domain.UserResumeDetail">
+        INSERT INTO user_resume_detail (
+            user_id, education_json, career_json, certificate_json, language_json,
+            award_json, activity_json, skill_json, portfolio_json, desired_condition_json
+        )
+        VALUES (
+            #{userId}, #{educationJson}, #{careerJson}, #{certificateJson}, #{languageJson},
+            #{awardJson}, #{activityJson}, #{skillJson}, #{portfolioJson}, #{desiredConditionJson}
+        )
+        ON DUPLICATE KEY UPDATE
+            education_json = VALUES(education_json),
+            career_json = VALUES(career_json),
+            certificate_json = VALUES(certificate_json),
+            language_json = VALUES(language_json),
+            award_json = VALUES(award_json),
+            activity_json = VALUES(activity_json),
+            skill_json = VALUES(skill_json),
+            portfolio_json = VALUES(portfolio_json),
+            desired_condition_json = VALUES(desired_condition_json),
+            updated_at = NOW()
+    </insert>
+
+</mapper>

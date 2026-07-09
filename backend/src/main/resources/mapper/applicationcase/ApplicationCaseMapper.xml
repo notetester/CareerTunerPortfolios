@@ -12,19 +12,37 @@
 
     <insert id="insertApplicationCase" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO application_case
-            (user_id, company_name, job_title, posting_date, source_type, status, is_favorite)
+            (user_id, company_name, job_title, posting_date, deadline_date, source_type, status, is_favorite)
         VALUES
-            (#{userId}, #{companyName}, #{jobTitle}, #{postingDate}, #{sourceType}, #{status}, #{favorite})
+            (#{userId}, #{companyName}, #{jobTitle}, #{postingDate}, #{deadlineDate}, #{sourceType}, #{status}, #{favorite})
     </insert>
 
     <select id="findApplicationCasesByUserId" resultMap="ApplicationCaseResultMap">
         SELECT *
         FROM application_case
         WHERE user_id = #{userId}
+        <choose>
+            <when test="view == 'DELETED'">
+          AND deleted_at IS NOT NULL
+          AND deleted_at &gt;= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
+            </when>
+            <otherwise>
           AND deleted_at IS NULL
-        <if test="!includeArchived">
+                <choose>
+                    <when test="view == 'ARCHIVED'">
+          AND archived_at IS NOT NULL
+                    </when>
+                    <when test="view == 'ACTIVE'">
           AND archived_at IS NULL
-        </if>
+                    </when>
+                    <otherwise>
+                        <if test="!includeArchived">
+          AND archived_at IS NULL
+                        </if>
+                    </otherwise>
+                </choose>
+            </otherwise>
+        </choose>
         ORDER BY is_favorite DESC, updated_at DESC, id DESC
     </select>
 
@@ -39,6 +57,7 @@
         SET company_name = #{companyName},
             job_title = #{jobTitle},
             posting_date = #{postingDate},
+            deadline_date = #{deadlineDate},
             source_type = #{sourceType},
             status = #{status},
             is_favorite = #{favorite},
@@ -46,13 +65,42 @@
         WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
     </update>
 
-    <update id="markAnalysisCompleted">
+    <update id="updateApplicationCaseSourceType">
         UPDATE application_case
-        SET status = CASE
-                WHEN status IN ('DRAFT', 'ANALYZING') THEN 'READY'
-                ELSE status
-            END
-        WHERE id = #{id} AND user_id = #{userId}
+        SET source_type = #{sourceType}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND source_type &lt;&gt; #{sourceType}
+    </update>
+
+    <update id="markAnalysisStarted">
+        UPDATE application_case
+        SET status = 'ANALYZING'
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status = #{previousStatus}
+          AND #{previousStatus} IN ('DRAFT', 'READY')
+    </update>
+
+    <update id="markReadyAfterAnalysis">
+        UPDATE application_case
+        SET status = 'READY'
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status = 'ANALYZING'
+          AND #{previousStatus} IN ('DRAFT', 'ANALYZING', 'READY')
+    </update>
+
+    <update id="restoreAnalysisStatus">
+        UPDATE application_case
+        SET status = #{previousStatus}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status = 'ANALYZING'
     </update>
 
     <delete id="deleteApplicationCase">
@@ -66,25 +114,33 @@
         WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
     </update>
 
+    <update id="restoreDeletedApplicationCase">
+        UPDATE application_case
+        SET deleted_at = NULL,
+            archived_at = NULL
+        WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NOT NULL
+    </update>
+
+    <!--
+      삭제함(deleted_at 이 30일 이내인 것만 노출)에서도 숨긴다. 하드삭제가 아니라
+      soft delete 를 유지한 채 deleted_at 을 트래시 조회 창(30일) 밖(31일 전)으로 보내
+      삭제함 목록에서만 사라지게 한다. 현재 삭제함에 보이는(deleted_at 이 30일 이내) 건에만
+      적용하므로, 이미 창 밖으로 밀려 보이지 않는 건은 0행 → 서비스에서 404 로 처리된다.
+      행은 남으므로 DB 로 복구할 수 있다.
+    -->
+    <update id="hideApplicationCaseFromTrash">
+        UPDATE application_case
+        SET deleted_at = DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 31 DAY)
+        WHERE id = #{id} AND user_id = #{userId}
+          AND deleted_at IS NOT NULL
+          AND deleted_at &gt;= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
+    </update>
+
     <insert id="insertStatusHistory">
         INSERT INTO application_case_status_history
             (application_case_id, changed_by_user_id, previous_status, new_status, memo)
         VALUES
             (#{applicationCaseId}, #{changedByUserId}, #{previousStatus}, #{newStatus}, #{memo})
-    </insert>
-
-    <delete id="deleteFitAnalysesByCaseId">
-        DELETE FROM fit_analysis
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
-
-    <insert id="insertFitAnalysis" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO fit_analysis
-            (application_case_id, fit_score, matched_skills, missing_skills,
-             recommended_study, recommended_certificates, strategy)
-        VALUES
-            (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
-             #{recommendedStudy}, #{recommendedCertificates}, #{strategy})
     </insert>
 
     <select id="findLatestFitAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.FitAnalysis">
@@ -103,4 +159,28 @@
             (#{userId}, #{applicationCaseId}, #{featureType}, #{status}, #{model},
              #{inputTokens}, #{outputTokens}, #{tokenUsage}, #{creditUsed}, #{errorMessage})
     </insert>
+
+    <select id="findBFailureLogsByCaseId" resultType="com.careertuner.applicationcase.dto.AiUsageFailureResponse">
+        SELECT
+            failed.feature_type,
+            failed.error_message,
+            failed.created_at
+        FROM ai_usage_log failed
+        WHERE failed.application_case_id = #{applicationCaseId}
+          AND failed.status = 'FAILED'
+          AND failed.feature_type IN ('JOB_ANALYSIS', 'COMPANY_RESEARCH', 'JOB_POSTING_OCR', 'JOB_POSTING_METADATA')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM ai_usage_log success
+              WHERE success.application_case_id = failed.application_case_id
+                AND success.feature_type = failed.feature_type
+                AND success.status = 'SUCCESS'
+                AND (
+                    success.created_at > failed.created_at
+                    OR (success.created_at = failed.created_at AND success.id > failed.id)
+                )
+          )
+        ORDER BY failed.created_at DESC, failed.id DESC
+        LIMIT #{limit}
+    </select>
 </mapper>

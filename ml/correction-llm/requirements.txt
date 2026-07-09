@@ -1,0 +1,9 @@
+# E(첨삭) 자체 모델 LoRA/QLoRA 파인튜닝
+# RTX 4090 24GB 기준. Qwen2.5-3B 4bit+LoRA smoke train 우선.
+torch>=2.13.0
+transformers>=5.13.0
+peft>=0.19.1
+trl>=1.7.1
+datasets>=5.0.0
+accelerate>=1.14.0
+bitsandbytes>=0.49.2

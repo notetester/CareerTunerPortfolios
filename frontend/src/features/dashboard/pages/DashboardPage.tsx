@@ -6,11 +6,27 @@ import { Badge } from "@/app/components/ui/badge";
 import { Progress } from "@/app/components/ui/progress";
 import {
   Plus, Briefcase, MessageSquare, TrendingUp, Award, ArrowRight,
-  FileText, BarChart3, CheckCircle2, AlertCircle, ChevronRight,
-  Target, BookOpen, Bell, Calendar, Flame, Loader2, RefreshCw,
+  FileText, BarChart3, AlertCircle, ChevronRight,
+  Target, BookOpen, Bell, Calendar, Flame, Loader2, RefreshCw, Brain,
 } from "lucide-react";
 import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
-import type { DashboardActivity, DashboardSummary } from "@/features/dashboard/types/dashboardSummary";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
+import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
+import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
+import { RecentInterviewCard } from "@/features/dashboard/components/RecentInterviewCard";
+import { NotificationsCard } from "@/features/dashboard/components/NotificationsCard";
+import { ReadinessGaugeCard } from "@/features/dashboard/components/ReadinessGaugeCard";
+import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
+import { GuideButton, type TourStep } from "@/features/analysis/components/GuideTour";
+import { subscribeCreditBalanceChanged } from "@/app/lib/creditBalanceEvents";
+
+// 취업분석 대시보드 페이지 안내(가이드 투어) 스텝.
+const DASHBOARD_TOUR_STEPS: TourStep[] = [
+  { selector: "[data-tour='dash-stats']", title: "핵심 지표", body: "활성 지원 건·총 모의면접·보유 크레딧·평균 적합도를 한눈에 요약합니다." },
+  { selector: "[data-tour='dash-priority']", title: "이번 주 우선순위", body: "가장 유망한 지원 건과 가장 시급한 보완 역량을 묶어 다음 행동을 제안합니다. 눌러서 상세·약점 탭으로 이동해요." },
+  { selector: "[data-tour='dash-todos']", title: "오늘의 할 일", body: "적합도·부족 역량 분석에서 파생된 체크리스트입니다. 체크로 완료 처리하거나 직접 추가할 수 있어요." },
+  { selector: "[data-tour='dash-skillgaps']", title: "자주 부족한 역량", body: "여러 지원 건에서 반복되는 갭을 집계합니다. 절반 이상에서 부족하면 위에 경고 카드가 뜹니다." },
+];
 
 const statusLabel: Record<string, string> = {
   DRAFT: "공고 입력",
@@ -64,6 +80,11 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [creditReloadToken, setCreditReloadToken] = useState(0);
+
+  useEffect(() => subscribeCreditBalanceChanged(() => {
+    setCreditReloadToken((value) => value + 1);
+  }), []);
 
   useEffect(() => {
     let ignore = false;
@@ -84,7 +105,7 @@ export function DashboardPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [creditReloadToken]);
 
   const handleRefreshSummary = async () => {
     setRefreshing(true);
@@ -98,10 +119,20 @@ export function DashboardPage() {
     }
   };
 
+  const handleTodosChange = (todos: DashboardTodo[]) => {
+    setSummary((previous) => (previous ? { ...previous, todos } : previous));
+  };
+
   const stats = summary?.stats;
   const pendingTodos = summary?.todos.filter((todo) => !todo.done).length ?? 0;
   const creditPercent = stats ? Math.min(100, Math.round((stats.credit / Math.max(1, stats.creditLimit)) * 100)) : 0;
   const highFitCount = summary?.recentApplications.filter((application) => (application.fitScore ?? 0) >= 70).length ?? 0;
+  const promisingApplication = useMemo(() => {
+    return summary?.promisingApplication ?? [...(summary?.recentApplications ?? [])]
+      .filter((application) => application.fitScore != null && application.status !== "CLOSED")
+      .sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0))[0] ?? null;
+  }, [summary?.promisingApplication, summary?.recentApplications]);
+  const urgentGap = summary?.skillGaps[0] ?? null;
   const statCards = useMemo(() => {
     if (!stats) return [];
 
@@ -111,35 +142,36 @@ export function DashboardPage() {
         label: "활성 지원 건",
         value: `${stats.activeApplications}`,
         sub: `이번 달 ${stats.newApplicationsThisMonth}건 추가`,
-        color: "from-blue-500 to-cyan-500",
+        color: "",
       },
       {
         icon: MessageSquare,
         label: "총 모의면접",
         value: `${stats.totalInterviews}`,
         sub: `이번 주 ${stats.interviewsThisWeek}회`,
-        color: "from-purple-500 to-violet-500",
+        color: "",
       },
       {
         icon: Award,
         label: "보유 크레딧",
         value: `${stats.credit}`,
         sub: `이번 달 ${stats.creditsUsedThisMonth}크레딧 사용`,
-        color: "from-amber-500 to-orange-500",
+        color: "",
       },
       {
         icon: TrendingUp,
         label: "평균 적합도",
         value: `${stats.averageFitScore}점`,
         sub: `${highFitCount}건은 우선 지원 후보`,
-        color: "from-green-500 to-emerald-500",
+        color: "",
       },
     ];
   }, [highFitCount, stats]);
 
   return (
     <div className="bg-slate-50 min-h-screen">
-      <div className="max-w-[1400px] mx-auto px-6 py-8 space-y-8">
+      {/* 모바일: 하단 고정 CTA 공간 확보(pb-24). 데스크톱은 기존 여백 유지. */}
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 py-8 space-y-8 pb-24 lg:pb-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-sm text-slate-500 mb-1">
@@ -158,18 +190,22 @@ export function DashboardPage() {
             </p>
             {summary?.aiSummary && (
               <div className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                <div className="flex items-start justify-between gap-3">
-                  <p><strong className="font-semibold">AI 요약</strong> · {summary.aiSummary}</p>
-                  <button
-                    type="button"
-                    onClick={handleRefreshSummary}
-                    disabled={refreshing}
-                    title="AI를 다시 실행해 최신 데이터로 요약을 재생성합니다. 크레딧 1이 차감됩니다."
-                    className="flex shrink-0 items-center gap-1 rounded-md border border-blue-200 bg-white/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-white disabled:opacity-60"
-                  >
-                    <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
-                    {refreshing ? "재생성 중" : "재생성 (크레딧 1)"}
-                  </button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                  <p className="min-w-0">
+                    <strong className="font-semibold">AI 요약</strong> <AiResultBadge status={summary.analysisRun.status} /> · {summary.aiSummary}
+                  </p>
+                  <div className="flex shrink-0 flex-col items-start gap-1.5">
+                    <AiChargeCostBadge featureType="DASHBOARD_SUMMARY" />
+                    <button
+                      type="button"
+                      onClick={handleRefreshSummary}
+                      disabled={refreshing}
+                      className="flex self-start items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
+                    >
+                      <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
+                      {refreshing ? "재생성 중" : "재생성"}
+                    </button>
+                  </div>
                 </div>
                 <p className="mt-1 text-xs text-blue-600">
                   {summary.analysisRun.model || "mock"} · {summary.analysisRun.status} · {new Date(summary.analysisRun.createdAt).toLocaleString("ko-KR")}
@@ -178,17 +214,20 @@ export function DashboardPage() {
               </div>
             )}
           </div>
-          <Button
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 gap-2"
-            onClick={() => navigate("/applications")}
-          >
-            <Plus className="size-4" />
-            새 지원 건 만들기
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <GuideButton steps={DASHBOARD_TOUR_STEPS} />
+            <Button
+              className="bg-primary gap-2"
+              onClick={() => navigate("/applications")}
+            >
+              <Plus className="size-4" />
+              새 지원 건 만들기
+            </Button>
+          </div>
         </div>
 
         {loading && (
-          <Card className="border border-slate-200 bg-white">
+          <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-5 text-sm text-slate-600">
               <Loader2 className="size-4 animate-spin text-blue-600" />
               대시보드 데이터를 불러오는 중입니다.
@@ -207,18 +246,18 @@ export function DashboardPage() {
 
         {!loading && !error && summary && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div data-tour="dash-stats" className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {statCards.map((s) => (
-                <Card key={s.label} className="border border-slate-200 bg-white hover:shadow-md transition-shadow">
+                <Card key={s.label} className="min-w-0 border border-slate-200 bg-card hover:shadow-md transition-shadow">
                   <CardContent className="p-5">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <div className="text-sm text-slate-500 mb-1">{s.label}</div>
-                        <div className="text-3xl font-black text-slate-900">{s.value}</div>
+                        <div className="text-3xl font-black text-slate-900 break-words">{s.value}</div>
                         <div className="text-xs text-slate-400 mt-1">{s.sub}</div>
                       </div>
-                      <div className={`size-10 rounded-xl bg-gradient-to-br ${s.color} flex items-center justify-center`}>
-                        <s.icon className="size-5 text-white" />
+                      <div className={`size-10 rounded-xl bg-accent-soft ${s.color} flex items-center justify-center`}>
+                        <s.icon className="size-5 text-primary" />
                       </div>
                     </div>
                   </CardContent>
@@ -227,21 +266,34 @@ export function DashboardPage() {
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-4">
+              <div className="min-w-0 lg:col-span-2 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="font-bold text-slate-900 text-lg">내 지원 건</h2>
                   <Link to="/applications" className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
                     전체 보기 <ArrowRight className="size-3.5" />
                   </Link>
                 </div>
+                {/* 지원 상태별 분포 한눈 요약. */}
+                {(summary.statusCounts?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {summary.statusCounts.map((item) => (
+                      <span
+                        key={item.status}
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColor[item.status] ?? "bg-slate-100 text-slate-700"}`}
+                      >
+                        {statusLabel[item.status] ?? item.status} {item.count}건
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="space-y-3">
                   {summary.recentApplications.length > 0 ? (
                     summary.recentApplications.map((app) => (
                       <Link to={`/applications/${app.id}`} key={app.id}>
-                        <Card className="border border-slate-200 bg-white hover:border-blue-300 hover:shadow-md transition-all cursor-pointer">
+                        <Card className="border border-slate-200 bg-card hover:border-blue-300 hover:shadow-md transition-all cursor-pointer">
                           <CardContent className="p-4">
                             <div className="flex items-center gap-4">
-                              <div className="size-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                              <div className="size-10 rounded-xl bg-accent-soft flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
                                 {app.companyName[0]}
                               </div>
                               <div className="flex-1 min-w-0">
@@ -260,7 +312,7 @@ export function DashboardPage() {
                                     <Progress value={app.fitScore ?? 0} className="h-1.5 flex-1 max-w-24" />
                                     <span className="text-xs font-semibold text-blue-600">{app.fitScore != null ? `${app.fitScore}점` : "미분석"}</span>
                                   </div>
-                                  <div className="flex gap-1">
+                                  <div className="flex flex-wrap gap-1">
                                     {app.tags.map((tag) => (
                                       <span key={tag} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{tag}</span>
                                     ))}
@@ -278,7 +330,7 @@ export function DashboardPage() {
                       </Link>
                     ))
                   ) : (
-                    <Card className="border border-slate-200 bg-white">
+                    <Card className="border border-slate-200 bg-card">
                       <CardContent className="p-5 text-sm text-slate-500">
                         아직 등록된 지원 건이 없습니다. 첫 공고를 등록하면 적합도와 다음 행동이 이곳에 표시됩니다.
                       </CardContent>
@@ -288,7 +340,7 @@ export function DashboardPage() {
 
                 <div className="mt-6">
                   <h2 className="font-bold text-slate-900 text-lg mb-4">최근 활동</h2>
-                  <Card className="border border-slate-200 bg-white">
+                  <Card className="border border-slate-200 bg-card">
                     <CardContent className="p-5 space-y-4">
                       {summary.activities.length > 0 ? (
                         summary.activities.map((activity, index) => {
@@ -313,28 +365,79 @@ export function DashboardPage() {
                 </div>
               </div>
 
-              <div className="space-y-5">
-                <Card className="border border-slate-200 bg-white">
+              <div className="min-w-0 space-y-5">
+                {(promisingApplication || urgentGap) && (
+                  <Card data-tour="dash-priority" className="border border-blue-200 bg-muted">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base flex items-center gap-2 text-blue-900">
+                        <Target className="size-4 text-blue-600" />
+                        이번 주 우선순위
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {promisingApplication && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/applications/${promisingApplication.id}`)}
+                          className="w-full rounded-lg border border-blue-100 bg-card/80 p-3 text-left transition-colors hover:bg-card"
+                        >
+                          <div className="text-[11px] font-semibold text-blue-500">가장 유망한 지원 건</div>
+                          <div className="mt-1 text-sm font-bold text-slate-800">
+                            {promisingApplication.companyName} · {promisingApplication.jobTitle}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            적합도 <strong className="text-blue-700">{promisingApplication.fitScore}점</strong> · 지금 준비 흐름을 먼저 점검하세요.
+                          </div>
+                        </button>
+                      )}
+                      {urgentGap && (
+                        <Link
+                          to="/analysis?tab=weakness"
+                          className="block rounded-lg border border-amber-100 bg-amber-50/90 p-3 transition-colors hover:bg-amber-50"
+                        >
+                          <div className="text-[11px] font-semibold text-amber-600">가장 시급한 보완 역량</div>
+                          <div className="mt-1 text-sm font-bold text-slate-800">{urgentGap.skill}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            최근 분석 {urgentGap.total}건 중 {urgentGap.count}건({urgentGap.percentage}%)에서 반복 부족
+                          </div>
+                        </Link>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* C 담당: 전체 취업 준비도 게이지 + 최근 변화 요약(결정적 집계). */}
+                {summary.readiness && summary.recentChange && (
+                  <ReadinessGaugeCard readiness={summary.readiness} recentChange={summary.recentChange} />
+                )}
+
+                {(summary.aiHistory?.length ?? 0) > 0 && (
+                  <Card className="border border-indigo-200 bg-card">
+                    <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Brain className="size-4 text-indigo-600" />AI 요약 재생성 이력</CardTitle></CardHeader>
+                    <CardContent className="space-y-2">
+                      {summary.aiHistory?.map((run) => (
+                        <div key={run.id} className="rounded-lg border border-slate-100 p-2.5 text-xs">
+                          <div className="flex items-center justify-between gap-2"><strong className="text-slate-700">{run.promptVersion ?? "버전 미기록"} · {run.model ?? "mock"}</strong><AiResultBadge status={run.status} /></div>
+                          <div className="mt-1 text-slate-400">{new Date(run.createdAt).toLocaleString("ko-KR")} · {run.tokenUsage.toLocaleString()} 토큰</div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                <Card data-tour="dash-todos" className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Flame className="size-4 text-orange-500" />
                       오늘의 할 일
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2.5">
-                    {summary.todos.map((todo, index) => (
-                      <div key={`${todo.task}-${index}`} className="flex items-start gap-2.5">
-                        <div className={`size-4 rounded flex items-center justify-center flex-shrink-0 mt-0.5 ${todo.done ? "bg-green-500" : "border-2 border-slate-300"}`}>
-                          {todo.done && <CheckCircle2 className="size-3 text-white" />}
-                        </div>
-                        <div className="flex-1">
-                          <div className={`text-sm ${todo.done ? "line-through text-slate-400" : "text-slate-700"}`}>{todo.task}</div>
-                          <div className="text-xs text-slate-400 mt-0.5">{todo.time}</div>
-                        </div>
-                      </div>
-                    ))}
+                  <CardContent>
+                    <TodoChecklist todos={summary.todos} onTodosChange={handleTodosChange} />
                   </CardContent>
                 </Card>
+
+                <RecentInterviewCard interview={summary.recentInterview} />
 
                 <Card className="border border-amber-200 bg-amber-50">
                   <CardHeader className="pb-3">
@@ -365,7 +468,7 @@ export function DashboardPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">빠른 메뉴</CardTitle>
                   </CardHeader>
@@ -386,7 +489,30 @@ export function DashboardPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="border border-slate-200 bg-white">
+                {/* 위험 알림 카드: 반복 부족 역량이 절반 이상 분석에서 나타나면 대시보드 안에서 경고한다(푸시 알림은 F 도메인). */}
+                {summary.skillGaps.some((gap) => gap.percentage >= 50 && gap.total >= 2) && (
+                  <Card className="border border-red-200 bg-red-50">
+                    <CardContent className="p-4">
+                      {(() => {
+                        const critical = summary.skillGaps.find((gap) => gap.percentage >= 50 && gap.total >= 2)!;
+                        return (
+                          <div className="flex items-start gap-2.5">
+                            <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600" />
+                            <div>
+                              <div className="text-sm font-bold text-red-800">주의: {critical.skill} 반복 부족</div>
+                              <p className="mt-1 text-xs leading-5 text-red-700">
+                                최근 분석 {critical.total}건 중 {critical.count}건에서 부족 역량으로 나타났습니다.
+                                학습 로드맵에서 {critical.skill} 과제를 우선 진행하는 것이 좋습니다.
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+                )}
+
+                <Card data-tour="dash-skillgaps" className="border border-slate-200 bg-card">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <AlertCircle className="size-4 text-red-500" />
@@ -411,10 +537,26 @@ export function DashboardPage() {
                     )}
                   </CardContent>
                 </Card>
+
+                <NotificationsCard notifications={summary.recentNotifications} />
               </div>
             </div>
           </>
         )}
+      </div>
+
+      {/* 모바일 하단 고정 주요 CTA 1개(디자인 분석 §7.1, 모바일 고려 §6.1). 데스크톱에서는 상단 버튼 사용. */}
+      <div
+        className="fixed inset-x-4 z-40 lg:hidden"
+        style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+      >
+        <Button
+          className="h-12 w-full bg-primary gap-2 shadow-lg"
+          onClick={() => navigate("/applications")}
+        >
+          <Plus className="size-4" />
+          새 지원 건 만들기
+        </Button>
       </div>
     </div>
   );

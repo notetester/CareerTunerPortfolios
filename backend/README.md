@@ -1,6 +1,6 @@
 # CareerTuner — Backend
 
-Spring Boot **4.0.6** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
+Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 인증은 **JWT(Access/Refresh) + Spring Security(stateless)**, 비밀번호는 **BCrypt**.
 
 이 문서는 백엔드의 **현재 구현·실행 상태**를 설명한다. 목표 기능 범위와 출시 우선순위는
@@ -26,6 +26,20 @@ Spring Boot **4.0.6** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 - 서버 `http://localhost:8080` · 헬스 `GET /api/health` · Swagger `http://localhost:8080/swagger-ui.html`
 - HikariCP `initialization-fail-timeout: -1` 로 **MySQL 없이도 부팅**된다(헬스 체크 가능).
 
+### 환경 프로파일 (local / tailscale / aws / domain)
+
+호스트 기본값 묶음(DB·Ollama·API 주소)을 이름으로 전환한다 — `application-<이름>.yaml` 이 호스트 관련 키만 오버라이드한다.
+
+```bash
+SPRING_PROFILES_ACTIVE=local ./gradlew bootRun                        # 전부 내 PC (DB/Ollama localhost)
+.\gradlew.bat bootRun --args='--spring.profiles.active=tailscale'     # 팀 DB + 공유 4090 Ollama
+```
+
+- 프로파일 없이 실행하면 기존 기본값 그대로다. 환경변수 override(`DB_HOST` 등)는 프로파일보다 항상 우선한다.
+- 공유 4090 Ollama 가 꺼져 있으면 부팅 시 자동으로 폴백 후보(`AI_OLLAMA_FALLBACK_BASE_URLS`,
+  기본 `http://localhost:11434`)로 전환된다. 끄기: `AI_OLLAMA_FALLBACK_ENABLED=false`.
+- 프로파일 정의·컴포넌트별 전환 방법: [`../docs/ENVIRONMENTS.md`](../docs/ENVIRONMENTS.md), [`../config/environments.json`](../config/environments.json)
+
 ## 설정/시크릿 (환경변수 override)
 
 모든 민감값은 `application.yaml` 에 `${ENV:기본값}` 형태다. **지금은 커밋된 기본값으로 즉시 동작**하고,
@@ -43,6 +57,10 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | 메일 | `MAIL_HOST` `MAIL_USERNAME` `MAIL_PASSWORD` `MAIL_FROM` `MAIL_DEV_MODE` | `smtp.naver.com` / 빈값 / 빈값 / no-reply / `true` |
 | 앱 | `APP_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / `http://localhost:8080` |
 | 업로드 | `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE` `SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE` `JOB_POSTING_MAX_FILE_SIZE_BYTES` | `10MB` / `12MB` / `10485760` |
+| 로컬 LLM | `AI_OLLAMA_BASE_URL` `AI_OLLAMA_MODEL` `AI_OLLAMA_CONNECT_TIMEOUT` `AI_OLLAMA_READ_TIMEOUT` | `http://localhost:11434` / `gemma4` / `3s` / `30s` |
+| 로컬 LLM 폴백 | `AI_OLLAMA_FALLBACK_BASE_URLS`(콤마 구분) `AI_OLLAMA_FALLBACK_ENABLED` | `http://localhost:11434` / `true` — 4090 미응답 시 부팅에서 자동 전환 |
+| E 첨삭 LLM | `CAREERTUNER_CORRECTION_AI_PROVIDER` `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL` `CAREERTUNER_CORRECTION_AI_SELF_MODEL` `CAREERTUNER_CORRECTION_AI_SELF_MAX_TOKENS` | `openai` / 빈값 / `careertuner-e-correction-3b:delivery-s-f16-20260708` / `3072` |
+| B 기업 웹검색 | `NAVER_SEARCH_CLIENT_ID` `NAVER_SEARCH_CLIENT_SECRET` `CAREERTUNER_COMPANY_WEBSEARCH_ENABLED` `CAREERTUNER_COMPANY_WEBSEARCH_MAX_SEARCH_CALLS_PER_ANALYSIS` `CAREERTUNER_COMPANY_WEBSEARCH_MAX_RESULTS_PER_ANALYSIS` | 빈값 / 빈값 / `false` / `4` / `12` |
 
 > 메일은 `MAIL_DEV_MODE=true`(또는 SMTP username 미설정)면 **실제 발송 대신 인증 링크를 로그로 출력**한다.
 > OAuth 키는 아직 미발급이라 placeholder다 — 키 수령 후 위 env(또는 yaml 기본값)만 교체하면 동작한다.
@@ -67,6 +85,46 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
   백엔드 콜백에서 사용자 조회/생성 후 JWT 발급 → 프런트 `/auth/callback#accessToken=…&refreshToken=…` 로 리다이렉트.
   (서명된 state 토큰으로 CSRF 방지, 세션/쿠키 불필요)
 
+## 결제·구독 사용권 API
+
+구독 상품과 사용권 정책은 DB 기준으로 내려가며, 다른 파트의 AI 기능은 `AiBenefitUsageService.consumeByFeature(...)`를 호출해
+기능 코드(`feature_type`)에 매핑된 사용권을 성공 후 1장 차감한다.
+
+사용량 기반 크레딧 기능은 `ai_feature_benefit_policy`의 `min_credit_cost`, `max_credit_cost`,
+`credit_unit_tokens`로 실행 전 최소·최대 금액을 고지하고, 성공 후 실제 `token_usage`를 범위 안에서 정산한다.
+기존 DB에는 `db/patches/20260706e_ai_usage_credit_range.sql`과
+`db/patches/20260706f_ai_ticket_credit_fallback.sql`을 순서대로 적용한다.
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| GET | `/api/billing/plans` | 활성 구독 플랜과 월별 사용권 정책 조회 | - |
+| GET | `/api/billing/feature-benefit-policies` | AI 기능 코드와 사용권 코드 매핑 조회 | - |
+| GET | `/api/billing/benefits/me` | 내 현재 구독 기간 사용권 잔여량 조회. 잔여량이 없으면 현재 플랜 기준으로 자동 발급 | Bearer |
+| GET | `/api/billing/benefit-transactions/me?limit=50` | 내 사용권 지급·차감 원장 조회 | Bearer |
+| GET | `/api/billing/refund-policy/current` | 현재 시행 환불정책과 사용자 고지 상태 조회 | Bearer |
+| POST | `/api/billing/refund-policy/acknowledgements` | 정책 버전별 결제·크레딧·사용권 고지 확인 기록 | Bearer |
+| POST | `/api/billing/charge-preview` | AI 기능 실행 전 사용권/크레딧 예상 차감량과 적용 환불정책 조회 | Bearer |
+| GET | `/api/billing/refunds` | 내 환불 신청과 처리 결과 조회 | Bearer |
+| POST | `/api/billing/refunds/preview` | 결제 당시 정책·현재 게시 정책과 사용 이력으로 환불 가능 여부 사전 판정 | Bearer |
+| POST | `/api/billing/refunds` | 결제 건의 사용 이력을 자동 판정하고 전액 환불 검토 신청 | Bearer |
+| GET | `/api/admin/refund-policies` | 환불정책 초안·게시 버전 조회 | Bearer(ADMIN) |
+| PUT | `/api/admin/refund-policies/draft` | 환불정책 초안 생성 또는 수정 | Bearer(ADMIN) |
+| GET | `/api/admin/refunds` | 환불 요청과 자동 판정 근거 조회 | Bearer(ADMIN) |
+| POST | `/api/admin/refunds/{id}/approve` | 가결제 건 전액 환불 승인 | Bearer(ADMIN) |
+| POST | `/api/admin/refunds/{id}/reject` | 환불 불가 처리 | Bearer(ADMIN) |
+| POST | `/api/admin/refund-policies/{id}/publish` | 정책 게시, 환불정책 공지 자동 생성·고정 | Bearer(ADMIN) |
+
+현재 구독제 사용권 정책은 `subscription_plan`, `subscription_benefit_policy`,
+`user_subscription`, `user_benefit_balance`, `ai_feature_benefit_policy`, `benefit_transaction` 테이블로 관리한다.
+환불 고지 기준은 `refund_policy`의 게시 버전으로 관리하고, 사용자별 고지 시점은
+`refund_policy_acknowledgement`에 기록한다. 결제 대기 건에는 결제 당시 환불정책이
+`payment.policy_snapshot_json`에 함께 저장된다. AI 기능은 차감 미리보기에서 발급한
+`actionKey`로 건별 고지를 기록하고, 실제 `AiChargeService` 차감 시 동일 키를 재검증한다.
+환불 신청은 `refund_request`에 결제 당시 정책과 결제 이후 크레딧·사용권 사용 여부를 판정 근거로 남긴다.
+가결제 단계에서는 관리자가 전액 환불 또는 환불 불가만 결정하며 실제 PG 취소와 부분 환불은 수행하지 않는다.
+PRO 플랜은 영상분석권을 월 1장 제공하고, PREMIUM 플랜은 영상분석권과 아바타면접권을 각각 월 5장 제공한다.
+실제 결제 승인과 구독 갱신 자동화는 아직 연결 전이며, 구독 기간이 없으면 기존 `users.plan` 값을 기준으로 해당 월의 사용권을 발급한다.
+
 ## 지원 건 (Application Case) API
 
 핵심 단위인 지원 건 API는 인증된 사용자 자신의 데이터만 다룬다.
@@ -74,32 +132,126 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | Method | Path | 설명 | 인증 |
 | --- | --- | --- | --- |
 | POST | `/api/application-cases` | 지원 건 생성 | Bearer |
-| GET | `/api/application-cases` | 내 지원 건 목록 | Bearer |
+| GET | `/api/application-cases?view=ACTIVE\|ARCHIVED\|DELETED` | 내 지원 건 목록. `view` 생략 시 기존 `includeArchived` 호환 동작 유지 | Bearer |
 | GET | `/api/application-cases/{id}` | 지원 건 상세 | Bearer |
 | PATCH | `/api/application-cases/{id}` | 지원 건 수정 | Bearer |
-| DELETE | `/api/application-cases/{id}` | 지원 건 삭제(현재 구현은 물리 삭제, 목표는 소프트 삭제) | Bearer |
-| POST | `/api/application-cases/{id}/job-posting` | 텍스트/URL 공고문 저장 및 URL 본문 추출(현재 구현은 1건 교체, 목표는 revision 추가) | Bearer |
+| DELETE | `/api/application-cases/{id}` | 지원 건 소프트 삭제(`deleted_at` 기록) | Bearer |
+| PATCH | `/api/application-cases/{id}/restore` | 삭제된 지원 건 복원(`deleted_at`, `archived_at` 초기화) | Bearer |
+| POST | `/api/application-cases/{id}/job-posting` | 텍스트/URL 공고문 저장 및 revision 추가 | Bearer |
 | POST | `/api/application-cases/{id}/job-posting/upload` | PDF/이미지 업로드 및 텍스트 추출 | Bearer |
 | GET | `/api/application-cases/{id}/job-posting` | 현재 공고문 조회 | Bearer |
-| POST | `/api/application-cases/{id}/job-analysis` | 실제 OpenAI 공고 분석 생성 | Bearer |
+| GET | `/api/application-cases/{id}/job-posting/revisions` | 공고문 revision 이력 조회 | Bearer |
+| GET | `/api/application-cases/extractions/active` | 진행 중인 내 공고문 추출 작업 조회 | Bearer |
+| GET | `/api/application-cases/job-posting/extractions/latest?applicationCaseIds=...` | 지원 건별 최신 공고문 추출 상태 일괄 조회 | Bearer |
+| GET | `/api/application-cases/{id}/job-posting/extraction` | 현재 지원 건의 최신 공고문 추출 상태 조회 | Bearer |
+| POST | `/api/application-cases/{id}/job-posting/extraction/retry` | 실패한 공고문 추출 재시도 | Bearer |
+| PATCH | `/api/application-cases/{id}/job-posting/extraction/review` | `REVIEW_REQUIRED` 추출 텍스트 검수 확정 후 자동 분석 재개 | Bearer |
+| PATCH | `/api/application-cases/{id}/job-posting/extraction/confirm` | 사용자가 수정한 공고문 텍스트 확정 후 OCR 없이 자동 분석 갱신 | Bearer |
+| POST | `/api/application-cases/{id}/job-analysis` | 자체 공고 분석 생성(`self-rules-v1`, 선택적 로컬 LLM) | Bearer |
 | GET | `/api/application-cases/{id}/job-analysis` | 공고 분석 조회 | Bearer |
-| POST | `/api/application-cases/{id}/job-analysis/mock` | 개발용 mock 공고 분석 생성 | Bearer |
-| POST | `/api/application-cases/{id}/company-analysis` | 실제 OpenAI 기업 분석 생성 | Bearer |
+| GET | `/api/application-cases/{id}/job-analysis/history` | 공고 분석 이력 조회 | Bearer |
+| PATCH | `/api/application-cases/{id}/job-analysis/{analysisId}/review` | 공고 분석 사용자 검수·확정 | Bearer |
+| POST | `/api/application-cases/{id}/company-analysis` | 자체 기업 분석 생성(`self-rules-v1`, 선택적 로컬 LLM) | Bearer |
 | GET | `/api/application-cases/{id}/company-analysis` | 기업 분석 조회 | Bearer |
-| POST | `/api/application-cases/{id}/company-analysis/mock` | 개발용 mock 기업 분석 생성 | Bearer |
-| POST | `/api/application-cases/{id}/analysis/mock` | 호환용 mock 공고/적합도 분석 생성 | Bearer |
+| GET | `/api/application-cases/{id}/company-analysis/history` | 기업 분석 이력 조회 | Bearer |
+| PATCH | `/api/application-cases/{id}/company-analysis/{analysisId}/review` | 기업 분석 사용자 검수·확정 | Bearer |
 | GET | `/api/application-cases/{id}/analysis` | 호환용 공고/적합도 분석 조회 | Bearer |
+| GET | `/api/application-cases/{id}/ai-usage/b/failures` | 현재 지원 건의 B 분석 실패 로그 조회 | Bearer |
+| GET | `/api/admin/application-cases` | 관리자 지원 건 목록 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/application-cases/{id}` | 관리자 지원 건 상세와 B 이력 조회 | Bearer(ADMIN) |
+| PATCH | `/api/admin/application-cases/{id}/status` | 관리자 지원 건 상태 변경과 처리 메모 기록 | Bearer(ADMIN) |
 | GET | `/api/admin/job-analysis` | 관리자 공고 분석 조회 | Bearer(ADMIN) |
+| PATCH | `/api/admin/job-analysis/{analysisId}/memo` | 관리자 공고 분석 운영 메모 수정 | Bearer(ADMIN) |
 | GET | `/api/admin/company-analysis` | 관리자 기업 분석 조회 | Bearer(ADMIN) |
+| PATCH | `/api/admin/company-analysis/{analysisId}/memo` | 관리자 기업 분석 운영 메모 수정 | Bearer(ADMIN) |
+| PATCH | `/api/admin/company-analysis/{analysisId}/metadata` | 관리자 기업 분석 출처 메타데이터 수정. 날짜 clear 플래그로 `checked_at`, `refresh_recommended_at` 초기화 가능 | Bearer(ADMIN) |
 | GET | `/api/admin/ai-usage/b` | 관리자 B AI 사용량 로그 조회 | Bearer(ADMIN) |
 
-실제 AI 분석과 이미지/스캔 PDF OCR은 `OPENAI_API_KEY`가 필요하다. 모델은 `OPENAI_MODEL`로 변경할 수 있으며 기본값은 `gpt-5`다.
-텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 OpenAI OCR을 사용한다.
+공고/기업 분석은 기본적으로 자체 파인튜닝 모델 `careertuner-b-jobposting-r1`(Ollama)을 사용한다(`B_ANALYSIS_LOCAL_LLM_ENABLED` 기본 `true`). 스키마·그라운딩 검증을 통과하지 못하거나 모델 호출이 실패하면 1회 재시도 후 `self-rules-v1` 규칙 경로로 폴백한다. Ollama 미서빙 환경에서는 `B_ANALYSIS_LOCAL_LLM_ENABLED=false`로 끄면 곧장 `self-rules-v1`을 사용한다. 모델·주소·타임아웃은 `B_ANALYSIS_OLLAMA_MODEL`, `B_ANALYSIS_OLLAMA_BASE_URL`, `B_ANALYSIS_OLLAMA_READ_TIMEOUT`(기본 480s)로 조정한다. 컨텍스트와 출력 예산은 `B_ANALYSIS_OLLAMA_NUM_CTX`(기본 8192), `B_ANALYSIS_OLLAMA_NUM_PREDICT`(기본 2048)로 조정하며, 서비스는 이 예산에 맞춰 긴 공고 원문을 보수적으로 절단해 컨텍스트 초과 폴백을 줄인다.
+텍스트 PDF는 PDFBox로 먼저 추출하고, 텍스트가 없는 PDF와 이미지는 자체 문서 추출 워커 또는 명시적으로 allowlist 된 OCR fallback만 사용한다. OpenAI 폴백은 `OPENAI_API_KEY`가 있을 때만 동작하며 모델은 `OPENAI_MODEL`(기본 `gpt-5`)로 바꾼다.
+자체 LLM은 B 공고/기업 분석(`careertuner-b-jobposting-r1`), E 첨삭(`careertuner-e-correction-3b:delivery-s-f16-20260708` → Anthropic → OpenAI), F 커뮤니티 검열의 Ollama 연동과 D 면접 파인튜닝 실험을 중심으로 붙어 있으며,
+A~F 담당별 목표 운영 기준은 [`../docs/planning/담당별_자체LLM_운영안.md`](../docs/planning/담당별_자체LLM_운영안.md)를 따른다.
+공통 `ai/common`, 도메인별 `A_AI_*`~`F_AI_*` 설정, 관리자 AI 상태 API는 목표 구조이므로 실제 도입 시 공통 영역 합의 후 구현한다.
 공고문 파일 업로드는 기본 10MB까지 허용하며, 초과 시 `INVALID_INPUT` 응답으로 안내한다.
-`/analysis/mock`은 화면과 데이터 흐름 검증 및 `fit_analysis`를 포함하는 호환 API용이며, B 프론트에서는 직접 사용하지 않는다.
-목표 데이터 모델은 지원 건 보관/삭제를 `archived_at`, `deleted_at`으로 분리하고, 공고문 수정은 같은 공고의
-revision으로 저장한다. 제품 정책은 `../docs/planning/기획.md`, 데이터/API 목표 구조는
+현재 구현은 지원 건 보관/삭제를 `archived_at`, `deleted_at`으로 분리한다. 사용자 목록 API는 `view=ACTIVE|ARCHIVED|DELETED`를 지원하며,
+기존 `includeArchived=true`는 `view`가 없을 때 활성+보관 목록을 반환하는 호환 동작으로 유지한다. 복원 API는 삭제 상태와 보관 상태를 함께 비워 활성 목록으로 되돌린다.
+공고문 수정은 같은 공고의
+revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` unique key로 중복 revision을 막고,
+저장 충돌이 발생하면 revision을 다시 계산해 최대 3회 재시도한다. 기업 분석 출처 메타데이터는 관리자 API에서만
+수정하며, `sourceType`은 필수이고 날짜 필드는 `clearCheckedAt`, `clearRefreshRecommendedAt` 플래그로 `NULL` 저장할 수 있다.
+사용자 검수 API는 기업 분석 본문과 구조화 JSON만 수정한다. 제품 정책은 `../docs/planning/기획.md`, 데이터/API 목표 구조는
 `../docs/ARCHITECTURE.md`와 `../docs/FEATURE_MODULE_STRUCTURE.md`를 따른다.
+
+## E 첨삭 API
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| POST | `/api/corrections` | 자기소개서·면접 답변·이력서·포트폴리오 설명 첨삭 생성 | Bearer |
+| GET | `/api/corrections` | 내 첨삭 이력 조회 | Bearer |
+| GET | `/api/corrections/{id}` | 내 첨삭 결과 상세 조회 | Bearer |
+| GET | `/api/admin/corrections` | 관리자 첨삭 성공 이력 검색·페이지 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/summary` | 관리자 첨삭 성공·실패·메모 현황 집계 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/ai-failures` | 첨삭 AI 실패 로그 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/corrections/{id}` | 첨삭 원문·결과·AI 사용량 상세 조회 | Bearer(ADMIN) |
+| PUT | `/api/admin/corrections/{id}/memo` | 첨삭 운영 메모 저장·삭제 | Bearer(ADMIN) |
+| GET | `/api/admin/credits` | 크레딧 변동 원장 검색·페이지 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/credits/summary` | 크레딧 지급·차감·잔액 현황 집계 | Bearer(ADMIN) |
+| POST | `/api/admin/credits/adjust` | 관리자 크레딧 증감과 원장·감사 로그 기록 | Bearer(ADMIN) |
+
+E 자체 모델은 버전이 고정된 3B F16 모델(`careertuner-e-correction-3b:delivery-s-f16-20260708`)과 Ollama의 JSON object 응답 모드를 사용한다. 서버가 JSON 키, 원문 분량, 문단 보존, `changes` 3개 이상 계약을 검증하며, 첫 응답이 계약을 어기면 같은 3B에 실패 사유와 이전 출력을 전달해 한 번 repair한다. 구조화 출력 편차를 줄이기 위해 자체 모델의 기본 temperature는 `0.0`이다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 이 3B 모델만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. 자체 모델 실패 또는 시간 예산 소진 시 Anthropic을 호출하고, Anthropic도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. Anthropic에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
+
+기존 DB에는 `db/patches/20260705_e_correction_admin_memo.sql`을 먼저 적용해야 첨삭 운영 메모 API를 사용할 수 있다. 첨삭 실패는 성공 결과 테이블이 아니라 `ai_usage_log`에 기록되므로 관리자 화면도 성공 이력과 실패 로그를 별도 데이터 소스로 조회한다.
+
+## C 분석·대시보드 API
+
+홈/대시보드/취업 분석/적합도 분석(C 담당) API. 모두 인증된 사용자 자신의 데이터만 다루며,
+A 프로필·B 공고/지원 건·D 면접·E 첨삭 원본은 읽기 전용으로만 참조한다.
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| GET | `/api/home/summary` | 로그인 홈 요약(포커스·다음 액션·온보딩 진행률) | Bearer |
+| GET | `/api/dashboard/summary` | 대시보드 요약(준비도 게이지·상태별 건수·최근 변화·유망 지원 건·AI 요약 이력) | Bearer |
+| POST | `/api/dashboard/summary/refresh` | 대시보드 AI 요약 재생성(크레딧 차감) | Bearer |
+| GET | `/api/dashboard/todos` | 오늘의 할 일 목록(파생+사용자 추가) | Bearer |
+| POST | `/api/dashboard/todos` | 사용자 할 일 추가 | Bearer |
+| PATCH | `/api/dashboard/todos/derived` | 파생 할 일 완료 오버라이드 | Bearer |
+| PATCH | `/api/dashboard/todos/{todoId}` | 사용자 할 일 완료 토글 | Bearer |
+| DELETE | `/api/dashboard/todos/{todoId}` | 사용자 할 일 삭제 | Bearer |
+| GET | `/api/analysis/summary` | 장기 취업 분석 요약(반복 강·약점, 직무/기업 유형/기술스택별 적합도, 지원 분류·우선순위, 리스크, 3줄 요약) | Bearer |
+| POST | `/api/analysis/summary/refresh` | 장기 경향 AI 요약 재생성(크레딧 차감) | Bearer |
+| GET | `/api/analysis/history` | 장기 분석 AI 실행 이력 | Bearer |
+| GET | `/api/analysis/plan` | 커리어 목표 + 학습 계획 조회 | Bearer |
+| PUT | `/api/analysis/plan/goal` | 분석용 커리어 목표 설정(목표 직무·기간·우선 역량·선호 기업 유형) | Bearer |
+| POST | `/api/analysis/plan/learning-plans` | 학습 계획 생성 | Bearer |
+| POST | `/api/analysis/plan/learning-plans/{planId}/tasks` | 학습 계획 과제 추가 | Bearer |
+| PATCH | `/api/analysis/plan/learning-plans/{planId}/tasks/{taskId}` | 학습 과제 완료 토글 | Bearer |
+| GET | `/api/fit-analyses` | 지원 건별 최신 적합도 분석 목록 | Bearer |
+| GET | `/api/fit-analyses/application-cases/{id}` | 지원 건의 최신 적합도 분석(비교 매트릭스·점수 산정 상세·신뢰도·지원 판단·액션 보드·톤별 전략 포함) | Bearer |
+| POST | `/api/fit-analyses/application-cases/{id}` | 적합도 분석 생성/재생성(C 담당 AI, 크레딧 차감) | Bearer |
+| GET | `/api/fit-analyses/application-cases/{id}/history` | 재분석 히스토리(점수 변화·매칭/부족 역량 변화) | Bearer |
+| PATCH | `/api/fit-analyses/{fitAnalysisId}/learning-tasks/{taskId}` | 학습 로드맵 체크리스트 완료 토글 | Bearer |
+| GET | `/api/admin/home/summary` | 관리자 홈 처리 필요 작업(실패·강등 노출·재분석 요청 등) | Bearer(ADMIN) |
+| GET | `/api/admin/dashboard/overview` | 관리자 운영 종합 현황 | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/summary` | 분석 통계(점수 분포·반복 부족 역량·프롬프트 버전별 성능 등) | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/failures` | 분석 실패 큐(FAILED/FALLBACK 결과 통합) | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/quality-flags` | 분석 품질 검수 큐 | Bearer(ADMIN) |
+| PATCH | `/api/admin/analytics/quality-flags/{fitAnalysisId}/{flagType}/resolve` | 품질 플래그 해결 처리 | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/runs?userId=` | 장기/대시보드 AI 실행 이력 | Bearer(ADMIN) |
+| GET | `/api/admin/analytics/users/{userId}/timeline` | 사용자별 분석 이력 타임라인 | Bearer(ADMIN) |
+| GET/POST | `/api/admin/analytics/runs/{runId}/memos` | 실행 이력 운영 메모 조회/작성 | Bearer(ADMIN) |
+| PATCH/DELETE | `/api/admin/analytics/runs/{runId}/memos/{memoId}` | 실행 이력 운영 메모 수정/삭제 | Bearer(ADMIN) |
+| GET | `/api/admin/fit-analyses` | 관리자 적합도 분석 목록(재분석 요청 플래그 포함) | Bearer(ADMIN) |
+| GET | `/api/admin/fit-analyses/{id}` | 관리자 적합도 분석 상세(스냅샷·매트릭스·판단 JSON 포함) | Bearer(ADMIN) |
+| GET/POST | `/api/admin/fit-analyses/{id}/memos` | 적합도 운영 메모 조회/작성 | Bearer(ADMIN) |
+| PATCH/DELETE | `/api/admin/fit-analyses/{id}/memos/{memoId}` | 적합도 운영 메모 수정/삭제 | Bearer(ADMIN) |
+| GET | `/api/admin/prompts/fit-analysis` | 적합도 분석 프롬프트 운영 조회 | Bearer(ADMIN) |
+| GET | `/api/admin/prompts/analytics` | 장기/대시보드 분석 프롬프트 운영 조회 | Bearer(ADMIN) |
+
+C 분석 AI는 `OPENAI_API_KEY`가 없으면 결정적 mock으로 동작하고, 키 주입 시 동일 엔드포인트로 실제 구조화 분석이 실행된다.
+비용이 드는 AI 요약은 `career_analysis_run`의 입력 fingerprint로 캐시하며, 명시적 재생성 시에만 크레딧을 차감한다.
+C 소유 테이블: `fit_analysis`, `fit_analysis_learning_task`, `fit_analysis_history`, `fit_analysis_condition_match`,
+`career_analysis_run`, `career_goal`, `learning_plan`, `learning_plan_task`, `dashboard_insight`, `dashboard_todo`,
+`analysis_quality_flag`, `admin_fit_analysis_memo`, `admin_career_run_memo`.
 
 ## JSON 컬럼 매핑 방침
 

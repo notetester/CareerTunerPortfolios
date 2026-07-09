@@ -1,0 +1,75 @@
+# CareerTuner — 백엔드 + Qdrant(RAG) 로컬/EC2 배포용.
+# MySQL 은 팀 공용 원격 인스턴스를 재사용한다(여기 포함하지 않음).
+# 실행: OPENAI_API_KEY=... docker compose up -d --build
+#
+# ⚠️ 인프라(공통 영역) 산출물 — dev 반영 전 팀 합의 필요.
+
+services:
+  backend:
+    build:
+      context: ./backend
+    image: careertuner-backend:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # ── DB: 기존 원격 MySQL ──
+      # 접속값은 .env 로 주입한다(평문 커밋 금지). 미설정 시 application.yaml 기본값 사용.
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      # ── OpenAI (정식 키 — EC2/시크릿으로 주입) ──
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5}
+      INTERVIEW_REALTIME_MODEL: ${INTERVIEW_REALTIME_MODEL:-gpt-4o-realtime-preview}
+      # ── 업로드/미디어 ──
+      MEDIA_UPLOAD_DIR: /app/.uploads/media
+      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:-50MB}
+      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:-60MB}
+      # ── 보안 ──
+      JWT_SECRET: ${JWT_SECRET:-}
+      # ── RAG ──
+      QDRANT_URL: http://qdrant:6333
+      JOB_POSTING_AI_WORKER_ENABLED: ${JOB_POSTING_AI_WORKER_ENABLED:-true}
+      JOB_POSTING_AI_WORKER_BASE_URL: ${JOB_POSTING_AI_WORKER_BASE_URL:-http://job-posting-worker:8091}
+      JOB_POSTING_AI_WORKER_TIMEOUT: ${JOB_POSTING_AI_WORKER_TIMEOUT:-30s}
+    volumes:
+      - media_uploads:/app/.uploads
+    depends_on:
+      qdrant:
+        condition: service_started
+      job-posting-worker:
+        condition: service_healthy
+
+  job-posting-worker:
+    build:
+      context: ./ml/job-posting-worker
+      args:
+        PYTHON_VERSION: ${JOB_POSTING_WORKER_PYTHON_VERSION:-3.14}
+        INSTALL_OCR: ${JOB_POSTING_WORKER_INSTALL_OCR:-false}
+    image: careertuner-job-posting-worker:latest
+    restart: unless-stopped
+    expose:
+      - "8091"
+    volumes:
+      - media_uploads:/app/.uploads:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+volumes:
+  media_uploads:
+  qdrant_storage:

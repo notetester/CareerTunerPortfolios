@@ -4,8 +4,10 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:10MB}
-      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:12MB}
+      # servlet cap 은 상위 안전 상한(전역). 공고 업로드 실효 한도는 관리자 설정(JobPostingUploadLimitPolicy, 최대 20MB)이 결정한다.
+      # 관리자 상한(20MB)이 실효하려면 request-size 도 그 이상이어야 한다(초과 시 앱 정책 前 servlet 이 먼저 거부).
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:20MB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:22MB}
 
   # ───────────────────────────────────────────────────────────────────────
   #  시크릿/환경 설정 정책
@@ -13,8 +15,15 @@ spring:
   #  - 지금: 커밋된 기본값(개발용)으로 즉시 동작 → 비공개 repo 라 팀원이 클론 후 바로 실행.
   #  - 배포(AWS 등): 동일 이름의 환경변수만 설정하면 코드/파일 변경 없이 교체된다.
   #      예)  DB_PASSWORD=... OAUTH_KAKAO_CLIENT_SECRET=... JWT_SECRET=... java -jar app.jar
+  #
+  #  환경 프로파일(local/tailscale/aws/domain) — 호스트 기본값 묶음을 이름으로 전환:
+  #      SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+  #      또는 .\gradlew.bat bootRun --args='--spring.profiles.active=local'
+  #  프로파일 파일은 application-<이름>.yaml 이며 호스트 관련 키만 오버라이드한다.
+  #  환경변수 override 는 프로파일보다 항상 우선한다. 상세: docs/ENVIRONMENTS.md
   # ───────────────────────────────────────────────────────────────────────
 
+  # 팀 DB(AWS) — 활성. 로컬 테스트 시 아래 localhost 블록으로 임시 교체.
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:team1_db}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:dbuser}
@@ -23,6 +32,13 @@ spring:
     hikari:
       # MySQL 미기동 상태에서도 부팅되도록 시작 시 커넥션 시도를 생략(개발 편의).
       initialization-fail-timeout: -1
+
+  # 로컬 테스트용 (사용 시 위 팀 DB 블록 주석 처리)
+#  datasource:
+#    url: jdbc:mysql://localhost:3306/team1?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true
+#    username: dbuser
+#    password: 1234
+#    driver-class-name: com.mysql.cj.jdbc.Driver
 
   mail:
     host: ${MAIL_HOST:smtp.naver.com}
@@ -70,16 +86,159 @@ careertuner:
     sender-name: ${MAIL_SENDER_NAME:CareerTuner}
     # SMTP(username) 미설정 시 실제 발송 대신 인증 링크를 로그로 출력하는 개발 모드.
     dev-mode: ${MAIL_DEV_MODE:true}
+  sms:
+    # 전화번호 SMS OTP 인증. provider 기본 mock — 키가 없으면 Mock 제공자가 코드를 로깅하고
+    # 응답 devCode 로 노출해 발송→입력→검증 전 과정을 키 없이도 데모할 수 있다.
+    # 실 제공자(aligo/twilio/naver-sens) 키를 채우고 SMS_PROVIDER 로 지정하면 즉시 실 발송된다.
+    provider: ${SMS_PROVIDER:mock}
+    otp-validity-seconds: ${SMS_OTP_VALIDITY_SECONDS:300}
+    max-attempts: ${SMS_MAX_ATTEMPTS:5}
+    cooldown-seconds: ${SMS_COOLDOWN_SECONDS:60}
+    sender-phone: ${SMS_SENDER_PHONE:}
+    aligo:
+      api-key: ${SMS_ALIGO_API_KEY:}
+      user-id: ${SMS_ALIGO_USER_ID:}
+      sender: ${SMS_ALIGO_SENDER:}
+      base-url: ${SMS_ALIGO_BASE_URL:https://apis.aligo.in}
+    twilio:
+      account-sid: ${SMS_TWILIO_ACCOUNT_SID:}
+      auth-token: ${SMS_TWILIO_AUTH_TOKEN:}
+      from: ${SMS_TWILIO_FROM:}
+      base-url: ${SMS_TWILIO_BASE_URL:https://api.twilio.com/2010-04-01}
+    naver-sens:
+      access-key: ${SMS_NAVER_ACCESS_KEY:}
+      secret-key: ${SMS_NAVER_SECRET_KEY:}
+      service-id: ${SMS_NAVER_SERVICE_ID:}
+      from: ${SMS_NAVER_FROM:}
+      base-url: ${SMS_NAVER_BASE_URL:https://sens.apigw.ntruss.com}
   openai:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
-    timeout: ${OPENAI_TIMEOUT:90s}
+    timeout: ${OPENAI_TIMEOUT:300s}
+    job-posting-fallback-enabled: ${JOB_POSTING_OPENAI_FALLBACK_ENABLED:false}
+    job-posting-fallback-allowlist: ${JOB_POSTING_OPENAI_FALLBACK_ALLOWLIST:}
+  profile:
+    ai:
+      finetuned:
+        # A파트 프로필 자체 파인튜닝 모델 서버. 기본은 꺼두어 팀원 환경에서 원격 서버 의존성을 만들지 않는다.
+        enabled: ${PROFILE_AI_FINETUNED_ENABLED:false}
+        base-url: ${PROFILE_AI_FINETUNED_BASE_URL:}
+        model: ${PROFILE_AI_FINETUNED_MODEL:qwen3-profile-lora-v4}
+        timeout: ${PROFILE_AI_FINETUNED_TIMEOUT:240s}
+  analysis:
+    ai:
+      # C 적합도/취업분석 AI provider. openai(기본/폴백) | oss(자체 파인튜닝 careertuner-c-career-strategy-3b)
+      # 원격 호출 경로(공유 4090 Ollama 접근: Tailscale/LAN/로컬) 미확정 → base-url 미설정 시 OSS 비활성(기존 동작 유지).
+      provider: ${CAREERTUNER_ANALYSIS_AI_PROVIDER:openai}
+      oss:
+        base-url: ${CAREERTUNER_ANALYSIS_AI_OSS_BASE_URL:}
+        model: ${CAREERTUNER_ANALYSIS_AI_OSS_MODEL:careertuner-c-career-strategy-3b}
+        api-key: ${CAREERTUNER_ANALYSIS_AI_OSS_API_KEY:}
+        # 설명 출력이 길어 1024 미만이면 JSON truncation(4090 검증: max-new 512 실패→1024 통과) → 최소 1024, 권장 1280~1536
+        max-tokens: ${CAREERTUNER_ANALYSIS_AI_OSS_MAX_TOKENS:1280}
+        temperature: ${CAREERTUNER_ANALYSIS_AI_OSS_TEMPERATURE:0.2}
+        # 소형 모델 JSON 안정성 보강: 일시적 실패(5xx/네트워크/JSON 깨짐) 재시도(총 시도 = max-retries+1) + 선형 백오프
+        max-retries: ${CAREERTUNER_ANALYSIS_AI_OSS_MAX_RETRIES:2}
+        retry-backoff: ${CAREERTUNER_ANALYSIS_AI_OSS_RETRY_BACKOFF:400ms}
+        # grounding guard: 설명이 '부족 역량을 보유로 서술'하면 재호출(소진 시 폴백). 점수/판단은 규칙엔진 소유.
+        grounding-retries: ${CAREERTUNER_ANALYSIS_AI_OSS_GROUNDING_RETRIES:1}
+  anthropic:
+    # 면접 LLM 1차(기본) provider(Claude Haiku). 선생(합성 데이터 증류)·런타임 공통.
+    # 키가 비어 있으면 자동으로 OpenAI 로 폴백한다(로드맵 Phase 4).
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: ${ANTHROPIC_MODEL:claude-haiku-4-5-20251001}
+    base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com/v1}
+    version: ${ANTHROPIC_VERSION:2023-06-01}
+    max-tokens: ${ANTHROPIC_MAX_TOKENS:8192}
+    timeout: ${ANTHROPIC_TIMEOUT:120s}
+  chat-llm:
+    # 커뮤니티/인테이크 챗봇 폴백(자체 Ollama qwen3 → Haiku → OpenAI → Mock) 전용 튜닝값.
+    # 키·baseUrl·Anthropic 모델명은 위 careertuner.anthropic / careertuner.openai 를 재사용하고, 여기선 챗봇 성격 값만 둔다.
+    temperature: ${CHAT_LLM_TEMPERATURE:0.0}
+    max-tokens: ${CHAT_LLM_MAX_TOKENS:4096}
+    # OpenAI 폴백 모델. 공용 careertuner.openai.model 기본값(gpt-5)은 추론 모델이라 챗봇 tool-calling 응답이 느림 → 비추론 모델로.
+    open-ai-model: ${CHAT_LLM_OPENAI_MODEL:gpt-4o-mini}
   uploads:
     job-posting-dir: ${JOB_POSTING_UPLOAD_DIR:.uploads/application-postings}
     max-file-size-bytes: ${JOB_POSTING_MAX_FILE_SIZE_BYTES:10485760}
+    storage-provider: ${JOB_POSTING_STORAGE_PROVIDER:local}
+  extraction:
+    ai-worker:
+      enabled: ${JOB_POSTING_AI_WORKER_ENABLED:false}
+      # 외부 저장소(Cloudinary 등) 사용 시 워커에 파일 bytes(base64) 전송 — 로컬 저장이면 불필요(false).
+      send-bytes: ${JOB_POSTING_AI_WORKER_SEND_BYTES:false}
+      base-url: ${JOB_POSTING_AI_WORKER_BASE_URL:http://127.0.0.1:8091}
+      # CPU PaddleOCR/PPStructure는 첫 케이스 모델 로딩+추론에 수십 초 걸려 30s로는 타임아웃됨(긴 이미지 27.5s 실측).
+      timeout: ${JOB_POSTING_AI_WORKER_TIMEOUT:120s}
+  b-analysis:
+    # 기업분석 1순위 provider. auto(기본, 현행 R1→Claude→OpenAI) | openai(OpenAI 우선) | claude(Claude 우선).
+    # R1 결과 품질이 아쉬워 hosted 우선을 실험할 때 env 로 전환한다. 최종 안전망은 항상 self-rules-v1.
+    # 공고분석(job)은 이 설정과 무관하게 현행 폴백 체인을 유지한다.
+    company:
+      provider: ${B_ANALYSIS_COMPANY_PROVIDER:auto}
+      # 기업분석 OpenAI 경로 전용 모델 override. 비어 있으면 공용 careertuner.openai.model 사용.
+      # 다른 OpenAI 호출(공고폴백·메타데이터·OCR)은 영향 없음. 예: gpt-5.4-mini(지연·비용 최적화).
+      open-ai-model: ${B_ANALYSIS_COMPANY_OPENAI_MODEL:}
+    local-llm:
+      enabled: ${B_ANALYSIS_LOCAL_LLM_ENABLED:true}
+      base-url: ${B_ANALYSIS_OLLAMA_BASE_URL:http://localhost:11434}
+      model: ${B_ANALYSIS_OLLAMA_MODEL:careertuner-b-jobposting-r1}
+      connect-timeout: ${B_ANALYSIS_OLLAMA_CONNECT_TIMEOUT:5s}
+      read-timeout: ${B_ANALYSIS_OLLAMA_READ_TIMEOUT:480s}
+      num-ctx: ${B_ANALYSIS_OLLAMA_NUM_CTX:8192}
+      num-predict: ${B_ANALYSIS_OLLAMA_NUM_PREDICT:2048}
+  # 기업분석 웹검색 활성 스위치(235 §11 팀장 승인 2026-07-03 · PR #238 · 후속 폴리시 #242).
+  # 기본 ON — env(CAREERTUNER_COMPANY_WEBSEARCH_ENABLED)로 환경별 override 가능.
+  # 네이버 키(NAVER_SEARCH_CLIENT_ID/_SECRET) 미설정·검색 실패 시 안전하게 공고-only 로 degrade(D-4c).
+  # 분석 1건당 비용 상한(검색 4회/결과 12건)은 코드 기본값 사용.
+  company-websearch:
+    enabled: ${CAREERTUNER_COMPANY_WEBSEARCH_ENABLED:true}
+  file:
+    # 면접 음성/영상 등 업로드 파일 저장 위치. 큰 영상은 SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE 도 함께 올린다.
+    media-dir: ${MEDIA_UPLOAD_DIR:.uploads/media}
+    max-file-size-bytes: ${MEDIA_MAX_FILE_SIZE_BYTES:10485760}
+  push:
+    # Web Push(VAPID) 발송 키. 아래 기본값은 개발용(공개키는 프런트 VITE_VAPID_PUBLIC_KEY 와 동일해야 함).
+    # 운영에서는 PUSH_VAPID_* env 로 교체. 키가 있으면 web push 가 실제 발송된다.
+    vapid:
+      subject: ${PUSH_VAPID_SUBJECT:mailto:no-reply@careertuner.local}
+      public-key: ${PUSH_VAPID_PUBLIC_KEY:BIHnlq45n0TUTYx1XCkGjMpap8v_GHYBKqUjrx9O3npe7HL2Nz1TU28u0Kh17q4QjP3w8ZXGJn1RIRQ25SR5Elk}
+      private-key: ${PUSH_VAPID_PRIVATE_KEY:YOUR_VAPID_PRIVATE_KEY}
+    # 네이티브(FCM) 는 Firebase 서비스계정이 필요 — 미설정 시 네이티브 푸시는 로깅 폴백.
+    fcm:
+      service-account: ${PUSH_FCM_SERVICE_ACCOUNT:}
+  interview:
+    eval:
+      # 답변 평가 모델. openai(기본/폴백) | oss(자체 파인튜닝 모델, vLLM/TGI OpenAI 호환 엔드포인트)
+      # 자체 모델 미서빙 환경은 provider=openai 로 둔다. oss 는 GPU 임대 학습 후 base-url 연결(로드맵 5장).
+      provider: ${INTERVIEW_EVAL_PROVIDER:openai}
+      base-url: ${INTERVIEW_EVAL_BASE_URL:}
+      model: ${INTERVIEW_EVAL_MODEL:}
+      api-key: ${INTERVIEW_EVAL_API_KEY:}
+    agent:
+      # 자율 루프 정책. rule(기본) | llm(시연 — LLM Planner 가 다음 액션 결정, 실패 시 rule 폴백)
+      planner: ${INTERVIEW_AGENT_PLANNER:rule}
+      max-turns: ${INTERVIEW_AGENT_MAX_TURNS:6}
+    realtime:
+      # 실시간 음성 면접관(OpenAI Realtime). 키는 careertuner.openai.api-key 재사용.
+      # 실제 사용 가능한 Realtime 모델 id 로 교체할 것.
+      model: ${INTERVIEW_REALTIME_MODEL:gpt-4o-realtime-preview}
+      voice: ${INTERVIEW_REALTIME_VOICE:alloy}
+    rag:
+      # 면접 RAG(Qdrant). enabled=true 로 활성화 — 관리자 지식베이스/재색인 사용.
+      # Qdrant 미가동 환경에서도 색인/검색은 best-effort 로 무해하게 건너뛴다(면접 흐름 영향 없음).
+      enabled: ${INTERVIEW_RAG_ENABLED:true}
+      qdrant-url: ${QDRANT_URL:http://localhost:6333}
+      collection: ${INTERVIEW_RAG_COLLECTION:interview_knowledge}
+      embedding-model: ${INTERVIEW_RAG_EMBEDDING_MODEL:text-embedding-3-small}
+      dimension: ${INTERVIEW_RAG_DIMENSION:1536}
+      top-k: ${INTERVIEW_RAG_TOPK:4}
   oauth:
     # ⚠️ 아직 키 미발급 → 기본값은 placeholder. 키 수령 후 env 또는 이 값만 교체.
+    # 개발/데모는 키가 없어도 signed state 기반 mock OAuth 로 로그인/연동 화면을 확인할 수 있다.
+    # 운영 프로파일(application-aws/domain.yaml)은 false 로 덮어쓴다.
+    mock-enabled: ${OAUTH_MOCK_ENABLED:true}
     kakao:
       client-id: ${OAUTH_KAKAO_CLIENT_ID:CHANGEME}
       client-secret: ${OAUTH_KAKAO_CLIENT_SECRET:}
@@ -93,6 +252,58 @@ careertuner:
       client-secret: ${OAUTH_GOOGLE_CLIENT_SECRET:CHANGEME}
       redirect-uri: ${OAUTH_GOOGLE_REDIRECT_URI:http://localhost:8080/api/auth/oauth/google/callback}
 
+# ─── Ollama (로컬 LLM) ───
+# 4090(기본값)이 꺼져 있으면 부팅 시 자동으로 폴백 후보(AI_OLLAMA_FALLBACK_BASE_URLS,
+# 기본 http://localhost:11434)를 프로브해 살아있는 쪽으로 교체한다 — ai/common/ollama 참고.
+# 끄기: AI_OLLAMA_FALLBACK_ENABLED=false
+ai:
+  ollama:
+    base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+    model: ${AI_OLLAMA_MODEL:gemma4}
+    # 이미지(vision) 검열 전용 모델 — 텍스트는 gemma4, 이미지는 텍스트/광고 인식이 강한 VL 모델을 쓴다.
+    # 미설치 환경이면 vision 호출 실패 → Claude/OpenAI vision 폴백.
+    vision-model: "${AI_OLLAMA_VISION_MODEL:qwen2.5vl:7b}"
+    connect-timeout: ${AI_OLLAMA_CONNECT_TIMEOUT:10s}
+    read-timeout: ${AI_OLLAMA_READ_TIMEOUT:60s}
+  tagging:
+    confidence-threshold: ${AI_TAGGING_CONFIDENCE_THRESHOLD:0.7}
+  chatbot:
+    embedding-model: ${AI_CHATBOT_EMBEDDING_MODEL:bge-m3}
+    chat-model: ${AI_CHATBOT_CHAT_MODEL:gemma4}
+    similarity-threshold: ${AI_CHATBOT_SIMILARITY_THRESHOLD:0.35}
+    # FAQ 임베딩 게이트 임계(별도 키 — 위 similarity-threshold=검색후보 컷오프와 물리 분리. 게이트만 독립 튜닝).
+    faq-gate-threshold: ${AI_CHATBOT_FAQ_GATE_THRESHOLD:0.35}
+    top-k: ${AI_CHATBOT_TOP_K:3}
+
+# ─── LangChain4j (커뮤니티 챗봇 에이전트) ───
+# 기존 ai.ollama 와 네임스페이스 분리. 구동 모델 기본값은 Part2 게이트 통과한 qwen3:8b.
+# 모델명은 검열/FAQ용 ai.ollama.model(gemma4)과 충돌하지 않게 별도 env(AI_AGENT_MODEL)로 분리
+# → CI/GitHub Actions secret 으로 에이전트 모델만 독립 오버라이드 가능.
+langchain4j:
+  ollama:
+    chat-model:
+      base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+      model-name: ${AI_AGENT_MODEL:qwen3:8b}
+      temperature: 0.0          # 라우팅 일관성 위해 낮게
+      timeout: PT120S           # 원격+로컬 추론 느림
+      think: false              # 추론 토큰 끄기 — 응답 노이즈 제거
+      return-thinking: false    # 추론 결과 미반환 (이중 안전)
+      # ⚠️ RESPONSE_FORMAT_JSON_SCHEMA 는 켜지 않는다.
+      #   Ollama 는 format(구조화 출력)이 걸리면 tool_call 을 생략하고 즉시 JSON 만 반환한다
+      #   → 검색 의도에도 searchCommunityPosts 를 안 부르는 치명적 충돌. (실측 확인)
+      #   대신 LangChain4j 가 POJO 반환타입에 맞춰 프롬프트 기반 JSON 지시를 넣어 구조화하고,
+      #   컨트롤러에 파싱 폴백을 둔다. 이러면 툴 호출이 정상 동작한다.
+      log-requests: true
+      log-responses: true
+
+# ─── 커뮤니티 개인화 피드(7:3 혼합) ───
+# personalized-ratio 만 조정하면 개인화:신선/인기 비율이 바뀐다(0.7 → 7:3). 범위를 벗어나면 서비스가 0.7 로 보정.
+community:
+  feed:
+    personalized-ratio: ${COMMUNITY_FEED_PERSONALIZED_RATIO:0.7}
+    candidate-limit: ${COMMUNITY_FEED_CANDIDATE_LIMIT:300}
+
 logging:
   level:
     com.careertuner: DEBUG
+    dev.langchain4j: DEBUG

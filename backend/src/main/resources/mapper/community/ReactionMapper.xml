@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.community.mapper.ReactionMapper">
+
+    <!-- 카운트 캐시 컬럼 매핑 — reaction_type 은 enum name 만 들어오므로 choose 화이트리스트로 컬럼 결정 -->
+    <sql id="postCountColumn">
+        <choose>
+            <when test="reactionType == 'LIKE'">like_count</when>
+            <when test="reactionType == 'DISLIKE'">dislike_count</when>
+            <when test="reactionType == 'RECOMMEND'">recommend_count</when>
+            <when test="reactionType == 'DISRECOMMEND'">disrecommend_count</when>
+            <otherwise>bookmark_count</otherwise>
+        </choose>
+    </sql>
+
+    <!-- ── 게시글 리액션 ── -->
+
+    <select id="findPostReaction" resultType="com.careertuner.community.domain.PostReaction">
+        SELECT pr.*, pr.is_anonymous AS anonymous
+          FROM post_reaction pr
+         WHERE pr.user_id = #{userId}
+           AND pr.post_id = #{postId}
+           AND pr.reaction_type = #{reactionType}
+         LIMIT 1
+    </select>
+
+    <!-- 같은 축의 기존 리액션 (교체/토글 판정) -->
+    <select id="findPostReactionByAxis" resultType="com.careertuner.community.domain.PostReaction">
+        SELECT pr.*, pr.is_anonymous AS anonymous
+          FROM post_reaction pr
+         WHERE pr.user_id = #{userId}
+           AND pr.post_id = #{postId}
+           AND pr.axis = #{axis}
+         LIMIT 1
+    </select>
+
+    <!-- 뷰어의 이 글 리액션 전체 (상세 화면 상태 벌크 조회) -->
+    <select id="findPostReactionsByUser" resultType="com.careertuner.community.domain.PostReaction">
+        SELECT pr.*, pr.is_anonymous AS anonymous
+          FROM post_reaction pr
+         WHERE pr.user_id = #{userId}
+           AND pr.post_id = #{postId}
+    </select>
+
+    <insert id="insertPostReaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO post_reaction (user_id, post_id, reaction_type, axis, is_anonymous)
+        VALUES (#{userId}, #{postId}, #{reactionType}, #{axis}, #{anonymous})
+    </insert>
+
+    <delete id="deletePostReaction">
+        DELETE FROM post_reaction
+         WHERE user_id = #{userId}
+           AND post_id = #{postId}
+           AND reaction_type = #{reactionType}
+    </delete>
+
+    <!-- 카운트 캐시 증감 (음수 방지) -->
+    <update id="adjustPostReactionCount">
+        UPDATE community_post
+           SET <include refid="postCountColumn"/> = GREATEST(<include refid="postCountColumn"/> + #{delta}, 0)
+         WHERE id = #{postId}
+    </update>
+
+    <!-- 반응자 목록 — 익명 리액션은 본인 것만 포함(타인 시점 제외) -->
+    <select id="findPostReactors" resultType="com.careertuner.community.domain.PostReaction">
+        SELECT pr.*, pr.is_anonymous AS anonymous,
+               u.name AS userName
+          FROM post_reaction pr
+          JOIN users u ON u.id = pr.user_id
+         WHERE pr.post_id = #{postId}
+           AND (pr.is_anonymous = 0
+            <if test="viewerId != null"> OR pr.user_id = #{viewerId}</if>
+               )
+         ORDER BY pr.created_at DESC
+    </select>
+
+    <!-- 게시글 수정 시 release 설정 사용자의 리액션 일괄 삭제
+         (user_privacy_policy.policy_json 의 reactionRetention 별도 키 — privacy relations 키와 무관) -->
+    <delete id="deleteReleasedPostReactions">
+        DELETE pr
+          FROM post_reaction pr
+          JOIN user_privacy_policy upp ON upp.user_id = pr.user_id
+         WHERE pr.post_id = #{postId}
+           AND JSON_UNQUOTE(JSON_EXTRACT(upp.policy_json,
+               CONCAT('$.reactionRetention.', LOWER(pr.reaction_type)))) = 'release'
+    </delete>
+
+    <!-- 카운트 캐시 대사 — release 삭제 후 실제 행 수로 재계산 -->
+    <update id="reconcilePostReactionCounts">
+        UPDATE community_post cp
+           SET cp.like_count         = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'LIKE'),
+               cp.dislike_count      = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'DISLIKE'),
+               cp.recommend_count    = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'RECOMMEND'),
+               cp.disrecommend_count = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'DISRECOMMEND'),
+               cp.bookmark_count     = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'BOOKMARK')
+         WHERE cp.id = #{postId}
+    </update>
+
+    <!-- ── 댓글 리액션 ── -->
+
+    <sql id="commentCountColumn">
+        <choose>
+            <when test="reactionType == 'LIKE'">like_count</when>
+            <when test="reactionType == 'DISLIKE'">dislike_count</when>
+            <when test="reactionType == 'RECOMMEND'">recommend_count</when>
+            <otherwise>disrecommend_count</otherwise>
+        </choose>
+    </sql>
+
+    <select id="findCommentReaction" resultType="com.careertuner.community.domain.CommentReaction">
+        SELECT cr.*, cr.is_anonymous AS anonymous
+          FROM comment_reaction cr
+         WHERE cr.user_id = #{userId}
+           AND cr.comment_id = #{commentId}
+           AND cr.reaction_type = #{reactionType}
+         LIMIT 1
+    </select>
+
+    <select id="findCommentReactionByAxis" resultType="com.careertuner.community.domain.CommentReaction">
+        SELECT cr.*, cr.is_anonymous AS anonymous
+          FROM comment_reaction cr
+         WHERE cr.user_id = #{userId}
+           AND cr.comment_id = #{commentId}
+           AND cr.axis = #{axis}
+         LIMIT 1
+    </select>
+
+    <!-- 뷰어의 이 글 댓글 리액션 전체 (N+1 방지 벌크) -->
+    <select id="findCommentReactionsByUserForPost" resultType="com.careertuner.community.domain.CommentReaction">
+        SELECT cr.*, cr.is_anonymous AS anonymous,
+               cc.post_id AS postId
+          FROM comment_reaction cr
+          JOIN community_comment cc ON cc.id = cr.comment_id
+         WHERE cr.user_id = #{userId}
+           AND cc.post_id = #{postId}
+    </select>
+
+    <insert id="insertCommentReaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO comment_reaction (user_id, comment_id, reaction_type, axis, is_anonymous)
+        VALUES (#{userId}, #{commentId}, #{reactionType}, #{axis}, #{anonymous})
+    </insert>
+
+    <delete id="deleteCommentReaction">
+        DELETE FROM comment_reaction
+         WHERE user_id = #{userId}
+           AND comment_id = #{commentId}
+           AND reaction_type = #{reactionType}
+    </delete>
+
+    <update id="adjustCommentReactionCount">
+        UPDATE community_comment
+           SET <include refid="commentCountColumn"/> = GREATEST(<include refid="commentCountColumn"/> + #{delta}, 0)
+         WHERE id = #{commentId}
+    </update>
+
+</mapper>

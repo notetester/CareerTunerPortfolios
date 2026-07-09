@@ -1,0 +1,56 @@
+name: Frontend CI (typecheck + build)
+
+# 일반 PR/푸시에서 프런트엔드 타입 검사와 빌드를 검증한다.
+# 데모 배포(deploy-demo.yml)는 dev push 때만 돌므로, 평소 PR 에서 타입 깨짐을 조기에 잡기 위한 게이트다.
+# (2026-06 F 알림 타입 깨짐이 데모 배포를 막았던 사고의 재발 방지)
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'backend/src/main/java/com/careertuner/applicationcase/controller/ApplicationCaseController.java'
+      - 'backend/src/main/java/com/careertuner/applicationcase/dto/ApplicationCaseExtractionResponse.java'
+      - 'backend/src/main/java/com/careertuner/applicationcase/dto/ReviewJobPostingExtractionRequest.java'
+      - '.github/workflows/frontend-ci.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'frontend/**'
+      - 'backend/src/main/java/com/careertuner/applicationcase/controller/ApplicationCaseController.java'
+      - 'backend/src/main/java/com/careertuner/applicationcase/dto/ApplicationCaseExtractionResponse.java'
+      - 'backend/src/main/java/com/careertuner/applicationcase/dto/ReviewJobPostingExtractionRequest.java'
+      - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  # PR 의 오래된 실행만 취소한다. dev push 실행은 취소되면 커밋 목록에 실패처럼 남는다.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  typecheck-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build

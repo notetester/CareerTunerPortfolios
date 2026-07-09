@@ -6,7 +6,7 @@ import "../styles/support.css";
 
 export default function FaqPage() {
   const [cat, setCat] = useState("all");
-  const { faqs, faqLoading, fetchFaqs } = useSupportStore();
+  const { faqs, faqLoading, faqError, fetchFaqs } = useSupportStore();
 
   useEffect(() => {
     fetchFaqs(cat === "all" ? undefined : cat);
@@ -28,8 +28,8 @@ export default function FaqPage() {
             onClick={() => setCat(c.value)}
             style={
               cat === c.value
-                ? { background: "var(--gradient-brand)", color: "#fff", border: "1px solid transparent", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 600, cursor: "pointer" }
-                : { background: "var(--card)", color: "var(--muted-foreground)", border: "1px solid var(--border)", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 500, cursor: "pointer" }
+                ? { background: "var(--av-ink)", color: "var(--av-bg)", border: "1px solid transparent", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 600, cursor: "pointer" }
+                : { background: "var(--av-card)", color: "var(--av-ink-3)", border: "1px solid var(--av-line)", borderRadius: 9999, padding: "7px 15px", fontSize: 14, fontWeight: 500, cursor: "pointer" }
             }
           >
             {c.label}
@@ -37,7 +37,13 @@ export default function FaqPage() {
         ))}
       </div>
 
-      {items.length > 0 ? (
+      {faqLoading ? (
+        <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>불러오는 중...</p>
+      ) : faqError ? (
+        <div className="ct-faq__empty" style={{ color: "var(--destructive)" }}>
+          FAQ를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+        </div>
+      ) : items.length > 0 ? (
         <FaqAccordion items={items} />
       ) : (
         <div className="ct-faq__empty">해당 카테고리에 등록된 질문이 없습니다.</div>

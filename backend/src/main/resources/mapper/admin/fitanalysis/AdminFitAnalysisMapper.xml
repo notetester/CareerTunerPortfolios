@@ -24,12 +24,33 @@
         <result property="gapRecommendations" column="gap_recommendations"/>
         <result property="certificateRecommendations" column="certificate_recommendations"/>
         <result property="strategyActions" column="strategy_actions"/>
+        <result property="conditionMatrix" column="condition_matrix"/>
+        <result property="analysisConfidence" column="analysis_confidence"/>
+        <result property="applyDecision" column="apply_decision"/>
         <result property="model" column="model"/>
+        <result property="promptVersion" column="prompt_version"/>
         <result property="status" column="status"/>
         <result property="errorMessage" column="error_message"/>
         <result property="createdAt" column="created_at"/>
         <result property="memoCount" column="memo_count"/>
         <result property="latestMemoAt" column="latest_memo_at"/>
+        <result property="reanalysisRequested" column="reanalysis_requested"/>
+        <result property="gateStatus" column="gate_status"/>
+        <result property="gateNeedsHumanReview" column="gate_needs_human_review"/>
+        <result property="gateReasonCount" column="gate_reason_count"/>
+        <result property="gateMaxSeverity" column="gate_max_severity"/>
+        <result property="evidenceGateVersion" column="evidence_gate_version"/>
+        <result property="gateReasonsJson" column="gate_reasons_json"/>
+        <result property="gateReviewStatus" column="gate_review_status"/>
+        <result property="gateReviewedAt" column="gate_reviewed_at"/>
+        <result property="gateReviewerName" column="gate_reviewer_name"/>
+    </resultMap>
+
+    <resultMap id="AdminGateStatsRowResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminGateStatsRow">
+        <result property="gateStatus" column="gate_status"/>
+        <result property="reviewStatus" column="review_status"/>
+        <result property="maxSeverity" column="max_severity"/>
+        <result property="gateReasonsJson" column="gate_reasons_json"/>
     </resultMap>
 
     <resultMap id="AdminFitAnalysisMemoResultMap" type="com.careertuner.admin.fitanalysis.domain.AdminFitAnalysisMemo">
@@ -65,7 +86,11 @@
         fa.gap_recommendations,
         fa.certificate_recommendations,
         fa.strategy_actions,
+        fa.condition_matrix,
+        fa.analysis_confidence,
+        fa.apply_decision,
         fa.model,
+        fa.prompt_version,
         fa.status,
         fa.error_message,
         fa.created_at,
@@ -78,7 +103,68 @@
             SELECT MAX(latest_memo.updated_at)
             FROM admin_fit_analysis_memo latest_memo
             WHERE latest_memo.fit_analysis_id = fa.id
-        ) AS latest_memo_at
+        ) AS latest_memo_at,
+        EXISTS (
+            SELECT 1
+            FROM admin_fit_analysis_memo reanalysis_memo
+            WHERE reanalysis_memo.fit_analysis_id = fa.id
+              AND reanalysis_memo.memo_type = 'REANALYSIS'
+        ) AS reanalysis_requested,
+        gr.gate_status,
+        gr.needs_human_review AS gate_needs_human_review,
+        gr.reason_count AS gate_reason_count,
+        gr.max_severity AS gate_max_severity,
+        gr.evidence_gate_version,
+        gr.gate_reasons_json,
+        gr.review_status AS gate_review_status,
+        gr.reviewed_at AS gate_reviewed_at,
+        reviewer.name AS gate_reviewer_name
+    </sql>
+
+    <!--
+      목록 필터 공통 조건. findAll(페이지 조회)과 countAll(total)이 동일 WHERE 를 공유해
+      건수와 목록이 어긋나지 않게 한다. band/result 는 null 또는 'ALL' 이면 무시,
+      query 는 공백 제거 후 비어 있으면 무시(기업명/직무/회원명/이메일 부분일치).
+    -->
+    <sql id="AdminFitAnalysisFilters">
+        <if test="c.reviewRequiredOnly">
+            AND gr.gate_status = 'REVIEW_REQUIRED'
+        </if>
+        <if test="c.query != null and c.query.trim() != ''">
+            AND (
+                ac.company_name LIKE CONCAT('%', #{c.query}, '%')
+                OR ac.job_title LIKE CONCAT('%', #{c.query}, '%')
+                OR users.name LIKE CONCAT('%', #{c.query}, '%')
+                OR users.email LIKE CONCAT('%', #{c.query}, '%')
+            )
+        </if>
+        <if test="c.scoreBand != null and c.scoreBand != 'ALL'">
+            <choose>
+                <when test="c.scoreBand == 'HIGH'">AND fa.fit_score &gt;= 80</when>
+                <when test="c.scoreBand == 'MID_HIGH'">AND fa.fit_score &gt;= 70 AND fa.fit_score &lt; 80</when>
+                <when test="c.scoreBand == 'MID'">AND fa.fit_score &gt;= 50 AND fa.fit_score &lt; 70</when>
+                <when test="c.scoreBand == 'LOW'">AND fa.fit_score &lt; 50</when>
+            </choose>
+        </if>
+        <if test="c.result != null and c.result != 'ALL'">
+            <choose>
+                <when test="c.result == 'SUCCESS'">AND fa.status = 'SUCCESS'</when>
+                <otherwise>AND (fa.status IS NULL OR fa.status != 'SUCCESS')</otherwise>
+            </choose>
+        </if>
+        <if test="c.memoOnly">
+            AND EXISTS (
+                SELECT 1 FROM admin_fit_analysis_memo memo_filter
+                WHERE memo_filter.fit_analysis_id = fa.id
+            )
+        </if>
+        <if test="c.reanalysisOnly">
+            AND EXISTS (
+                SELECT 1 FROM admin_fit_analysis_memo reanalysis_filter
+                WHERE reanalysis_filter.fit_analysis_id = fa.id
+                  AND reanalysis_filter.memo_type = 'REANALYSIS'
+            )
+        </if>
     </sql>
 
     <select id="findAll" resultMap="AdminFitAnalysisResultMap">
@@ -87,7 +173,24 @@
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
+        LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        LEFT JOIN users reviewer ON reviewer.id = gr.reviewed_by
+        <where>
+            <include refid="AdminFitAnalysisFilters"/>
+        </where>
         ORDER BY fa.created_at DESC, fa.id DESC
+        LIMIT #{c.size} OFFSET #{c.offset}
+    </select>
+
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*)
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        <where>
+            <include refid="AdminFitAnalysisFilters"/>
+        </where>
     </select>
 
     <select id="findById" resultMap="AdminFitAnalysisResultMap">
@@ -96,8 +199,29 @@
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
+        LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        LEFT JOIN users reviewer ON reviewer.id = gr.reviewed_by
         WHERE fa.id = #{id}
     </select>
+
+    <!-- gate 통계: 전체 gate 행의 분포 관측용 최소 컬럼 조회(조인 없음, 집계는 서비스에서). -->
+    <select id="findAllGateRows" resultMap="AdminGateStatsRowResultMap">
+        SELECT
+            gr.gate_status,
+            gr.review_status,
+            gr.max_severity,
+            gr.gate_reasons_json
+        FROM fit_analysis_gate_result gr
+    </select>
+
+    <!-- gate review workflow: 운영자 처리 상태 갱신(REVIEW_REQUIRED gate 가 있는 분석만 대상). -->
+    <update id="updateGateReview">
+        UPDATE fit_analysis_gate_result
+        SET review_status = #{reviewStatus},
+            reviewed_by = #{adminUserId},
+            reviewed_at = CURRENT_TIMESTAMP
+        WHERE fit_analysis_id = #{fitAnalysisId}
+    </update>
 
     <select id="findMemosByFitAnalysisId" resultMap="AdminFitAnalysisMemoResultMap">
         SELECT

@@ -1,0 +1,22 @@
+package com.careertuner.notification.service;
+
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.dto.NotificationPageResponse;
+
+public interface NotificationService {
+
+    /** 알림을 저장하고 사용자의 등록 기기로 푸시(best-effort)한다. 모든 알림 생성의 단일 진입점. */
+    void notify(Notification notification);
+
+    NotificationPageResponse getNotifications(Long userId, int page, int size);
+
+    int getUnreadCount(Long userId);
+
+    void markAsRead(Long notificationId, Long userId);
+
+    void markAllAsRead(Long userId);
+
+    void delete(Long notificationId, Long userId);
+
+    void deleteAll(Long userId);
+}

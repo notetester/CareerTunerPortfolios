@@ -1,4 +1,6 @@
+import { apiBase } from "./apiBase";
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./tokenStore";
+import { MOCK_UNHANDLED, resolveMock } from "./mock";
 
 /** 백엔드 공통 응답 envelope. */
 export interface ApiEnvelope<T> {
@@ -19,7 +21,12 @@ export class ApiError extends Error {
   }
 }
 
-const BASE = "/api"; // Vite 프록시 → http://localhost:8080
+// API 베이스 경로는 apiBase() 단일 소스를 사용한다(app/lib/apiBase.ts).
+//  - 우선순위: (네이티브 앱/dev 의) 런타임 오버라이드 → VITE_API_BASE_URL → 상대경로 "/api"
+//  - 런타임 오버라이드가 바뀔 수 있어 상수 캐시 없이 매 요청 시 평가한다.
+
+// 데모/목 모드: 백엔드 없이 동작(자체완결 APK·GitHub Pages 데모). 등록된 mock 핸들러로 응답한다.
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
   const headers = new Headers(options.headers ?? {});
@@ -44,7 +51,7 @@ function tryRefresh(): Promise<boolean> {
   if (!refreshToken) return Promise.resolve(false);
   refreshPromise = (async () => {
     try {
-      const res = await fetch(`${BASE}/auth/refresh`, {
+      const res = await fetch(`${apiBase()}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken }),
@@ -75,12 +82,20 @@ export async function api<T = unknown>(
   config: { auth?: boolean } = {},
 ): Promise<T> {
   const withAuth = config.auth ?? true;
-  let res = await fetch(`${BASE}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
+
+  // 데모/목 모드: 네트워크 대신 mock 레지스트리로 응답. 미등록 엔드포인트는 "데모 미제공" 에러.
+  if (USE_MOCK) {
+    const mocked = await resolveMock(path, options);
+    if (mocked !== MOCK_UNHANDLED) return mocked as T;
+    throw new ApiError("데모 모드에서는 제공되지 않는 데이터입니다.", "DEMO_UNAVAILABLE", 501);
+  }
+
+  let res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
 
   if (res.status === 401 && withAuth && getRefreshToken()) {
     const refreshed = await tryRefresh();
     if (refreshed) {
-      res = await fetch(`${BASE}${path}`, { ...options, headers: buildHeaders(options, true) });
+      res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, true) });
     }
   }
 

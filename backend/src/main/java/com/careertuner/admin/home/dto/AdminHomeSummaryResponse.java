@@ -12,6 +12,12 @@ public record AdminHomeSummaryResponse(
         int fitAnalysisFailures,
         int unanalyzedApplications,
         int newAnalysesLast7Days,
+        // 처리 필요 작업 확장: 강등(비정상) 결과 노출 건, 재분석 요청 메모 건, 장기/대시보드 실행 실패 건.
+        int degradedLatestAnalyses,
+        int reanalysisRequests,
+        int careerRunFailures,
+        // review-first evidence gate 가 검토 필요로 판정한 최신 분석 수(R3 검토 큐).
+        int reviewRequiredAnalyses,
         List<AdminHomeShortcutResponse> shortcuts
 ) {
 }

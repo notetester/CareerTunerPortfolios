@@ -32,7 +32,7 @@
 
 /* ── surfaces ── */
 .ct-toast--light {
-  background: #ffffff;
+  background: var(--card);
   color: var(--foreground);
   border: 1px solid var(--border);
 }
@@ -104,6 +104,10 @@
 /* ── loading variant ── */
 .ct-toast--loading {
   --toast-accent: var(--brand-blue);
+  /* surface 를 테마 토큰으로 — 다크/라이트 자동 대응(흰배경 #fff 하드코딩 제거) */
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
 }
 .ct-toast__spinner {
   flex: none;
@@ -212,6 +216,16 @@
   transform: translateX(-50%);
   align-items: center;
   flex-direction: column-reverse;
+}
+
+/* 모바일(하단 네비가 보이는 xl 미만)에서는 토스트를 네비(56px + safe-area) 위로 올려
+   하단 네비를 덮어 터치를 가로채지 않게 한다. 높이는 Root.tsx 의 MobileBottomNav 와 일치. */
+@media (max-width: 1279px) {
+  .ct-toast-vp--bottom-right,
+  .ct-toast-vp--bottom-left,
+  .ct-toast-vp--bottom-center {
+    bottom: calc(56px + env(safe-area-inset-bottom));
+  }
 }
 
 /* ── enter animation ── */

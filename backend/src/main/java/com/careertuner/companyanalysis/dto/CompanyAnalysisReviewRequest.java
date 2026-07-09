@@ -9,6 +9,8 @@ public record CompanyAnalysisReviewRequest(
         String competitors,
         String interviewPoints,
         String sources,
+        String verifiedFacts,
+        String aiInferences,
         Boolean confirmed
 ) {
 }

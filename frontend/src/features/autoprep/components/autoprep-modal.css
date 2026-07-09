@@ -1,0 +1,8 @@
+/* 오케스트레이터 채팅 모달 등장 애니메이션 — 오버레이 페이드 + 박스 가볍게 떠오름 */
+@keyframes ap-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ap-pop { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
+.ap-overlay { animation: ap-fade 0.18s ease; }
+.ap-box { animation: ap-pop 0.26s cubic-bezier(0.22, 0.61, 0.36, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .ap-overlay, .ap-box { animation: none; }
+}

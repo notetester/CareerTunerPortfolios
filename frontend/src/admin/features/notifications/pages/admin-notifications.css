@@ -1,0 +1,31 @@
+/* ===== AdminNotifications v2 — notification monitoring ===== */
+
+.av-msg { min-width: 0; }
+.av-msg__t { font-size: 12.5px; font-weight: 500; color: var(--av-ink); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 330px; }
+tr.unread .av-msg__t { font-weight: 650; }
+.av-msg__m { font-size: 11.5px; color: var(--av-ink-3); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 330px; margin-top: 1px; }
+
+.av-type { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--av-ink-2); white-space: nowrap; }
+.av-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+.av-st--unread { color: var(--av-blue); font-weight: 600; }
+.av-st--unread::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--av-blue); }
+.av-st--read { color: var(--av-ink-3); }
+.av-time { font-size: 12px; color: var(--av-ink-3); white-space: nowrap; text-align: right; }
+
+.av-select { height: 30px; border: 1px solid var(--av-line); border-radius: 7px; background: var(--av-card);
+  font-family: inherit; font-size: 12.5px; color: var(--av-ink-2); padding: 0 26px 0 10px; cursor: pointer;
+  appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center; }
+.av-select:focus { outline: none; border-color: var(--av-blue); }
+
+.av-days { display: flex; align-items: flex-end; gap: 7px; height: 92px; padding: 14px 16px 0; }
+.av-day { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0; height: 100%; justify-content: flex-end; }
+.av-day__v { font-size: 9.5px; color: var(--av-ink-3); margin-bottom: 3px; }
+.av-day__bar { width: 100%; max-width: 22px; border-radius: 3px 3px 0 0; background: #dbe4f0; }
+.av-day.today .av-day__bar { background: var(--av-blue); }
+.av-day.today .av-day__v { color: var(--av-blue); font-weight: 650; }
+.av-days__xw { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; padding: 6px 16px 14px; }
+.av-days__xw span { text-align: center; font-size: 10px; color: var(--av-ink-3); }

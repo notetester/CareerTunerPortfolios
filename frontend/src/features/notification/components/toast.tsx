@@ -27,14 +27,26 @@ import {
   MessageCircle,
   Reply,
   Heart,
+  EyeOff,
   Megaphone,
   MessageSquareReply,
   CreditCard,
+  ShieldCheck,
   ShieldAlert,
   Ticket,
   UserPlus,
   AlertTriangle,
   FileEdit,
+  Trash2,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
+  HeartOff,
+  Star,
+  Clipboard,
+  BellRing,
+  Briefcase,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -92,7 +104,10 @@ function emit() {
 
 function subscribe(fn: Listener) {
   listeners.add(fn);
-  return () => listeners.delete(fn);
+  // useEffect 클린업은 void 반환이어야 한다. Set.delete 의 boolean 반환을 흘려보내지 않도록 블록으로 감싼다.
+  return () => {
+    listeners.delete(fn);
+  };
 }
 
 function dismiss(id: number) {
@@ -195,19 +210,73 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   COMPANY_ANALYSIS_COMPLETE: Building2,
   FIT_ANALYSIS_COMPLETE: Target,
   CAREER_TREND_COMPLETE: TrendingUp,
+  JOB_POSTING_EXTRACTION_SUCCEEDED: FileSearch,
+  JOB_POSTING_EXTRACTION_REVIEW_REQUIRED: AlertTriangle,
+  JOB_POSTING_EXTRACTION_FAILED: AlertTriangle,
   QUESTIONS_GENERATED: HelpCircle,
   INTERVIEW_REPORT_READY: FileText,
   CORRECTION_COMPLETE: PenLine,
   COMMENT: MessageCircle,
   COMMENT_REPLY: Reply,
+  COMMENT_HIDDEN: EyeOff,
+  COMMENT_RESTORED: RotateCcw,
+  COMMENT_REMOVED: Trash2,
   LIKE: Heart,
+  LIKE_ANON: Heart,
+  POST_DISLIKE: HeartOff,
+  POST_DISLIKE_ANON: HeartOff,
+  POST_RECOMMEND: ThumbsUp,
+  POST_RECOMMEND_ANON: ThumbsUp,
+  POST_DISRECOMMEND: ThumbsDown,
+  POST_DISRECOMMEND_ANON: ThumbsDown,
+  COMMENT_LIKE: Heart,
+  COMMENT_LIKE_ANON: Heart,
+  COMMENT_DISLIKE: HeartOff,
+  COMMENT_DISLIKE_ANON: HeartOff,
+  COMMENT_RECOMMEND: ThumbsUp,
+  COMMENT_RECOMMEND_ANON: ThumbsUp,
+  COMMENT_DISRECOMMEND: ThumbsDown,
+  COMMENT_DISRECOMMEND_ANON: ThumbsDown,
+  POST_BOOKMARK: Star,
+  POST_BOOKMARK_ANON: Star,
+  POST_SCRAP: Clipboard,
+  POST_SCRAP_ANON: Clipboard,
+  POST_WATCH_COMMENT: BellRing,
+  COMMENT_WATCH_REPLY: BellRing,
+  COMPANY_APPLY_RESULT: Building2,
+  JOB_POSTING_REVIEW_RESULT: Briefcase,
+  POST_HIDDEN: EyeOff,
+  POST_IMAGE_BLURRED: EyeOff,
+  COMMUNITY_STRIKE_WARNING: AlertTriangle,
+  POST_REMOVED: Trash2,
+  POST_RESTORED: RotateCcw,
   POST_SUMMARY_READY: BookOpen,
+  FRIEND_REQUEST: UserPlus,
+  FRIEND_ACCEPTED: UserPlus,
+  ROOM_INVITE: MessageCircle,
+  ROOM_MESSAGE: MessageCircle,
+  NOTE_MESSAGE: MessageSquareReply,
+  ROOM_MENTION: MessageSquareReply,
+  INTERVIEW_DISPATCH: HelpCircle,
+  RECOMMENDED_JOB: ClipboardList,
+  RECOMMENDED_POST: BookOpen,
+  MARKETING_AD: Megaphone,
   NOTICE: Megaphone,
   TICKET_ANSWERED: MessageSquareReply,
+  ACCOUNT_BLOCKED: ShieldAlert,
+  MFA_LOGIN_APPROVAL: ShieldCheck,
   CREDIT_LOW: CreditCard,
+  PAYMENT_COMPLETE: CreditCard,
+  PAYMENT_SCHEDULED: CreditCard,
+  SUBSCRIPTION_CANCELED: CreditCard,
+  CREDIT_RECHARGED: CreditCard,
+  REFUND_RESULT: CreditCard,
+  SCHEDULE_REMINDER: CalendarClock,
   NEW_REPORT: ShieldAlert,
   NEW_TICKET: Ticket,
   NEW_USER: UserPlus,
+  NEW_COMPANY_APPLICATION: Building2,
+  NEW_JOB_POSTING_REVIEW: Briefcase,
   LOW_CONFIDENCE_REPORT: AlertTriangle,
   TICKET_DRAFT_READY: FileEdit,
 };
@@ -222,11 +291,14 @@ const CATEGORY_STYLE: Record<NotificationCategory, { bg: string; fg: string }> =
     },
     correction: { bg: "var(--cat-cert-bg)", fg: "var(--cat-cert-fg)" },
     community: { bg: "var(--cat-free-bg)", fg: "var(--cat-free-fg)" },
+    messenger: { bg: "var(--cat-interview-bg)", fg: "var(--cat-interview-fg)" },
+    recommendation: { bg: "var(--cat-job-bg)", fg: "var(--cat-job-fg)" },
     billing: { bg: "var(--cat-role-bg)", fg: "var(--cat-role-fg)" },
     notice: {
       bg: "var(--cat-portfolio-bg)",
       fg: "var(--cat-portfolio-fg)",
     },
+    marketing: { bg: "var(--cat-pass-bg)", fg: "var(--cat-pass-fg)" },
     admin: { bg: "var(--cat-pass-bg)", fg: "var(--cat-pass-fg)" },
   };
 
@@ -432,7 +504,7 @@ function LoadingToast({
   onClose: () => void;
 }) {
   return (
-    <div className="ct-toast ct-toast--loading ct-toast--light" role="status" aria-live="polite">
+    <div className="ct-toast ct-toast--loading" role="status" aria-live="polite">
       <span className="ct-toast__spinner" />
       <span className="ct-toast__label">{item.message}</span>
       <CloseBtn onClick={onClose} />
@@ -583,7 +655,8 @@ function ToastViewport() {
   const [, forceRender] = useState(0);
 
   useEffect(() => {
-    return subscribe(() => forceRender((n) => n + 1));
+    const unsub = subscribe(() => forceRender((n) => n + 1));
+    return () => { unsub(); };
   }, []);
 
   return (

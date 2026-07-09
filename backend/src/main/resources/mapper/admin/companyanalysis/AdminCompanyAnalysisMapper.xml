@@ -3,12 +3,20 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.admin.companyanalysis.mapper.AdminCompanyAnalysisMapper">
 
-    <select id="findCompanyAnalyses" resultType="com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisRow">
+    <sql id="CompanyAnalysisSelect">
         SELECT
             ca.id,
             ca.application_case_id,
             ca.job_posting_id,
             ca.job_posting_revision,
+            latest_posting.latest_job_posting_revision AS latest_job_posting_revision,
+            CASE
+                WHEN latest_posting.latest_job_posting_revision IS NOT NULL
+                    AND ca.job_posting_revision IS NOT NULL
+                    AND ca.job_posting_revision &lt; latest_posting.latest_job_posting_revision
+                THEN TRUE
+                ELSE FALSE
+            END AS stale_against_latest_posting,
             ac.user_id,
             u.email AS user_email,
             ac.company_name,
@@ -19,13 +27,139 @@
             ca.competitors,
             ca.interview_points,
             ca.sources,
+            ca.verified_facts,
+            ca.ai_inferences,
+            ca.source_type,
+            ca.checked_at,
+            ca.refresh_recommended_at,
             ca.confirmed_at,
             ca.admin_memo,
             ca.created_at
         FROM company_analysis ca
         JOIN application_case ac ON ca.application_case_id = ac.id
         JOIN users u ON ac.user_id = u.id
-        ORDER BY ca.created_at DESC, ca.id DESC
-        LIMIT #{limit}
+        LEFT JOIN (
+            SELECT application_case_id, MAX(revision) AS latest_job_posting_revision
+            FROM job_posting
+            GROUP BY application_case_id
+        ) latest_posting ON latest_posting.application_case_id = ca.application_case_id
+    </sql>
+
+    <sql id="CompanyAnalysisWhere">
+        WHERE 1 = 1
+        <if test="criteria.keyword != null">
+            AND (
+                ac.company_name LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ac.job_title LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR u.email LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ca.company_summary LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ca.recent_issues LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ca.industry LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR ca.interview_points LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR CAST(ca.competitors AS CHAR) LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR CAST(ca.sources AS CHAR) LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR CAST(ca.verified_facts AS CHAR) LIKE CONCAT('%', #{criteria.keyword}, '%')
+                OR CAST(ca.ai_inferences AS CHAR) LIKE CONCAT('%', #{criteria.keyword}, '%')
+            )
+        </if>
+        <if test="criteria.sourceType != null">
+            AND UPPER(ca.source_type) = #{criteria.sourceType}
+        </if>
+        <if test="criteria.industry != null">
+            AND ca.industry LIKE CONCAT('%', #{criteria.industry}, '%')
+        </if>
+        <if test="criteria.confirmed != null and criteria.confirmed">
+            AND ca.confirmed_at IS NOT NULL
+        </if>
+        <if test="criteria.confirmed != null and !criteria.confirmed">
+            AND ca.confirmed_at IS NULL
+        </if>
+        <if test="criteria.hasMemo != null and criteria.hasMemo">
+            AND ca.admin_memo IS NOT NULL AND TRIM(ca.admin_memo) &lt;&gt; ''
+        </if>
+        <if test="criteria.hasMemo != null and !criteria.hasMemo">
+            AND (ca.admin_memo IS NULL OR TRIM(ca.admin_memo) = '')
+        </if>
+        <if test="criteria.checked != null and criteria.checked">
+            AND ca.checked_at IS NOT NULL
+        </if>
+        <if test="criteria.checked != null and !criteria.checked">
+            AND ca.checked_at IS NULL
+        </if>
+        <if test="criteria.refreshDue != null and criteria.refreshDue">
+            AND ca.refresh_recommended_at IS NOT NULL
+            AND ca.refresh_recommended_at &lt;= CURRENT_TIMESTAMP
+        </if>
+        <if test="criteria.refreshDue != null and !criteria.refreshDue">
+            AND (ca.refresh_recommended_at IS NULL OR ca.refresh_recommended_at &gt; CURRENT_TIMESTAMP)
+        </if>
+        <if test="criteria.applicationCaseId != null">
+            AND ca.application_case_id = #{criteria.applicationCaseId}
+        </if>
+        <if test="criteria.userId != null">
+            AND ac.user_id = #{criteria.userId}
+        </if>
+        <if test="criteria.createdFrom != null">
+            AND ca.created_at &gt;= #{criteria.createdFrom}
+        </if>
+        <if test="criteria.createdTo != null">
+            AND ca.created_at &lt; DATE_ADD(#{criteria.createdTo}, INTERVAL 1 DAY)
+        </if>
+    </sql>
+
+    <sql id="CompanyAnalysisOrderBy">
+        <choose>
+            <when test="criteria.sort == 'CREATED_AT_ASC'">ORDER BY ca.created_at ASC, ca.id ASC</when>
+            <when test="criteria.sort == 'CHECKED_AT_DESC'">ORDER BY ca.checked_at DESC, ca.id DESC</when>
+            <when test="criteria.sort == 'CHECKED_AT_ASC'">ORDER BY ca.checked_at IS NULL, ca.checked_at ASC, ca.id ASC</when>
+            <when test="criteria.sort == 'REFRESH_RECOMMENDED_AT_DESC'">ORDER BY ca.refresh_recommended_at DESC, ca.id DESC</when>
+            <when test="criteria.sort == 'REFRESH_RECOMMENDED_AT_ASC'">ORDER BY ca.refresh_recommended_at IS NULL, ca.refresh_recommended_at ASC, ca.id ASC</when>
+            <when test="criteria.sort == 'COMPANY_NAME_DESC'">ORDER BY ac.company_name DESC, ca.id DESC</when>
+            <when test="criteria.sort == 'COMPANY_NAME_ASC'">ORDER BY ac.company_name ASC, ca.id ASC</when>
+            <when test="criteria.sort == 'INDUSTRY_DESC'">ORDER BY ca.industry DESC, ca.id DESC</when>
+            <when test="criteria.sort == 'INDUSTRY_ASC'">ORDER BY ca.industry IS NULL, ca.industry ASC, ca.id ASC</when>
+            <otherwise>ORDER BY ca.created_at DESC, ca.id DESC</otherwise>
+        </choose>
+    </sql>
+
+    <select id="findCompanyAnalyses" resultType="com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisRow">
+        <include refid="CompanyAnalysisSelect"/>
+        <include refid="CompanyAnalysisWhere"/>
+        <include refid="CompanyAnalysisOrderBy"/>
+        LIMIT #{criteria.limit} OFFSET #{criteria.offset}
     </select>
+
+    <select id="summarizeCompanyAnalyses" resultType="com.careertuner.admin.companyanalysis.dto.AdminCompanyAnalysisSummary">
+        SELECT
+            COUNT(*) AS total_count,
+            COALESCE(SUM(CASE WHEN ca.confirmed_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS confirmed_count,
+            COALESCE(SUM(CASE WHEN ca.confirmed_at IS NULL THEN 1 ELSE 0 END), 0) AS unconfirmed_count,
+            COALESCE(SUM(CASE
+                WHEN ca.refresh_recommended_at IS NOT NULL AND ca.refresh_recommended_at &lt;= CURRENT_TIMESTAMP
+                THEN 1 ELSE 0
+            END), 0) AS refresh_due_count,
+            COALESCE(SUM(CASE WHEN ca.source_type IS NULL OR TRIM(ca.source_type) = '' THEN 1 ELSE 0 END), 0) AS missing_source_count,
+            COALESCE(SUM(CASE WHEN ca.checked_at IS NOT NULL THEN 1 ELSE 0 END), 0) AS checked_count,
+            COALESCE(SUM(CASE WHEN ca.admin_memo IS NOT NULL AND TRIM(ca.admin_memo) &lt;&gt; '' THEN 1 ELSE 0 END), 0) AS memo_count
+        FROM company_analysis ca
+        JOIN application_case ac ON ca.application_case_id = ac.id
+        JOIN users u ON ac.user_id = u.id
+        <include refid="CompanyAnalysisWhere"/>
+    </select>
+
+    <update id="updateMetadata">
+        UPDATE company_analysis
+        SET source_type = #{sourceType},
+            checked_at = CASE
+                WHEN #{clearCheckedAt} THEN NULL
+                WHEN #{checkedAt} IS NOT NULL THEN #{checkedAt}
+                ELSE checked_at
+            END,
+            refresh_recommended_at = CASE
+                WHEN #{clearRefreshRecommendedAt} THEN NULL
+                WHEN #{refreshRecommendedAt} IS NOT NULL THEN #{refreshRecommendedAt}
+                ELSE refresh_recommended_at
+            END
+        WHERE id = #{id}
+    </update>
 </mapper>

@@ -1,44 +1,121 @@
 @import '../../../styles/ct-shared.css';
-/* CareerTuner Notifications — ported from design system prototype */
+/* CareerTuner Notifications — v2 tone (no shadow, no icon tiles, token swap) */
 
+/* ── 카테고리 아이콘 색 (7 카테고리) — v2: 배경 제거, 점 색상만 유지 ── */
+.ic-ai_analysis { color: var(--av-blue); }
+.ic-interview   { color: #9333ea; }
+.ic-correction  { color: #0d9488; }
+.ic-community   { color: #4f46e5; }
+.ic-billing     { color: #16a34a; }
+.ic-notice      { color: #ea580c; }
+.ic-admin       { color: #dc2626; }
+
+/* ── actor 아바타 + type 배지 ── */
+.ct-naw { position: relative; flex: none; display: inline-flex; }
+.ct-naw__badge { position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; border: 2px solid var(--av-card); }
+.ct-naw__badge svg { width: 10px; height: 10px; stroke-width: 2.2; }
+
+/* ── 알림 목록 페이지 ── */
 .ct-noti__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 .ct-noti__title { display: flex; align-items: center; gap: 10px; }
 .ct-noti__title h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
 .ct-noti__count { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px; padding: 0 8px;
-  border-radius: 9999px; background: var(--destructive); color: #fff; font-size: 13px; font-weight: 700; }
+  border-radius: 9999px; background: var(--av-red); color: #fff; font-size: 13px; font-weight: 700; }
 .ct-noti__tabs { margin-bottom: 16px; overflow-x: auto; }
 
-.ct-notilist { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04); overflow: hidden; }
+.ct-notilist { background: var(--av-card); border: 1px solid var(--av-line); border-radius: 10px; overflow: hidden; }
 .ct-noti { display: flex; gap: 14px; padding: 16px 18px 16px 26px; position: relative; transition: background 180ms; cursor: pointer; }
-.ct-noti + .ct-noti { border-top: 1px solid var(--border); }
-.ct-noti:hover { background: var(--muted); }
-.ct-noti.unread { background: color-mix(in srgb, var(--info-50) 55%, var(--card)); }
-.ct-noti.unread:hover { background: var(--info-50); }
-.ct-noti__dot { position: absolute; left: 11px; top: 25px; width: 7px; height: 7px; border-radius: 50%; background: var(--brand-blue); }
+.ct-noti + .ct-noti { border-top: 1px solid var(--av-line); }
+.ct-noti:hover { background: var(--av-track); }
+.ct-noti.unread { background: color-mix(in srgb, var(--av-blue-soft) 55%, var(--av-card)); }
+.ct-noti.unread:hover { background: var(--av-blue-soft); }
+.ct-noti__dot { position: absolute; left: 11px; top: 25px; width: 7px; height: 7px; border-radius: 50%; background: var(--av-blue); }
 .ct-noti__ic { width: 40px; height: 40px; border-radius: 8px; flex: none; display: flex; align-items: center; justify-content: center; }
 .ct-noti__ic svg { width: 19px; height: 19px; stroke-width: 1.85; }
-.ic-analysis { background: var(--cat-job-bg); color: var(--cat-job-fg); }
-.ic-report { background: var(--cat-interview-bg); color: var(--cat-interview-fg); }
-.ic-billing { background: var(--cat-role-bg); color: var(--cat-role-fg); }
-.ic-notice { background: var(--cat-portfolio-bg); color: var(--cat-portfolio-fg); }
-.ic-reply { background: var(--cat-cert-bg); color: var(--cat-cert-fg); }
 .ct-noti__body { flex: 1; min-width: 0; }
-.ct-noti__t { font-size: 14px; font-weight: 600; color: var(--foreground); margin-bottom: 3px; }
-.ct-noti__m { font-size: 13px; color: var(--muted-foreground); line-height: 1.55; }
-.ct-noti__link { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; font-size: 12px; font-weight: 600; color: var(--brand-blue); white-space: nowrap; }
+.ct-noti__t { font-size: 14px; font-weight: 600; color: var(--av-ink); margin-bottom: 3px; overflow-wrap: anywhere; }
+.ct-noti__m { font-size: 13px; color: var(--av-ink-3); line-height: 1.55; overflow-wrap: anywhere; }
+.ct-noti__link { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; font-size: 12px; font-weight: 600; color: var(--av-blue); white-space: nowrap; }
 .ct-noti__link svg { width: 12px; height: 12px; stroke-width: 2.2; }
-.ct-noti__time { font-size: 12px; color: var(--muted-foreground); flex: none; white-space: nowrap; }
+.ct-noti__time { font-size: 12px; color: var(--av-ink-3); flex: none; white-space: nowrap; }
 
 .ct-noti__more { display: flex; justify-content: center; margin-top: 18px; }
 
+/* 페이지 헤더 액션 묶음 + 전체 삭제(위험) 버튼 */
+.ct-noti__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ct-act--danger { color: var(--av-red); }
+.ct-act--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--av-red) 12%, transparent);
+  border-color: color-mix(in srgb, var(--av-red) 35%, transparent); }
+
+/* 알림 단건 삭제 X 버튼 */
+.ct-noti__del { flex: none; align-self: flex-start; margin-left: 2px; width: 26px; height: 26px;
+  border: 0; background: transparent; border-radius: 6px; color: var(--av-ink-3); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: background 150ms, color 150ms; }
+.ct-noti__del:hover { background: color-mix(in srgb, var(--av-red) 12%, transparent); color: var(--av-red); }
+.ct-noti__del svg { width: 15px; height: 15px; stroke-width: 2; }
+
 /* empty */
 .ct-noti__empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 64px 24px;
-  background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04); }
-.ct-noti__emptyic { width: 72px; height: 72px; border-radius: 50%; background: var(--muted); border: 1px solid var(--border);
+  background: var(--av-card); border: 1px solid var(--av-line); border-radius: 10px; }
+.ct-noti__emptyic { width: 72px; height: 72px; border-radius: 50%; background: var(--av-track); border: 1px solid var(--av-line);
   display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
-.ct-noti__emptyic svg { width: 30px; height: 30px; stroke-width: 1.6; color: var(--muted-foreground); }
-.ct-noti__empty h3 { font-size: 17px; font-weight: 600; color: var(--foreground); }
-.ct-noti__empty p { font-size: 14px; color: var(--muted-foreground); margin-top: 6px; }
+.ct-noti__emptyic svg { width: 30px; height: 30px; stroke-width: 1.6; color: var(--av-ink-3); }
+.ct-noti__empty h3 { font-size: 17px; font-weight: 600; color: var(--av-ink); }
+.ct-noti__empty p { font-size: 14px; color: var(--av-ink-3); margin-top: 6px; }
+
+/* ── 종(Bell) + 드롭다운 패널 ── */
+.ct-belln { position: relative; display: inline-flex; }
+.ct-belln__badge { position: absolute; top: 1px; right: 1px; min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 9999px; background: var(--av-red, #dc2626); color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; border: 2px solid var(--av-bg, #fff); pointer-events: none; line-height: 1; }
+.ct-belln__panel { position: absolute; top: calc(100% + 8px); right: 0; width: 384px; max-width: 92vw;
+  background: var(--av-card); border: 1px solid var(--av-line); border-radius: 10px;
+  z-index: 60; overflow: hidden; animation: ct-belln-in .15s ease both; }
+@keyframes ct-belln-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.ct-belln__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--av-line); }
+.ct-belln__head h4 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.ct-belln__hcount { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 9999px; background: var(--av-blue-soft); color: var(--av-blue); font-size: 11px; font-weight: 700; }
+.ct-belln__markall { background: none; border: 0; color: var(--av-blue); font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; padding: 4px 6px; border-radius: 6px; }
+.ct-belln__markall:hover:not(:disabled) { background: var(--av-blue-soft); }
+.ct-belln__markall:disabled { color: var(--av-ink-3); cursor: default; }
+.ct-belln__headactions { display: flex; align-items: center; gap: 2px; }
+.ct-belln__clear { background: none; border: 0; color: var(--av-red); font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; padding: 4px 6px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ct-belln__clear:hover:not(:disabled) { background: color-mix(in srgb, var(--av-red) 12%, transparent); }
+.ct-belln__clear:disabled { color: var(--av-ink-3); cursor: default; }
+.ct-belln__clear svg { width: 13px; height: 13px; stroke-width: 2; }
+.ct-belln__list { max-height: 60vh; overflow-y: auto; }
+.ct-belln__row { display: flex; gap: 12px; padding: 13px 16px 13px 24px; cursor: pointer; position: relative; transition: background 180ms; }
+.ct-belln__row + .ct-belln__row { border-top: 1px solid var(--av-line); }
+.ct-belln__row:hover { background: var(--av-track); }
+.ct-belln__row.unread { background: color-mix(in srgb, var(--av-blue-soft) 50%, var(--av-card)); }
+.ct-belln__dot { position: absolute; left: 10px; top: 21px; width: 6px; height: 6px; border-radius: 50%; background: var(--av-blue); }
+.ct-belln__ic { width: 36px; height: 36px; border-radius: 8px; flex: none; display: flex; align-items: center; justify-content: center; }
+.ct-belln__ic svg { width: 18px; height: 18px; stroke-width: 1.85; }
+.ct-belln__b { flex: 1; min-width: 0; }
+.ct-belln__del { flex: none; align-self: flex-start; width: 24px; height: 24px; border: 0; background: transparent;
+  border-radius: 6px; color: var(--av-ink-3); cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 150ms, color 150ms; }
+.ct-belln__del:hover { background: color-mix(in srgb, var(--av-red) 12%, transparent); color: var(--av-red); }
+.ct-belln__del svg { width: 14px; height: 14px; stroke-width: 2; }
+.ct-belln__t { font-size: 13px; font-weight: 600; color: var(--av-ink); margin-bottom: 2px; overflow-wrap: anywhere; }
+.ct-belln__m { font-size: 12px; color: var(--av-ink-3); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ct-belln__time { font-size: 10px; color: var(--av-ink-3); margin-top: 5px; }
+.ct-belln__empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 48px 16px; color: var(--av-ink-3); }
+.ct-belln__empty svg { width: 28px; height: 28px; stroke-width: 1.6; }
+.ct-belln__empty span { font-size: 13px; }
+.ct-belln__foot { padding: 8px; border-top: 1px solid var(--av-line); }
+.ct-belln__footrow { display: flex; gap: 6px; }
+.ct-belln__foot button { flex: 1; padding: 9px; border: 0; background: transparent; border-radius: 6px;
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--av-blue); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 6px; }
+.ct-belln__foot button:hover { background: var(--av-blue-soft); }
+.ct-belln__toggle { color: var(--av-ink-2, var(--av-ink-3)) !important; }
+.ct-belln__toggle:hover { background: var(--av-track) !important; }
+.ct-belln__toggle svg { width: 15px; height: 15px; stroke-width: 2; }
 
 @media (max-width: 768px) {
   .ct-noti__head h1 { font-size: 24px; }

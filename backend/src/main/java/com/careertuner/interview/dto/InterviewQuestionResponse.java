@@ -5,6 +5,7 @@ import com.careertuner.interview.domain.InterviewQuestion;
 public record InterviewQuestionResponse(
         Long id,
         Long interviewSessionId,
+        Long parentQuestionId,
         String question,
         String questionType,
         Integer sortOrder) {
@@ -13,6 +14,7 @@ public record InterviewQuestionResponse(
         return new InterviewQuestionResponse(
                 q.getId(),
                 q.getInterviewSessionId(),
+                q.getParentQuestionId(),
                 q.getQuestion(),
                 q.getQuestionType(),
                 q.getSortOrder());

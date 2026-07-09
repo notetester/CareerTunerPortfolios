@@ -20,4 +20,7 @@ public interface AdminDashboardMapper {
     int countInterviewSessions();
 
     int countAiCallsThisMonth();
+
+    /** 검토 대기: 지원 건별 최신 적합도 분석 중 gate_status=REVIEW_REQUIRED 인 건수(home 과 동일 기준). */
+    int countReviewRequiredAnalyses();
 }

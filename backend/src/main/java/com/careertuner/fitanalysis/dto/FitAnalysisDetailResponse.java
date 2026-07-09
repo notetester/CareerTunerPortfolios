@@ -19,15 +19,32 @@ public record FitAnalysisDetailResponse(
         String gapRecommendations,
         String certificateRecommendations,
         String strategyActions,
+        String conditionMatrix,
+        String analysisConfidence,
+        String applyDecision,
+        List<FitScoreBreakdownResponse> scoreBreakdown,
+        FitActionBoardResponse actionBoard,
+        List<String> adverseStrategies,
+        List<String> next24HourActions,
+        List<FitToneStrategyResponse> toneStrategies,
         String model,
+        String promptVersion,
         String status,
         String errorMessage,
         LocalDateTime createdAt,
         FitAnalysisApplicationResponse application,
-        List<FitAnalysisLearningTaskResponse> learningTasks
+        List<FitAnalysisLearningTaskResponse> learningTasks,
+        // review-first evidence gate 안전 블록(R3). 과거 분석엔 없으므로 null 가능(하위호환).
+        FitSafetyResponse safety
 ) {
     public static FitAnalysisDetailResponse of(FitAnalysisResult result,
-                                               List<FitAnalysisLearningTaskResponse> learningTasks) {
+                                               List<FitAnalysisLearningTaskResponse> learningTasks,
+                                               List<FitScoreBreakdownResponse> scoreBreakdown,
+                                               FitActionBoardResponse actionBoard,
+                                               List<String> adverseStrategies,
+                                               List<String> next24HourActions,
+                                               List<FitToneStrategyResponse> toneStrategies,
+                                               FitSafetyResponse safety) {
         return new FitAnalysisDetailResponse(
                 result.getId(),
                 result.getApplicationCaseId(),
@@ -42,11 +59,21 @@ public record FitAnalysisDetailResponse(
                 result.getGapRecommendations(),
                 result.getCertificateRecommendations(),
                 result.getStrategyActions(),
+                result.getConditionMatrix(),
+                result.getAnalysisConfidence(),
+                result.getApplyDecision(),
+                scoreBreakdown,
+                actionBoard,
+                adverseStrategies,
+                next24HourActions,
+                toneStrategies,
                 result.getModel(),
+                result.getPromptVersion(),
                 result.getStatus(),
                 result.getErrorMessage(),
                 result.getCreatedAt(),
                 FitAnalysisApplicationResponse.from(result),
-                learningTasks);
+                learningTasks,
+                safety);
     }
 }

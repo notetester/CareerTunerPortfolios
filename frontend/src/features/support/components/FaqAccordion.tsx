@@ -5,6 +5,9 @@ import {
   AccordionContent,
 } from "@/app/components/ui/accordion";
 import type { Faq } from "../types/support";
+// 공통 리치텍스트 유틸: HTML 감지 + sanitize
+import { isHtmlContent, sanitizePostHtml } from "@/app/lib/postContent";
+import "./faq-answer.css";
 
 interface FaqAccordionProps {
   items: Faq[];
@@ -30,7 +33,15 @@ export default function FaqAccordion({ items }: FaqAccordionProps) {
             </span>
           </AccordionTrigger>
           <AccordionContent className="text-muted-foreground leading-relaxed">
-            {faq.answer}
+            {/* HTML 답변(TipTap)은 sanitize 후 렌더, 기존 평문 답변은 그대로 — 무회귀 공존 */}
+            {isHtmlContent(faq.answer) ? (
+              <div
+                className="faq-answer-html"
+                dangerouslySetInnerHTML={{ __html: sanitizePostHtml(faq.answer) }}
+              />
+            ) : (
+              faq.answer
+            )}
           </AccordionContent>
         </AccordionItem>
       ))}

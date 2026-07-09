@@ -4,13 +4,14 @@ node_modules/
 # Build output
 dist/
 dist-ssr/
+dist-apk/
 
 # Vite / tooling cache
 .vite/
 *.local
 
-# Capacitor (added in phase 3)
-android/
+# Capacitor
+# android/ is committed as a first-class native project.
 ios/
 
 # Logs

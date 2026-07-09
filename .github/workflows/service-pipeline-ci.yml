@@ -1,0 +1,168 @@
+name: Service Pipeline CI
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'ml/job-posting-worker/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/service-pipeline-ci.yml'
+  push:
+    branches: [dev, main]
+    paths:
+      - 'backend/**'
+      - 'ml/job-posting-worker/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/service-pipeline-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-pipeline-ci-${{ github.ref }}
+  # PR 의 오래된 실행만 취소한다. dev push 실행은 취소되면 커밋 목록에 실패처럼 남는다.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      worker: ${{ steps.changes.outputs.worker }}
+      compose: ${{ steps.changes.outputs.compose }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed service areas
+        id: changes
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            backend=true
+            worker=true
+            compose=true
+          else
+            if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+              base="$PR_BASE_SHA"
+              head="$PR_HEAD_SHA"
+            else
+              base="$BEFORE_SHA"
+              head="$GITHUB_SHA"
+            fi
+
+            if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+              base="$(git rev-parse "${head}^")"
+            fi
+
+            git diff --name-only "$base" "$head" | tee changed-files.txt
+
+            backend=false
+            worker=false
+            compose=false
+            if grep -Eq '^(backend/|\.github/workflows/service-pipeline-ci\.yml$)' changed-files.txt; then
+              backend=true
+            fi
+            if grep -Eq '^(ml/job-posting-worker/|\.github/workflows/service-pipeline-ci\.yml$)' changed-files.txt; then
+              worker=true
+            fi
+            if grep -Eq '^(docker-compose\.yml|\.github/workflows/service-pipeline-ci\.yml)$' changed-files.txt; then
+              compose=true
+            fi
+          fi
+
+          echo "backend=$backend" >> "$GITHUB_OUTPUT"
+          echo "worker=$worker" >> "$GITHUB_OUTPUT"
+          echo "compose=$compose" >> "$GITHUB_OUTPUT"
+          echo "backend-test: $backend"
+          echo "worker-test: $worker"
+          echo "worker-docker-build: $worker or $compose"
+
+  backend-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Test
+        run: ./gradlew test
+
+  worker-test:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ml/job-posting-worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: ml/job-posting-worker/requirements.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Test
+        run: python -m unittest discover -s tests
+
+      - name: Operational drills
+        run: python scripts/17_run_worker_drills.py
+
+      - name: Synthetic 43-file stabilization drill
+        run: python scripts/19_run_synthetic_stabilization_fixture.py --count 43
+
+      - name: Release readiness static check
+        run: python scripts/18_check_release_readiness.py
+
+  worker-docker-build:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.worker == 'true' || needs.detect-changes.outputs.compose == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Validate compose config
+        env:
+          DB_HOST: localhost
+          DB_NAME: careertuner
+          DB_USERNAME: careertuner
+          DB_PASSWORD: careertuner
+          JWT_SECRET: ci-only-not-a-secret
+        run: docker compose config
+
+      - name: Run worker image smoke test
+        run: python ml/job-posting-worker/scripts/23_run_worker_docker_smoke.py --image careertuner-job-posting-worker:ci --container-name careertuner-job-posting-worker-ci --output .tmp/job_posting_worker_docker_smoke.json

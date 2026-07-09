@@ -1,5 +1,7 @@
 package com.careertuner.admin.prompt.controller;
 
+import java.util.List;
+
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,5 +29,15 @@ public class AdminPromptController {
     @GetMapping("/company-analysis")
     public ApiResponse<AdminPromptView> companyAnalysis(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.companyAnalysis(authUser));
+    }
+
+    @GetMapping("/profile")
+    public ApiResponse<AdminPromptView> profile(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.profile(authUser));
+    }
+
+    @GetMapping("/interview")
+    public ApiResponse<List<AdminPromptView>> interview(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.interview(authUser));
     }
 }

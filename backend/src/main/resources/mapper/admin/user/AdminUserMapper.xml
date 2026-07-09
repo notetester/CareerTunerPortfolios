@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.user.mapper.AdminUserMapper">
+
+    <sql id="userColumns">
+        u.id, u.email, u.password_enabled, u.name, u.email_verified, u.user_type, u.role,
+        u.status, u.plan, u.credit, u.last_login_at, u.dormant_at, u.blocked_reason,
+        u.blocked_until, u.deleted_at, u.status_changed_at, u.status_changed_by,
+        u.failed_login_count, u.last_failed_login_at, u.created_at, u.updated_at,
+        COALESCE(login_stats.success_count, 0) AS login_success_count,
+        COALESCE(login_stats.fail_count, 0) AS login_fail_count
+    </sql>
+
+    <sql id="loginStatsJoin">
+        LEFT JOIN (
+            SELECT user_id,
+                   SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS success_count,
+                   SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS fail_count
+            FROM user_login_history
+            WHERE user_id IS NOT NULL
+            GROUP BY user_id
+        ) login_stats ON login_stats.user_id = u.id
+    </sql>
+
+<!-- ═══════════ 공통 그리드 계약(검색/카운트/내보내기/선택조회) ═══════════
+     ORDER BY 는 <choose> 화이트리스트 매핑만 사용하고, ${} 보간은
+     서비스에서 ASC/DESC 로 강제된 sortDir 에만 허용한다(리뷰 체크리스트). -->
+
+    <sql id="userSearchBase">
+        <where>
+            <if test="keyword != null">
+                <choose>
+                    <when test="searchType == 'email'">
+                        AND u.email LIKE CONCAT('%', #{keyword}, '%')
+                    </when>
+                    <when test="searchType == 'name'">
+                        AND u.name LIKE CONCAT('%', #{keyword}, '%')
+                    </when>
+                    <otherwise>
+                        AND (u.email LIKE CONCAT('%', #{keyword}, '%')
+                             OR u.name LIKE CONCAT('%', #{keyword}, '%'))
+                    </otherwise>
+                </choose>
+            </if>
+            <if test="status != null">
+                AND u.status = #{status}
+            </if>
+            <if test="role != null">
+                AND u.role = #{role}
+            </if>
+            <if test="dateFrom != null">
+                AND u.created_at &gt;= #{dateFrom}
+            </if>
+            <if test="dateToExclusive != null">
+                AND u.created_at &lt; #{dateToExclusive}
+            </if>
+        </where>
+    </sql>
+
+    <sql id="userOrderBy">
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'email'">u.email ${sortDir}</when>
+            <when test="sortBy == 'name'">u.name ${sortDir}</when>
+            <when test="sortBy == 'status'">u.status ${sortDir}</when>
+            <when test="sortBy == 'role'">u.role ${sortDir}</when>
+            <when test="sortBy == 'plan'">u.plan ${sortDir}</when>
+            <when test="sortBy == 'credit'">u.credit ${sortDir}</when>
+            <when test="sortBy == 'lastLoginAt'">u.last_login_at ${sortDir}</when>
+            <when test="sortBy == 'loginFailCount'">login_fail_count ${sortDir}</when>
+            <otherwise>u.created_at ${sortDir}</otherwise>
+        </choose>
+        , u.id DESC
+    </sql>
+
+    <select id="countUsers" resultType="long">
+        SELECT COUNT(*)
+        FROM users u
+        <include refid="userSearchBase" />
+    </select>
+
+    <select id="searchUsers" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        <include refid="userSearchBase" />
+        <include refid="userOrderBy" />
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="findUsersForExport" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        <include refid="userSearchBase" />
+        <include refid="userOrderBy" />
+        LIMIT #{exportLimit}
+    </select>
+
+    <select id="findUsersByIds" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        WHERE u.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        <include refid="userOrderBy" />
+    </select>
+
+    <select id="findUsers" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        WHERE 1 = 1
+        <if test="keyword != null">
+            AND (u.email LIKE CONCAT('%', #{keyword}, '%') OR u.name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND u.status = #{status}
+        </if>
+        <if test="role != null">
+            AND u.role = #{role}
+        </if>
+        ORDER BY u.created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findUser" resultType="com.careertuner.admin.user.dto.AdminUserRow">
+        SELECT <include refid="userColumns" />
+        FROM users u
+        <include refid="loginStatsJoin" />
+        WHERE u.id = #{id}
+    </select>
+
+    <select id="findLoginHistory" resultType="com.careertuner.admin.user.dto.AdminUserLoginHistoryRow">
+        SELECT *
+        FROM user_login_history
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findStatusHistory" resultType="com.careertuner.admin.user.dto.AdminUserStatusHistoryRow">
+        SELECT *
+        FROM user_status_history
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findConsents" resultType="com.careertuner.admin.user.dto.AdminUserConsentRow">
+        SELECT *
+        FROM user_consent
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="findEmailVerifications" resultType="com.careertuner.admin.user.dto.AdminUserEmailVerificationRow">
+        SELECT id, user_id, email, purpose, expired_at, used, used_at, created_at
+        FROM email_verification
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findRefreshTokens" resultType="com.careertuner.admin.user.dto.AdminUserRefreshTokenRow">
+        SELECT id, user_id, expired_at, revoked, revoked_at, ip_address, user_agent, created_at
+        FROM refresh_token
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findAiUsage" resultType="com.careertuner.admin.user.dto.AdminUserAiUsageRow">
+        SELECT id, user_id, application_case_id, feature_type, status, model, input_tokens, output_tokens,
+               token_usage, credit_used, error_message, created_at
+        FROM ai_usage_log
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findProfile" resultType="com.careertuner.admin.user.dto.AdminUserProfileSnapshot">
+        SELECT id, user_id, desired_job, desired_industry, education, career, projects, skills,
+               certificates, languages, portfolio_links, resume_text, self_intro, preferences, created_at, updated_at
+        FROM user_profile
+        WHERE user_id = #{userId}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE users
+        SET status = #{status},
+            blocked_reason = CASE WHEN #{status} = 'BLOCKED' THEN #{reason} ELSE NULL END,
+            blocked_until = CASE WHEN #{status} = 'BLOCKED' THEN #{blockedUntil} ELSE NULL END,
+            dormant_at = CASE WHEN #{status} = 'DORMANT' THEN COALESCE(dormant_at, NOW()) ELSE NULL END,
+            deleted_at = CASE WHEN #{status} = 'DELETED' THEN COALESCE(deleted_at, NOW()) ELSE NULL END,
+            status_changed_at = NOW(),
+            status_changed_by = #{actorUserId}
+        WHERE id = #{id}
+    </update>
+
+    <insert id="insertStatusHistory">
+        INSERT INTO user_status_history (
+            user_id, actor_user_id, previous_status, new_status, reason, memo, blocked_until
+        )
+        VALUES (
+            #{userId}, #{actorUserId}, #{previousStatus}, #{newStatus}, #{reason}, #{memo}, #{blockedUntil}
+        )
+    </insert>
+</mapper>

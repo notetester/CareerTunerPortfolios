@@ -8,7 +8,7 @@
 채용공고에 맞춰 스펙·면접 답변을 조정하는 AI 취업 전략 플랫폼. 핵심 단위는 공고가 아니라 **지원 건(Application Case)**.
 
 ```text
-backend/    Spring Boot 4.0.6 + Java 21 + MyBatis + MySQL 8  (REST API, :8080)
+backend/    Spring Boot 4.1.0 + Java 21 + MyBatis + MySQL 8  (REST API, :8080)
 frontend/   React 18 + Vite 6 + TypeScript + Tailwind v4     (사용자/관리자 SPA, :5173)
 docs/       기획·아키텍처 문서
 ```
@@ -28,6 +28,8 @@ docs/       기획·아키텍처 문서
 | 소유권 빠른 참조 | `docs/FEATURE_OWNERSHIP.md` |
 | 현재 구현·실행·API 상태 | 런타임 소스와 `backend/README.md`, `frontend/README.md` |
 | UX와 모바일 세부 원칙 | `docs/planning/디자인 분석.md`, `docs/planning/모바일 고려.md` |
+| AI 장문 실험 보고서·누적 해석 | `docs/ai-reports/` 서브모듈 |
+| AI raw output·benchmark artifact | `docs/ai-artifacts/` 서브모듈 |
 
 - 같은 주제에서는 위 표의 담당 문서를 우선한다. 제품 기획이 구현 규칙을, 현재 코드가 목표 제품 범위를 자동으로 덮어쓰지 않는다.
 - 기획·아키텍처 문서는 목표 상태를 포함할 수 있고, 런타임 소스와 모듈 README는 현재 구현 상태를 설명한다.
@@ -95,6 +97,41 @@ push 요청을 받으면 반드시 아래 순서를 따른다:
 | [docs/TEAM_WORK_DISTRIBUTION.md](docs/TEAM_WORK_DISTRIBUTION.md) | 6명 수직 분담·AI 기능·주요 DB |
 | [backend/README.md](backend/README.md) | 백엔드 실행·환경변수·API 목록·시드 계정 |
 | [frontend/README.md](frontend/README.md) | 프런트 실행·스크립트·폴더 구조 |
+| [docs/AI_REPOSITORY_BOUNDARIES.md](docs/AI_REPOSITORY_BOUNDARIES.md) | AI 보고서·artifact 저장소 경계와 서브모듈 운용 |
+
+## AI 보고서·artifact 서브모듈
+
+AI 관련 산출물은 본체에 계속 누적하지 않는다.
+
+| 경로 | 서브모듈 repo | 용도 |
+| --- | --- | --- |
+| `docs/ai-reports/` | `notetester/CareerTunerAIDocs` | 장문 실험 보고서, 누적 해석, 사람이 읽는 분석 문서 |
+| `docs/ai-artifacts/` | `notetester/CareerTunerAI` | generated requests, raw model outputs, result JSON, manifests, aggregate summaries, 4090 ops docs/scripts |
+
+- `CareerTuner` main repo 에는 제품 코드, 소형 fixture, validator, runner, 짧은 checklist/index, artifact path/commit SHA 만 남긴다.
+- `ml/career-strategy-llm/scripts/` 는 C 영역의 재현용 validator/runner/helper 를 두는 본체 경로다. A~F 공통 AI artifact 와 반복 benchmark artifact 주변 파일은 `CareerTunerAI` submodule 인 `docs/ai-artifacts/` 로 둔다.
+- 4090/Tailscale/OpenSSH/GitHub Actions/MCP/Ollama 운영 문서와 운영 스크립트는 `docs/ai-artifacts/docs/ops/`, `docs/ai-artifacts/scripts/ops/` 에 둔다. `docs/operations/`, `docs/ops/`, `scripts/ops/` 를 본체에 새로 누적하지 않는다.
+- `ml/career-strategy-llm/reports/` 는 본체의 짧은 archive index/호환 안내만 유지한다. 새 장문 보고서는 `docs/ai-reports/areas/c-career-strategy/reports/` 에 추가한다.
+- raw output, generated result, `reports/generated/` 는 `CareerTuner` main repo 에 커밋하지 않는다.
+- submodule 이 비어 있으면 필요한 것만 받는다:
+
+```bash
+git submodule update --init docs/ai-reports
+git submodule update --init docs/ai-artifacts
+```
+
+- submodule 안에서 수정한 파일은 그 submodule repo 에서 먼저 commit/push 한 뒤, 루트에서 submodule pointer 를 갱신해 PR 한다.
+
+## 스토리보드 문서(서브모듈 · 선택 다운로드)
+
+`docs/storyboard/` 는 **별도 repo [notetester/CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) 를 가리키는 git 서브모듈**이다. 담당자별 산출물(스토리보드·PPTX·PDF·DB 설계서 등)이라 일반 개발에는 필요 없고, 메인을 그냥 클론하면 이 폴더는 **빈 채(포인터만)** 라 본체 용량·개발에 영향이 없다.
+
+- 폴더 구조는 **담당자별** `A/`~`F/`·`TOTAL/` 이고, 각 폴더 안은 `workbench/`(작업대·재현 파이프라인) + `deliverables/`(대표 산출물) 로 나뉜다. **C 작업은 `docs/storyboard/C/` 아래에 전부 있다.**
+- 스토리보드를 보거나 작업할 때만 받는다: `git submodule update --init docs/storyboard` (처음부터 받으려면 `git clone --recursive`).
+- **`dev` pull 시 서브모듈 자동 갱신:** 한 번만 `git config submodule.recurse true` (+ `git config fetch.recurseSubmodules on-demand`) 를 설정하면, 이후 `git pull` 이 `dev` 가 고정한 서브모듈 커밋까지 자동으로 체크아웃한다(수동 `submodule update` 불필요). 이 설정은 로컬(`.git/config`)이라 클론마다 1회 설정한다.
+- 수정은 `docs/storyboard/` **안에서** commit·push 한다(그 폴더가 곧 CareerTunerDocs repo). 새 버전을 메인에 고정하려면 루트에서 `git add docs/storyboard && git commit` 으로 포인터를 갱신해 PR 한다.
+- 폴더 안내는 `docs/storyboard/README.md`, C 재생성 파이프라인·명령은 `docs/storyboard/C/workbench/README.md` 참고. 받은 직후 도구 실행 시 `cd docs/storyboard/C/workbench/tools && npm install`.
+- **AI 도구 안내:** 스토리보드 작업 요청을 받았는데 `docs/storyboard/` 가 비어 있으면, 먼저 위 `submodule update` 로 받은 뒤 진행한다.
 
 ## 개인 설정
 

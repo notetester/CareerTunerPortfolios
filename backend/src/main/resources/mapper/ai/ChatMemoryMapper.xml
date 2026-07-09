@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.ai.chat.ChatMemoryMapper">
+
+    <select id="findMessages" resultType="java.lang.String">
+        SELECT messages_json
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO chatbot_conversation_memory (conversation_id, messages_json)
+        VALUES (#{conversationId}, #{messagesJson})
+        ON DUPLICATE KEY UPDATE messages_json = VALUES(messages_json)
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </delete>
+
+    <insert id="createConversation" useGeneratedKeys="true" keyProperty="id" keyColumn="conversation_id">
+        INSERT INTO chatbot_conversation_memory (user_id, messages_json)
+        VALUES (#{userId}, '[]')
+    </insert>
+
+    <select id="findRecentConversationByUser" resultType="java.lang.Long">
+        SELECT conversation_id
+          FROM chatbot_conversation_memory
+         WHERE user_id = #{userId}
+         ORDER BY updated_at DESC
+         LIMIT 1
+    </select>
+
+    <update id="bindCase">
+        UPDATE chatbot_conversation_memory
+           SET application_case_id = #{applicationCaseId},
+               title               = #{title}
+         WHERE conversation_id = #{conversationId}
+    </update>
+
+    <select id="findIntakeSessionsByUser" resultType="map">
+        SELECT m.conversation_id AS conversationId,
+               m.title           AS title,
+               s.mode            AS mode,
+               m.updated_at      AS updatedAt
+          FROM chatbot_conversation_memory m
+          LEFT JOIN chatbot_intake_slot s ON s.conversation_id = m.conversation_id
+         WHERE m.user_id = #{userId}
+           AND m.application_case_id IS NOT NULL
+         ORDER BY m.updated_at DESC
+         LIMIT 5
+    </select>
+
+    <select id="findOwnerUserId" resultType="java.lang.Long">
+        SELECT user_id
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+    <select id="findApplicationCaseId" resultType="java.lang.Long">
+        SELECT application_case_id
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+    <select id="findOnboardingDeclinedAt" resultType="java.time.LocalDateTime">
+        SELECT onboarding_declined_at
+          FROM chatbot_conversation_memory
+         WHERE conversation_id = #{conversationId}
+    </select>
+
+    <update id="markOnboardingDeclined">
+        UPDATE chatbot_conversation_memory
+           SET onboarding_declined_at = NOW()
+         WHERE conversation_id = #{conversationId}
+    </update>
+
+    <update id="clearOnboardingDeclined">
+        UPDATE chatbot_conversation_memory
+           SET onboarding_declined_at = NULL
+         WHERE conversation_id = #{conversationId}
+    </update>
+
+</mapper>

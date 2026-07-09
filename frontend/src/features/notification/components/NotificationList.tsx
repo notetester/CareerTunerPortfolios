@@ -1,16 +1,6 @@
-import {
-  FileSearch, ClipboardList, Sparkles, MessageSquareReply,
-  UserCheck, CreditCard, Megaphone, RotateCcw, CalendarClock,
-  Rocket, BellOff, ChevronDown,
-  type LucideIcon,
-} from "lucide-react";
+import { BellOff, ChevronDown } from "lucide-react";
 import type { Notification } from "../types/notification";
 import { NotificationItem } from "./NotificationItem";
-
-const ICONS: Record<string, LucideIcon> = {
-  FileSearch, ClipboardList, Sparkles, MessageSquareReply,
-  UserCheck, CreditCard, Megaphone, RotateCcw, CalendarClock, Rocket,
-};
 
 interface NotificationListProps {
   items: Notification[];
@@ -19,9 +9,10 @@ interface NotificationListProps {
   remaining: number;
   onLoadMore: () => void;
   onRead: (id: number) => void;
+  onDelete?: (id: number) => void;
 }
 
-export function NotificationList({ items, loading, hasMore, remaining, onLoadMore, onRead }: NotificationListProps) {
+export function NotificationList({ items, loading, hasMore, remaining, onLoadMore, onRead, onDelete }: NotificationListProps) {
   if (loading) {
     return (
       <p style={{ textAlign: "center", color: "var(--muted-foreground)", padding: "48px 0" }}>
@@ -47,8 +38,8 @@ export function NotificationList({ items, loading, hasMore, remaining, onLoadMor
           <NotificationItem
             key={n.id}
             notification={n}
-            icon={ICONS[n.icon]}
             onRead={onRead}
+            onDelete={onDelete}
           />
         ))}
       </div>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.correction.mapper.CorrectionMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO correction_request
+            (user_id, request_key, application_case_id, correction_type, source_type, source_ref_id,
+             original_text, improved_text, result_json, status, ai_usage_log_id)
+        VALUES
+            (#{userId}, #{requestKey}, #{applicationCaseId}, #{correctionType}, #{sourceType}, #{sourceRefId},
+             #{originalText}, #{improvedText}, #{resultJson}, #{status}, #{aiUsageLogId})
+    </insert>
+
+    <select id="findByIdAndUserId" resultType="com.careertuner.correction.domain.CorrectionRequest">
+        SELECT *
+        FROM correction_request
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </select>
+
+    <select id="findByUserIdAndRequestKey" resultType="com.careertuner.correction.domain.CorrectionRequest">
+        SELECT *
+        FROM correction_request
+        WHERE user_id = #{userId}
+          AND request_key = #{requestKey}
+    </select>
+
+    <select id="findByUserId" resultType="com.careertuner.correction.domain.CorrectionRequest">
+        SELECT *
+        FROM correction_request
+        WHERE user_id = #{userId}
+        <if test="applicationCaseId != null">
+            AND application_case_id = #{applicationCaseId}
+        </if>
+        <if test="correctionType != null and correctionType != ''">
+            AND correction_type = #{correctionType}
+        </if>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

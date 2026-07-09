@@ -1,2 +1,4 @@
-/* Pretendard — Korean product sans-serif, used by CareerTuner design system */
+/* Wanted Sans — 기본 본문/제목 (Linear/Vercel 프리미엄 디자인 시스템) */
+@import url("https://cdn.jsdelivr.net/gh/wanteddev/wanted-sans@v1.0.1/packages/wanted-sans/fonts/webfonts/variable/split/WantedSansVariable.min.css");
+/* Pretendard — 폴백 (Wanted Sans 미로딩 시) */
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css");

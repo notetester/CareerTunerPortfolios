@@ -1,0 +1,96 @@
+# CareerTuner Dependabot configuration.
+#
+# Dependency graph snapshot checked while writing this file:
+# - npm: frontend/package.json + package-lock.json
+# - Gradle: backend/build.gradle
+# - pip: docs/ai-training and ml/* requirements files
+# - Docker: backend/Dockerfile, ml/job-posting-worker/Dockerfile
+#   (docker-compose.yml is not scanned by the docker ecosystem)
+# - GitHub Actions: .github/workflows/*.yml
+#
+# Keep version-update noise low: app, ML, container, and workflow dependency
+# updates are collected into one weekly Dependabot PR targeting dev.
+version: 2
+
+multi-ecosystem-groups:
+  careertuner-dependencies:
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+      timezone: "Asia/Seoul"
+    target-branch: "dev"
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-dependencies"
+
+  - package-ecosystem: "gradle"
+    directory: "/backend"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-dependencies"
+    ignore:
+      # Runtime contract: Spring Boot 4.x on Java 21. A Spring Boot MAJOR (5.x)
+      # raises the Java baseline past 21 and is a deliberate migration, not an
+      # automatic PR. dependency-management moves the whole managed Spring set.
+      - dependency-name: "org.springframework.boot"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "io.spring.dependency-management"
+        update-types:
+          - "version-update:semver-major"
+      # langchain4j is a pre-1.0 beta on its own version line and must stay on the
+      # -spring-boot4-starter variant; both starters move by hand in lockstep.
+      - dependency-name: "dev.langchain4j:*"
+
+  - package-ecosystem: "pip"
+    directories:
+      - "/docs/ai-training"
+      - "/ml/career-strategy-llm"
+      - "/ml/interview-finetune"
+      - "/ml/interview-nonverbal"
+      - "/ml/job-posting-worker"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-dependencies"
+    # Dependabot pip auto-detects standard manifests (requirements.txt). The
+    # requirements-qlora.txt / requirements-ocr.txt files use non-standard names
+    # and may not be picked up; the OCR stack is range-capped (<4.0) regardless.
+    ignore:
+      # GPU/4090 training stack: a MAJOR bump of these can break the Qwen2.5-3B
+      # 4bit + LoRA + CUDA setup. Let them surface only via the grouped PR for
+      # manual review, never an isolated auto-bump.
+      - dependency-name: "torch"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "transformers"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "bitsandbytes"
+        update-types:
+          - "version-update:semver-major"
+
+  - package-ecosystem: "docker"
+    directories:
+      # docker-compose.yml at "/" is not a docker-ecosystem manifest, so only the
+      # two real Dockerfiles are tracked here.
+      - "/backend"
+      - "/ml/job-posting-worker"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-dependencies"
+    ignore:
+      # eclipse-temurin: block majors only, so 21.x base refreshes still flow.
+      - dependency-name: "eclipse-temurin"
+        update-types:
+          - "version-update:semver-major"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: "careertuner-dependencies"

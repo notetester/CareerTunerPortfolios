@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.analysis.mapper.CareerPlanMapper">
+    <resultMap id="GoalMap" type="com.careertuner.analysis.domain.CareerGoal">
+        <id property="id" column="id"/><result property="userId" column="user_id"/>
+        <result property="targetJob" column="target_job"/><result property="targetPeriod" column="target_period"/>
+        <result property="prioritySkill" column="priority_skill"/><result property="preferredCompanyType" column="preferred_company_type"/>
+        <result property="createdAt" column="created_at"/><result property="updatedAt" column="updated_at"/>
+    </resultMap>
+    <resultMap id="PlanMap" type="com.careertuner.analysis.domain.LearningPlan">
+        <id property="id" column="id"/><result property="userId" column="user_id"/><result property="title" column="title"/>
+        <result property="targetSkill" column="target_skill"/><result property="startDate" column="start_date"/>
+        <result property="endDate" column="end_date"/><result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/><result property="updatedAt" column="updated_at"/>
+    </resultMap>
+    <resultMap id="TaskMap" type="com.careertuner.analysis.domain.LearningPlanTask">
+        <id property="id" column="id"/><result property="learningPlanId" column="learning_plan_id"/>
+        <result property="task" column="task"/><result property="done" column="done"/><result property="sortOrder" column="sort_order"/>
+        <result property="completedAt" column="completed_at"/><result property="createdAt" column="created_at"/><result property="updatedAt" column="updated_at"/>
+    </resultMap>
+    <select id="findGoal" resultMap="GoalMap">SELECT * FROM career_goal WHERE user_id = #{userId}</select>
+    <insert id="upsertGoal">
+        INSERT INTO career_goal (user_id, target_job, target_period, priority_skill, preferred_company_type)
+        VALUES (#{userId}, #{targetJob}, #{targetPeriod}, #{prioritySkill}, #{preferredCompanyType})
+        ON DUPLICATE KEY UPDATE target_job=VALUES(target_job), target_period=VALUES(target_period),
+            priority_skill=VALUES(priority_skill), preferred_company_type=VALUES(preferred_company_type)
+    </insert>
+    <select id="findPlans" resultMap="PlanMap">
+        SELECT * FROM learning_plan WHERE user_id = #{userId} ORDER BY status = 'ACTIVE' DESC, created_at DESC, id DESC
+    </select>
+    <select id="findPlan" resultMap="PlanMap">SELECT * FROM learning_plan WHERE id = #{planId} AND user_id = #{userId}</select>
+    <insert id="insertPlan" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO learning_plan (user_id, title, target_skill, start_date, end_date, status)
+        VALUES (#{userId}, #{title}, #{targetSkill}, #{startDate}, #{endDate}, #{status})
+    </insert>
+    <select id="findTasks" resultMap="TaskMap">
+        SELECT * FROM learning_plan_task WHERE learning_plan_id = #{planId} ORDER BY done, sort_order, id
+    </select>
+    <insert id="insertTask" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO learning_plan_task (learning_plan_id, task, done, sort_order) VALUES (#{learningPlanId}, #{task}, #{done}, #{sortOrder})
+    </insert>
+    <update id="updateTaskDone">
+        UPDATE learning_plan_task task
+        INNER JOIN learning_plan plan ON plan.id = task.learning_plan_id
+        SET task.done = #{done}, task.completed_at = IF(#{done}, CURRENT_TIMESTAMP, NULL)
+        WHERE task.id = #{taskId} AND task.learning_plan_id = #{planId} AND plan.user_id = #{userId}
+    </update>
+    <select id="findTask" resultMap="TaskMap">
+        SELECT * FROM learning_plan_task WHERE id = #{taskId} AND learning_plan_id = #{planId}
+    </select>
+</mapper>

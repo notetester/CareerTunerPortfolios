@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.billing.mapper.BillingMapper">
+
+    <!-- ───── 요금제 / 크레딧 상품 ───── -->
+    <select id="findActivePlans" resultType="com.careertuner.billing.domain.SubscriptionPlan">
+        SELECT * FROM subscription_plan WHERE active = 1 ORDER BY sort_order
+    </select>
+
+    <select id="findPlanByCode" resultType="com.careertuner.billing.domain.SubscriptionPlan">
+        SELECT * FROM subscription_plan WHERE code = #{code}
+    </select>
+
+    <select id="findActivePlanByCode" resultType="com.careertuner.billing.domain.SubscriptionPlan">
+        SELECT * FROM subscription_plan
+         WHERE code = #{planCode}
+           AND active = 1
+    </select>
+
+    <select id="findActiveBenefitPolicies" resultType="com.careertuner.billing.domain.SubscriptionBenefitPolicy">
+        SELECT * FROM subscription_benefit_policy
+         WHERE active = 1
+         ORDER BY plan_code ASC, sort_order ASC, id ASC
+    </select>
+
+    <select id="findActiveBenefitPoliciesByPlan" resultType="com.careertuner.billing.domain.SubscriptionBenefitPolicy">
+        SELECT * FROM subscription_benefit_policy
+         WHERE plan_code = #{planCode}
+           AND active = 1
+         ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="findActiveBenefitPolicy" resultType="com.careertuner.billing.domain.SubscriptionBenefitPolicy">
+        SELECT * FROM subscription_benefit_policy
+         WHERE plan_code = #{planCode}
+           AND benefit_code = #{benefitCode}
+           AND active = 1
+    </select>
+
+    <select id="findActiveFeatureBenefitPolicies" resultType="com.careertuner.billing.domain.AiFeatureBenefitPolicy">
+        SELECT * FROM ai_feature_benefit_policy
+         WHERE active = 1
+         ORDER BY benefit_code ASC, feature_type ASC
+    </select>
+
+    <select id="findActiveFeatureBenefitPolicy" resultType="com.careertuner.billing.domain.AiFeatureBenefitPolicy">
+        SELECT * FROM ai_feature_benefit_policy
+         WHERE feature_type = #{featureType}
+           AND active = 1
+    </select>
+
+    <select id="findEnabledCreditProducts" resultType="com.careertuner.credit.domain.CreditProduct">
+        SELECT * FROM credit_product WHERE enabled = 1 ORDER BY sort_order
+    </select>
+
+    <select id="findCreditProductByCode" resultType="com.careertuner.credit.domain.CreditProduct">
+        SELECT * FROM credit_product WHERE code = #{code}
+    </select>
+
+    <!-- ───── 구독 ───── -->
+    <select id="findActiveSubscription" resultType="com.careertuner.billing.domain.UserSubscription">
+        SELECT * FROM user_subscription
+         WHERE user_id = #{userId}
+           AND status IN ('ACTIVE', 'CANCELED')
+           AND (#{now} IS NULL OR (current_period_start &lt;= #{now} AND current_period_end &gt; #{now}))
+         ORDER BY id DESC LIMIT 1
+    </select>
+
+    <insert id="insertSubscription" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_subscription
+            (payment_id, user_id, plan_code, status, started_at, current_period_start, current_period_end, policy_snapshot_json)
+        VALUES
+            (#{paymentId}, #{userId}, #{planCode}, #{status}, #{startedAt}, #{currentPeriodStart}, #{currentPeriodEnd}, #{policySnapshotJson})
+    </insert>
+
+    <update id="cancelActiveSubscription">
+        UPDATE user_subscription
+           SET status = 'CANCELED', canceled_at = NOW()
+         WHERE user_id = #{userId} AND status = 'ACTIVE'
+    </update>
+
+    <update id="deactivateActiveSubscriptions">
+        UPDATE user_subscription
+           SET status = 'INACTIVE', canceled_at = #{now}
+         WHERE user_id = #{userId} AND status = 'ACTIVE'
+    </update>
+
+    <update id="updateUserPlan">
+        UPDATE users
+           SET plan = #{planCode}
+         WHERE id = #{userId}
+    </update>
+
+    <select id="findUserPlanCode" resultType="string">
+        SELECT plan FROM users WHERE id = #{userId}
+    </select>
+
+    <select id="findBenefitBalances" resultType="com.careertuner.billing.domain.UserBenefitBalance">
+        SELECT * FROM user_benefit_balance
+         WHERE user_id = #{userId}
+           AND period_start = #{periodStart}
+           AND period_end = #{periodEnd}
+         ORDER BY benefit_code ASC
+    </select>
+
+    <select id="findBenefitBalance" resultType="com.careertuner.billing.domain.UserBenefitBalance">
+        SELECT * FROM user_benefit_balance
+         WHERE user_id = #{userId}
+           AND benefit_code = #{benefitCode}
+           AND period_start = #{periodStart}
+    </select>
+
+    <insert id="insertBenefitBalance" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_benefit_balance
+            (user_id, benefit_code, period_start, period_end, granted_quantity,
+             used_quantity, remaining_quantity, source_plan_code, source_type, source_code)
+        VALUES
+            (#{userId}, #{benefitCode}, #{periodStart}, #{periodEnd}, #{grantedQuantity},
+             #{usedQuantity}, #{remainingQuantity}, #{sourcePlanCode}, #{sourceType}, #{sourceCode})
+    </insert>
+
+    <update id="consumeBenefitIfEnough">
+        UPDATE user_benefit_balance
+           SET used_quantity = used_quantity + 1,
+               remaining_quantity = remaining_quantity - 1
+         WHERE id = #{balanceId}
+           AND remaining_quantity &gt; 0
+    </update>
+
+    <select id="existsConsumeTransaction" resultType="boolean">
+        SELECT EXISTS (
+            SELECT 1
+              FROM benefit_transaction
+             WHERE benefit_code = #{benefitCode}
+               AND transaction_type = 'CONSUME'
+               AND ref_type = #{refType}
+               AND ref_id = #{refId}
+        )
+    </select>
+
+    <insert id="insertBenefitTransaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO benefit_transaction
+            (user_id, benefit_code, transaction_type, amount, balance_after,
+             ref_type, ref_id, ai_usage_log_id, reason)
+        VALUES
+            (#{userId}, #{benefitCode}, #{transactionType}, #{amount}, #{balanceAfter},
+             #{refType}, #{refId}, #{aiUsageLogId}, #{reason})
+    </insert>
+
+    <select id="findBenefitTransactionsByUser" resultType="com.careertuner.billing.domain.BenefitTransaction">
+        SELECT * FROM benefit_transaction
+         WHERE user_id = #{userId}
+         ORDER BY id DESC
+         LIMIT #{limit}
+    </select>
+
+    <!-- ───── 결제 ───── -->
+    <select id="findPaymentsByUserId" resultType="com.careertuner.payment.domain.Payment">
+        SELECT *
+          FROM payment
+         WHERE user_id = #{userId}
+           AND status IN ('PAID', 'CANCELED')
+         ORDER BY id DESC
+    </select>
+
+    <insert id="insertPayment" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO payment
+            (user_id, provider, product_type, product_code, order_id, payment_key, amount, plan, credit_amount,
+             policy_snapshot_json, status, paid_at)
+        VALUES
+            (#{userId}, #{provider}, #{productType}, #{productCode}, #{orderId}, #{paymentKey},
+             #{amount}, #{plan}, #{creditAmount}, #{policySnapshotJson}, #{status}, #{paidAt})
+    </insert>
+
+    <!-- ───── 크레딧 원장 ───── -->
+    <select id="findUserCredit" resultType="java.lang.Integer">
+        SELECT credit
+          FROM users
+         WHERE id = #{userId}
+    </select>
+
+    <update id="increaseUserCredit">
+        UPDATE users
+           SET credit = credit + #{creditAmount}
+         WHERE id = #{userId}
+    </update>
+
+    <insert id="insertCreditTransaction" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO credit_transaction
+            (user_id, ai_usage_log_id, type, amount, balance_after, feature_type, reason)
+        VALUES
+            (#{userId}, #{aiUsageLogId}, #{type}, #{amount}, #{balanceAfter}, #{featureType}, #{reason})
+    </insert>
+
+    <select id="findCreditTransactionsByUserId" resultType="com.careertuner.credit.domain.CreditTransaction">
+        SELECT * FROM credit_transaction WHERE user_id = #{userId} ORDER BY id DESC LIMIT 100
+    </select>
+
+    <!-- ───── 이번 달 AI 사용량 ───── -->
+    <select id="monthlyUsage" resultType="com.careertuner.billing.dto.UsageRow">
+        SELECT feature_type            AS featureType,
+               COUNT(*)                AS used,
+               COALESCE(SUM(credit_used), 0) AS creditUsed
+          FROM ai_usage_log
+         WHERE user_id = #{userId}
+           AND created_at &gt;= #{from}
+         GROUP BY feature_type
+         ORDER BY used DESC
+    </select>
+
+    <!-- ───── 관리자 ───── -->
+    <resultMap id="adminPaymentRow" type="com.careertuner.billing.dto.AdminPaymentRow">
+        <id     property="id"           column="id"/>
+        <result property="userId"       column="user_id"/>
+        <result property="userEmail"    column="user_email"/>
+        <result property="userName"     column="user_name"/>
+        <result property="provider"     column="provider"/>
+        <result property="productCode"  column="product_code"/>
+        <result property="amount"       column="amount"/>
+        <result property="plan"         column="plan"/>
+        <result property="creditAmount" column="credit_amount"/>
+        <result property="status"       column="status"/>
+        <result property="paidAt"       column="paid_at"/>
+        <result property="createdAt"    column="created_at"/>
+    </resultMap>
+
+    <select id="findAllPayments" resultMap="adminPaymentRow">
+        SELECT p.id, p.user_id, p.provider, p.product_code, p.amount, p.plan,
+               p.credit_amount, p.status, p.paid_at, p.created_at,
+               u.email AS user_email, u.name AS user_name
+          FROM payment p
+          LEFT JOIN users u ON u.id = p.user_id
+        <where>
+            <if test="status != null and status != ''">
+                p.status = #{status}
+            </if>
+        </where>
+         ORDER BY p.id DESC
+         LIMIT 300
+    </select>
+
+    <select id="paymentSummary" resultType="com.careertuner.billing.dto.AdminPaymentSummary">
+        SELECT COUNT(*)                                              AS totalCount,
+               COALESCE(SUM(status = 'PAID'), 0)                     AS paidCount,
+               COALESCE(SUM(CASE WHEN status = 'PAID' THEN amount ELSE 0 END), 0) AS totalRevenue
+          FROM payment
+    </select>
+
+</mapper>

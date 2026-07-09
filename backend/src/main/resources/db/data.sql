@@ -95,359 +95,6 @@ INSERT INTO fit_analysis (application_case_id, fit_score, matched_skills, missin
    AND NOT EXISTS (SELECT 1 FROM fit_analysis fa WHERE fa.application_case_id = ac.id)
  LIMIT 1;
 
--- C 담당 분석 화면 검증용 추가 샘플 -----------------------------------
--- B/D/E 담당 결과가 이미 생성됐다는 전제로 C 화면에서 참조하는 분석·면접·사용량 데이터를 채운다.
-INSERT INTO application_case (user_id, company_name, job_title, posting_date, source_type, status, is_favorite)
- SELECT u.id, '토스', 'Frontend Developer', DATE_ADD(CURRENT_DATE, INTERVAL 18 DAY), 'TEXT', 'READY', 1
- FROM users u
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND NOT EXISTS (
-       SELECT 1 FROM application_case ac
-       WHERE ac.user_id = u.id AND ac.company_name = '토스' AND ac.job_title = 'Frontend Developer'
-   );
-INSERT INTO application_case (user_id, company_name, job_title, posting_date, source_type, status, is_favorite)
- SELECT u.id, '라인플러스', 'Fullstack Developer', DATE_ADD(CURRENT_DATE, INTERVAL 28 DAY), 'TEXT', 'APPLIED', 0
- FROM users u
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND NOT EXISTS (
-       SELECT 1 FROM application_case ac
-       WHERE ac.user_id = u.id AND ac.company_name = '라인플러스' AND ac.job_title = 'Fullstack Developer'
-   );
-
-UPDATE application_case ac
-INNER JOIN users u ON u.id = ac.user_id
-SET ac.status = CASE
-        WHEN ac.company_name = '국민건강보험공단' THEN 'READY'
-        WHEN ac.company_name = '현대자동차' THEN 'READY'
-        ELSE ac.status
-    END
-WHERE u.email = 'jiwon.kim@careertuner.dev'
-  AND ac.company_name IN ('국민건강보험공단', '현대자동차');
-
-INSERT INTO job_posting (application_case_id, original_text, extracted_text, source_type)
- SELECT ac.id,
-        'React, TypeScript 기반 금융 서비스 화면 개발과 A/B 테스트, 성능 최적화를 담당합니다. 테스트 자동화와 대규모 트래픽 경험을 우대합니다.',
-        'React, TypeScript 기반 금융 서비스 화면 개발과 A/B 테스트, 성능 최적화를 담당합니다. 테스트 자동화와 대규모 트래픽 경험을 우대합니다.',
-        'TEXT'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '토스'
-   AND NOT EXISTS (SELECT 1 FROM job_posting jp WHERE jp.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO job_posting (application_case_id, original_text, extracted_text, source_type)
- SELECT ac.id,
-        'Spring Boot와 React를 활용한 사내 플랫폼 개발, CI/CD 운영, 장애 대응 경험을 요구합니다.',
-        'Spring Boot와 React를 활용한 사내 플랫폼 개발, CI/CD 운영, 장애 대응 경험을 요구합니다.',
-        'TEXT'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '라인플러스'
-   AND NOT EXISTS (SELECT 1 FROM job_posting jp WHERE jp.application_case_id = ac.id)
- LIMIT 1;
-
-INSERT INTO job_analysis (application_case_id, employment_type, experience_level, required_skills, preferred_skills, duties, qualifications, difficulty, summary)
- SELECT ac.id, '정규직', '신입~경력 3년', '["Java","Spring Boot","SQL","정보처리기사"]', '["공공 SI","보안","MyBatis"]',
-        '공공 서비스 전산 시스템 개발과 운영, SQL 기반 데이터 처리, 장애 대응',
-        'Java 웹 개발 기초와 관계형 DB 활용 경험, 공공기관 정보보안 기준 이해',
-        'NORMAL',
-        'Java/Spring 기반 공공 전산 운영 역량과 SQL 정확도가 중요한 공고'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '국민건강보험공단'
-   AND NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO job_analysis (application_case_id, employment_type, experience_level, required_skills, preferred_skills, duties, qualifications, difficulty, summary)
- SELECT ac.id, '정규직', '신입', '["Excel","데이터 분석","생산관리","협업"]', '["Python","제조 도메인","품질관리"]',
-        '생산 계획 수립, 공정 지표 관리, 현업 부서와 일정 조율',
-        '제조 공정 흐름 이해와 데이터 기반 문제 해결 경험',
-        'HARD',
-        '개발 역량보다 제조 도메인 이해와 운영 지표 관리 경험이 중요한 공고'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '현대자동차'
-   AND NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO job_analysis (application_case_id, employment_type, experience_level, required_skills, preferred_skills, duties, qualifications, difficulty, summary)
- SELECT ac.id, '정규직', '경력 1~4년', '["React","TypeScript","성능 최적화","실험 설계"]', '["Playwright","대규모 트래픽","금융 도메인"]',
-        '금융 서비스 프런트엔드 개발, 사용자 실험, Core Web Vitals 개선',
-        'React/TypeScript 실무 경험과 데이터 기반 UI 개선 경험',
-        'HARD',
-        '프런트엔드 기본기 위에 실험 설계와 성능 개선 사례를 요구하는 공고'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '토스'
-   AND NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO job_analysis (application_case_id, employment_type, experience_level, required_skills, preferred_skills, duties, qualifications, difficulty, summary)
- SELECT ac.id, '정규직', '신입~경력 3년', '["React","Spring Boot","REST API","SQL"]', '["CI/CD","Node.js","장애 대응"]',
-        '풀스택 서비스 개발, API 연동, 배포 자동화, 서비스 운영',
-        '프런트와 백엔드를 함께 이해하고 운영 품질을 개선한 경험',
-        'NORMAL',
-        'React와 Spring Boot를 함께 쓰는 서비스 운영형 풀스택 공고'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '라인플러스'
-   AND NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO job_analysis (application_case_id, employment_type, experience_level, required_skills, preferred_skills, duties, qualifications, difficulty, summary)
- SELECT ac.id, '정규직', '신입~경력 2년', '["GA4","SQL","캠페인 기획","콘텐츠 기획"]', '["CRM","뷰티 커머스","A/B 테스트"]',
-        '마케팅 캠페인 기획, 고객 세그먼트 분석, 성과 리포트 작성',
-        '데이터 기반 캠페인 개선 경험과 커머스 고객 이해',
-        'NORMAL',
-        '퍼포먼스 데이터와 콘텐츠 기획을 함께 보는 커머스 마케팅 공고'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'seoyeon.lee@careertuner.dev'
-   AND ac.company_name = 'CJ올리브영'
-   AND NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO job_analysis (application_case_id, employment_type, experience_level, required_skills, preferred_skills, duties, qualifications, difficulty, summary)
- SELECT ac.id, '계약직', '경력 1~3년', '["고객 응대","운영 프로세스","VOC 분석","문서화"]', '["SQL","Notion","CS 자동화"]',
-        '서비스 운영 정책 정리, VOC 분석, 고객 문의 흐름 개선',
-        '고객 접점 경험과 반복 업무를 구조화한 사례',
-        'EASY',
-        '분석 역량보다 운영 안정화와 문서화 습관이 중요한 서비스 운영 공고'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'seoyeon.lee@careertuner.dev'
-   AND ac.company_name = '스타트업 A'
-   AND NOT EXISTS (SELECT 1 FROM job_analysis ja WHERE ja.application_case_id = ac.id)
- LIMIT 1;
-
-INSERT INTO fit_analysis (application_case_id, fit_score, matched_skills, missing_skills, recommended_study, recommended_certificates, strategy)
- SELECT ac.id, 61, '["Java","정보처리기사","Git"]', '["Spring Boot","공공 SI 경험","SQL 튜닝"]',
-        '["Spring Boot CRUD 프로젝트 1개 완성","MyBatis 동적 SQL과 인덱스 기초 정리","공공기관 보안 가이드 요약"]',
-        '["SQLD"]',
-        '정보처리기사와 Java 기초를 강점으로 두되, Spring Boot와 SQL 튜닝 보완 계획을 지원서 전면에 배치'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '국민건강보험공단'
-   AND NOT EXISTS (SELECT 1 FROM fit_analysis fa WHERE fa.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO fit_analysis (application_case_id, fit_score, matched_skills, missing_skills, recommended_study, recommended_certificates, strategy)
- SELECT ac.id, 48, '["Excel","협업","Git"]', '["생산관리 경험","데이터 분석 사례","제조 도메인 이해"]',
-        '["생산관리 KPI와 공정 용어 정리","Excel 피벗/파워쿼리로 공정 데이터 샘플 분석","제조 현장 개선 사례 3개 요약"]',
-        '["컴퓨터활용능력 1급"]',
-        '직무 전환 지원으로 보고, 개발 프로젝트의 일정·품질 관리 경험을 생산관리 언어로 번역해서 제시'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '현대자동차'
-   AND NOT EXISTS (SELECT 1 FROM fit_analysis fa WHERE fa.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO fit_analysis (application_case_id, fit_score, matched_skills, missing_skills, recommended_study, recommended_certificates, strategy)
- SELECT ac.id, 78, '["React","TypeScript","REST API","Git"]', '["대규모 트래픽 최적화","테스트 자동화","실험 설계"]',
-        '["Core Web Vitals 개선 리포트 작성","Playwright E2E 테스트 도입","A/B 테스트 지표 설계 연습"]',
-        '[]',
-        'React와 TypeScript 경험은 강점으로 충분하므로, 성능 개선 수치와 테스트 자동화 경험을 포트폴리오에 추가'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '토스'
-   AND NOT EXISTS (SELECT 1 FROM fit_analysis fa WHERE fa.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO fit_analysis (application_case_id, fit_score, matched_skills, missing_skills, recommended_study, recommended_certificates, strategy)
- SELECT ac.id, 66, '["React","REST API","SQL","Git"]', '["Spring Boot 운영 경험","CI/CD","장애 대응"]',
-        '["Spring Boot 게시판 API를 배포까지 진행","GitHub Actions 배포 파이프라인 구성","장애 회고 템플릿 작성"]',
-        '["SQLD"]',
-        '프런트 강점과 SQL 이해를 살리고, 백엔드 운영 경험은 작은 배포 프로젝트로 보완해 풀스택 성장 가능성을 강조'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '라인플러스'
-   AND NOT EXISTS (SELECT 1 FROM fit_analysis fa WHERE fa.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO fit_analysis (application_case_id, fit_score, matched_skills, missing_skills, recommended_study, recommended_certificates, strategy)
- SELECT ac.id, 69, '["GA4","SQL","콘텐츠기획"]', '["CRM 캠페인","뷰티 커머스 지표","A/B 테스트 설계"]',
-        '["CRM 세그먼트 캠페인 샘플 기획","뷰티 커머스 KPI 용어 정리","A/B 테스트 결과 리포트 작성"]',
-        '["검색광고마케터 1급"]',
-        '데이터 기반 캠페인 개선 경험을 핵심 근거로 삼고, 커머스 도메인 이해를 빠르게 보완'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'seoyeon.lee@careertuner.dev'
-   AND ac.company_name = 'CJ올리브영'
-   AND NOT EXISTS (SELECT 1 FROM fit_analysis fa WHERE fa.application_case_id = ac.id)
- LIMIT 1;
-INSERT INTO fit_analysis (application_case_id, fit_score, matched_skills, missing_skills, recommended_study, recommended_certificates, strategy)
- SELECT ac.id, 55, '["콘텐츠기획","고객 응대","문서화"]', '["VOC 분석","운영 자동화","SQL"]',
-        '["VOC 분류 기준표 작성","SQL 기초 SELECT/ GROUP BY 연습","운영 프로세스 개선안 1페이지 작성"]',
-        '[]',
-        '운영 직무 전환 가능성은 있으나, 반복 문의를 데이터로 정리한 사례를 보강해야 설득력이 올라감'
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'seoyeon.lee@careertuner.dev'
-   AND ac.company_name = '스타트업 A'
-   AND NOT EXISTS (SELECT 1 FROM fit_analysis fa WHERE fa.application_case_id = ac.id)
- LIMIT 1;
-
-UPDATE fit_analysis fa
-INNER JOIN application_case ac ON ac.id = fa.application_case_id
-INNER JOIN users u ON u.id = ac.user_id
-SET fa.created_at = CASE
-        WHEN ac.company_name = '카카오페이' THEN DATE_SUB(NOW(), INTERVAL 9 DAY)
-        WHEN ac.company_name = '국민건강보험공단' THEN DATE_SUB(NOW(), INTERVAL 5 DAY)
-        WHEN ac.company_name = '현대자동차' THEN DATE_SUB(NOW(), INTERVAL 4 DAY)
-        WHEN ac.company_name = '토스' THEN DATE_SUB(NOW(), INTERVAL 3 DAY)
-        WHEN ac.company_name = '라인플러스' THEN DATE_SUB(NOW(), INTERVAL 2 DAY)
-        WHEN ac.company_name = 'CJ올리브영' THEN DATE_SUB(NOW(), INTERVAL 1 DAY)
-        WHEN ac.company_name = '스타트업 A' THEN DATE_SUB(NOW(), INTERVAL 12 HOUR)
-        ELSE fa.created_at
-    END
-WHERE u.email IN ('jiwon.kim@careertuner.dev', 'seoyeon.lee@careertuner.dev')
-  AND ac.company_name IN ('카카오페이', '국민건강보험공단', '현대자동차', '토스', '라인플러스', 'CJ올리브영', '스타트업 A');
-
-INSERT INTO interview_session (application_case_id, mode, started_at, ended_at, total_score, report, created_at)
- SELECT ac.id, 'JOB', DATE_SUB(NOW(), INTERVAL 3 HOUR), DATE_SUB(NOW(), INTERVAL 2 HOUR), 74,
-        '{"summary":"React 경험 설명은 좋았지만 TypeScript 전환 경험 보완 필요","strengths":["프로젝트 구조 설명","API 연동 경험"],"weaknesses":["정량 성과 부족"]}',
-        DATE_SUB(NOW(), INTERVAL 2 HOUR)
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '카카오페이'
-   AND NOT EXISTS (
-       SELECT 1 FROM interview_session interview
-       WHERE interview.application_case_id = ac.id
-         AND interview.mode = 'JOB'
-         AND DATE(interview.created_at) = CURRENT_DATE
-   )
- LIMIT 1;
-INSERT INTO interview_session (application_case_id, mode, started_at, ended_at, total_score, report, created_at)
- SELECT ac.id, 'TECH', DATE_SUB(NOW(), INTERVAL 90 MINUTE), DATE_SUB(NOW(), INTERVAL 45 MINUTE), 81,
-        '{"summary":"성능 개선 방향과 React 상태 관리 답변이 안정적","strengths":["문제 분해","프런트엔드 기본기"],"weaknesses":["실험 지표 설계"]}',
-        DATE_SUB(NOW(), INTERVAL 45 MINUTE)
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '토스'
-   AND NOT EXISTS (
-       SELECT 1 FROM interview_session interview
-       WHERE interview.application_case_id = ac.id
-         AND interview.mode = 'TECH'
-         AND DATE(interview.created_at) = CURRENT_DATE
-   )
- LIMIT 1;
-INSERT INTO interview_session (application_case_id, mode, started_at, ended_at, total_score, report, created_at)
- SELECT ac.id, 'BASIC', DATE_SUB(NOW(), INTERVAL 3 DAY), DATE_SUB(NOW(), INTERVAL 3 DAY) + INTERVAL 40 MINUTE, 63,
-        '{"summary":"공공기관 지원 동기는 무난하지만 Spring 경험 질문에서 구체성이 부족","strengths":["성실성","자격증 기반"],"weaknesses":["백엔드 프로젝트 깊이"]}',
-        DATE_SUB(NOW(), INTERVAL 3 DAY)
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '국민건강보험공단'
-   AND NOT EXISTS (
-       SELECT 1 FROM interview_session interview
-       WHERE interview.application_case_id = ac.id
-         AND interview.mode = 'BASIC'
-         AND DATE(interview.created_at) = DATE(DATE_SUB(NOW(), INTERVAL 3 DAY))
-   )
- LIMIT 1;
-INSERT INTO interview_session (application_case_id, mode, started_at, ended_at, total_score, report, created_at)
- SELECT ac.id, 'JOB', DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY) + INTERVAL 35 MINUTE, 70,
-        '{"summary":"GA4 기반 성과 분석 답변은 좋으나 CRM 캠페인 경험 보완 필요","strengths":["데이터 해석","콘텐츠 기획"],"weaknesses":["커머스 도메인 용어"]}',
-        DATE_SUB(NOW(), INTERVAL 1 DAY)
- FROM application_case ac JOIN users u ON ac.user_id = u.id
- WHERE u.email = 'seoyeon.lee@careertuner.dev'
-   AND ac.company_name = 'CJ올리브영'
-   AND NOT EXISTS (
-       SELECT 1 FROM interview_session interview
-       WHERE interview.application_case_id = ac.id
-         AND interview.mode = 'JOB'
-         AND DATE(interview.created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))
-   )
- LIMIT 1;
-
-INSERT INTO ai_usage_log (user_id, application_case_id, feature_type, token_usage, credit_used, created_at)
- SELECT u.id, ac.id, 'FIT_ANALYSIS', 2360, 2, DATE_SUB(NOW(), INTERVAL 5 DAY)
- FROM users u JOIN application_case ac ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev' AND ac.company_name = '국민건강보험공단'
-   AND NOT EXISTS (
-       SELECT 1 FROM ai_usage_log log
-       WHERE log.user_id = u.id AND log.application_case_id = ac.id AND log.feature_type = 'FIT_ANALYSIS'
-         AND DATE(log.created_at) = DATE(DATE_SUB(NOW(), INTERVAL 5 DAY))
-   )
- LIMIT 1;
-INSERT INTO ai_usage_log (user_id, application_case_id, feature_type, token_usage, credit_used, created_at)
- SELECT u.id, ac.id, 'FIT_ANALYSIS', 2480, 2, DATE_SUB(NOW(), INTERVAL 4 DAY)
- FROM users u JOIN application_case ac ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev' AND ac.company_name = '현대자동차'
-   AND NOT EXISTS (
-       SELECT 1 FROM ai_usage_log log
-       WHERE log.user_id = u.id AND log.application_case_id = ac.id AND log.feature_type = 'FIT_ANALYSIS'
-         AND DATE(log.created_at) = DATE(DATE_SUB(NOW(), INTERVAL 4 DAY))
-   )
- LIMIT 1;
-INSERT INTO ai_usage_log (user_id, application_case_id, feature_type, token_usage, credit_used, created_at)
- SELECT u.id, ac.id, 'JOB_ANALYSIS', 1880, 1, DATE_SUB(NOW(), INTERVAL 3 DAY)
- FROM users u JOIN application_case ac ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev' AND ac.company_name = '토스'
-   AND NOT EXISTS (
-       SELECT 1 FROM ai_usage_log log
-       WHERE log.user_id = u.id AND log.application_case_id = ac.id AND log.feature_type = 'JOB_ANALYSIS'
-         AND DATE(log.created_at) = DATE(DATE_SUB(NOW(), INTERVAL 3 DAY))
-   )
- LIMIT 1;
-INSERT INTO ai_usage_log (user_id, application_case_id, feature_type, token_usage, credit_used, created_at)
- SELECT u.id, ac.id, 'FIT_ANALYSIS', 2610, 2, DATE_SUB(NOW(), INTERVAL 2 DAY)
- FROM users u JOIN application_case ac ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev' AND ac.company_name = '토스'
-   AND NOT EXISTS (
-       SELECT 1 FROM ai_usage_log log
-       WHERE log.user_id = u.id AND log.application_case_id = ac.id AND log.feature_type = 'FIT_ANALYSIS'
-         AND DATE(log.created_at) = DATE(DATE_SUB(NOW(), INTERVAL 2 DAY))
-   )
- LIMIT 1;
-INSERT INTO ai_usage_log (user_id, application_case_id, feature_type, token_usage, credit_used, created_at)
- SELECT u.id, ac.id, 'LONG_TERM_ANALYSIS', 3120, 3, DATE_SUB(NOW(), INTERVAL 1 DAY)
- FROM users u JOIN application_case ac ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev' AND ac.company_name = '라인플러스'
-   AND NOT EXISTS (
-       SELECT 1 FROM ai_usage_log log
-       WHERE log.user_id = u.id AND log.application_case_id = ac.id AND log.feature_type = 'LONG_TERM_ANALYSIS'
-         AND DATE(log.created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))
-   )
- LIMIT 1;
-INSERT INTO ai_usage_log (user_id, application_case_id, feature_type, token_usage, credit_used, created_at)
- SELECT u.id, ac.id, 'FIT_ANALYSIS', 2240, 2, DATE_SUB(NOW(), INTERVAL 1 DAY)
- FROM users u JOIN application_case ac ON ac.user_id = u.id
- WHERE u.email = 'seoyeon.lee@careertuner.dev' AND ac.company_name = 'CJ올리브영'
-   AND NOT EXISTS (
-       SELECT 1 FROM ai_usage_log log
-       WHERE log.user_id = u.id AND log.application_case_id = ac.id AND log.feature_type = 'FIT_ANALYSIS'
-         AND DATE(log.created_at) = DATE(DATE_SUB(NOW(), INTERVAL 1 DAY))
-   )
- LIMIT 1;
-INSERT INTO ai_usage_log (user_id, application_case_id, feature_type, token_usage, credit_used, created_at)
- SELECT u.id, ac.id, 'DASHBOARD_SUMMARY', 1450, 1, NOW()
- FROM users u JOIN application_case ac ON ac.user_id = u.id
- WHERE u.email = 'jiwon.kim@careertuner.dev' AND ac.company_name = '카카오페이'
-   AND NOT EXISTS (
-       SELECT 1 FROM ai_usage_log log
-       WHERE log.user_id = u.id AND log.application_case_id = ac.id AND log.feature_type = 'DASHBOARD_SUMMARY'
-         AND DATE(log.created_at) = CURRENT_DATE
-   )
- LIMIT 1;
-
-INSERT INTO admin_fit_analysis_memo (fit_analysis_id, admin_user_id, memo_type, content)
- SELECT fa.id, admin_user.id, 'QUALITY', '샘플 검수: 점수는 프로필 기술과 공고 필수 조건의 교집합을 기준으로 자연스럽게 분포함. 부족 기술은 사용자 화면과 관리자 통계 양쪽에서 반복 노출 확인 대상.'
- FROM fit_analysis fa
- INNER JOIN application_case ac ON ac.id = fa.application_case_id
- INNER JOIN users sample_user ON sample_user.id = ac.user_id
- INNER JOIN users admin_user ON admin_user.email = 'admin@careertuner.dev'
- WHERE sample_user.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '토스'
-   AND NOT EXISTS (
-       SELECT 1 FROM admin_fit_analysis_memo memo
-       WHERE memo.fit_analysis_id = fa.id
-         AND memo.memo_type = 'QUALITY'
-         AND memo.content LIKE '샘플 검수:%'
-   )
- LIMIT 1;
-INSERT INTO admin_fit_analysis_memo (fit_analysis_id, admin_user_id, memo_type, content)
- SELECT fa.id, admin_user.id, 'REANALYSIS', 'Spring Boot 경험이 보완되면 재분석 시 65점 이상까지 상승할 가능성이 있어 학습 추천 노출 문구를 추적한다.'
- FROM fit_analysis fa
- INNER JOIN application_case ac ON ac.id = fa.application_case_id
- INNER JOIN users sample_user ON sample_user.id = ac.user_id
- INNER JOIN users admin_user ON admin_user.email = 'admin@careertuner.dev'
- WHERE sample_user.email = 'jiwon.kim@careertuner.dev'
-   AND ac.company_name = '국민건강보험공단'
-   AND NOT EXISTS (
-       SELECT 1 FROM admin_fit_analysis_memo memo
-       WHERE memo.fit_analysis_id = fa.id
-         AND memo.memo_type = 'REANALYSIS'
-         AND memo.content LIKE 'Spring Boot 경험이 보완되면%'
-   )
- LIMIT 1;
-
 -- 커뮤니티 -----------------------------------------------------------
 INSERT INTO community_post (user_id, category, title, content, company_name, job_title, interview_type, difficulty, is_anonymous)
  SELECT u.id, 'INTERVIEW_REVIEW', '카카오페이 프론트엔드 1차 면접 후기', 'React 프로젝트의 문제 해결 경험을 깊게 물어봤습니다. 수치로 답하니 반응이 좋았어요.', '카카오페이', '프론트엔드 개발자', 'FIRST', 'NORMAL', 1
@@ -465,3 +112,146 @@ INSERT INTO community_post (user_id, category, title, content, interview_type, d
        SELECT 1 FROM community_post cp
        WHERE cp.user_id = u.id AND cp.title = '마케팅 직무 자기소개 어떻게 시작하면 좋을까요'
    );
+
+-- 고객센터 FAQ/공지 ----------------------------------------------------
+INSERT INTO faq (category, question, answer, sort_order, is_published, admin_id)
+ SELECT 'general', 'CareerTuner는 어떤 서비스인가요?', '지원 건별로 공고, 스펙, 면접 준비 흐름을 한곳에서 관리하는 취업 전략 플랫폼입니다.', 1, 1, a.id
+ FROM users a
+ WHERE a.email = 'admin@careertuner.dev'
+   AND NOT EXISTS (SELECT 1 FROM faq f WHERE f.question = 'CareerTuner는 어떤 서비스인가요?');
+INSERT INTO faq (category, question, answer, sort_order, is_published, admin_id)
+ SELECT 'account', '비밀번호를 잊어버리면 어떻게 하나요?', '로그인 화면의 비밀번호 찾기를 통해 재설정 메일을 받을 수 있습니다.', 2, 1, a.id
+ FROM users a
+ WHERE a.email = 'admin@careertuner.dev'
+   AND NOT EXISTS (SELECT 1 FROM faq f WHERE f.question = '비밀번호를 잊어버리면 어떻게 하나요?');
+INSERT INTO faq (category, question, answer, sort_order, is_published, admin_id)
+ SELECT 'payment', 'AI 사용권과 크레딧은 언제 차감되나요?', 'AI 기능 사용 시 구독 사용권을 먼저 차감하고, 사용권이 부족하며 정책이 허용하는 경우에만 크레딧으로 차감됩니다.', 3, 1, a.id
+ FROM users a
+ WHERE a.email = 'admin@careertuner.dev'
+   AND NOT EXISTS (SELECT 1 FROM faq f WHERE f.question = 'AI 사용권과 크레딧은 언제 차감되나요?');
+INSERT INTO faq (category, question, answer, sort_order, is_published, admin_id)
+ SELECT 'interview', '면접 질문은 지원 건과 연결되나요?', '면접 세션은 지원 건을 선택해 생성하며, 해당 공고와 분석 결과를 기반으로 질문을 준비합니다.', 4, 1, a.id
+ FROM users a
+ WHERE a.email = 'admin@careertuner.dev'
+   AND NOT EXISTS (SELECT 1 FROM faq f WHERE f.question = '면접 질문은 지원 건과 연결되나요?');
+
+INSERT INTO notice (title, content, category, status, is_pinned, admin_id, published_at)
+ SELECT 'CareerTuner 통합 테스트 데이터 안내', '개발용 임시 DB에 고객센터, 커뮤니티, 알림 샘플 데이터가 추가되었습니다.', 'SERVICE', 'PUBLISHED', 1, a.id, NOW()
+ FROM users a
+ WHERE a.email = 'admin@careertuner.dev'
+   AND NOT EXISTS (SELECT 1 FROM notice n WHERE n.title = 'CareerTuner 통합 테스트 데이터 안내');
+INSERT INTO notice (title, content, category, status, is_pinned, admin_id, published_at)
+ SELECT '커뮤니티 운영 가이드라인 적용', '커뮤니티 신고와 모더레이션 기능 점검을 위한 기본 가이드라인이 적용되었습니다.', 'COMMUNITY', 'PUBLISHED', 0, a.id, NOW()
+ FROM users a
+ WHERE a.email = 'admin@careertuner.dev'
+   AND NOT EXISTS (SELECT 1 FROM notice n WHERE n.title = '커뮤니티 운영 가이드라인 적용');
+
+INSERT INTO support_ticket (user_id, subject, category, status, priority)
+ SELECT u.id, '크레딧 표시가 실제 사용량과 맞는지 확인하고 싶어요', 'AI기능', 'RECEIVED', 'NORMAL'
+ FROM users u
+ WHERE u.email = 'jiwon.kim@careertuner.dev'
+   AND NOT EXISTS (
+       SELECT 1 FROM support_ticket t
+       WHERE t.user_id = u.id AND t.subject = '크레딧 표시가 실제 사용량과 맞는지 확인하고 싶어요'
+   );
+INSERT INTO support_ticket_message (ticket_id, sender_type, sender_id, content, is_internal)
+ SELECT t.id, 'USER', t.user_id, '대시보드와 결제 화면의 크레딧 숫자가 같은 기준인지 궁금합니다.', 0
+ FROM support_ticket t
+ JOIN users u ON u.id = t.user_id
+ WHERE u.email = 'jiwon.kim@careertuner.dev'
+   AND t.subject = '크레딧 표시가 실제 사용량과 맞는지 확인하고 싶어요'
+   AND NOT EXISTS (
+       SELECT 1 FROM support_ticket_message m
+       WHERE m.ticket_id = t.id AND m.sender_type = 'USER'
+   );
+-- 관리자 답변 + 답변완료 상태: 사용자 문의 내역 화면(내 문의 내역)에서 답변 스레드를 보여주기 위한 시드
+INSERT INTO support_ticket_message (ticket_id, sender_type, sender_id, content, is_internal)
+ SELECT t.id, 'ADMIN', a.id,
+        '크레딧 숫자는 대시보드와 결제 화면 모두 ai_usage_log 차감 기준으로 동일합니다. 자동 캐시 재생성은 차감되지 않고, 명시적 재분석만 1크레딧 차감됩니다.', 0
+ FROM support_ticket t
+ JOIN users u ON u.id = t.user_id
+ JOIN users a ON a.email = 'admin@careertuner.dev'
+ WHERE u.email = 'jiwon.kim@careertuner.dev'
+   AND t.subject = '크레딧 표시가 실제 사용량과 맞는지 확인하고 싶어요'
+   AND NOT EXISTS (
+       SELECT 1 FROM support_ticket_message m
+       WHERE m.ticket_id = t.id AND m.sender_type = 'ADMIN'
+   );
+UPDATE support_ticket t
+ JOIN users u ON u.id = t.user_id
+   SET t.status = 'ANSWERED'
+ WHERE u.email = 'jiwon.kim@careertuner.dev'
+   AND t.subject = '크레딧 표시가 실제 사용량과 맞는지 확인하고 싶어요'
+   AND t.status <> 'ANSWERED';
+
+-- 커뮤니티 댓글/모더레이션 샘플 ---------------------------------------
+INSERT INTO community_comment (post_id, user_id, content, is_anonymous, status)
+ SELECT p.id, u.id, '후기 감사합니다. React 프로젝트 수치화 예시가 특히 도움이 됐어요.', 0, 'PUBLISHED'
+ FROM community_post p
+ JOIN users u ON u.email = 'seoyeon.lee@careertuner.dev'
+ WHERE p.title = '카카오페이 프론트엔드 1차 면접 후기'
+   AND NOT EXISTS (
+       SELECT 1 FROM community_comment c
+       WHERE c.post_id = p.id AND c.user_id = u.id AND c.content = '후기 감사합니다. React 프로젝트 수치화 예시가 특히 도움이 됐어요.'
+   );
+
+UPDATE community_post p
+   SET comment_count = (SELECT COUNT(*) FROM community_comment c WHERE c.post_id = p.id AND c.status = 'PUBLISHED')
+ WHERE p.title IN ('카카오페이 프론트엔드 1차 면접 후기', '마케팅 직무 자기소개 어떻게 시작하면 좋을까요');
+
+INSERT INTO post_ai_result (post_id, task_type, status, result_json, model, attempt_count, completed_at)
+ SELECT p.id, 'MODERATION', 'COMPLETED',
+        '{"toxic":false,"category":"normal","confidence":0.96,"reasons":["개발용 정상 후기 샘플"]}',
+        'sample-rule', 1, NOW()
+ FROM community_post p
+ WHERE p.title = '카카오페이 프론트엔드 1차 면접 후기'
+   AND NOT EXISTS (SELECT 1 FROM post_ai_result r WHERE r.post_id = p.id AND r.task_type = 'MODERATION');
+
+INSERT INTO ai_moderation_setting (id) VALUES (1)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO community_guideline (version_label, summary, lede, oks_json, nos_json, rules_json, params_json, status, enforce_type, published_at)
+SELECT 'v1.0', '최초 제정 — 선 게시·후 검토 원칙',
+       'CareerTuner 커뮤니티는 면접·취업 경험을 솔직하게 나누는 곳입니다. 실제 피해를 주는 행동만 좁고 명확하게 금지합니다.',
+       '["회사·전형에 대한 경험 공유","면접 질문과 과정 복기","직무 준비 팁 공유"]',
+       '["특정인을 알아볼 수 있게 쓰는 것","인신공격·혐오 표현","허위 후기와 광고"]',
+       '[{"t":"개인 특정·신상 노출","s":0,"b":"실명, 연락처, 부서·직급·시기 조합으로 특정인을 알아볼 수 있는 서술을 금지합니다."},{"t":"인신공격·혐오 표현","s":0,"b":"사람이나 집단을 겨냥한 모욕·위협·비하 표현을 금지합니다."},{"t":"허위 사실·조작된 후기","s":0,"b":"경험하지 않은 전형 후기나 의도적인 평판 조작을 금지합니다."}]',
+       '{"blind":3,"sla":24,"expire":90,"s1":7,"s2":30,"appeal":30}',
+       'PUBLISHED', 'IMMEDIATE', NOW()
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM community_guideline g WHERE g.version_label = 'v1.0');
+
+-- 알림 샘플 -----------------------------------------------------------
+INSERT INTO notification (user_id, actor_id, type, target_type, target_id, title, message, link, is_read)
+ SELECT u.id, a.id, 'NOTICE', 'NOTICE', n.id, '새 공지사항이 등록됐어요', n.title, CONCAT('/support/notices/', n.id), 0
+ FROM users u
+ JOIN users a ON a.email = 'admin@careertuner.dev'
+ JOIN notice n ON n.title = 'CareerTuner 통합 테스트 데이터 안내'
+ WHERE u.email = 'jiwon.kim@careertuner.dev'
+   AND NOT EXISTS (
+       SELECT 1 FROM notification x
+       WHERE x.user_id = u.id AND x.type = 'NOTICE' AND x.target_type = 'NOTICE' AND x.target_id = n.id
+   );
+INSERT INTO notification (user_id, actor_id, type, target_type, target_id, title, message, link, is_read)
+ SELECT u.id, c.user_id, 'COMMENT', 'POST', p.id, '게시글에 댓글이 달렸어요', '카카오페이 면접 후기 글에 새 댓글이 있습니다.', CONCAT('/community/post/', p.id), 0
+ FROM users u
+ JOIN community_post p ON p.title = '카카오페이 프론트엔드 1차 면접 후기'
+ JOIN community_comment c ON c.post_id = p.id
+ WHERE u.email = 'jiwon.kim@careertuner.dev'
+   AND NOT EXISTS (
+       SELECT 1 FROM notification x
+       WHERE x.user_id = u.id AND x.type = 'COMMENT' AND x.target_type = 'POST' AND x.target_id = p.id
+   )
+ LIMIT 1;
+
+-- 면접 RAG 지식베이스 샘플 (관리자 지식 관리 화면이 비어 보이지 않도록) -----
+INSERT INTO interview_knowledge (kind, title, content, source, indexed)
+ SELECT 'RUBRIC', 'STAR 기법 평가 기준',
+        '면접 답변은 Situation-Task-Action-Result 구조를 갖추었는지, 구체적 수치/성과가 드러나는지로 평가한다. 두루뭉술한 답변은 감점.',
+        '내부 평가 가이드', 0
+ FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM interview_knowledge WHERE title = 'STAR 기법 평가 기준');
+INSERT INTO interview_knowledge (kind, title, content, source, indexed)
+ SELECT 'QUESTION_BANK', '백엔드 공통 질문',
+        '트랜잭션 격리수준, 인덱스 동작, N+1 문제와 해결, REST 설계 원칙은 백엔드 직무 단골 질문이다.',
+        '직무 질문 은행', 0
+ FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM interview_knowledge WHERE title = '백엔드 공통 질문');

@@ -7,8 +7,11 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionDetail;
+import com.careertuner.admin.interview.dto.AdminInterviewSessionPage;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
+import com.careertuner.admin.interview.dto.AdminInterviewSummary;
 import com.careertuner.admin.interview.mapper.AdminInterviewMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -16,6 +19,7 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.interview.dto.InterviewAnswerResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.media.InterviewMediaService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -28,11 +32,26 @@ public class AdminInterviewService {
 
     private final AdminInterviewMapper adminInterviewMapper;
     private final InterviewMapper interviewMapper;
+    private final InterviewMediaService mediaService;
 
     @Transactional(readOnly = true)
-    public List<AdminInterviewSessionRow> sessions(AuthUser authUser, String keyword, String mode, int limit) {
+    public AdminInterviewSessionPage sessions(AuthUser authUser, String keyword, String mode, Boolean hasReport,
+                                              int page, int size) {
         requireAdmin(authUser);
-        return adminInterviewMapper.findSessions(blankToNull(keyword), normalizeMode(mode), normalizeLimit(limit));
+        String kw = blankToNull(keyword);
+        String md = normalizeMode(mode);
+        int p = Math.max(page, 1);
+        int s = size <= 0 ? 20 : Math.min(size, 100);
+        int offset = (p - 1) * s;
+        List<AdminInterviewSessionRow> items = adminInterviewMapper.findSessions(kw, md, hasReport, offset, s);
+        long total = adminInterviewMapper.countSessions(kw, md, hasReport);
+        return new AdminInterviewSessionPage(items, total, p, s);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminInterviewSummary summary(AuthUser authUser) {
+        requireAdmin(authUser);
+        return adminInterviewMapper.findSummary();
     }
 
     @Transactional(readOnly = true)
@@ -42,19 +61,35 @@ public class AdminInterviewService {
         if (session == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "면접 세션을 찾을 수 없습니다.");
         }
+        session.setAdminMemo(adminInterviewMapper.findAdminMemo(id));
         List<InterviewQuestionResponse> questions = interviewMapper.findQuestionsBySessionId(id).stream()
                 .map(InterviewQuestionResponse::from)
                 .toList();
         List<InterviewAnswerResponse> answers = interviewMapper.findAnswersBySessionId(id).stream()
                 .map(InterviewAnswerResponse::from)
                 .toList();
-        return new AdminInterviewSessionDetail(session, questions, answers, adminInterviewMapper.findReport(id));
+        return new AdminInterviewSessionDetail(session, questions, answers,
+                mediaService.listBySessionId(id), adminInterviewMapper.findReport(id));
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminInterviewAiFailureRow> aiFailures(AuthUser authUser, int limit) {
+        requireAdmin(authUser);
+        return adminInterviewMapper.findAiFailures(normalizeLimit(limit));
+    }
+
+    /** 관리자 운영 메모 저장 (admin 세션 상세). 사용자에게 노출하지 않는다. */
+    @Transactional
+    public void updateMemo(AuthUser authUser, Long id, String memo) {
+        requireAdmin(authUser);
+        if (adminInterviewMapper.findSession(id) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 세션을 찾을 수 없습니다.");
+        }
+        adminInterviewMapper.updateAdminMemo(id, memo);
     }
 
     private static void requireAdmin(AuthUser authUser) {
-        if (authUser == null || !"ADMIN".equals(authUser.role())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 권한이 필요합니다.");
-        }
+        com.careertuner.admin.common.AdminAccess.requireAdmin(authUser);
     }
 
     private static int normalizeLimit(int limit) {
