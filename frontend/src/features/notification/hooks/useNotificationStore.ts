@@ -2,9 +2,8 @@ import { create } from "zustand";
 import * as notificationApi from "../api/notificationApi";
 import { toast } from "../components/toast";
 import {
-  isNotificationChannelEnabled,
-  isNotificationSenderEnabled,
   normalizeNotificationRules,
+  selectToastNotifications,
 } from "../types/preferences";
 import { typeMeta } from "../types/notification";
 import type { Notification, NotificationCategory } from "../types/notification";
@@ -84,13 +83,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       const prevId = get().lastNotifiedId;
       // 직전 폴링 이후 새로 도착한 미읽음 알림 중, 즉시(urgent) 타입만 토스트로 띄운다.
       // 몰아보기(urgent:false, 예: NEW_TICKET/NEW_USER)는 토스트 없이 뱃지 카운트에만 반영된다.
+      // "알림 끄기"(pushEnabled=false)면 selectToastNotifications 가 전부 걸러낸다.
       const fresh = notifications
         .filter((n) => n.id > prevId && !n.isRead)
         .sort((a, b) => a.id - b.id);
-      fresh
-        .filter((n) => typeMeta(n.type).urgent !== false)
-        .filter((n) => isNotificationChannelEnabled(preference, n.type, "webToast"))
-        .filter((n) => isNotificationSenderEnabled(preference, n.type, n.senderRelation))
+      selectToastNotifications(fresh, preference, (type) => typeMeta(type).urgent !== false)
         .forEach((n) => {
         toast.notify({
           type: n.type,
@@ -101,6 +98,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
           actorName: n.actorName,
         });
       });
+      // 토스트를 걸러냈어도 기준선은 끌어올린다 — 알림을 다시 켤 때 밀린 토스트가 폭주하지 않도록.
       const maxId = notifications.reduce((m, n) => Math.max(m, n.id), prevId);
       set({ notifications, unreadCount, lastNotifiedId: maxId });
     } catch {
