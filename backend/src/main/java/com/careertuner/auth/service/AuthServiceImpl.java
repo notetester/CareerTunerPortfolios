@@ -156,14 +156,6 @@ public class AuthServiceImpl implements AuthService {
             throw invalidLogin();
         }
 
-        if ("EMAIL".equals(loginMethod) && !user.isEmailVerified()) {
-            recordLoginHistory(user.getId(), "LOGIN", "LOCAL", loginMethod, identifier, false,
-                    "EMAIL_NOT_VERIFIED", context);
-            securityHistoryService.record("EMAIL_VERIFY", "LOGIN_REQUIRED", user.getId(), false,
-                    identifier, "EMAIL_NOT_VERIFIED");
-            throw new BusinessException(ErrorCode.FORBIDDEN, "이메일 인증을 완료한 뒤 이메일로 로그인할 수 있습니다.");
-        }
-
         LoginResponse mfaChallenge = mfaService.beginLoginIfRequired(user, context);
         if (mfaChallenge != null) {
             recordLoginHistory(user.getId(), "LOGIN_MFA_REQUIRED", "LOCAL", loginMethod, identifier, true, null, context);
@@ -198,6 +190,9 @@ public class AuthServiceImpl implements AuthService {
         MfaChallenge challenge = mfaService.findChallenge(challengeToken);
         if (challenge == null) {
             return new MfaLoginStatusResponse("NOT_FOUND", null);
+        }
+        if (challenge.getExpiresAt() != null && challenge.getExpiresAt().isBefore(LocalDateTime.now())) {
+            return new MfaLoginStatusResponse("EXPIRED", null);
         }
         if ("APPROVED".equals(challenge.getStatus())) {
             LoginResponse completed = verifyMfaLogin(

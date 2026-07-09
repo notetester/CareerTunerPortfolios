@@ -115,7 +115,10 @@ export function MfaLoginPage() {
             <button type="button" className="font-semibold text-blue-600" onClick={() => setUseBackup((value) => !value)}>
               {useBackup ? "인증 앱 코드 사용하기" : "백업 코드로 인증하기"}
             </button>
-            <Link to="/m/mfa-approvals" className="inline-flex items-center gap-2 font-semibold text-slate-700">
+            <Link
+              to={`/m/mfa-approvals?challengeToken=${encodeURIComponent(challengeToken)}`}
+              className="inline-flex items-center gap-2 font-semibold text-slate-700"
+            >
               <Smartphone className="size-4" />
               모바일 승인 화면 열기
             </Link>

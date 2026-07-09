@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { CheckCircle2, Loader2, RefreshCw, ShieldCheck, XCircle } from "lucide-react";
 import { approveMfaPush, getPendingMfaPush, type MfaChallengeResponse } from "../auth/mfaApi";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export function MfaApprovalsPage() {
+  const [params] = useSearchParams();
+  const targetToken = params.get("challengeToken") ?? "";
   const [items, setItems] = useState<MfaChallengeResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -27,6 +30,15 @@ export function MfaApprovalsPage() {
     const timer = window.setInterval(() => void load(), 5000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const sortedItems = useMemo(() => {
+    if (!targetToken) return items;
+    return [...items].sort((a, b) => {
+      if (a.challengeToken === targetToken) return -1;
+      if (b.challengeToken === targetToken) return 1;
+      return 0;
+    });
+  }, [items, targetToken]);
 
   const decide = async (challengeToken: string, approve: boolean) => {
     setLoading(true);
@@ -53,7 +65,8 @@ export function MfaApprovalsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
-            PC에서 비밀번호 로그인 후 표시되는 2단계 인증 요청을 여기에서 승인하거나 거절합니다. 실제 푸시 알림은 FCM 설정을 붙이면 같은 요청을 알림으로 깨우는 방식으로 확장됩니다.
+            PC에서 비밀번호 로그인 후 전송된 2단계 인증 요청을 여기에서 승인하거나 거절합니다.
+            푸시 알림을 눌러 들어온 경우 해당 요청이 가장 위에 표시됩니다.
           </div>
           <Button variant="outline" onClick={() => void load()} disabled={loading} className="gap-2">
             {loading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
@@ -61,14 +74,19 @@ export function MfaApprovalsPage() {
           </Button>
           {message && <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">{message}</div>}
           {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-          {items.length === 0 ? (
+          {sortedItems.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
               대기 중인 로그인 승인 요청이 없습니다.
             </div>
           ) : (
             <div className="space-y-3">
-              {items.map((item) => (
-                <div key={item.challengeToken} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              {sortedItems.map((item) => (
+                <div
+                  key={item.challengeToken}
+                  className={`rounded-xl border bg-white p-4 shadow-sm ${
+                    item.challengeToken === targetToken ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200"
+                  }`}
+                >
                   <div className="space-y-1 text-sm text-slate-600">
                     <div className="font-semibold text-slate-900">새 로그인 요청</div>
                     <div>요청 IP: {item.ipAddress ?? "확인 불가"}</div>

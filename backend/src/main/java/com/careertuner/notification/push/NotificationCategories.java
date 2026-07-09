@@ -74,6 +74,7 @@ public final class NotificationCategories {
             "NOTICE",
             "TICKET_ANSWERED",
             "ACCOUNT_BLOCKED",
+            "MFA_LOGIN_APPROVAL",
             "COMPANY_APPLY_RESULT",
             "JOB_POSTING_REVIEW_RESULT",
             "MARKETING_AD");
@@ -167,6 +168,7 @@ public final class NotificationCategories {
             Map.entry("NOTICE", "notice"),
             Map.entry("TICKET_ANSWERED", "notice"),
             Map.entry("ACCOUNT_BLOCKED", "notice"),
+            Map.entry("MFA_LOGIN_APPROVAL", "notice"),
             Map.entry("COMPANY_APPLY_RESULT", "notice"),
             Map.entry("JOB_POSTING_REVIEW_RESULT", "notice"),
             Map.entry("MARKETING_AD", "marketing"),
