@@ -37,7 +37,7 @@ ml/correction-llm/
 ## 검증 및 변환
 
 ```powershell
-cd C:\Users\careertuner\Desktop\CareerTuner\ml\correction-llm
+cd C:\Users\careertuner\Desktop\CareerTuner_AI_Workspace\projects\CareerTuner\ml\correction-llm
 
 ..\..\.venv-ai\Scripts\python.exe scripts\validate_dataset.py `
   --input data\raw.seed.40.jsonl `
@@ -61,7 +61,7 @@ cd C:\Users\careertuner\Desktop\CareerTuner\ml\correction-llm
 샘플 38개는 품질 평가용이 아니라 파이프라인 검증용이다.
 
 ```powershell
-cd C:\Users\careertuner\Desktop\CareerTuner\ml\correction-llm
+cd C:\Users\careertuner\Desktop\CareerTuner_AI_Workspace\projects\CareerTuner\ml\correction-llm
 
 ..\..\.venv-ai\Scripts\python.exe scripts\finetune_lora.py `
   --base-model Qwen/Qwen2.5-3B-Instruct `
