@@ -1258,9 +1258,9 @@ class ApplicationCaseServiceImplTest {
                 .thenReturn(new GeneratedCompanyAnalysis(payload, null, null));
         when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(companyAnalysis());
 
-        LocalDateTime before = LocalDateTime.now();
+        LocalDateTime before = BDisplayTime.now();
         CompanyAnalysisResponse response = service.createCompanyAnalysis(1L, 10L);
-        LocalDateTime after = LocalDateTime.now();
+        LocalDateTime after = BDisplayTime.now();
 
         ArgumentCaptor<CompanyAnalysis> analysisCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
         verify(companyAnalysisMapper, never()).deleteCompanyAnalysesByCaseId(10L);
