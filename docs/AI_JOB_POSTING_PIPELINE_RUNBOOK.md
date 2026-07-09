@@ -57,10 +57,11 @@ JOB_POSTING_AI_WORKER_BASE_URL=http://job-posting-worker:8091
 For production scanned PDF/image handling, build the worker with the local OCR engine:
 
 ```powershell
-docker build --build-arg INSTALL_OCR=true -t careertuner-job-posting-worker:ocr ml\job-posting-worker
+docker build --build-arg PYTHON_VERSION=3.13 --build-arg INSTALL_OCR=true -t careertuner-job-posting-worker:ocr ml\job-posting-worker
 ```
 
 The worker uses existing OCR text first, then local PaddleOCR when `paddleocr`, `paddlepaddle`, and PDF support through `PyMuPDF` are installed. If the OCR engine is missing and no existing OCR text is available, OCR-candidate files fail closed with `ocr_not_executed`; OpenAI is not called automatically.
+The default non-OCR worker image uses the current Python runtime line. OCR-capable images currently pin `PYTHON_VERSION=3.13` because `paddlepaddle` does not publish Python 3.14 wheels yet.
 
 `JOB_POSTING_AI_CACHE_DIR` must point to a writable path. PaddleOCR stores downloaded models under this path; using a persistent volume avoids re-downloading models on every worker restart.
 

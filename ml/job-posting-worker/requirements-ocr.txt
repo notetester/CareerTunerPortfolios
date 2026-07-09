@@ -2,8 +2,9 @@
 # Install this in production worker images that must process scanned PDF/image
 # postings without pre-generated OCR text.
 #
-# PaddleOCR 3.x 로 고정: Python 3.13 에는 paddlepaddle 2.x 휠이 없고,
-# 레이아웃 인식(PPStructureV3)으로 표/2단 공고를 추출한다.
+# PaddleOCR 3.x 로 고정: 레이아웃 인식(PPStructureV3)으로 표/2단 공고를 추출한다.
+# 현재 paddlepaddle 은 Python 3.14 wheel 을 배포하지 않으므로 OCR 이미지 빌드는
+# Docker build arg PYTHON_VERSION=3.13 을 명시한다. 기본 비 OCR 워커/CI 런타임은 Python 3.14.
 # 3.x 의 oneDNN 런타임 이슈는 워커에서 FLAGS_use_mkldnn=0 / enable_mkldnn=False 로 우회한다.
 paddleocr>=3.7.0,<4.0
 paddlepaddle>=3.3.1,<4.0
