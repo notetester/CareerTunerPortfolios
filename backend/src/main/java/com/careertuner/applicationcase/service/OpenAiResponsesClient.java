@@ -99,18 +99,33 @@ public class OpenAiResponsesClient {
      */
     public CompanyAnalysisPayload analyzeCompany(ApplicationCase applicationCase, String postingText,
                                                  String modelOverride) {
+        return analyzeCompany(applicationCase, postingText, modelOverride, null);
+    }
+
+    /**
+     * 기업분석 OpenAI 호출(웹 근거 포함). {@code webEvidenceBlock} 이 비어 있지 않으면 user 프롬프트 끝에
+     * 그대로 붙여, OpenAI 도 R1/Claude 와 동일한 {@code [웹 검색 근거]} 블록을 받는다(Phase 2 · D-4c 경계 개방).
+     * 비어 있으면 공고문만 넘긴다(현행과 동일). {@code sourceKind=WEB} 인용 규칙은 {@code HOSTED_SYSTEM_PROMPT} 에
+     * 있고, OpenAI schema 의 sourceKind 는 자유문자열이라 별도 schema 변경이 필요 없다.
+     */
+    public CompanyAnalysisPayload analyzeCompany(ApplicationCase applicationCase, String postingText,
+                                                 String modelOverride, String webEvidenceBlock) {
         String model = resolveModel(modelOverride);
-        JsonNode root = post(structuredRequest(
-                "company_analysis",
-                companyAnalysisSchema(),
-                CompanyAnalysisPromptCatalog.HOSTED_SYSTEM_PROMPT,
-                """
+        String userPrompt = """
                 회사명: %s
                 직무명: %s
 
                 채용공고:
                 %s
-                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), postingText),
+                """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(), postingText);
+        if (webEvidenceBlock != null && !webEvidenceBlock.isBlank()) {
+            userPrompt += webEvidenceBlock;
+        }
+        JsonNode root = post(structuredRequest(
+                "company_analysis",
+                companyAnalysisSchema(),
+                CompanyAnalysisPromptCatalog.HOSTED_SYSTEM_PROMPT,
+                userPrompt,
                 model));
         JsonNode payload = parseOutputJson(root);
         Usage usage = usage(root, model);
@@ -147,14 +162,14 @@ public class OpenAiResponsesClient {
         return parseJobPostingMetadataPayload(parseOutputJson(root), usage(root));
     }
 
-    public TextPayload extractImageText(String contentType, byte[] bytes) {
+    public OcrPayload extractImageText(String contentType, byte[] bytes) {
         String dataUrl = "data:%s;base64,%s".formatted(contentType, Base64.getEncoder().encodeToString(bytes));
         return ocrWithRetry(() -> textRequest(OCR_SYSTEM_PROMPT, List.of(
                 inputText("이미지 안에 있는 채용공고 텍스트를 원문 그대로 모두 추출해. 설명·요약·사과·안내 문구는 붙이지 말고 추출된 텍스트만 출력해."),
                 inputImage(dataUrl))));
     }
 
-    public TextPayload extractPdfText(String filename, byte[] bytes) {
+    public OcrPayload extractPdfText(String filename, byte[] bytes) {
         String fileData = "data:application/pdf;base64,%s".formatted(Base64.getEncoder().encodeToString(bytes));
         return ocrWithRetry(() -> textRequest(OCR_SYSTEM_PROMPT, List.of(
                 inputFile(filename, fileData),
@@ -168,12 +183,12 @@ public class OpenAiResponsesClient {
      * 최종 시도까지도 임계치 미만이면 <b>빈 문자열</b>을 반환한다 — 상위 {@code ocrFallback} 이 이를 "빈 결과"로 보고
      * 다음 단계(OCR 워커)로 내려가게 하기 위함이다. 짧은 거부 응답을 non-blank 로 반환하면 워커 폴백을 가로막는다.
      */
-    private TextPayload ocrWithRetry(Supplier<Map<String, Object>> requestSupplier) {
-        TextPayload last = new TextPayload("", null);
+    private OcrPayload ocrWithRetry(Supplier<Map<String, Object>> requestSupplier) {
+        OcrPayload last = new OcrPayload("", "openai", properties.getModel(), null);
         for (int attempt = 1; attempt <= OCR_MAX_ATTEMPTS; attempt++) {
             JsonNode root = post(requestSupplier.get());
             String text = cleanOcrText(root);
-            last = new TextPayload(text, usage(root));
+            last = new OcrPayload(text, "openai", properties.getModel(), AiUsage.from(usage(root)));
             if (text.strip().length() >= OCR_MIN_USEFUL_CHARS) {
                 return last;
             }
@@ -184,7 +199,7 @@ public class OpenAiResponsesClient {
         }
         log.warn("OpenAI OCR 최종 결과가 임계치 미만({}자) → 빈 결과로 반환(상위 워커 폴백에 위임)",
                 last.text() == null ? 0 : last.text().strip().length());
-        return new TextPayload("", last.usage());
+        return new OcrPayload("", "openai", properties.getModel(), last.usage());
     }
 
     private JsonNode post(Map<String, Object> requestBody) {
@@ -595,9 +610,6 @@ public class OpenAiResponsesClient {
     }
 
     public record Usage(String model, int inputTokens, int outputTokens, int totalTokens) {
-    }
-
-    public record TextPayload(String text, Usage usage) {
     }
 
     public record JobAnalysisPayload(

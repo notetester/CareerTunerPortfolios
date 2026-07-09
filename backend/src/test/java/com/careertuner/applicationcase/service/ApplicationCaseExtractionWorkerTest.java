@@ -312,7 +312,9 @@ class ApplicationCaseExtractionWorkerTest {
                         "{\"qualityStatus\":\"REVIEW_REQUIRED\"}",
                         "{\"documentExtractionContract\":\"self_ai_v1\"}",
                         true,
-                        "ocr_low_confidence"));
+                        "ocr_low_confidence",
+                        "worker",
+                        null));
         when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
                 .thenReturn(new JobPostingResponse(23L, 10L, 2, null, fileReference, extractedText, "IMAGE", null));
         when(extractionMapper.markExtractionSucceeded(
@@ -380,6 +382,8 @@ class ApplicationCaseExtractionWorkerTest {
                         "{\"qualityStatus\":\"AUTO_OK\"}",
                         "{\"documentExtractionContract\":\"self_ai_v1\"}",
                         false,
+                        null,
+                        "worker",
                         null));
         when(extractionMapper.markExtractionFailed(
                 eq(40L),

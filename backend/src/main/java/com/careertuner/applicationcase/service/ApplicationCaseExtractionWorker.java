@@ -218,7 +218,7 @@ public class ApplicationCaseExtractionWorker {
                         extraction.getUserId(),
                         extraction.getApplicationCaseId(),
                         FEATURE_JOB_POSTING_METADATA,
-                        result.metadata().usage());
+                        AiUsage.from(result.metadata().usage()));
             }
             notificationService.notify(successNotification(extraction));
             return new PipelineHandoff(completedJobPostingId, completedJobPostingRevision, completedPostingText);

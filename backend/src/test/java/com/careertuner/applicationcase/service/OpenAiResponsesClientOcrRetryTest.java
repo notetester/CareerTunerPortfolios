@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
-import com.careertuner.applicationcase.service.OpenAiResponsesClient.TextPayload;
+import com.careertuner.applicationcase.service.OcrPayload;
 import com.sun.net.httpserver.HttpServer;
 
 import tools.jackson.databind.ObjectMapper;
@@ -60,7 +60,7 @@ class OpenAiResponsesClientOcrRetryTest {
         });
         server.start();
         try {
-            TextPayload result = clientFor(server).extractPdfText("posting.pdf", new byte[]{1, 2, 3});
+            OcrPayload result = clientFor(server).extractPdfText("posting.pdf", new byte[]{1, 2, 3});
 
             assertThat(requests).as("짧은 거부 응답 후 1회 재시도").hasValue(2);
             assertThat(result.text()).contains("주식회사이액션");
@@ -83,7 +83,7 @@ class OpenAiResponsesClientOcrRetryTest {
         });
         server.start();
         try {
-            TextPayload result = clientFor(server).extractPdfText("posting.pdf", new byte[]{1, 2, 3});
+            OcrPayload result = clientFor(server).extractPdfText("posting.pdf", new byte[]{1, 2, 3});
 
             assertThat(requests).as("충분히 긴 결과는 재시도 없음").hasValue(1);
             assertThat(result.text()).contains("주식회사이액션");
@@ -106,7 +106,7 @@ class OpenAiResponsesClientOcrRetryTest {
         });
         server.start();
         try {
-            TextPayload result = clientFor(server).extractImageText("image/png", new byte[]{1, 2, 3});
+            OcrPayload result = clientFor(server).extractImageText("image/png", new byte[]{1, 2, 3});
 
             // 최대 시도까지도 짧으면 빈 문자열 반환 → 상위 ocrFallback 이 다음 단계(워커)로 내려갈 수 있게 한다.
             // 짧은 거부 응답을 그대로 반환하면 워커 폴백을 가로막으므로.

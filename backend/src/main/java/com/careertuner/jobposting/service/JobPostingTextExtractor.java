@@ -38,7 +38,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.applicationcase.service.AiUsage;
 import com.careertuner.applicationcase.service.BAnthropicClient;
+import com.careertuner.applicationcase.service.OcrPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -95,7 +97,7 @@ public class JobPostingTextExtractor {
         if ("PDF".equals(file.sourceType())) {
             String text = extractTextPdf(file);
             if (!text.isBlank()) {
-                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null);
+                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null, "pdfbox", null);
             }
             // 텍스트가 없는 스캔/이미지 PDF → OCR 폴백.
             return ocrFallback(file, true);
@@ -113,11 +115,12 @@ public class JobPostingTextExtractor {
         //    빈 텍스트를 성공으로 반환하면 뒤의 좋은 폴백(OpenAI/워커)에 도달하지 못하므로, blank 는 "추출 실패"로 본다.
         if (anthropicClient != null && anthropicClient.configured()) {
             try {
-                String text = pdf
+                OcrPayload claude = pdf
                         ? anthropicClient.extractPdfText(file.bytes())
                         : anthropicClient.extractImageText(file.contentType(), file.bytes());
-                if (text != null && !text.isBlank()) {
-                    return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null);
+                if (claude.text() != null && !claude.text().isBlank()) {
+                    return new ExtractedPosting(file.sourceType(), file.fileReference(), null,
+                            limit(claude.text()), claude.usage(), claude.provider(), claude.model());
                 }
                 log.warn("공고 OCR: Claude 빈 결과 → 다음 폴백 ({})", pdf ? "PDF" : "IMAGE");
             } catch (RuntimeException ex) {
@@ -128,12 +131,13 @@ public class JobPostingTextExtractor {
         //    성공했지만 빈 텍스트면 워커로 넘긴다.
         String stage = pdf ? JobPostingFallbackPolicy.STAGE_PDF_OCR : JobPostingFallbackPolicy.STAGE_IMAGE_OCR;
         if (fallbackPolicy.allowed(stage)) {
-            OpenAiResponsesClient.TextPayload payload = pdf
+            OcrPayload payload = pdf
                     ? openAiClient.extractPdfText(file.originalFilename(), file.bytes())
                     : openAiClient.extractImageText(file.contentType(), file.bytes());
             String text = payload.text();
             if (text != null && !text.isBlank()) {
-                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), payload.usage());
+                return new ExtractedPosting(file.sourceType(), file.fileReference(), null,
+                        limit(text), payload.usage(), payload.provider(), payload.model());
             }
             log.warn("공고 OCR: OpenAI 빈 결과 → 워커 폴백 ({})", pdf ? "PDF" : "IMAGE");
         }
@@ -151,7 +155,9 @@ public class JobPostingTextExtractor {
                 null,
                 null,
                 false,
-                "OCR providers unavailable (Claude/OpenAI/worker). 공고문을 텍스트로 직접 입력해 주세요.");
+                "OCR providers unavailable (Claude/OpenAI/worker). 공고문을 텍스트로 직접 입력해 주세요.",
+                null,
+                null);
     }
 
     public ExtractedPosting extractUrl(String url) {
@@ -738,28 +744,37 @@ public class JobPostingTextExtractor {
             String uploadedFileUrl,
             String originalText,
             String extractedText,
-            OpenAiResponsesClient.Usage usage,
+            AiUsage usage,
             String extractionStrategy,
             Integer qualityScore,
             String qualityStatus,
             String qualityReportJson,
             String modelVersionsJson,
             boolean fallbackEligible,
-            String fallbackReason
+            String fallbackReason,
+            String ocrProvider,
+            String ocrModel
     ) {
+        /** 간단 경로(원문 텍스트만, provider/quality 없음). */
         public ExtractedPosting(String sourceType,
                                 String uploadedFileUrl,
                                 String originalText,
                                 String extractedText,
-                                OpenAiResponsesClient.Usage usage) {
+                                AiUsage usage) {
             this(sourceType, uploadedFileUrl, originalText, extractedText, usage,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    false,
-                    null);
+                    null, null, null, null, null, false, null, null, null);
+        }
+
+        /** OCR 경로(원문 + provider/model 귀속). */
+        public ExtractedPosting(String sourceType,
+                                String uploadedFileUrl,
+                                String originalText,
+                                String extractedText,
+                                AiUsage usage,
+                                String ocrProvider,
+                                String ocrModel) {
+            this(sourceType, uploadedFileUrl, originalText, extractedText, usage,
+                    null, null, null, null, null, false, null, ocrProvider, ocrModel);
         }
     }
 

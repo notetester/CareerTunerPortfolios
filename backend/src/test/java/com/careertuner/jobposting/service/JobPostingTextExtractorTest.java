@@ -28,7 +28,9 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.careertuner.applicationcase.service.AiUsage;
 import com.careertuner.applicationcase.service.BAnthropicClient;
+import com.careertuner.applicationcase.service.OcrPayload;
 import com.careertuner.applicationcase.service.OpenAiProperties;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient;
 import com.careertuner.common.exception.BusinessException;
@@ -111,6 +113,8 @@ class JobPostingTextExtractorTest {
             assertThat(requests).hasValue(1);
             assertThat(requestBody.get()).contains("\"sourceType\":\"IMAGE\"");
             assertThat(result.extractedText()).contains("Responsibilities");
+            assertThat(result.ocrProvider()).isEqualTo("worker");
+            assertThat(result.modelVersionsJson()).contains("\"ocr\"");
             assertThat(result.extractionStrategy()).isEqualTo("IMAGE_OCR");
             assertThat(result.qualityScore()).isEqualTo(55);
             assertThat(result.qualityStatus()).isEqualTo("REVIEW_REQUIRED");
@@ -118,6 +122,52 @@ class JobPostingTextExtractorTest {
             assertThat(result.fallbackEligible()).isTrue();
             assertThat(result.fallbackReason()).isEqualTo("explicit_low_confidence");
             verify(openAiClient, never()).extractImageText(any(), any());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void workerModelVersionsPreservesExistingOcrDetailAndSetsProvider() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/extract/job-posting", exchange -> sendJson(exchange, """
+                {
+                  "text": "Responsibilities: build APIs. Qualifications: Java and Spring.",
+                  "meta": {
+                    "strategy": "IMAGE_OCR",
+                    "qualityScore": 70,
+                    "qualityStatus": "REVIEW_REQUIRED",
+                    "modelVersions": {"documentExtractionContract": "self_ai_v1", "ocr": {"provider": "paddle", "workerModel": "PPStructureV3"}}
+                  }
+                }
+                """));
+        server.start();
+        try {
+            JobPostingAiWorkerProperties properties = new JobPostingAiWorkerProperties();
+            properties.setEnabled(true);
+            properties.setBaseUrl("http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            properties.setTimeout(Duration.ofSeconds(5));
+            JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                    mock(OpenAiResponsesClient.class),
+                    new JobPostingAiWorkerClient(properties, new ObjectMapper()),
+                    JobPostingFallbackPolicy.fromProperties(null),
+                    InetAddress::getAllByName,
+                    target -> {
+                        throw new AssertionError("File extraction should not fetch URLs");
+                    });
+
+            JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(new StoredJobPostingFile(
+                    "IMAGE",
+                    "local:application-postings/10/posting.png",
+                    "posting.png",
+                    "image/png",
+                    java.nio.file.Path.of("posting.png"),
+                    new byte[]{1, 2, 3}));
+
+            // 앱이 provider=worker 로 확정하되, worker 세부(workerModel)는 보존한다.
+            assertThat(result.ocrProvider()).isEqualTo("worker");
+            assertThat(result.modelVersionsJson()).contains("\"provider\":\"worker\"");
+            assertThat(result.modelVersionsJson()).contains("PPStructureV3");
         } finally {
             server.stop(0);
         }
@@ -136,7 +186,7 @@ class JobPostingTextExtractorTest {
         try {
             OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
             when(openAiClient.extractImageText(any(), any()))
-                    .thenReturn(new OpenAiResponsesClient.TextPayload("OpenAI extracted posting", null));
+                    .thenReturn(new OcrPayload("OpenAI extracted posting", "openai", "gpt-4o", null));
 
             OpenAiProperties openAiProperties = new OpenAiProperties();
             openAiProperties.setJobPostingFallbackEnabled(true);
@@ -166,6 +216,8 @@ class JobPostingTextExtractorTest {
 
             // Claude/OpenAI 1순위 — OpenAI 가 텍스트를 주면 워커는 호출되지 않는다.
             assertThat(result.extractedText()).isEqualTo("OpenAI extracted posting");
+            assertThat(result.ocrProvider()).isEqualTo("openai");
+            assertThat(result.ocrModel()).isEqualTo("gpt-4o");
             assertThat(workerRequests).hasValue(0);
             verify(openAiClient).extractImageText(any(), any());
         } finally {
@@ -177,7 +229,7 @@ class JobPostingTextExtractorTest {
     void fileExtractionFallsThroughToOpenAiWhenClaudeReturnsBlank() {
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         when(openAiClient.extractImageText(any(), any()))
-                .thenReturn(new OpenAiResponsesClient.TextPayload("OpenAI recovered posting", null));
+                .thenReturn(new OcrPayload("OpenAI recovered posting", "openai", "gpt-4o", null));
 
         OpenAiProperties openAiProperties = new OpenAiProperties();
         openAiProperties.setJobPostingFallbackEnabled(true);
@@ -195,7 +247,7 @@ class JobPostingTextExtractorTest {
         // Claude 가 빈 텍스트를 반환 — 성공으로 삼키지 말고 OpenAI 로 넘어가야 한다(IMAGE 경로).
         BAnthropicClient anthropic = mock(BAnthropicClient.class);
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.extractImageText(any(), any())).thenReturn("   ");
+        when(anthropic.extractImageText(any(), any())).thenReturn(new OcrPayload("   ", "claude", "claude-haiku-4-5", null));
         ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
 
         JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(new StoredJobPostingFile(
@@ -212,10 +264,43 @@ class JobPostingTextExtractorTest {
     }
 
     @Test
+    void fileExtractionCarriesClaudeProviderAndUsage() {
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                mock(OpenAiResponsesClient.class),
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+
+        // Claude 가 텍스트 + usage 를 주면 → ExtractedPosting 에 provider/model/usage 가 실린다(Claude usage 미기록 문제 해결의 근거).
+        BAnthropicClient anthropic = mock(BAnthropicClient.class);
+        when(anthropic.configured()).thenReturn(true);
+        when(anthropic.extractImageText(any(), any())).thenReturn(new OcrPayload(
+                "채용정보 회사명 이액션 직무 백엔드 개발자 자격요건 Java Spring 담당업무 API 개발",
+                "claude", "claude-haiku-4-5", new AiUsage("claude-haiku-4-5", 1200, 300, 1500)));
+        ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(new StoredJobPostingFile(
+                "IMAGE",
+                "local:application-postings/10/posting.png",
+                "posting.png",
+                "image/png",
+                java.nio.file.Path.of("posting.png"),
+                new byte[]{1, 2, 3}));
+
+        assertThat(result.ocrProvider()).isEqualTo("claude");
+        assertThat(result.ocrModel()).isEqualTo("claude-haiku-4-5");
+        assertThat(result.usage()).isNotNull();
+        assertThat(result.usage().totalTokens()).isEqualTo(1500);
+    }
+
+    @Test
     void pdfExtractionFallsThroughToOpenAiWhenPdfBoxAndClaudeReturnBlank() throws Exception {
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         when(openAiClient.extractPdfText(any(), any()))
-                .thenReturn(new OpenAiResponsesClient.TextPayload("OpenAI recovered pdf posting", null));
+                .thenReturn(new OcrPayload("OpenAI recovered pdf posting", "openai", "gpt-4o", null));
 
         OpenAiProperties openAiProperties = new OpenAiProperties();
         openAiProperties.setJobPostingFallbackEnabled(true);
@@ -233,7 +318,7 @@ class JobPostingTextExtractorTest {
         // 발표 셋업 실측 재현: 텍스트 없는 PDF → PDFBox blank → Claude.extractPdfText blank → OpenAI 로 복구.
         BAnthropicClient anthropic = mock(BAnthropicClient.class);
         when(anthropic.configured()).thenReturn(true);
-        when(anthropic.extractPdfText(any())).thenReturn("");
+        when(anthropic.extractPdfText(any())).thenReturn(new OcrPayload("", "claude", "claude-haiku-4-5", null));
         ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
 
         JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(new StoredJobPostingFile(
@@ -267,7 +352,7 @@ class JobPostingTextExtractorTest {
         try {
             OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
             when(openAiClient.extractImageText(any(), any()))
-                    .thenReturn(new OpenAiResponsesClient.TextPayload("   ", null));
+                    .thenReturn(new OcrPayload("   ", "openai", "gpt-4o", null));
 
             OpenAiProperties openAiProperties = new OpenAiProperties();
             openAiProperties.setJobPostingFallbackEnabled(true);
