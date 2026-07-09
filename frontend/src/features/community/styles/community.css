@@ -90,6 +90,8 @@
 .wv-body .ProseMirror code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.88em; background: var(--av-line-soft); padding: 1px 5px; border-radius: 5px; }
 .wv-body .ProseMirror a { color: var(--av-blue); text-decoration: underline; }
+.wv-body .ProseMirror img { max-width: 100%; height: auto; margin: 12px 0; border-radius: 10px; display: block; }
+.wv-body .ProseMirror img.ProseMirror-selectednode { outline: 2px solid var(--av-blue); outline-offset: 2px; }
 .wv-tags { display: flex; align-items: center; gap: 7px; border-top: 1px solid var(--av-line-soft); padding: 12px 0 4px; flex-wrap: wrap; }
 .wv-tags > svg { width: 13px; height: 13px; color: var(--av-ink-3); stroke-width: 2; flex: none; }
 .wv-tags input { flex: 1; min-width: 100px; border: none; background: none; font-size: 13px; color: var(--av-ink); }
@@ -439,6 +441,21 @@
 .dv-prose blockquote { margin: 16px 0; padding: 11px 14px; border-left: 2px solid var(--av-blue); background: var(--av-blue-soft);
   border-radius: 0 7px 7px 0; font-size: 13.5px; color: var(--av-ink-2); line-height: 1.65; }
 .dv-prose blockquote strong, .dv-prose blockquote b { color: var(--av-ink); font-weight: 650; }
+.dv-prose img { max-width: 100%; height: auto; margin: 14px 0; border-radius: 10px; display: block; }
+
+/* ── 이미지 검열: 문제 이미지 블러 + 클릭하여 보기 ──
+   vision 판정은 불완전하므로 글을 숨기지 않고 소프트 블러만 건다. 래퍼는 프런트에서 감싼다. */
+.dv-imgwrap { position: relative; display: block; margin: 14px 0; }
+.dv-imgwrap.blurred > img { filter: blur(24px); transform: scale(1.02); cursor: pointer; }
+.dv-imgwrap.blurred.revealed > img { filter: none; transform: none; cursor: default; }
+.dv-imgwrap.blurred > img { margin: 0; }
+.dv-imgwrap__hint {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; text-align: center; padding: 12px; color: #fff; font-size: 12.5px; font-weight: 600;
+  background: rgba(15, 23, 42, 0.28); border-radius: 10px; cursor: pointer; pointer-events: none;
+}
+.dv-imgwrap.blurred.revealed .dv-imgwrap__hint { display: none; }
+.dv-imgwrap__hint span { font-size: 11px; font-weight: 500; opacity: 0.9; }
 .dv-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 26px; }
 .dv-tag { font-size: 11.5px; font-weight: 550; color: var(--av-ink-2); background: var(--av-line-soft);
   border-radius: 99px; padding: 4px 10px; white-space: nowrap; }

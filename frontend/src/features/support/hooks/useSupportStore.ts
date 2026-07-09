@@ -25,6 +25,7 @@ interface SupportState {
     category: string;
     subject: string;
     content: string;
+    attachmentFileIds?: number[];
   }) => Promise<void>;
 
   /* 내 문의 내역 */

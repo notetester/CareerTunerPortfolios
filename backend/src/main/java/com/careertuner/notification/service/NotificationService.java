@@ -15,4 +15,8 @@ public interface NotificationService {
     void markAsRead(Long notificationId, Long userId);
 
     void markAllAsRead(Long userId);
+
+    void delete(Long notificationId, Long userId);
+
+    void deleteAll(Long userId);
 }

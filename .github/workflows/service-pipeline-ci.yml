@@ -21,7 +21,8 @@ permissions:
 
 concurrency:
   group: service-pipeline-ci-${{ github.ref }}
-  cancel-in-progress: true
+  # PR 의 오래된 실행만 취소한다. dev push 실행은 취소되면 커밋 목록에 실패처럼 남는다.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   detect-changes:

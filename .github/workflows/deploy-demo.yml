@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: deploy-demo
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-push-demo:

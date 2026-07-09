@@ -1,7 +1,5 @@
 package com.careertuner.community.moderation.config;
 
-import java.util.concurrent.Executor;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -25,6 +23,15 @@ public class ModerationAsyncConfig {
 
     private static final Logger log = LoggerFactory.getLogger(ModerationAsyncConfig.class);
 
+    /** 종료 대기에 얹는 여유분(초) — LLM read timeout 이후 응답 처리·DB 기록에 필요한 시간. */
+    private static final long SHUTDOWN_GRACE_SECONDS = 5;
+
+    private final OllamaProperties ollamaProperties;
+
+    public ModerationAsyncConfig(OllamaProperties ollamaProperties) {
+        this.ollamaProperties = ollamaProperties;
+    }
+
     @Bean("moderationExecutor")
     public ThreadPoolTaskExecutor moderationExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -38,7 +45,11 @@ public class ModerationAsyncConfig {
                 log.warn("검열 큐 포화 — 작업 폐기됨. 미검열 글은 재시도 배치에서 회수"));
         // 재배포/종료 시 진행 중인 검열을 끝내고 내려간다 (PENDING 좀비 방지)
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(35); // read-timeout 30초 + 여유
+        // ai.ollama.read-timeout 에서 파생 — 하드코딩하면 yaml 이 값을 덮을 때 조용히 stale 해진다
+        // (실제로 그랬다: 클래스 기본값 30s 기준 35초였는데 application.yaml 이 60s 로 덮어씀).
+        // 재시도·다중 이미지까지 모두 끝나길 기다리진 않는다 — 남은 PENDING 은 재시도 배치가 회수한다.
+        executor.setAwaitTerminationSeconds(
+                (int) (ollamaProperties.getReadTimeout().toSeconds() + SHUTDOWN_GRACE_SECONDS));
         return executor;
     }
 }

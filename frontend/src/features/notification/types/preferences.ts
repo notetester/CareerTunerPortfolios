@@ -255,6 +255,99 @@ export function isNotificationChannelEnabled(
   return rule.channels?.[channel] !== false;
 }
 
+/**
+ * 알림 전역 끄기 여부. 벨 패널의 "알림 끄기"({@link NotificationPreference.pushEnabled})는
+ * 라벨 그대로 <b>푸시뿐 아니라 화면 토스트도</b> 끈다.
+ *
+ * <p>설정을 아직 못 불러왔으면(null/undefined) 기존대로 알림을 띄운다 — 설정 로드 실패로
+ * 알림이 조용히 사라지는 편보다 낫다(fail-open).
+ */
+export function areNotificationsMuted(
+  pref: { pushEnabled?: boolean } | null | undefined,
+): boolean {
+  return pref?.pushEnabled === false;
+}
+
+/** "HH:mm" / "HH:mm:ss" → 자정 이후 분(minute). 형식이 어긋나면 null. */
+function parseTimeToMinutes(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const matched = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(value.trim());
+  if (!matched) return null;
+  const hour = Number(matched[1]);
+  const minute = Number(matched[2]);
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+/** 지금 시각을 KST 기준 자정 이후 분으로. KST 는 서머타임이 없어 UTC+9 고정 오프셋으로 충분하다. */
+export function kstMinutesOf(now: Date): number {
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return kst.getUTCHours() * 60 + kst.getUTCMinutes();
+}
+
+/**
+ * 방해금지 구간 판정 — 백엔드 {@code PushDispatcher.isWithinQuietHours} 와 동일 규칙.
+ * 시작 포함·끝 제외([start, end)), 자정을 넘기는 구간(start &gt; end)도 처리한다.
+ * 미설정·형식 오류·시작==끝은 "방해금지 없음"(false)으로 본다.
+ */
+export function isWithinQuietHours(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  const s = parseTimeToMinutes(start);
+  const e = parseTimeToMinutes(end);
+  if (s === null || e === null || s === e) return false;
+  const current = kstMinutesOf(now);
+  if (s < e) return current >= s && current < e;
+  return current >= s || current < e; // 자정 넘김: [s, 24:00) ∪ [00:00, e)
+}
+
+/** 카테고리 단위 수신 여부. 설정에 없는 카테고리(관리자 전용 등)는 통과시킨다. */
+export function isNotificationCategoryEnabled(
+  pref: { categories?: Record<string, boolean> } | null | undefined,
+  category: string | null | undefined,
+): boolean {
+  if (!category) return true;
+  return pref?.categories?.[category] !== false;
+}
+
+/**
+ * 새로 도착한 미읽음 알림 중 실제로 토스트를 띄울 것만 고른다.
+ *
+ * <p>백엔드 {@code PushDispatcher} 가 푸시를 억제하는 신호를 화면 토스트에도 동일하게 적용한다:
+ * 전역 끄기(pushEnabled) → 방해금지 시간대 → 카테고리 → 타입/채널 → 발신자 관계.
+ *
+ * <p>순수 함수 — 폴링 루프에서 분리해 단독 실행/검증이 가능하게 둔다.
+ * urgent 판정은 아이콘 등 런타임 의존이 딸린 typeMeta 를 끌어오지 않도록 주입받는다.
+ */
+export function selectToastNotifications<
+  T extends { type: string; category?: string | null; senderRelation?: string | null },
+>(
+  fresh: T[],
+  pref: {
+    pushEnabled?: boolean;
+    categories?: Record<string, boolean>;
+    quietHoursStart?: string | null;
+    quietHoursEnd?: string | null;
+    rules?: Record<string, Partial<NotificationRulePreference> | undefined>;
+  } | null | undefined,
+  isUrgent: (type: T["type"]) => boolean,
+  now: Date = new Date(),
+): T[] {
+  if (areNotificationsMuted(pref)) {
+    return [];
+  }
+  if (isWithinQuietHours(pref?.quietHoursStart, pref?.quietHoursEnd, now)) {
+    return [];
+  }
+  return fresh
+    .filter((n) => isUrgent(n.type))
+    .filter((n) => isNotificationCategoryEnabled(pref, n.category))
+    .filter((n) => isNotificationChannelEnabled(pref, n.type, "webToast"))
+    .filter((n) => isNotificationSenderEnabled(pref, n.type, n.senderRelation));
+}
+
 /** 발신자 관계 기준 수신 여부 — 관계 미상(undefined)은 통과시킨다. */
 export function isNotificationSenderEnabled(
   pref: { rules?: Record<string, Partial<NotificationRulePreference> | undefined> } | null | undefined,

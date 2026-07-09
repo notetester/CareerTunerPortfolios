@@ -64,6 +64,8 @@ export interface CommunityPost {
   /** 신고 누적으로 가려진 글(비작성자에게 블러). 클릭 시 해제. */
   blurred?: boolean;
   reportCount?: number;
+  /** AI 이미지 검열 블러 대상 이미지 + 사유(ad/pii/gross/abuse/spam) — 해당 이미지만 블러+사유+클릭하여 보기. */
+  blurredImages?: { url: string; category: string | null }[];
 }
 
 export interface InterviewReviewMetadata {

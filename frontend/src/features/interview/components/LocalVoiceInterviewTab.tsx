@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ClipboardList, Loader2, Mic, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
@@ -416,7 +417,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
           <CardTitle className="flex items-center gap-2 text-base">
             <Mic className="size-4 text-emerald-600" />
             자체 AI 음성 면접
-            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 무료</Badge>
+            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 자체 AI</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -424,6 +425,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             면접관이 질문을 읽어주면 답변을 녹음하세요(다 읽으면 자동으로 녹음 시작). 6문제를 마치면 자체 AI가
             한 번에 채점합니다(말 속도·톤·내용). 외부 API 없이 동작합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" />
 
           {serveOff && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">

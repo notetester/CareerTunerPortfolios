@@ -2,6 +2,9 @@ package com.careertuner.admin.ticket.controller;
 
 import java.util.List;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -22,6 +25,7 @@ import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.ticket.service.AdminTicketService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.file.service.FileService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -78,5 +82,29 @@ public class AdminTicketController {
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
         return ApiResponse.ok(ticketService.generateMemberSummary(authUser, id));
+    }
+
+    /** 상담사 티켓 첨부 다운로드 — 티켓 첨부인지 검증 후 바이트 반환. */
+    @GetMapping("/attachments/{fileId}/content")
+    public ResponseEntity<byte[]> attachmentContent(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long fileId) {
+        FileService.Download download = ticketService.downloadAttachment(authUser, fileId);
+        String contentType = download.asset().getContentType();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE,
+                        contentType == null || contentType.isBlank()
+                                ? MediaType.APPLICATION_OCTET_STREAM_VALUE : contentType)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + safeName(download.asset().getOriginalName(), fileId) + "\"")
+                .body(download.bytes());
+    }
+
+    private String safeName(String originalName, Long id) {
+        if (originalName == null || originalName.isBlank()) {
+            return "file-" + id;
+        }
+        // 헤더 인젝션 방지: 따옴표/개행 제거.
+        return originalName.replaceAll("[\"\\r\\n]", "_");
     }
 }

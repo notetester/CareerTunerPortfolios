@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -122,6 +123,40 @@ def build_runtime_repair_messages(
             "- preserved_meaning은 true, added_facts는 빈 배열로 작성한다.\n"
             "- 전체 JSON 객체 하나만 반환한다."
         )
+    elif kind == "paragraph_contract":
+        constraints = payload["input"].get("constraints", {})
+        original_text = str(payload["input"].get("original_text", "")).strip()
+        paragraph_count = len(re.split(r"\n\s*\n", original_text)) if original_text else 1
+        repair_prompt = (
+            "이전 응답이 문단 보존 계약 검증에 실패했다. corrected_text를 처음부터 다시 작성한다.\n"
+            f"검증 실패 사유: {validation_error}\n\n"
+            "이전 응답:\n"
+            "<invalid_output>\n"
+            f"{(previous_output or '')[:4000]}\n"
+            "</invalid_output>\n\n"
+            "필수 조건:\n"
+            f"- corrected_text를 정확히 {paragraph_count}개 문단으로 작성하고 문단 사이는 빈 줄 하나로 구분한다.\n"
+            f"- corrected_text는 {constraints.get('min_chars')}~{constraints.get('max_chars')}자 사이이고 "
+            f"가능하면 {constraints.get('target_chars')}자 전후다.\n"
+            "- 원문의 각 문단에 있던 경험, 수치, 기술명과 결과를 같은 순서로 유지한다.\n"
+            "- status, task_type, corrected_text, summary, changes, risk_flags, preserved_meaning,\n"
+            "  added_facts, recommended_keywords, confidence의 10개 키를 모두 포함한다.\n"
+            "- changes는 3개 이상이며 preserved_meaning은 true, added_facts는 빈 배열이다.\n"
+            "- 검증 실패 사유를 risk_flags나 다른 출력 필드에 복사하지 않는다.\n"
+            "- 전체 JSON 객체 하나만 반환한다."
+        )
+    elif kind == "cjk_leak":
+        repair_prompt = (
+            "이전 응답에 중국어 또는 일본어 문자가 섞여 출력 계약 검증에 실패했다.\n"
+            f"검증 실패 사유: {validation_error}\n\n"
+            "필수 조건:\n"
+            "- 이전 응답의 의미와 JSON 구조를 유지하되 중국어·일본어 문자를 모두 제거하고 자연스러운 한국어로 다시 쓴다.\n"
+            "- corrected_text와 summary, changes, risk_flags를 포함한 모든 문자열을 확인한다.\n"
+            "- status, task_type, corrected_text, summary, changes, risk_flags, preserved_meaning,\n"
+            "  added_facts, recommended_keywords, confidence의 10개 키를 모두 포함한다.\n"
+            "- changes는 3개 이상이며 preserved_meaning은 true, added_facts는 빈 배열이다.\n"
+            "- 전체 JSON 객체 하나만 반환한다."
+        )
     else:
         repair_prompt = repair_template.format(
             validation_error=validation_error,
@@ -159,11 +194,15 @@ def classify_problem_kind(problems: list[str]) -> str:
     lowered = joined.lower()
     if "json_parse_fail" in lowered or "not_object" in lowered:
         return "json_parse_fail"
+    if "cjk_leak" in lowered:
+        return "cjk_leak"
+    if "output paragraphs" in lowered or "paragraph" in lowered:
+        return "paragraph_contract"
     if "preserved_meaning" in lowered:
         return "missing_preserved_meaning"
     if "risk_flags_missing" in lowered or "output.risk_flags" in lowered:
         return "missing_risk_flags"
-    if "max_chars" in lowered or "min_chars" in lowered or "output paragraphs" in lowered or "ratio" in lowered:
+    if "max_chars" in lowered or "min_chars" in lowered or "ratio" in lowered:
         return "length_overflow"
     if "changes must contain" in lowered:
         return "changes_contract"

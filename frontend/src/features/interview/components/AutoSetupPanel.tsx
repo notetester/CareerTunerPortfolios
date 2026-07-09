@@ -13,6 +13,7 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { createInterviewSession, generateExpectedQuestions } from "../api/interviewApi";
 import { getInterviewModeLabel, type InterviewMode, type InterviewSession } from "../types/interview";
 
@@ -141,6 +142,7 @@ export function AutoSetupPanel({
         {/* 액션 */}
         {!running && steps.every((s) => s.state === "pending") ? (
           <div className="flex flex-wrap items-center gap-2">
+            <AiChargeCostBadge featureType="INTERVIEW_QUESTION_GEN" />
             <Button className="gap-1.5 bg-indigo-600 text-white hover:bg-indigo-700" disabled={effectiveCaseId == null} onClick={run}>
               <Wand2 className="size-4" /> AI에게 맡기기
             </Button>

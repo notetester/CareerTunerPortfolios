@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  Mail, Inbox, Send, Timer, Smile, Sparkles, Settings2,
+  Mail, Inbox, Send, Timer, Smile, Sparkles, Settings2, Paperclip,
   ChevronDown, Flame, User, Crown, CalendarDays, MessageSquare,
   ArrowUpRight, StickyNote, AlertTriangle, CornerDownLeft,
   CornerDownRight, RefreshCw, FileSearch, Zap, Info, WifiOff,
@@ -568,6 +568,10 @@ function ContextChip({ icon, label, value }: { icon: React.ReactNode; label: str
   );
 }
 
+function fmtAttachSize(b: number) {
+  return b >= 1048576 ? (b / 1048576).toFixed(1) + "MB" : Math.max(1, Math.round(b / 1024)) + "KB";
+}
+
 function MessageBubble({ msg }: { msg: InquiryMessage }) {
   const isUser = msg.who === "user";
   return (
@@ -582,6 +586,22 @@ function MessageBubble({ msg }: { msg: InquiryMessage }) {
           <span className="text-[10.5px] text-[var(--muted-foreground)] font-normal">{msg.time}</span>
         </div>
         <div className="text-[13px] leading-relaxed text-muted-foreground">{msg.text}</div>
+        {msg.attachments && msg.attachments.length > 0 && (
+          <div className="mt-1.5 flex flex-col gap-1">
+            {msg.attachments.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => void adminTicketApi.downloadAttachment(a.id, a.name).catch(() => {})}
+                className="inline-flex items-center gap-1.5 text-[12px] text-indigo-600 hover:underline text-left"
+              >
+                <Paperclip className="w-3 h-3 shrink-0" />
+                <span className="break-all">{a.name}</span>
+                <span className="opacity-70">({fmtAttachSize(a.size)})</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

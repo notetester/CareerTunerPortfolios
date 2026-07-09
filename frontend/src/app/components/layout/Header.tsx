@@ -30,6 +30,7 @@ import {
   Award,
   LogOut,
   ShieldCheck,
+  CalendarClock,
 } from "lucide-react";
 
 const navItems = [
@@ -101,15 +102,22 @@ const navItems = [
     ],
   },
   {
+    label: "플래너",
+    href: "/planner",
+    icon: CalendarClock,
+    children: [
+      { label: "일정 관리", href: "/planner" },
+      { label: "메모 관리", href: "/planner?tab=memo" },
+      { label: "오버레이 관리", href: "/planner?tab=overlay" },
+    ],
+  },
+  {
     label: "커뮤니티",
     href: "/community",
     icon: Users,
     children: [
-      { label: "취업 후기", href: "/community?cat=hired" },
-      { label: "면접 후기", href: "/community?cat=interview" },
-      { label: "직무별 질문 공유", href: "/community?cat=questions" },
-      { label: "합격 전략 게시판", href: "/community?cat=strategy" },
-      { label: "자유게시판", href: "/community?cat=free" },
+      { label: "인기글", href: "/community?sort=likes" },
+      { label: "내 활동", href: "/community/activity" },
     ],
   },
   {

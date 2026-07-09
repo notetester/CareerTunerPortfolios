@@ -15,6 +15,7 @@ import {
   Plus, Calendar, Loader2, Flame, RefreshCw, Settings2, Check, Circle,
 } from "lucide-react";
 import { getDashboardSummary, refreshDashboardSummary } from "@/features/dashboard/api/dashboardApi";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import type { DashboardActivity, DashboardSummary, DashboardTodo } from "@/features/dashboard/types/dashboardSummary";
 import { TodoChecklist } from "@/features/dashboard/components/TodoChecklist";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
@@ -316,16 +317,18 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                       <p className="min-w-0 text-sm leading-6 text-blue-800">
                         <strong className="font-semibold">AI 요약</strong> <AiResultBadge status={summary.analysisRun.status} /> · {summary.aiSummary}
                       </p>
-                      <button
-                        type="button"
-                        onClick={handleRefreshSummary}
-                        disabled={refreshing}
-                        title="AI 실행 전 사용권 우선 차감과 최소·최대 크레딧 범위를 안내합니다."
-                        className="flex shrink-0 self-start items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
-                      >
-                        <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
-                        {refreshing ? "재생성 중" : "재생성 (실행 전 비용 안내)"}
-                      </button>
+                      <div className="flex shrink-0 flex-col items-start gap-1.5">
+                        <AiChargeCostBadge featureType="DASHBOARD_SUMMARY" />
+                        <button
+                          type="button"
+                          onClick={handleRefreshSummary}
+                          disabled={refreshing}
+                          className="flex self-start items-center gap-1 rounded-md border border-blue-200 bg-card/70 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-card disabled:opacity-60"
+                        >
+                          <RefreshCw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
+                          {refreshing ? "재생성 중" : "재생성"}
+                        </button>
+                      </div>
                     </div>
                     {refreshError && <div className="mt-1.5 text-xs text-red-600">{refreshError}</div>}
                   </div>

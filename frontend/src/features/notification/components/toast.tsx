@@ -46,6 +46,7 @@ import {
   Clipboard,
   BellRing,
   Briefcase,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -245,6 +246,8 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   COMPANY_APPLY_RESULT: Building2,
   JOB_POSTING_REVIEW_RESULT: Briefcase,
   POST_HIDDEN: EyeOff,
+  POST_IMAGE_BLURRED: EyeOff,
+  COMMUNITY_STRIKE_WARNING: AlertTriangle,
   POST_REMOVED: Trash2,
   POST_RESTORED: RotateCcw,
   POST_SUMMARY_READY: BookOpen,
@@ -268,6 +271,7 @@ const NOTI_ICON_MAP: Record<NotificationType, LucideIcon> = {
   SUBSCRIPTION_CANCELED: CreditCard,
   CREDIT_RECHARGED: CreditCard,
   REFUND_RESULT: CreditCard,
+  SCHEDULE_REMINDER: CalendarClock,
   NEW_REPORT: ShieldAlert,
   NEW_TICKET: Ticket,
   NEW_USER: UserPlus,

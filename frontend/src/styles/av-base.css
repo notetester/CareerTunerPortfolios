@@ -142,7 +142,9 @@
 .uv-phead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
 .uv-phead h1 { margin: 0; font-size: 22px; font-weight: 750; letter-spacing: -0.02em; color: var(--av-ink); }
 .uv-phead p { margin: 6px 0 0; font-size: 13px; color: var(--av-ink-2); }
-.uv-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--av-line); margin: 18px 0 0; overflow-x: auto; }
+/* overflow-x:auto 로 좁은 화면에서 탭을 가로 스크롤한다. 스크롤 기능은 두고 스크롤바만 숨긴다. */
+.uv-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--av-line); margin: 18px 0 0; overflow-x: auto; scrollbar-width: none; }
+.uv-tabs::-webkit-scrollbar { display: none; }
 .uv-tab { border: none; background: none; cursor: pointer; padding: 9px 11px 11px; font-size: 13px; font-weight: 500;
   color: var(--av-ink-2); white-space: nowrap; position: relative; }
 .uv-tab .n { font-size: 11px; color: var(--av-ink-3); margin-left: 4px; }

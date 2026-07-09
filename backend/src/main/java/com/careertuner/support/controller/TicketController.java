@@ -60,6 +60,6 @@ public class TicketController {
             @PathVariable Long id,
             @Validated @RequestBody TicketMessageRequest request,
             @AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(ticketService.addUserMessage(id, authUser.id(), request.content()));
+        return ApiResponse.ok(ticketService.addUserMessage(id, authUser.id(), request.content(), request.attachmentFileIds()));
     }
 }
