@@ -202,11 +202,12 @@ class BCompanyAnalysisWebInputTest {
     // ── hosted(OpenAI) 폴백 경계: 웹 미적용(D-4c 인계) ──
 
     /**
-     * D-4c 인계 경계: local 비활성 + Claude 미설정 → OpenAI hosted 폴백은 웹 블록 없이
-     * 공고문 텍스트만 받는다(웹 evidence 미전달). hosted 웹 입력은 이번 배치 범위가 아니다.
+     * Phase 2(D-4c 경계 개방): local 비활성 + Claude 미설정 → OpenAI hosted 경로도 웹 근거 블록을 받는다.
+     * 공고문 텍스트는 그대로 2번째 인자로, {@code [웹 검색 근거]} 블록(url·snippet)은 4번째 인자로 전달된다
+     * (R1/Claude 와 동일한 블록 포맷 재사용). 3번째 인자는 model override.
      */
     @Test
-    void openAiHostedFallbackReceivesNoWebInput() {
+    void openAiHostedReceivesWebInput() {
         BAnalysisProperties properties = new BAnalysisProperties();
         properties.getLocalLlm().setEnabled(false); // local 비활성 → Claude(미설정) → OpenAI
         BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
@@ -214,16 +215,22 @@ class BCompanyAnalysisWebInputTest {
         when(anthropicClient.configured()).thenReturn(false);
         OpenAiResponsesClient openAi = mock(OpenAiResponsesClient.class);
         when(openAi.configured()).thenReturn(true);
-        when(openAi.analyzeCompany(any(ApplicationCase.class), anyString(), any())).thenReturn(hostedPayload());
+        when(openAi.analyzeCompany(any(ApplicationCase.class), anyString(), any(), any())).thenReturn(hostedPayload());
 
         BAnalysisGenerationService service = new BAnalysisGenerationService(
                 properties, localLlmClient, new BJobSentenceClassifier(), mapper, anthropicClient, openAi);
 
         service.generateCompanyAnalysis(applicationCase(), "채용공고 원문",
-                List.of(evidence("https://news.example.com/1", "가온테크", "클라우드")));
+                List.of(evidence("https://news.example.com/1", "가온테크", "클라우드 매니지드 서비스 출시")));
 
-        // hosted OpenAI 는 공고문 텍스트만 받는다 — 웹 evidence 블록 미전달(3번째 인자는 model override).
-        verify(openAi, times(1)).analyzeCompany(any(ApplicationCase.class), eq("채용공고 원문"), any());
+        // 공고문은 2번째 인자로 그대로, 웹 블록은 4번째 인자로 전달된다(url·snippet 포함).
+        ArgumentCaptor<String> blockCaptor = ArgumentCaptor.forClass(String.class);
+        verify(openAi, times(1)).analyzeCompany(
+                any(ApplicationCase.class), eq("채용공고 원문"), any(), blockCaptor.capture());
+        assertThat(blockCaptor.getValue())
+                .contains("[웹 검색 근거]")
+                .contains("https://news.example.com/1")
+                .contains("클라우드 매니지드 서비스 출시");
     }
 
     private static CompanyAnalysisPayload hostedPayload() {

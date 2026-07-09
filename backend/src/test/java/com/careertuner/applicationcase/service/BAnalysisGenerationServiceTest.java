@@ -1231,7 +1231,7 @@ class BAnalysisGenerationServiceTest {
         when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         when(openAiClient.configured()).thenReturn(true);
-        when(openAiClient.analyzeCompany(any(), anyString(), any())).thenReturn(openAiCompanyPayload("gpt-test"));
+        when(openAiClient.analyzeCompany(any(), anyString(), any(), any())).thenReturn(openAiCompanyPayload("gpt-test"));
         BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
 
         BAnalysisGenerationService.GeneratedCompanyAnalysis result =
@@ -1239,7 +1239,7 @@ class BAnalysisGenerationServiceTest {
 
         assertThat(result.fellBack()).isFalse();
         assertThat(result.payload().usage().model()).isEqualTo("gpt-test");
-        verify(openAiClient).analyzeCompany(any(), anyString(), any());
+        verify(openAiClient).analyzeCompany(any(), anyString(), any(), any());
         verify(anthropicClient, never()).chat(anyString(), anyString(), any());
         verify(localLlmClient, never()).chat(anyString(), anyString(), any());
     }
@@ -1255,14 +1255,14 @@ class BAnalysisGenerationServiceTest {
         BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         when(openAiClient.configured()).thenReturn(true);
-        when(openAiClient.analyzeCompany(any(), anyString(), any())).thenReturn(openAiCompanyPayload("gpt-5.4-mini"));
+        when(openAiClient.analyzeCompany(any(), anyString(), any(), any())).thenReturn(openAiCompanyPayload("gpt-5.4-mini"));
         BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
 
         BAnalysisGenerationService.GeneratedCompanyAnalysis result =
                 service.generateCompanyAnalysis(applicationCase(), postingText());
 
         assertThat(result.fellBack()).isFalse();
-        verify(openAiClient).analyzeCompany(any(), anyString(), eq("gpt-5.4-mini"));
+        verify(openAiClient).analyzeCompany(any(), anyString(), eq("gpt-5.4-mini"), any());
     }
 
     @Test
@@ -1290,7 +1290,7 @@ class BAnalysisGenerationServiceTest {
         ArgumentCaptor<String> systemCaptor = ArgumentCaptor.forClass(String.class);
         verify(anthropicClient).chat(systemCaptor.capture(), anyString(), any());
         assertThat(systemCaptor.getValue()).isEqualTo(CompanyAnalysisPromptCatalog.HOSTED_SYSTEM_PROMPT);
-        verify(openAiClient, never()).analyzeCompany(any(), anyString(), any());
+        verify(openAiClient, never()).analyzeCompany(any(), anyString(), any(), any());
         verify(localLlmClient, never()).chat(anyString(), anyString(), any());
     }
 
@@ -1314,7 +1314,7 @@ class BAnalysisGenerationServiceTest {
         assertThat(result.fellBack()).isFalse();
         assertThat(result.payload().usage().model()).isEqualTo("qwen-test");
         verify(anthropicClient, never()).chat(anyString(), anyString(), any());
-        verify(openAiClient, never()).analyzeCompany(any(), anyString(), any());
+        verify(openAiClient, never()).analyzeCompany(any(), anyString(), any(), any());
     }
 
     @Test
@@ -1330,7 +1330,7 @@ class BAnalysisGenerationServiceTest {
         when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         when(openAiClient.configured()).thenReturn(true);
-        when(openAiClient.analyzeCompany(any(), anyString(), any())).thenThrow(new RuntimeException("openai down"));
+        when(openAiClient.analyzeCompany(any(), anyString(), any(), any())).thenThrow(new RuntimeException("openai down"));
         BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
 
         BAnalysisGenerationService.GeneratedCompanyAnalysis result =
@@ -1338,7 +1338,7 @@ class BAnalysisGenerationServiceTest {
 
         assertThat(result.fellBack()).isFalse();
         assertThat(result.payload().usage().model()).isEqualTo("claude-haiku-test");
-        verify(openAiClient).analyzeCompany(any(), anyString(), any());
+        verify(openAiClient).analyzeCompany(any(), anyString(), any(), any());
         verify(anthropicClient).chat(anyString(), anyString(), any());
     }
 

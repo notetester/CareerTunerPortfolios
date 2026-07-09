@@ -243,7 +243,8 @@ public class BAnalysisGenerationService {
      * company schema sourceKind enum 에 WEB 를 additive 로 연다. 빈 목록/URL 없음이면 현행과 완전히 동일하다.
      * hosted 경로는 grounding 완화판({@link CompanyAnalysisPromptCatalog#HOSTED_SYSTEM_PROMPT})을 쓰고,
      * R1(local)은 현행 {@link CompanyAnalysisPromptCatalog#SYSTEM_PROMPT} 를 유지한다(canonical eval 불변).
-     * hosted(OpenAI) 경로의 웹 입력은 D-4c 범위 — 이번 배치는 공고문만 넘긴다.
+     * OpenAI 경로도 이제 같은 {@code [웹 검색 근거]} 블록을 받는다(Phase 2 · D-4c 경계 개방) — 단 companyPrompt 대신
+     * 별도 user prompt 끝에 같은 블록을 append 한다(웹 근거가 없으면 공고문만 넘긴다).
      */
     public GeneratedCompanyAnalysis generateCompanyAnalysis(ApplicationCase applicationCase, String postingText,
                                                             List<CompanyWebEvidence> webEvidence) {
@@ -261,7 +262,7 @@ public class BAnalysisGenerationService {
                     case LOCAL -> attemptLocalCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
                     case CLAUDE -> attemptClaudeCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
                     case OPENAI -> openAiResponsesClient.analyzeCompany(applicationCase, postingText,
-                            properties.getCompany().getOpenAiModel());
+                            properties.getCompany().getOpenAiModel(), webEvidenceBlock(usableWeb));
                 };
                 log.info("{} company analysis succeeded", provider.label());
                 return new GeneratedCompanyAnalysis(payload, null, null);
@@ -1075,10 +1076,11 @@ public class BAnalysisGenerationService {
     }
 
     /**
-     * WEB 입력 배선(local/Claude 한정 · 235 §1). usableWeb(URL 보유분)가 있으면 {@code [웹 검색 근거]} 블록을
-     * 먼저 만들어 그 길이를 공고 본문 예산에서 차감한 뒤 붙인다(웹 블록이 num_ctx 예산을 초과하지 않도록 — 리뷰 반영).
-     * 빈 목록이면 base 를 그대로 반환한다(=현행 프롬프트 완전 불변). b-v6 프롬프트가 이 블록 형식을 기대한다.
-     * URL blank/null evidence 는 상위 usableWebEvidence 에서 이미 제외됐다.
+     * local/Claude 전용 프롬프트 조립(공고 본문 num_ctx 예산 절단 포함 · 235 §1). usableWeb(URL 보유분)가 있으면
+     * {@link #webEvidenceBlock} 으로 만든 {@code [웹 검색 근거]} 블록을 공고 본문 예산에서 그 길이만큼 차감한 뒤
+     * 붙인다(웹 블록이 num_ctx 예산을 초과하지 않도록 — 리뷰 반영). 블록 포맷 자체는 {@link #webEvidenceBlock} 이
+     * 만들며 OpenAI 경로도 같은 포맷을 재사용한다(그쪽은 예산 절단 없이 append). 빈 목록이면 base 를 그대로
+     * 반환한다(=현행 프롬프트 완전 불변). URL blank/null evidence 는 상위 usableWebEvidence 에서 이미 제외됐다.
      */
     private String companyPrompt(ApplicationCase applicationCase, String postingText, Classification classification,
                                  List<CompanyWebEvidence> usableWeb) {
