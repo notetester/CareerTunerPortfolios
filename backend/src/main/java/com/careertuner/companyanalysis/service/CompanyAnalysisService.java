@@ -19,6 +19,7 @@ import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
+import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
@@ -98,7 +99,7 @@ public class CompanyAnalysisService {
                     applicationCase.getCompanyName(),
                     applicationCase.getJobTitle(),
                     webEvidence).payload();
-            LocalDateTime checkedAt = LocalDateTime.now();
+            LocalDateTime checkedAt = BDisplayTime.now();
             return transactionTemplate.execute(status -> {
                 CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
                         .applicationCaseId(applicationCaseId)
@@ -186,7 +187,7 @@ public class CompanyAnalysisService {
                 .sourceType(existing.getSourceType())
                 .checkedAt(existing.getCheckedAt())
                 .refreshRecommendedAt(existing.getRefreshRecommendedAt())
-                .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? LocalDateTime.now() : existing.getConfirmedAt())
+                .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? BDisplayTime.now() : existing.getConfirmedAt())
                 .adminMemo(existing.getAdminMemo())
                 .build();
         companyAnalysisMapper.updateCompanyAnalysisReview(updated);
@@ -352,6 +353,8 @@ public class CompanyAnalysisService {
         if (analysis == null) {
             return null;
         }
+        // created_at 은 DB CURRENT_TIMESTAMP(UTC)로 저장된다. 화면(KST) 표시를 위해 응답 직전 UTC→KST 로 보정한다.
+        analysis.setCreatedAt(BDisplayTime.dbToDisplay(analysis.getCreatedAt()));
         return CompanyAnalysisResponse.from(
                 analysis,
                 canonicalizer.withoutUnknownMarkers(analysis.getAiInferences()),

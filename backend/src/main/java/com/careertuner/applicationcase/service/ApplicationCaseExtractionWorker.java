@@ -135,11 +135,36 @@ public class ApplicationCaseExtractionWorker {
         if (quality.reviewRequired()) {
             return new ExtractionResult(posting, extractedPosting, null, saveExtractedPosting, quality, true);
         }
-        JobPostingMetadataPayload metadata = extractJobPostingMetadata(postingText);
+        JobPostingMetadataPayload metadata = resolveJobPostingMetadata(postingText);
         return new ExtractionResult(posting, extractedPosting, metadata, saveExtractedPosting, quality, false);
     }
 
-    private JobPostingMetadataPayload extractJobPostingMetadata(String postingText) {
+    /**
+     * 공고 메타(회사·직무·마감) 추출 — 구조화 LLM 우선, 미설정/실패 시 regex 로 degrade.
+     * ⚠️ 부가 정보 보강이라 <b>절대 추출 성공을 실패로 바꾸지 않는다</b>: LLM 예외는 여기서 catch 해 regex 로 폴백하고,
+     * 예외가 {@code extractAndAnalyze()} 밖으로 새지 않는다(fail-open).
+     */
+    private JobPostingMetadataPayload resolveJobPostingMetadata(String postingText) {
+        JobPostingMetadataPayload regex = extractJobPostingMetadataByRegex(postingText);
+        if (openAiClient == null || !openAiClient.configured()) {
+            return regex;
+        }
+        try {
+            JobPostingMetadataPayload llm = openAiClient.extractJobPostingMetadata(postingText);
+            // LLM 우선, null 필드는 regex 로 보완(마감일도 LLM 우선). postingDate 는 항상 null.
+            return new JobPostingMetadataPayload(
+                    defaultText(llm.companyName(), regex.companyName(), null),
+                    defaultText(llm.jobTitle(), regex.jobTitle(), null),
+                    null,
+                    llm.deadlineDate() != null ? llm.deadlineDate() : regex.deadlineDate(),
+                    llm.usage());
+        } catch (RuntimeException ex) {
+            log.warn("공고 메타데이터 LLM 추출 실패 → regex 폴백: {}", rootCauseMessage(ex));
+            return regex;
+        }
+    }
+
+    private JobPostingMetadataPayload extractJobPostingMetadataByRegex(String postingText) {
         Matcher hiringMatcher = ENGLISH_HIRING_PATTERN.matcher(postingText);
         String companyName = null;
         String jobTitle = null;
@@ -218,7 +243,7 @@ public class ApplicationCaseExtractionWorker {
                         extraction.getUserId(),
                         extraction.getApplicationCaseId(),
                         FEATURE_JOB_POSTING_METADATA,
-                        result.metadata().usage());
+                        AiUsage.from(result.metadata().usage()));
             }
             notificationService.notify(successNotification(extraction));
             return new PipelineHandoff(completedJobPostingId, completedJobPostingRevision, completedPostingText);
