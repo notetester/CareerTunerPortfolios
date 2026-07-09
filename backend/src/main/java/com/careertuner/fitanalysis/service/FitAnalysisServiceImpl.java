@@ -1,8 +1,11 @@
 package com.careertuner.fitanalysis.service;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,12 +18,15 @@ import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
 import com.careertuner.fitanalysis.ai.FitAnalysisAiService;
 import com.careertuner.fitanalysis.ai.FitAnalysisConfidence;
 import com.careertuner.fitanalysis.ai.prompt.FitAnalysisPromptCatalog;
+import com.careertuner.fitanalysis.certificate.CertificateCareerCatalog;
+import com.careertuner.fitanalysis.domain.CareerProfileSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 import com.careertuner.fitanalysis.certificate.CertificateEvidenceService;
 import com.careertuner.fitanalysis.certificate.CertificateNeedGate;
+import com.careertuner.fitanalysis.dto.CareerCertificateStrategyResponse;
 import com.careertuner.fitanalysis.dto.CertificateEvidenceResponse;
 import com.careertuner.fitanalysis.dto.CertificateEvidenceSnapshot;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
@@ -272,6 +278,40 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         if (value != null && !value.isBlank()) {
             sb.append("- ").append(label).append(": ").append(value.trim()).append('\n');
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CareerCertificateStrategyResponse careerCertificateStrategy(Long userId) {
+        // 사용자 단위(desiredJob) 장기 전략 — 현재 지원 건 전략과 분리. 결정론 카탈로그만 사용(외부 API 미호출).
+        CareerProfileSource profile = fitAnalysisMapper.findCareerProfile(userId);
+        String desiredJob = profile == null ? null : profile.getDesiredJob();
+        List<String> held = profile == null ? List.of() : parseList(profile.getProfileCertificates());
+        if (desiredJob == null || desiredJob.isBlank()) {
+            return new CareerCertificateStrategyResponse(null, List.of(), List.of(),
+                    "프로필에 희망 직무를 등록하면 직군 기준 장기 자격증 전략을 제안합니다.");
+        }
+
+        Set<String> heldLower = new HashSet<>();
+        for (String cert : held) {
+            if (cert != null && !cert.isBlank()) {
+                heldLower.add(cert.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        List<String> catalog = CertificateCareerCatalog.candidatesFor(desiredJob);
+        // 보유분 중 직군 카탈로그와 겹치는 것만 '강점'으로(무관 자격증을 직군 강점으로 조작하지 않음).
+        List<String> strengths = catalog.stream()
+                .filter(name -> heldLower.contains(name.toLowerCase(Locale.ROOT)))
+                .toList();
+        List<CareerCertificateStrategyResponse.CareerCertificateCandidate> candidates = catalog.stream()
+                .filter(name -> !heldLower.contains(name.toLowerCase(Locale.ROOT)))
+                .map(name -> new CareerCertificateStrategyResponse.CareerCertificateCandidate(
+                        name,
+                        "%s 직군에서 장기적으로 취득 가치가 있는 후보입니다. 이번 지원 건과는 별개로, 학습 여유가 있을 때 준비하세요."
+                                .formatted(desiredJob)))
+                .toList();
+        return new CareerCertificateStrategyResponse(desiredJob, strengths, candidates,
+                "자격증은 보조 전략입니다. 실무 프로젝트·배포 경험 보완이 우선이며, 시험 일정은 공식 출처(Q-Net 등) 확인 후 계획하세요.");
     }
 
     /**

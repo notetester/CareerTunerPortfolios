@@ -3,8 +3,9 @@ import { AlertTriangle, Award, BookOpen, CalendarCheck, CheckCircle2, Circle, Gr
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
-import { updateFitAnalysisLearningTask } from "@/features/analysis/api/fitAnalysisApi";
+import { getCareerCertificateStrategy, updateFitAnalysisLearningTask } from "@/features/analysis/api/fitAnalysisApi";
 import type {
+  CareerCertificateStrategy,
   CertificateEvidenceSnapshot,
   FitAnalysisDetail,
   FitAnalysisLearningTask,
@@ -61,6 +62,8 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
         <p className="mt-1 text-sm text-slate-500">지원 건별 부족 역량을 학습 과제와 자격증 추천으로 연결합니다.</p>
       </div>
       {taskError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">{taskError}</div>}
+
+      <CareerStrategyCard />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {analyses.map((analysis) => {
@@ -132,6 +135,56 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
         })}
       </div>
     </div>
+  );
+}
+
+/** 장기 커리어 자격증 전략(희망직무 기준) — 특정 지원 건 전략과 분리된 사용자 단위 섹션. 실패 시 조용히 숨김(보조 정보). */
+function CareerStrategyCard() {
+  const [strategy, setStrategy] = useState<CareerCertificateStrategy | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCareerCertificateStrategy()
+      .then((data) => { if (!cancelled) setStrategy(data); })
+      .catch(() => { /* 보조 섹션 — 실패해도 학습 추천 본문을 막지 않는다. */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!strategy) return null;
+  const hasContent = strategy.heldStrengths.length > 0 || strategy.longTermCandidates.length > 0;
+  return (
+    <Card className="border border-indigo-100 bg-indigo-50/50">
+      <CardContent className="space-y-2 p-4">
+        <div className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-800">
+          <GraduationCap className="size-4 text-indigo-600" />
+          장기 커리어 전략{strategy.desiredJob ? ` · ${strategy.desiredJob}` : ""}
+          <span className="rounded-full border border-indigo-200 bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+            이번 지원과 별개
+          </span>
+        </div>
+        {strategy.heldStrengths.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+            <span className="font-semibold text-slate-700">보유 강점:</span>
+            {strategy.heldStrengths.map((name) => (
+              <span key={name} className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">{name}</span>
+            ))}
+          </div>
+        )}
+        {strategy.longTermCandidates.length > 0 && (
+          <ul className="space-y-1 text-xs leading-5 text-slate-600">
+            {strategy.longTermCandidates.map((candidate) => (
+              <li key={candidate.name}>
+                <span className="font-semibold text-slate-800">{candidate.name}</span> — {candidate.reason}
+              </li>
+            ))}
+          </ul>
+        )}
+        {!hasContent && strategy.desiredJob == null && (
+          <p className="text-xs leading-5 text-slate-500">{strategy.note}</p>
+        )}
+        {hasContent && <p className="text-[11px] leading-5 text-slate-400">{strategy.note}</p>}
+      </CardContent>
+    </Card>
   );
 }
 

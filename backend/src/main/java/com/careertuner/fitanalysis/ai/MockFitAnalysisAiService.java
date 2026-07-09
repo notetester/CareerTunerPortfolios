@@ -293,18 +293,8 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
     }
 
     private List<String> recommendCertificates(String desiredJob) {
-        String job = desiredJob == null ? "" : desiredJob.toLowerCase(Locale.ROOT);
-        if (job.contains("데이터") || job.contains("data") || job.contains("ml") || job.contains("ai")) {
-            return List.of("SQLD", "ADsP", "빅데이터분석기사");
-        }
-        if (job.contains("클라우드") || job.contains("cloud") || job.contains("devops") || job.contains("인프라")) {
-            return List.of("AWS Solutions Architect Associate", "정보처리기사", "리눅스마스터");
-        }
-        if (job.contains("보안") || job.contains("security")) {
-            return List.of("정보보안기사", "정보처리기사", "CPPG");
-        }
-        // 일반 개발 직무 기본 추천.
-        return List.of("정보처리기사", "SQLD");
+        // 직군→후보 매핑은 장기 커리어 전략과 공용 카탈로그(단일 소스)를 쓴다.
+        return com.careertuner.fitanalysis.certificate.CertificateCareerCatalog.candidatesFor(desiredJob);
     }
 
     private String strategy(FitAnalysisAiCommand command, List<String> matched, List<String> missing, int fitScore) {

@@ -123,6 +123,14 @@ export interface CertificateEvidenceSnapshot {
   items: CertificateEvidenceItem[];
 }
 
+// 장기 커리어 자격증 전략(희망직무 기준). 현재 지원 건 전략과 분리 — "이번 지원"이 아니라 커리어 관점.
+export interface CareerCertificateStrategy {
+  desiredJob: string | null;
+  heldStrengths: string[];
+  longTermCandidates: { name: string; reason: string }[];
+  note: string;
+}
+
 export interface FitAnalysisDetail {
   id: number;
   applicationCaseId: number;
