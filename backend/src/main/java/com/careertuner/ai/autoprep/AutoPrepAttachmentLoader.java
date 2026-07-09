@@ -1,5 +1,6 @@
 package com.careertuner.ai.autoprep;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -9,6 +10,8 @@ import java.util.Locale;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.springframework.stereotype.Component;
 
 import com.careertuner.file.domain.FileAsset;
@@ -20,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 첨부 파일 로더. 요청의 attachmentFileIds 를 플랜 한도 내에서 불러오고, 텍스트형은 본문을 추출한다.
+ * 첨부 파일 로더. 요청의 attachmentFileIds 를 플랜 한도 내에서 불러오고, 텍스트형(text/*, 텍스트 PDF, .docx)은 본문을 추출한다.
  *
  * <p>플랜 게이팅: 무료(FREE/BASIC) 1개, 유료(PRO/PREMIUM) 5개. (요금제 세부 정책은 E와 추후 조정 — TODO)
  * 한도 초과분은 버리고 로그만 남긴다. 개별 파일 로드 실패도 건너뛰어 항상 진행한다.
@@ -78,6 +81,8 @@ public class AutoPrepAttachmentLoader {
             text = truncate(new String(download.bytes(), StandardCharsets.UTF_8));
         } else if (isPdf(contentType, asset.getOriginalName())) {
             text = truncate(extractPdfText(download.bytes(), asset.getId()));
+        } else if (isDocx(contentType, asset.getOriginalName())) {
+            text = truncate(extractDocxText(download.bytes(), asset.getId()));
         }
         return new PrepAttachment(asset.getId(), asset.getOriginalName(), contentType, asset.getSizeBytes(), text);
     }
@@ -91,6 +96,17 @@ public class AutoPrepAttachmentLoader {
     }
 
     /**
+     * contentType 이 wordprocessingml 이거나 확장자가 .docx 면 Word 문서로 본다(PDF 판정과 같은 관용 규칙).
+     * 구형 .doc(OLE2)은 파서가 poi-scratchpad 에 있어 현재 의존성으로는 못 읽는다 — 여기서 걸리지 않는다.
+     */
+    private static boolean isDocx(String contentType, String originalName) {
+        if (contentType != null && contentType.toLowerCase(Locale.ROOT).contains("wordprocessingml")) {
+            return true;
+        }
+        return originalName != null && originalName.toLowerCase(Locale.ROOT).endsWith(".docx");
+    }
+
+    /**
      * 텍스트 PDF 본문 추출 — B 의 {@code JobPostingTextExtractor.extractTextPdf} 와 동일 패턴(PDFBox).
      * 스캔/이미지 PDF 는 추출 결과가 비어 null 을 돌려준다(Vision OCR 은 별도 작업 — MASTER_PLAN §6).
      * 추출 실패해도 throw 하지 않는다 — 첨부 자체(메타)는 유지하고 text 만 비운다(항상 진행 원칙).
@@ -101,6 +117,22 @@ public class AutoPrepAttachmentLoader {
             return text.isEmpty() ? null : text;
         } catch (IOException ex) {
             log.warn("AutoPrep 첨부 PDF 텍스트 추출 실패 fileId={}: {}", fileId, ex.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * .docx 본문 추출 — poi-ooxml(관리자 Excel 내보내기용으로 이미 있는 의존성)의 XWPF 를 쓴다.
+     * PDF 와 같은 원칙: 실패해도 throw 하지 않고 text 만 비운다(첨부 메타는 유지 — 항상 진행).
+     * 암호화·손상 파일은 POI 가 unchecked 로 던지므로 RuntimeException 도 함께 삼킨다.
+     */
+    private String extractDocxText(byte[] bytes, Long fileId) {
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes));
+             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
+            String text = extractor.getText().trim();
+            return text.isEmpty() ? null : text;
+        } catch (IOException | RuntimeException ex) {
+            log.warn("AutoPrep 첨부 DOCX 텍스트 추출 실패 fileId={}: {}", fileId, ex.getMessage());
             return null;
         }
     }

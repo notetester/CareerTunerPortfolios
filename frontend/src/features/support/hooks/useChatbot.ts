@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { api } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/tokenStore";
+import { uploadAttachment } from "@/features/autoprep/api/autoPrepApi";
 import { useAutoPrepRun } from "@/features/autoprep/hooks/useAutoPrepRun";
 import { displayCompany, displayJobTitle } from "@/features/autoprep/lib/caseLabels";
 import type { AutoPrepRequest } from "@/features/autoprep/types/autoPrep";
@@ -469,6 +470,19 @@ export function useChatbot() {
     void run.start(req);
   }, [run]);
 
+  /* ── 자소서 첨부: 업로드 → 마지막 실행 요청에 첨부를 얹어 재실행(WRITE 가 소비). ── */
+  const attachCoverLetter = useCallback(async (file: File) => {
+    const req = lastRunRequestRef.current;
+    if (!req) return; // 실행 이력이 없으면 no-op(첨부 어포던스는 SKIPPED 카드 = 실행 후에만 노출됨)
+    const uploaded = await uploadAttachment(file);
+    const next: AutoPrepRequest = {
+      ...req,
+      attachmentFileIds: [...(req.attachmentFileIds ?? []), uploaded.id],
+    };
+    lastRunRequestRef.current = next; // 이후 재시도도 첨부를 유지하도록 최종본으로 갱신
+    void run.start(next);
+  }, [run]);
+
   /* ── 모드 이탈: 실행 전이면 백엔드 모드 해제("그만"), 실행 중/후면 로컬 정리만. ── */
   const exitOrchestrator = useCallback(() => {
     setShowExitSheet(false);
@@ -567,6 +581,7 @@ export function useChatbot() {
     runError: run.error,
     runCaseId,
     retryRun,
+    attachCoverLetter,
     selectCase, selectMode,
     setPendingAttachments,
     summarizePosts,
