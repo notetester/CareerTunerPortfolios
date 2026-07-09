@@ -1,4 +1,5 @@
 #include "PlannerOverlayController.h"
+#include "SettingsStore.h"
 
 #include <QApplication>
 #include <QSettings>
@@ -11,11 +12,11 @@
 PlannerOverlayController::PlannerOverlayController(QObject* parent)
     : QObject(parent)
 {
-    QSettings settings(QStringLiteral("CareerTuner"), QStringLiteral("Desktop"));
-    m_enabled = settings.value(QStringLiteral("plannerOverlay/enabled"), true).toBool();
-    m_alwaysOnTop = settings.value(QStringLiteral("plannerOverlay/alwaysOnTop"), true).toBool();
-    m_clickThrough = settings.value(QStringLiteral("plannerOverlay/clickThrough"), false).toBool();
-    m_overlayOpacity = settings.value(QStringLiteral("plannerOverlay/opacity"), 0.92).toDouble();
+    auto settings = SettingsStore::createSettings();
+    m_enabled = settings->value(QStringLiteral("plannerOverlay/enabled"), true).toBool();
+    m_alwaysOnTop = settings->value(QStringLiteral("plannerOverlay/alwaysOnTop"), true).toBool();
+    m_clickThrough = settings->value(QStringLiteral("plannerOverlay/clickThrough"), false).toBool();
+    m_overlayOpacity = settings->value(QStringLiteral("plannerOverlay/opacity"), 0.92).toDouble();
 }
 
 void PlannerOverlayController::setEnabled(bool enabled)
@@ -77,11 +78,11 @@ void PlannerOverlayController::flashTaskbar()
 
 void PlannerOverlayController::persist() const
 {
-    QSettings settings(QStringLiteral("CareerTuner"), QStringLiteral("Desktop"));
-    settings.setValue(QStringLiteral("plannerOverlay/enabled"), m_enabled);
-    settings.setValue(QStringLiteral("plannerOverlay/alwaysOnTop"), m_alwaysOnTop);
-    settings.setValue(QStringLiteral("plannerOverlay/clickThrough"), m_clickThrough);
-    settings.setValue(QStringLiteral("plannerOverlay/opacity"), m_overlayOpacity);
+    auto settings = SettingsStore::createSettings();
+    settings->setValue(QStringLiteral("plannerOverlay/enabled"), m_enabled);
+    settings->setValue(QStringLiteral("plannerOverlay/alwaysOnTop"), m_alwaysOnTop);
+    settings->setValue(QStringLiteral("plannerOverlay/clickThrough"), m_clickThrough);
+    settings->setValue(QStringLiteral("plannerOverlay/opacity"), m_overlayOpacity);
 }
 
 void PlannerOverlayController::applyWindowFlags()

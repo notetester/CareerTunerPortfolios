@@ -1,0 +1,53 @@
+Unicode true
+!include MUI2.nsh
+
+!define APP_NAME "CareerTuner Desktop"
+!define APP_VERSION "@APP_VERSION@"
+!define APP_PUBLISHER "CareerTuner"
+!define APP_EXE "CareerTunerDesktop.exe"
+!define DIST_DIR "@DIST_DIR@"
+
+Name "${APP_NAME}"
+OutFile "@INSTALLER_OUT@"
+InstallDir "$LOCALAPPDATA\Programs\CareerTuner Desktop"
+RequestExecutionLevel user
+SetCompressor /SOLID lzma
+
+!define MUI_ABORTWARNING
+!define MUI_ICON "${NSISDIR}\Contrib\Graphics\Icons\modern-install.ico"
+!define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
+
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_LANGUAGE "Korean"
+
+Section "Install"
+    SetShellVarContext current
+    SetOutPath "$INSTDIR"
+    File /r "${DIST_DIR}\*.*"
+
+    CreateDirectory "$SMPROGRAMS\CareerTuner"
+    CreateShortCut "$SMPROGRAMS\CareerTuner\CareerTuner Desktop.lnk" "$INSTDIR\${APP_EXE}"
+    CreateShortCut "$DESKTOP\CareerTuner Desktop.lnk" "$INSTDIR\${APP_EXE}"
+
+    WriteUninstaller "$INSTDIR\Uninstall.exe"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CareerTunerDesktop" "DisplayName" "${APP_NAME}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CareerTunerDesktop" "DisplayVersion" "${APP_VERSION}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CareerTunerDesktop" "Publisher" "${APP_PUBLISHER}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CareerTunerDesktop" "InstallLocation" "$INSTDIR"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CareerTunerDesktop" "UninstallString" "$\"$INSTDIR\Uninstall.exe$\""
+    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CareerTunerDesktop" "NoModify" 1
+    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CareerTunerDesktop" "NoRepair" 1
+SectionEnd
+
+Section "Uninstall"
+    SetShellVarContext current
+    Delete "$DESKTOP\CareerTuner Desktop.lnk"
+    Delete "$SMPROGRAMS\CareerTuner\CareerTuner Desktop.lnk"
+    RMDir "$SMPROGRAMS\CareerTuner"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\CareerTunerDesktop"
+    RMDir /r "$INSTDIR"
+SectionEnd
