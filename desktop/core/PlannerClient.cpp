@@ -1,5 +1,6 @@
 #include "PlannerClient.h"
 #include "ApiClient.h"
+#include "SettingsStore.h"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -75,8 +76,8 @@ void PlannerClient::setStatusText(const QString& text)
 
 void PlannerClient::loadFiredReminderIds()
 {
-    QSettings settings(QStringLiteral("CareerTuner"), QStringLiteral("Desktop"));
-    const QStringList raw = settings.value(QStringLiteral("planner/firedReminderIds")).toStringList();
+    auto settings = SettingsStore::createSettings();
+    const QStringList raw = settings->value(QStringLiteral("planner/firedReminderIds")).toStringList();
     for (const QString& value : raw) {
         bool ok = false;
         const qint64 id = value.toLongLong(&ok);
@@ -92,8 +93,8 @@ void PlannerClient::storeFiredReminderIds() const
         raw.append(QString::number(id));
         if (++count >= 200) break;
     }
-    QSettings settings(QStringLiteral("CareerTuner"), QStringLiteral("Desktop"));
-    settings.setValue(QStringLiteral("planner/firedReminderIds"), raw);
+    auto settings = SettingsStore::createSettings();
+    settings->setValue(QStringLiteral("planner/firedReminderIds"), raw);
 }
 
 void PlannerClient::applyDashboard(const QJsonObject& dashboard)

@@ -22,6 +22,47 @@ cmake --build build
 
 예) Windows + MinGW: `-DCMAKE_PREFIX_PATH=C:/Qt/6.11.1/mingw_64 -G Ninja -DCMAKE_CXX_COMPILER=g++`
 
+## Windows 릴리즈 배포본
+
+Windows 배포는 `windeployqt` 로 Qt DLL/QML/plugin 런타임을 모은 공통 폴더를 만든 뒤, 같은 산출물에서 3가지 형태를 만든다.
+
+```powershell
+cd desktop
+.\scripts\package-windows.ps1
+```
+
+기본 경로는 현재 개발 PC 기준 `C:\Qt\6.11.1\mingw_64`, `C:\Qt\Tools\mingw1310_64\bin` 이다. 다른 Qt kit 을 쓰면 인자를 넘긴다.
+
+```powershell
+.\scripts\package-windows.ps1 `
+  -QtPrefix C:\Qt\6.11.1\mingw_64 `
+  -MingwBin C:\Qt\Tools\mingw1310_64\bin
+```
+
+생성 위치는 `build-release-qt6111/dist/packages/` 이다.
+
+| 형태 | 파일 | 비고 |
+| --- | --- | --- |
+| 압축파일본 | `CareerTunerDesktop-<version>-windows-x64.zip` | 별도 설치 없이 압축 해제 후 실행 |
+| 설치본 | `CareerTunerDesktop-<version>-windows-x64-setup.exe` | NSIS 필요. 사용자 단위 설치(`%LOCALAPPDATA%\Programs`) + 시작 메뉴/바탕화면 바로가기 + 제거 항목 |
+| 단일 실행 포터블 | `CareerTunerDesktop-<version>-windows-x64-portable.exe` | NSIS 필요. 하나의 exe 가 임시 폴더에 런타임을 풀고 앱을 실행한다. 설정은 exe 옆 `CareerTunerDesktopData/settings.ini`, 기본 산출물은 `CareerTunerDesktopData/Documents/` 에 저장한다 |
+
+설치본/포터블 exe 생성을 위해서는 NSIS `makensis` 가 필요하다. 없으면 스크립트는 zip 까지만 만들고 안내 메시지를 출력한다.
+
+```powershell
+winget install NSIS.NSIS
+```
+
+포터블 exe 는 "다운로드 파일 1개, 설치 없음" 배포를 뜻한다. Qt Quick/Multimedia 앱 특성상 순수 정적 단일 exe 로 모든 Qt DLL/plugin 을 내부 링크하는 방식은 현재 kit 으로는 현실적이지 않다. 대신 portable exe 는 실행 파일 옆에 `CareerTunerDesktopData/` 를 만들고, 앱에 `--portable-data-dir` 를 넘겨 `settings.ini` 와 기본 저장 폴더를 그 안에 둔다. 실행 위치가 읽기 전용이라 옆 폴더 생성에 실패하면 `%LOCALAPPDATA%\CareerTunerDesktopPortable` 로 폴백한다.
+
+압축파일본을 완전 포터블처럼 실행하고 싶으면 아래처럼 옵션을 넘긴다.
+
+```powershell
+.\CareerTunerDesktop.exe --portable
+```
+
+이 경우 압축 해제 폴더 안의 `CareerTunerDesktopData/settings.ini` 를 사용한다.
+
 ## 구조
 
 ```
