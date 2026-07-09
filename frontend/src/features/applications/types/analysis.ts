@@ -112,6 +112,50 @@ const OBJECT_KEY_LABELS: Record<string, string> = {
   basis: "근거",
 };
 
+// 근거(evidence)의 field 값은 문장 분류기 라벨(RESPONSIBILITY 등)이나 self-rules 키(requiredSkills)라
+// 원문 그대로면 영어로 노출된다. 공통 분석 텍스트 렌더 경로(stringifyJsonObjectItem)에서 한글 라벨로
+// 치환한다(표시 전용 — 저장값·생성 로직은 건드리지 않는다). 조회 key 는 대문자 정규화 기준이라
+// self-rules 의 requiredSkills 는 REQUIREDSKILLS 로 매핑한다.
+// 회귀 방지 책임 분리: as const satisfies 는 키 계약(누락/오타)과 라벨 리터럴 타입 보존을 담당하고,
+// 주요 라벨 '값' 회귀는 analysis.contract.test.ts 의 리터럴 배정문이 잡는다(둘 다 tsc --noEmit).
+// 실제 변환 동작(trim().toUpperCase()·미매핑 폴백) 검증은 런타임 테스트 러너 도입 시 보강한다.
+export type EvidenceFieldLabelKey =
+  | "RESPONSIBILITY"
+  | "REQUIRED"
+  | "PREFERRED"
+  | "QUALIFICATION"
+  | "TECH_STACK"
+  | "EMPLOYMENT_CONDITION"
+  | "BENEFIT"
+  | "APPLICATION_INFO"
+  | "COMPANY_INFO"
+  | "SECTION_HEADER"
+  | "OTHER"
+  | "REQUIREDSKILLS"
+  | "PREFERREDSKILLS";
+
+export const EVIDENCE_FIELD_LABELS = {
+  RESPONSIBILITY: "주요 업무",
+  REQUIRED: "필수 요건",
+  PREFERRED: "우대 사항",
+  QUALIFICATION: "자격 요건",
+  TECH_STACK: "기술 스택",
+  EMPLOYMENT_CONDITION: "근무 조건",
+  BENEFIT: "복리후생",
+  APPLICATION_INFO: "지원 안내",
+  COMPANY_INFO: "회사 정보",
+  SECTION_HEADER: "구분",
+  OTHER: "기타",
+  REQUIREDSKILLS: "필수 역량",
+  PREFERREDSKILLS: "우대 역량",
+} as const satisfies Record<EvidenceFieldLabelKey, string>;
+
+function translateEvidenceField(field: string): string {
+  if (!field) return field;
+  const key = field.trim().toUpperCase();
+  return (EVIDENCE_FIELD_LABELS as Record<string, string>)[key] ?? field;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -132,7 +176,7 @@ function formatObjectValue(value: unknown): string {
 }
 
 function stringifyJsonObjectItem(item: Record<string, unknown>): string {
-  const field = formatObjectValue(item.field);
+  const field = translateEvidenceField(formatObjectValue(item.field));
   const quote = formatObjectValue(item.quote);
   if (field && quote) return `${field}: ${quote}`;
 
