@@ -21,7 +21,7 @@ permissions:
 
 concurrency:
   group: deploy-web
-  cancel-in-progress: true   # 정적 산출물 교체라 최신 실행만 의미 있음
+  cancel-in-progress: false   # dev push 취소는 커밋 목록에 실패처럼 남으므로 순차 실행
 
 jobs:
   build-deploy:
