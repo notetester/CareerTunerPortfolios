@@ -13,6 +13,7 @@ import java.util.Locale;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +46,7 @@ public class NationalTechExamScheduleProvider {
     private final Duration timeout;
     private final HttpClient httpClient;
 
+    @Autowired
     public NationalTechExamScheduleProvider(
             @Value("${careertuner.certificate.data-go-kr.service-key:}") String serviceKey,
             @Value("${careertuner.certificate.data-go-kr.qnet-base-url:https://openapi.q-net.or.kr/api/service/rest}")

@@ -12,6 +12,7 @@ import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -45,6 +46,7 @@ public class PrivateCertRegistrationProvider {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
+    @Autowired
     public PrivateCertRegistrationProvider(
             @Value("${careertuner.certificate.data-go-kr.service-key:}") String serviceKey,
             @Value("${careertuner.certificate.data-go-kr.odcloud-base-url:https://api.odcloud.kr/api}")
