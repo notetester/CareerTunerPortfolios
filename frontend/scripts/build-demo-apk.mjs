@@ -15,7 +15,7 @@
 //   --clean      Gradle 빌드 산출물만 청소(android/ 플랫폼 파일은 유지)
 //   --open       APK 조립 대신 Android Studio 로 프로젝트 열기(SDK 자동 설치 경로)
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,6 +61,25 @@ function androidSdkAvailable() {
   return candidates.some(isSdk);
 }
 
+function removeUnusedFlatDirRepositories() {
+  const targets = [
+    resolve(androidDir, "app", "build.gradle"),
+    resolve(androidDir, "capacitor-cordova-android-plugins", "build.gradle"),
+  ];
+  const flatDirBlock =
+    /\r?\n\s*flatDir\s*\{\s*\r?\n\s*dirs\s+(?:(?:'\.\.\/capacitor-cordova-android-plugins\/src\/main\/libs'|'src\/main\/libs'),\s*)?'libs'\s*\r?\n\s*\}/g;
+  const emptyRepositoriesBlock = /\r?\nrepositories\s*\{\s*\}/g;
+  for (const target of targets) {
+    if (!existsSync(target)) continue;
+    const before = readFileSync(target, "utf8");
+    const after = before.replace(flatDirBlock, "").replace(emptyRepositoriesBlock, "");
+    if (after !== before) {
+      writeFileSync(target, after);
+      console.log(`✓ 빈 flatDir 저장소 제거: ${target}`);
+    }
+  }
+}
+
 // ── 1) 웹 빌드 (mock 데모 모드) ────────────────────────────────────────────
 // --mode mock → .env.mock(VITE_USE_MOCK=true) 로드. VITE_USE_MOCK 은 환경변수로도 명시(belt & suspenders).
 // --base / → 네이티브 WebView 는 앱 루트에서 서빙되므로 항상 루트 베이스로 빌드한다
@@ -90,6 +109,7 @@ if (flags.has("--clean")) {
   rmSync(resolve(androidDir, "app", "build"), { recursive: true, force: true });
 }
 run("npx cap sync android"); // 최신 dist + 플러그인 반영
+removeUnusedFlatDirRepositories();
 
 // --open: SDK 없이도 Android Studio 에서 빌드/설치하도록 프로젝트만 열고 종료.
 if (flags.has("--open")) {
