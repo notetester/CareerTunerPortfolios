@@ -107,6 +107,7 @@ AI 관련 산출물은 본체에 계속 누적하지 않는다.
 | --- | --- | --- |
 | `docs/ai-reports/` | `notetester/CareerTunerAIDocs` | 장문 실험 보고서, 누적 해석, 사람이 읽는 분석 문서 |
 | `docs/ai-artifacts/` | `notetester/CareerTunerAI` | generated requests, raw model outputs, result JSON, manifests, aggregate summaries, 4090 ops docs/scripts |
+| `docs/obsidian-vault/` | `notetester/CareerTunerObsidian` | Obsidian/AI 장기 맥락, 결정 로그, 작업별 읽기 지도, 템플릿, 첨부 |
 
 - `CareerTuner` main repo 에는 제품 코드, 소형 fixture, validator, runner, 짧은 checklist/index, artifact path/commit SHA 만 남긴다.
 - `ml/career-strategy-llm/scripts/` 는 C 영역의 재현용 validator/runner/helper 를 두는 본체 경로다. A~F 공통 AI artifact 와 반복 benchmark artifact 주변 파일은 `CareerTunerAI` submodule 인 `docs/ai-artifacts/` 로 둔다.
@@ -121,6 +122,17 @@ git submodule update --init docs/ai-artifacts
 ```
 
 - submodule 안에서 수정한 파일은 그 submodule repo 에서 먼저 commit/push 한 뒤, 루트에서 submodule pointer 를 갱신해 PR 한다.
+
+## Obsidian overlay vault
+
+이 repo는 필요 시 **repo 루트 `CareerTuner/`를 Obsidian Vault로 열 수 있다.** 이렇게 하면 `README.md`, `AGENTS.md`, `docs/`, `backend/README.md`, `frontend/README.md`, `ml/**/README.md`가 같은 Vault 검색/그래프 대상이 된다.
+
+- Obsidian 전용 장기 맥락, 결정 로그, 작업별 읽기 지도, 템플릿, 첨부는 `docs/obsidian-vault/` submodule에 둔다.
+- 비 trivial 작업에서 해당 맥락이 필요하면 먼저 `docs/obsidian-vault/AI_CONTEXT_MAP.md`를 읽고, 그 문서가 지정한 정본 문서와 모듈별 overlay 문서를 확인한다.
+- `docs/obsidian-vault/AI_CONTEXT_MAP.md`가 없으면 `git submodule update --init --recursive docs/obsidian-vault`로 받은 뒤 진행한다.
+- 새 Obsidian 노트, 캔버스, 템플릿, 첨부는 메인 repo 루트나 일반 `docs/`에 만들지 말고 `docs/obsidian-vault/` 아래에 만든다.
+- `.obsidian/`에는 팀 공통 Vault 설정만 추적한다. `workspace*.json`, cache, graph/bookmark/recent 상태, 개인 플러그인은 커밋하지 않는다.
+- 팀 공통 플러그인 추가는 가능하지만, PR에서 필요성·개선되는 워크플로·생성 파일·필수/선택 여부를 설명한다.
 
 ## 스토리보드 문서(서브모듈 · 선택 다운로드)
 
