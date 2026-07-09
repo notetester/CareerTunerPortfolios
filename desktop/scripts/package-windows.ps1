@@ -49,6 +49,7 @@ if (-not $NoBuild) {
     cmake -S $DesktopDir -B $BuildPath -G Ninja `
         "-DCMAKE_PREFIX_PATH=$QtPrefix" `
         "-DCMAKE_CXX_COMPILER=$Compiler" `
+        -DCMAKE_DISABLE_FIND_PACKAGE_WrapVulkanHeaders=ON `
         -DCMAKE_BUILD_TYPE=Release
     Assert-LastExitCode "cmake configure"
     cmake --build $BuildPath --config Release
@@ -68,6 +69,7 @@ Copy-Item -LiteralPath $ExePath -Destination $StageDir
 & $Windeployqt --release `
     --qmldir (Join-Path $DesktopDir "qml") `
     --compiler-runtime `
+    --no-system-dxc-compiler `
     --dir $StageDir `
     $StagedExe
 Assert-LastExitCode "windeployqt"
