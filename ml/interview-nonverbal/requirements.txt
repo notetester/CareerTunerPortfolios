@@ -1,13 +1,13 @@
-numpy
-soundfile
-lightgbm
-scikit-learn
-fastapi
-uvicorn
-python-multipart
-faster-whisper   # B(베이직) 자체 STT — 로컬 CPU, API 0
-mediapipe        # 영상 피처(FaceLandmarker blendshape + PoseLandmarker)
-opencv-python    # 영상 프레임 디코딩(cv2.VideoCapture)
-joblib           # LightGBM 모델 저장/로드
+numpy>=2.5.1
+soundfile>=0.14.0
+lightgbm>=4.6.0
+scikit-learn>=1.9.0
+fastapi>=0.139.0
+uvicorn>=0.51.0
+python-multipart>=0.0.32
+faster-whisper>=1.2.1   # B(베이직) 자체 STT — 로컬 CPU, API 0
+mediapipe>=0.10.35      # 영상 피처(FaceLandmarker blendshape + PoseLandmarker)
+opencv-python>=5.0.0.93 # 영상 프레임 디코딩(cv2.VideoCapture)
+joblib>=1.5.3           # LightGBM 모델 저장/로드
 # datasets       # ChaLearn HF 미러 다운로드 시
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   X, ArrowRight, ArrowLeft, Check, PenLine, FileText, UserRound, Briefcase,
-  Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, Github, Lightbulb,
+  Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, GitFork, Lightbulb,
   Minimize2, Maximize2, ClipboardList, CheckCircle2, RotateCcw,
 } from "lucide-react";
 
@@ -372,10 +372,10 @@ function ServerWaitingView({ text, waitingSince, nextPollAt }: {
 
 type G = ReturnType<typeof useOnboardingGuide>;
 type FileRefs = {
-  cover: React.RefObject<HTMLInputElement>;
-  resume: React.RefObject<HTMLInputElement>;
-  portfolio: React.RefObject<HTMLInputElement>;
-  jd: React.RefObject<HTMLInputElement>;
+  cover: React.RefObject<HTMLInputElement | null>;
+  resume: React.RefObject<HTMLInputElement | null>;
+  portfolio: React.RefObject<HTMLInputElement | null>;
+  jd: React.RefObject<HTMLInputElement | null>;
 };
 
 /* ── STEP 1: 직군 ── */
@@ -450,7 +450,7 @@ function DocsStep({ g, fileRefs }: { g: G; fileRefs: FileRefs }) {
   );
 }
 
-function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.RefObject<HTMLInputElement> }) {
+function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.RefObject<HTMLInputElement | null> }) {
   const Icon = DOC_ICON[slot.icon];
   const mine = g.docs.filter((d) => d.slot === slot.key);
   const [dragOver, setDragOver] = useState(false);
@@ -505,7 +505,7 @@ function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.Re
 
 function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
   const meta = LINK_FIELDS[lkey];
-  const Icon = lkey === "github" ? Github : lkey === "blog" ? ClipboardPaste : Link2;
+  const Icon = lkey === "github" ? GitFork : lkey === "blog" ? ClipboardPaste : Link2;
   const value = g.links[lkey] ?? "";
   return (
     <div>
@@ -553,7 +553,7 @@ function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
 
 /* ── STEP 4: 공고문 ── */
 function JdStep({ g, jdRef, bubble, serverMode }: {
-  g: G; jdRef: React.RefObject<HTMLInputElement>;
+  g: G; jdRef: React.RefObject<HTMLInputElement | null>;
   bubble?: string;
   /** ④ 온보딩 매핑 모드 — 붙여넣기 영역을 크게(입력 방식 자체는 링크·파일·붙여넣기 모두 동일 지원). */
   serverMode?: boolean;

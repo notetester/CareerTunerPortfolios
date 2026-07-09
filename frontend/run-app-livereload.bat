@@ -49,7 +49,7 @@ if errorlevel 1 (
 REM --- 3) cap sync (CAP_SERVER_URL 주입된 채로 server.url 반영) ---
 echo [3/5] cap sync android...
 cd /d "%HERE%"
-call npx cap sync android || (echo [에러] cap sync 실패 & pause & exit /b 1)
+call node scripts\cap-sync-with-env.mjs android || (echo [에러] cap sync 실패 & pause & exit /b 1)
 
 REM --- 4) APK 직접 빌드 (cap run 안 씀) ---
 echo [4/5] gradlew assembleDebug (첫 빌드만 몇 분, 이후 증분)...

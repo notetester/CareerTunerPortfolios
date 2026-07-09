@@ -62,7 +62,7 @@ jobs:
           fi
 
       - name: Verify E correction Ollama and update EC2 env
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           CT_CORRECTION_PROVIDER: ${{ env.CORRECTION_AI_PROVIDER }}
           CT_CORRECTION_BASE_URL: ${{ env.CORRECTION_AI_BASE_URL }}
@@ -253,7 +253,7 @@ jobs:
           echo "배포 secret 확인됨(값 미출력)."
 
       - name: Copy compose files to EC2
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -262,7 +262,7 @@ jobs:
           target: "~/careertuner"
 
       - name: Verify E correction Ollama and update EC2 env
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         env:
           CT_CORRECTION_PROVIDER: ${{ env.CORRECTION_AI_PROVIDER }}
           CT_CORRECTION_BASE_URL: ${{ env.CORRECTION_AI_BASE_URL }}
@@ -320,7 +320,7 @@ jobs:
             fi
 
       - name: Pull & up on EC2
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
