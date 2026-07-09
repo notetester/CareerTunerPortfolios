@@ -30,6 +30,7 @@ docs/       기획·아키텍처 문서
 | UX와 모바일 세부 원칙 | `docs/planning/디자인 분석.md`, `docs/planning/모바일 고려.md` |
 | AI 장문 실험 보고서·누적 해석 | `docs/ai-reports/` 서브모듈 |
 | AI raw output·benchmark artifact | `docs/ai-artifacts/` 서브모듈 |
+| AI agent 장기 맥락·Graphify/LLM Wiki 운용 | `docs/obsidian-vault/` 서브모듈의 `wiki/index.md`, `graphify-out/GRAPH_REPORT.md` |
 
 - 같은 주제에서는 위 표의 담당 문서를 우선한다. 제품 기획이 구현 규칙을, 현재 코드가 목표 제품 범위를 자동으로 덮어쓰지 않는다.
 - 기획·아키텍처 문서는 목표 상태를 포함할 수 있고, 런타임 소스와 모듈 README는 현재 구현 상태를 설명한다.
@@ -129,6 +130,8 @@ git submodule update --init docs/ai-artifacts
 
 - Obsidian 전용 장기 맥락, 결정 로그, 작업별 읽기 지도, 템플릿, 첨부는 `docs/obsidian-vault/` submodule에 둔다.
 - 비 trivial 작업에서 해당 맥락이 필요하면 먼저 `docs/obsidian-vault/AI_CONTEXT_MAP.md`를 읽고, 그 문서가 지정한 정본 문서와 모듈별 overlay 문서를 확인한다.
+- 문서·아키텍처·AI/ML·릴리즈처럼 맥락이 넓은 작업은 `docs/obsidian-vault/wiki/index.md`와 `docs/obsidian-vault/graphify-out/GRAPH_REPORT.md`를 먼저 읽어 관련 문서와 source 범위를 좁힌다.
+- Graphify/LLM Wiki 원천 자료는 `docs/obsidian-vault/raw/`, 합성 지식은 `docs/obsidian-vault/wiki/`, 공개 demo용 축약 graph는 `docs/obsidian-vault/graphify-out/public/`에 둔다.
 - `docs/obsidian-vault/AI_CONTEXT_MAP.md`가 없으면 `git submodule update --init --recursive docs/obsidian-vault`로 받은 뒤 진행한다.
 - 새 Obsidian 노트, 캔버스, 템플릿, 첨부는 메인 repo 루트나 일반 `docs/`에 만들지 말고 `docs/obsidian-vault/` 아래에 만든다.
 - `.obsidian/`에는 팀 공통 Vault 설정만 추적한다. `workspace*.json`, cache, graph/bookmark/recent 상태, 개인 플러그인은 커밋하지 않는다.
