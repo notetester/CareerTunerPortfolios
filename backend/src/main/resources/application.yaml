@@ -148,8 +148,10 @@ careertuner:
     # service-key 가 비면 라이브 조회를 하지 않고 안전하게 degrade(날짜 미생성). 키는 env 로만 주입(repo 커밋 금지).
     data-go-kr:
       service-key: ${CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY:}
-      # https 기본(키가 평문 전송되지 않도록). data.go.kr 발급 키는 '디코딩(raw)' 형태를 넣는다(재인코딩 안 함).
-      qnet-base-url: ${CAREERTUNER_CERT_QNET_BASE_URL:https://openapi.q-net.or.kr/api/service/rest}
+      # http 기본 — openapi.q-net.or.kr 은 443 리스너가 없어 https 가 연결 자체 불가(2026-07-10 실측: 443 connect
+      # timeout, 80 은 게이트웨이 응답). 서버사이드 전용 호출 + 키 로그 금지로 완화하며, 업스트림이 TLS 를 제공하면
+      # env 로 전환한다. data.go.kr 발급 키는 '디코딩(raw)' 형태를 넣는다(재인코딩 안 함).
+      qnet-base-url: ${CAREERTUNER_CERT_QNET_BASE_URL:http://openapi.q-net.or.kr/api/service/rest}
       odcloud-base-url: ${CAREERTUNER_CERT_ODCLOUD_BASE_URL:https://api.odcloud.kr/api}
       # 민간자격등록정보(15075600) odcloud 데이터셋 uddi + 스냅샷 라벨(비실시간 — 반기 갱신). 신규 스냅샷 나오면 값만 교체.
       private-cert-uddi: ${CAREERTUNER_CERT_PRIVATE_UDDI:uddi:fadae7c0-8b78-400d-9581-d4003721de76}
