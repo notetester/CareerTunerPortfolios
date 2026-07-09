@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Brain, CheckCircle2, FileText, Plus, RefreshCw, Save, Sparkles, Trash2, User, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, Brain, CheckCircle2, FileText, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Upload, User, X } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -13,12 +13,20 @@ import {
   diagnoseProfileCompleteness,
   extractProfileSkills,
   getProfile,
+  importProfileDocument,
+  pollProfileAnalyze,
+  PROFILE_DOC_ACCEPT,
   saveProfile,
+  startProfileAnalyze,
   summarizeProfile,
+  uploadProfileFile,
   type ProfileAiResponse,
+  type ProfileAnalyzeDraft,
   type ProfileCompleteness,
+  type ProfileImportTarget,
   type UserProfile,
 } from "../profile/profileApi";
+import { draftPickFromCounts } from "../profile/profileDraftMerge";
 import { getMyConsents, type ConsentStatus } from "../auth/consentApi";
 
 interface EducationEntry {
@@ -222,6 +230,12 @@ export function ProfilePage() {
   const [completeness, setCompleteness] = useState<ProfileCompleteness | null>(null);
   const [consent, setConsent] = useState<ConsentStatus | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState(() => serializeProfileForm(emptyForm));
+  const [docImporting, setDocImporting] = useState(false);
+  const [analyzeDraft, setAnalyzeDraft] = useState<ProfileAnalyzeDraft | null>(null);
+  const [analyzeStatus, setAnalyzeStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const resumeFileRef = useRef<HTMLInputElement>(null);
+  const selfIntroFileRef = useRef<HTMLInputElement>(null);
 
   const skillItems = useMemo(() => linesToArray(form.skillsText), [form.skillsText]);
   const selectedSkillSet = useMemo(() => new Set(skillItems.map((item) => item.toLowerCase())), [skillItems]);
@@ -366,6 +380,109 @@ export function ProfilePage() {
     update("selfIntro", [form.selfIntro.trim(), block].filter(Boolean).join("\n\n"));
     changeProfileTab("selfIntro");
     setMessage("AI 결과를 자기소개/강점 메모에 추가했습니다. 저장을 눌러 반영해 주세요.");
+  };
+
+  /**
+   * 문서 첨부: upload → import(텍스트 덤프) → (이력서만) analyze 폴링 → 확인 카드.
+   * 기존 내용이 있으면 confirm() 으로 덮어쓰기 확인.
+   */
+  const handleDocumentAttach = async (file: File, target: ProfileImportTarget) => {
+    const existing =
+      target === "RESUME_TEXT" ? form.resumeText.trim() : form.selfIntro.trim();
+    if (existing) {
+      const ok = window.confirm("기존 내용을 대체합니다. 계속할까요?");
+      if (!ok) return;
+    }
+    setDocImporting(true);
+    setError(null);
+    setMessage(null);
+    setAnalyzeError(null);
+    try {
+      const uploaded = await uploadProfileFile(file, "RESUME");
+      const imported = await importProfileDocument(uploaded.id, target);
+      const nextForm = toForm(imported.profile);
+      setForm(nextForm);
+      setSavedSnapshot(serializeProfileForm(nextForm));
+      if (imported.truncated) {
+        setMessage("일부만 저장했습니다. 긴 문서는 앞부분만 반영됩니다.");
+      } else {
+        setMessage(target === "RESUME_TEXT" ? "이력서 원문을 가져왔습니다." : "자기소개서 원문을 가져왔습니다.");
+      }
+
+      if (target === "RESUME_TEXT") {
+        setAnalyzeStatus("running");
+        setAnalyzeDraft(null);
+        try {
+          const started = await startProfileAnalyze(uploaded.id);
+          const finished = await pollProfileAnalyze(started.jobId);
+          if (finished.status === "DONE" && finished.draft) {
+            setAnalyzeDraft(finished.draft);
+            setAnalyzeStatus("done");
+          } else {
+            setAnalyzeStatus("failed");
+            setAnalyzeError(finished.errorMessage || "구조화 분석은 실패했어요. 폼을 직접 채워주세요.");
+          }
+        } catch (analyzeErr) {
+          setAnalyzeStatus("failed");
+          setAnalyzeError(
+            analyzeErr instanceof Error
+              ? analyzeErr.message
+              : "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
+          );
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "첨부에 실패했어요. 다시 시도해 주세요.");
+    } finally {
+      setDocImporting(false);
+    }
+  };
+
+  /** 확인 카드에서 승인된 필드만 폼에 반영(자동 DB 커밋 금지 — 저장 버튼으로 확정). */
+  const applyAnalyzeDraft = (opts: {
+    education: boolean;
+    career: boolean;
+    projects: boolean;
+    skills: boolean;
+    portfolioLinks: boolean;
+  }) => {
+    if (!analyzeDraft) return;
+    const nonEmptyArray = (v: unknown): v is unknown[] => Array.isArray(v) && v.length > 0;
+    setForm((prev) => {
+      const next = { ...prev };
+      // 빈 [] 적용 금지 — parseEntries([]) 가 빈 항목 1개로 바꿔 기존 폼을 지운다.
+      if (opts.education && nonEmptyArray(analyzeDraft.education)) {
+        next.education = parseEntries(analyzeDraft.education, createEducation);
+      }
+      if (opts.career && nonEmptyArray(analyzeDraft.career)) {
+        next.career = parseEntries(analyzeDraft.career, createCareer);
+      }
+      if (opts.projects && nonEmptyArray(analyzeDraft.projects)) {
+        next.experiences = parseEntries(analyzeDraft.projects, createExperience);
+      }
+      if (opts.skills && Array.isArray(analyzeDraft.skills) && analyzeDraft.skills.length) {
+        next.skillsText = arrayToLines(mergeUniqueLines(prev.skillsText, analyzeDraft.skills));
+      }
+      if (
+        opts.portfolioLinks &&
+        Array.isArray(analyzeDraft.portfolioLinks) &&
+        analyzeDraft.portfolioLinks.length
+      ) {
+        next.portfolioLinksText = arrayToLines(
+          mergeUniqueLines(prev.portfolioLinksText, analyzeDraft.portfolioLinks),
+        );
+      }
+      return next;
+    });
+    setAnalyzeDraft(null);
+    setAnalyzeStatus("idle");
+    setMessage("추출 결과를 폼에 반영했습니다. 저장을 눌러 확정해 주세요.");
+  };
+
+  const dismissAnalyzeDraft = () => {
+    setAnalyzeDraft(null);
+    setAnalyzeStatus("idle");
+    setAnalyzeError(null);
   };
 
   const insertResumeTemplate = () => {
@@ -521,6 +638,15 @@ export function ProfilePage() {
               {activeTab === "resume" && (
                 <TabsContent value="resume" className="mt-5">
                 <TabGuide tab="resume" status={tabStatuses.resume} />
+                {(analyzeStatus === "running" || analyzeDraft || analyzeError) && (
+                  <AnalyzeConfirmCard
+                    status={analyzeStatus}
+                    draft={analyzeDraft}
+                    error={analyzeError}
+                    onApply={applyAnalyzeDraft}
+                    onDismiss={dismissAnalyzeDraft}
+                  />
+                )}
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -533,9 +659,36 @@ export function ProfilePage() {
                       <Button variant="outline" size="sm" onClick={insertResumeTemplate}>
                         이력서 입력 틀 추가
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={docImporting}
+                        onClick={() => resumeFileRef.current?.click()}
+                      >
+                        {docImporting ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="size-3.5" />
+                        )}
+                        파일에서 가져오기
+                      </Button>
+                      <input
+                        ref={resumeFileRef}
+                        type="file"
+                        accept={PROFILE_DOC_ACCEPT}
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (file) void handleDocumentAttach(file, "RESUME_TEXT");
+                        }}
+                      />
                     </div>
+                    <p className="text-xs text-slate-500">
+                      .pdf / .docx / .txt / .md 지원 (.doc 미지원). 텍스트를 읽어 원문에 넣고, 학력·경력 등은 확인 후 반영합니다.
+                    </p>
                     <Field label="이력서 원문">
-                      <Textarea value={form.resumeText} onChange={(event) => update("resumeText", event.target.value)} rows={12} placeholder="PDF 업로드 전까지는 이력서 내용을 직접 붙여넣어 관리합니다." />
+                      <Textarea value={form.resumeText} onChange={(event) => update("resumeText", event.target.value)} rows={12} placeholder="파일 첨부 또는 이력서 내용을 직접 붙여넣어 관리합니다." />
                     </Field>
                   </CardContent>
                 </Card>
@@ -554,6 +707,30 @@ export function ProfilePage() {
                       <Button variant="outline" size="sm" onClick={insertSelfIntroTemplate}>
                         자기소개 입력 틀 추가
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={docImporting}
+                        onClick={() => selfIntroFileRef.current?.click()}
+                      >
+                        {docImporting ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="size-3.5" />
+                        )}
+                        파일에서 가져오기
+                      </Button>
+                      <input
+                        ref={selfIntroFileRef}
+                        type="file"
+                        accept={PROFILE_DOC_ACCEPT}
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (file) void handleDocumentAttach(file, "SELF_INTRO");
+                        }}
+                      />
                     </div>
                     <Field label="자기소개/강점">
                       <Textarea value={form.selfIntro} onChange={(event) => update("selfIntro", event.target.value)} rows={8} placeholder="지원 직무와 연결되는 경험, 강점, 협업 사례를 정리하세요." />
@@ -1059,6 +1236,135 @@ function TabGuide({ tab, status }: { tab: ProfileTab; status: ReturnType<typeof 
       <p className="mt-2 text-sm leading-6 text-slate-600">{meta.guide}</p>
       {status.help && <p className="mt-1 text-xs font-semibold text-blue-600">{status.help}</p>}
     </div>
+  );
+}
+
+/** 구조화 추출 결과 확인 카드 — 승인 필드만 폼에 반영(자동 커밋 금지). */
+function AnalyzeConfirmCard({
+  status,
+  draft,
+  error,
+  onApply,
+  onDismiss,
+}: {
+  status: "idle" | "running" | "done" | "failed";
+  draft: ProfileAnalyzeDraft | null;
+  error: string | null;
+  onApply: (opts: {
+    education: boolean;
+    career: boolean;
+    projects: boolean;
+    skills: boolean;
+    portfolioLinks: boolean;
+  }) => void;
+  onDismiss: () => void;
+}) {
+  const eduCount = Array.isArray(draft?.education) ? (draft.education as unknown[]).length : 0;
+  const careerCount = Array.isArray(draft?.career) ? (draft.career as unknown[]).length : 0;
+  const projectCount = Array.isArray(draft?.projects) ? (draft.projects as unknown[]).length : 0;
+  const skillCount = Array.isArray(draft?.skills) ? draft.skills.length : 0;
+  const linkCount = Array.isArray(draft?.portfolioLinks) ? draft.portfolioLinks.length : 0;
+  const hasAny = eduCount + careerCount + projectCount + skillCount + linkCount > 0;
+
+  const [pick, setPick] = useState(() =>
+    draftPickFromCounts({
+      education: eduCount,
+      career: careerCount,
+      projects: projectCount,
+      skills: skillCount,
+      portfolioLinks: linkCount,
+    }),
+  );
+
+  useEffect(() => {
+    setPick(
+      draftPickFromCounts({
+        education: eduCount,
+        career: careerCount,
+        projects: projectCount,
+        skills: skillCount,
+        portfolioLinks: linkCount,
+      }),
+    );
+  }, [eduCount, careerCount, projectCount, skillCount, linkCount, draft]);
+
+  return (
+    <Card className="mb-4 border-blue-200 bg-blue-50/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center justify-between gap-2 text-base text-slate-900">
+          <span className="flex items-center gap-2">
+            <Sparkles className="size-4 text-blue-600" />
+            이력서 추출 결과
+          </span>
+          <button type="button" className="rounded p-1 text-slate-500 hover:bg-white" onClick={onDismiss} aria-label="닫기">
+            <X className="size-4" />
+          </button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm text-slate-700">
+        {status === "running" && (
+          <div className="flex items-center gap-2 text-slate-600">
+            <Loader2 className="size-4 animate-spin" />
+            구조화 분석 중… 원문은 이미 저장됐습니다.
+          </div>
+        )}
+        {status === "failed" && (
+          <p className="text-amber-800">{error || "구조화 분석은 실패했어요. 폼을 직접 채워주세요."}</p>
+        )}
+        {status === "done" && !hasAny && (
+          <p className="text-slate-600">추출된 구조 항목이 없습니다. 원문만 반영됐습니다.</p>
+        )}
+        {status === "done" && hasAny && (
+          <>
+            <p className="text-slate-600">반영할 항목을 선택한 뒤 적용하세요. 저장 버튼을 눌러야 DB에 확정됩니다.</p>
+            <div className="flex flex-col gap-2">
+              {eduCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.education} onChange={(e) => setPick((p) => ({ ...p, education: e.target.checked }))} />
+                  학력 {eduCount}건
+                </label>
+              )}
+              {careerCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.career} onChange={(e) => setPick((p) => ({ ...p, career: e.target.checked }))} />
+                  경력 {careerCount}건
+                </label>
+              )}
+              {projectCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.projects} onChange={(e) => setPick((p) => ({ ...p, projects: e.target.checked }))} />
+                  프로젝트 {projectCount}건
+                </label>
+              )}
+              {skillCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.skills} onChange={(e) => setPick((p) => ({ ...p, skills: e.target.checked }))} />
+                  기술 {skillCount}개
+                </label>
+              )}
+              {linkCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.portfolioLinks} onChange={(e) => setPick((p) => ({ ...p, portfolioLinks: e.target.checked }))} />
+                  포트폴리오 링크 {linkCount}개
+                </label>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => onApply(pick)}
+                disabled={!pick.education && !pick.career && !pick.projects && !pick.skills && !pick.portfolioLinks}
+              >
+                선택한 항목 적용
+              </Button>
+              <Button size="sm" variant="outline" onClick={onDismiss}>
+                무시
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

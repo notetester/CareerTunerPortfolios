@@ -43,13 +43,8 @@ class ProfileServiceImplTest {
         ConsentService consentService = mock(ConsentService.class);
         ProfileAiService aiService = mock(ProfileAiService.class);
         when(consentService.hasCurrentConsent(7L, "AI_DATA")).thenReturn(false);
-        ProfileServiceImpl service = new ProfileServiceImpl(
-                profileMapper,
-                usageMapper,
-                consentService,
-                aiService,
-                mock(NotificationService.class),
-                new ObjectMapper());
+        ProfileServiceImpl service = newService(
+                profileMapper, usageMapper, consentService, aiService);
 
         assertThatThrownBy(() -> service.summarize(USER))
                 .isInstanceOf(BusinessException.class)
@@ -71,13 +66,8 @@ class ProfileServiceImplTest {
         when(consentService.hasCurrentConsent(7L, "AI_DATA")).thenReturn(true);
         when(profileMapper.findByUserId(7L)).thenReturn(profile);
         when(aiService.evaluate(eq(profile), eq("PROFILE_SUMMARY"))).thenReturn(result("FALLBACK"));
-        ProfileServiceImpl service = new ProfileServiceImpl(
-                profileMapper,
-                usageMapper,
-                consentService,
-                aiService,
-                mock(NotificationService.class),
-                new ObjectMapper());
+        ProfileServiceImpl service = newService(
+                profileMapper, usageMapper, consentService, aiService);
 
         ProfileAiResponse response = service.summarize(USER);
 
@@ -115,5 +105,23 @@ class ProfileServiceImplTest {
                 new CareerAnalysisAiUsage("profile-test-model", 11, 13, 24, false),
                 status,
                 status.equals("FALLBACK") ? "upstream failure" : null);
+    }
+
+    private static ProfileServiceImpl newService(
+            ProfileMapper profileMapper,
+            ApplicationCaseMapper usageMapper,
+            ConsentService consentService,
+            ProfileAiService aiService) {
+        return new ProfileServiceImpl(
+                profileMapper,
+                usageMapper,
+                consentService,
+                aiService,
+                mock(NotificationService.class),
+                new ObjectMapper(),
+                mock(com.careertuner.file.service.FileService.class),
+                new com.careertuner.common.text.DocumentTextExtractor(),
+                mock(com.careertuner.profile.ai.ProfileResumeStructurer.class),
+                mock(org.springframework.transaction.support.TransactionTemplate.class));
     }
 }

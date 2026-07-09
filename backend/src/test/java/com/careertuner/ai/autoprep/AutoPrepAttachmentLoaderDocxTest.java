@@ -10,6 +10,7 @@ import java.util.List;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.common.text.DocumentTextExtractor;
 import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.user.domain.User;
@@ -24,7 +25,9 @@ class AutoPrepAttachmentLoaderDocxTest {
 
     private final UserMapper userMapper = mock(UserMapper.class);
     private final FileService fileService = mock(FileService.class);
-    private final AutoPrepAttachmentLoader loader = new AutoPrepAttachmentLoader(userMapper, fileService);
+    private final DocumentTextExtractor documentTextExtractor = new DocumentTextExtractor();
+    private final AutoPrepAttachmentLoader loader =
+            new AutoPrepAttachmentLoader(userMapper, fileService, documentTextExtractor);
 
     @Test
     void load_extractsTextFromDocx() throws Exception {
