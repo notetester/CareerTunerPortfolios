@@ -154,7 +154,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     close, messages, sendMessage, leaveOnboarding, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript, retryConnection, toggleTts,
-    orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId, runError, retryRun,
+    orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId, runError, retryRun, attachCoverLetter,
     selectCase, selectMode, setPendingAttachments, summarizePosts, onbCollected,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
     sessions, activeSessionId, openSession, newSession, loadSessions,
@@ -517,6 +517,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       caseId={runCaseId}
                       company={runPlan?.slots.company ?? null}
                       onRetry={retryRun}
+                      onAttachCoverLetter={attachCoverLetter}
                       onNavigate={navigateFromWork}
                     />
                     {/* run 실패 가시화(F-09): parts 가 비면 WorkView 가 null 렌더라 이 배너가 유일한 표면 —

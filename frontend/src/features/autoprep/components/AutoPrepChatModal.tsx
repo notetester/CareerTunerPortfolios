@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, X } from "lucide-react";
 
-import { intake } from "../api/autoPrepApi";
+import { intake, uploadAttachment } from "../api/autoPrepApi";
 import { useAutoPrepRun } from "../hooks/useAutoPrepRun";
 import { displayCompany, displayJobTitle } from "../lib/caseLabels";
 import type { AutoPrepRequest, PrepCaseCandidate, PrepModeOption } from "../types/autoPrep";
@@ -61,6 +61,19 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, thinking, run.parts]);
+
+  /** 자소서 첨부: 업로드 → 마지막 실행 요청에 첨부를 얹어 재실행(WRITE 가 소비). */
+  async function attachCoverLetter(file: File) {
+    const req = lastRunReqRef.current;
+    if (!req) return;
+    const uploaded = await uploadAttachment(file);
+    const next: AutoPrepRequest = {
+      ...req,
+      attachmentFileIds: [...(req.attachmentFileIds ?? []), uploaded.id],
+    };
+    lastRunReqRef.current = next; // 이후 재시도도 첨부를 유지하도록 최종본으로 갱신
+    void run.start(next);
+  }
 
   async function begin(req: AutoPrepRequest) {
     const label = req.query && req.query.trim() ? req.query : "첨부한 파일로 준비해줘";
@@ -205,6 +218,7 @@ export function AutoPrepChatModal({ open, initialRequest, onClose, onNavigate }:
               parts={run.parts}
               caseId={caseId}
               onRetry={() => { if (lastRunReqRef.current) void run.start(lastRunReqRef.current); }}
+              onAttachCoverLetter={attachCoverLetter}
               onNavigate={(p) => {
                 onClose();
                 onNavigate(p);

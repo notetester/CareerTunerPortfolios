@@ -317,6 +317,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
                       company={null}
                       showFooter={false}
                       onRetry={() => void g.runReal()}
+                      onAttachCoverLetter={g.attachCoverLetter}
                       onNavigate={onNavigate}
                     />
                   )
