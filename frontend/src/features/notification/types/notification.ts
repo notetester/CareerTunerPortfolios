@@ -52,6 +52,7 @@ export type UserNotificationType =
   | "NOTICE"
   | "TICKET_ANSWERED"
   | "ACCOUNT_BLOCKED"
+  | "MFA_LOGIN_APPROVAL"
   | "FRIEND_REQUEST"
   | "FRIEND_ACCEPTED"
   | "ROOM_INVITE"
@@ -202,6 +203,7 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
   ACCOUNT_BLOCKED:           { cat: "notice",      icon: "ShieldAlert",        variant: "danger",  cta: "문의하기" },
+  MFA_LOGIN_APPROVAL:         { cat: "notice",      icon: "ShieldCheck",        variant: "warning", cta: "로그인 승인하기" },
   /* 관리자 */
   NEW_REPORT:                { cat: "admin",       icon: "Flag",               variant: "danger",  cta: "신고 확인" },
   NEW_TICKET:                { cat: "admin",       icon: "Ticket",             variant: "info",    cta: "문의 확인",      urgent: false },
@@ -319,6 +321,7 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",
   ACCOUNT_BLOCKED: "notice",
+  MFA_LOGIN_APPROVAL: "notice",
   /* 관리자 */
   NEW_REPORT: "admin",
   NEW_TICKET: "admin",

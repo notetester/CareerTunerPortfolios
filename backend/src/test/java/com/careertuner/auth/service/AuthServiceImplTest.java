@@ -142,16 +142,22 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void emailLogin_requiresVerifiedEmailAfterPasswordMatches() {
+    void emailLogin_allowsUnverifiedEmailAfterPasswordMatches() {
+        var jwt = new CareerTunerProperties.Jwt();
         when(userMapper.findByLoginIdentifier(EMAIL)).thenReturn(User.builder()
                 .id(1L).email(EMAIL).password("hash").passwordEnabled(true)
-                .emailVerified(false).status("ACTIVE").build());
+                .emailVerified(false).status("ACTIVE").role("USER").build());
         when(passwordEncoder.matches("pw", "hash")).thenReturn(true);
+        when(props.getJwt()).thenReturn(jwt);
+        when(jwtTokenProvider.createAccessToken(1L, EMAIL, "USER")).thenReturn("access-token");
+        when(jwtTokenProvider.getAccessValiditySeconds()).thenReturn(1800L);
 
-        assertThatThrownBy(() -> service.login(new LoginRequest(EMAIL, "pw"), null))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode").isEqualTo(com.careertuner.common.exception.ErrorCode.FORBIDDEN);
-        verify(userMapper, never()).touchLastLoginAndResetFailures(1L);
+        var response = service.login(new LoginRequest(EMAIL, "pw"), null);
+
+        assertThat(response.mfaRequired()).isFalse();
+        assertThat(response.token().accessToken()).isEqualTo("access-token");
+        assertThat(response.token().user().emailVerified()).isFalse();
+        verify(userMapper).touchLastLoginAndResetFailures(1L);
     }
 
     @Test

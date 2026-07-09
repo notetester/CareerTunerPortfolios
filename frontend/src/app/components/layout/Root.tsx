@@ -12,6 +12,7 @@ import { MobileBottomNav } from "./MobileBottomNav";
 import { OfflineBanner } from "./OfflineBanner";
 import { RefundPolicyToastGate } from "@/features/billing/components/RefundPolicyToastGate";
 import { AdSlot } from "@/features/ads/components/AdSlot";
+import { MfaApprovalWatcher } from "@/app/components/security/MfaApprovalWatcher";
 
 export function Root() {
   const location = useLocation();
@@ -46,6 +47,7 @@ export function Root() {
         }
       />
       <ApplicationExtractionMonitor />
+      <MfaApprovalWatcher />
       <OfflineBanner />
       <RefundPolicyToastGate enabled={isAuthenticated && !isAdmin} />
       {!isAdmin && <Header />}

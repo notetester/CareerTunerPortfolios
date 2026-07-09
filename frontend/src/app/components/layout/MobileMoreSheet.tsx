@@ -33,7 +33,7 @@ const MORE_ITEMS: MoreItem[] = [
 export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
   const go = (href: string) => {
     haptic("light");
