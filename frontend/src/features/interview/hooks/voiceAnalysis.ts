@@ -25,7 +25,7 @@ export class VoiceMetricsTracker {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private buf: Float32Array | null = null;
+  private buf: Float32Array<ArrayBuffer> | null = null;
 
   private startedAt = 0;
   private endedAt: number | null = null;
@@ -128,7 +128,7 @@ export class VoiceMetricsTracker {
 }
 
 /** 시간영역 자기상관(ACF) 기반 피치 추정. 신뢰도 낮으면 null. */
-function detectPitchHz(buf: Float32Array, sampleRate: number): number | null {
+function detectPitchHz(buf: Float32Array<ArrayBuffer>, sampleRate: number): number | null {
   const minLag = Math.floor(sampleRate / PITCH_MAX_HZ);
   const maxLag = Math.min(Math.floor(sampleRate / PITCH_MIN_HZ), buf.length - 1);
   let bestLag = -1;
@@ -227,7 +227,7 @@ export async function blobToBase64(blob: Blob): Promise<string> {
   return bytesToBase64(new Uint8Array(await blob.arrayBuffer()));
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
+function bytesToBase64(bytes: Uint8Array<ArrayBuffer>): string {
   let binary = "";
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {

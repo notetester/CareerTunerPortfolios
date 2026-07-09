@@ -44,7 +44,7 @@ function counterToBytes(counter: number): ArrayBuffer {
   return buffer;
 }
 
-function base32ToBytes(value: string): Uint8Array {
+function base32ToBytes(value: string): Uint8Array<ArrayBuffer> {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
   const normalized = value.replace(/[\s=-]/g, "").toUpperCase();
   let bits = "";

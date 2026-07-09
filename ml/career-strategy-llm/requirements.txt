@@ -1,11 +1,11 @@
 # C(커리어 전략) 자체 모델 LoRA 파인튜닝
 # 공유 RTX 4090 24GB 에서 설치. CUDA 12.x 기준. Qwen2.5-3B 4bit+LoRA 는 VRAM 여유(~6~8GB).
 # (D ml/interview-finetune/requirements.txt 와 동일 스택 — 같은 인프라 재사용)
-torch>=2.3
-transformers>=4.45
-peft>=0.13
-trl>=0.11
+torch>=2.13.0
+transformers>=5.13.0
+peft>=0.19.1
+trl>=1.7.1
 datasets>=5.0.0
-accelerate>=1.0
-bitsandbytes>=0.44
+accelerate>=1.14.0
+bitsandbytes>=0.49.2
 # 서빙: 학습 후 GGUF(llama.cpp) 변환 → 로컬 Ollama. 변환은 별도(reports/00_runbook_4090.md).

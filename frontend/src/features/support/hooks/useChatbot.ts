@@ -98,7 +98,7 @@ export function useChatbot() {
   const expandToFloating = useCallback(() => setSurface("floating"), []);
   const collapseToCorner = useCallback(() => setSurface("corner"), []);
 
-  const abortRef = useRef<AbortController>();
+  const abortRef = useRef<AbortController | null>(null);
   // 서버 발급 대화 ID. 새 대화면 null → 첫 응답에서 받아 보관, 이후 턴마다 재사용.
   const conversationIdRef = useRef<number | null>(null);
   // ③ 인테이크 가이드(스텝 UI)에서 올린 자소서 fileId — ready 시 run 요청에 프론트에서 병합한다.

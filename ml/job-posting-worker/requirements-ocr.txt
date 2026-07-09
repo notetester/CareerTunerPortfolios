@@ -5,10 +5,10 @@
 # PaddleOCR 3.x 로 고정: Python 3.13 에는 paddlepaddle 2.x 휠이 없고,
 # 레이아웃 인식(PPStructureV3)으로 표/2단 공고를 추출한다.
 # 3.x 의 oneDNN 런타임 이슈는 워커에서 FLAGS_use_mkldnn=0 / enable_mkldnn=False 로 우회한다.
-paddleocr>=3.0,<4.0
-paddlepaddle>=3.0,<4.0
+paddleocr>=3.7.0,<4.0
+paddlepaddle>=3.3.1,<4.0
 # PP-StructureV3(레이아웃 OCR)는 paddlex 의 OCR extra 의존성이 필요하다.
 # 미설치 시 paddlex.utils.deps.DependencyError 로 기본 라인 OCR 에 폴백해 표/2단 공고가 깨진다.
 # paddleocr 3.7.x 와 검증된 조합(3.7.2)으로 고정한다.
 paddlex[ocr]==3.7.2
-PyMuPDF>=1.24,<1.27
+PyMuPDF>=1.28.0,<1.29

@@ -6,7 +6,7 @@
 > 설계 문서: `../docs/desktop-app-concept.html` · `../docs/desktop-app-v2-mockup.html`(현행 v2 셸) · `../docs/desktop-app-stack.html`
 
 ## 요구사항
-- **Qt 6.5+** (Quick · Network · Widgets · **Multimedia**)
+- **Qt 6.11+** (Quick · Network · Widgets · **Multimedia**)
 - **CMake 3.16+**
 - **C++17** 컴파일러 (MSVC 2019+ / MinGW / clang)
 
@@ -20,7 +20,7 @@ cmake --build build
 # 실행: build/CareerTunerDesktop(.exe)  — PATH 에 <Qt>/bin 필요
 ```
 
-예) Windows + MinGW: `-DCMAKE_PREFIX_PATH=C:/Users/<user>/Qt/6.8.3/mingw_64 -G Ninja -DCMAKE_CXX_COMPILER=g++`
+예) Windows + MinGW: `-DCMAKE_PREFIX_PATH=C:/Qt/6.11.1/mingw_64 -G Ninja -DCMAKE_CXX_COMPILER=g++`
 
 ## 구조
 
