@@ -372,9 +372,9 @@ export function CompanyAnalysisPanel({
 
             {unknownItems.length > 0 && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="text-sm font-semibold text-slate-900">확인 불가 항목</div>
+                <div className="text-sm font-semibold text-slate-900">면접 전 확인 포인트</div>
                 <p className="mt-1 text-xs text-slate-500">
-                  현재 입력 자료만으로 확인되지 않아 AI가 채우지 않고 남긴 항목입니다.
+                  공고문만으로는 확인되지 않아, 면접 전에 회사 자료로 추가 확인하면 좋은 항목입니다.
                 </p>
                 <ul className="mt-2 space-y-1.5 text-sm leading-6 text-slate-600">
                   {unknownItems.map((item, index) => (
