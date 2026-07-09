@@ -48,6 +48,7 @@ import com.careertuner.applicationcase.service.BAnalysisGenerationService.Genera
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.JobAnalysisPayload;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.Usage;
+import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
@@ -1257,9 +1258,9 @@ class ApplicationCaseServiceImplTest {
                 .thenReturn(new GeneratedCompanyAnalysis(payload, null, null));
         when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(companyAnalysis());
 
-        LocalDateTime before = LocalDateTime.now();
+        LocalDateTime before = BDisplayTime.now();
         CompanyAnalysisResponse response = service.createCompanyAnalysis(1L, 10L);
-        LocalDateTime after = LocalDateTime.now();
+        LocalDateTime after = BDisplayTime.now();
 
         ArgumentCaptor<CompanyAnalysis> analysisCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
         verify(companyAnalysisMapper, never()).deleteCompanyAnalysesByCaseId(10L);
@@ -1380,7 +1381,10 @@ class ApplicationCaseServiceImplTest {
 
         List<AiUsageFailureResponse> response = service.getAiUsageFailures(1L, 10L, 5);
 
-        assertThat(response).containsExactly(failure);
+        // 운영 코드가 createdAt 을 UTC→KST(BDisplayTime.dbToDisplay)로 변환해 반환하므로 기대값도 동일 변환한다.
+        AiUsageFailureResponse expected = new AiUsageFailureResponse(
+                "JOB_ANALYSIS", "OpenAI down", BDisplayTime.dbToDisplay(createdAt));
+        assertThat(response).containsExactly(expected);
         verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
         verify(applicationCaseMapper).findBFailureLogsByCaseId(10L, 5);
     }

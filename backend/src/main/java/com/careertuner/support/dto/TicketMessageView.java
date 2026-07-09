@@ -1,6 +1,7 @@
 package com.careertuner.support.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import com.careertuner.support.domain.TicketMessage;
 
@@ -9,13 +10,15 @@ public record TicketMessageView(
         Long id,
         String senderType,
         String content,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        List<TicketAttachmentView> attachments
 ) {
-    public static TicketMessageView from(TicketMessage message) {
+    public static TicketMessageView from(TicketMessage message, List<TicketAttachmentView> attachments) {
         return new TicketMessageView(
                 message.getId(),
                 message.getSenderType(),
                 message.getContent(),
-                message.getCreatedAt());
+                message.getCreatedAt(),
+                attachments);
     }
 }

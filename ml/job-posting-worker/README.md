@@ -56,8 +56,10 @@ docker run --rm -p 8091:8091 careertuner-job-posting-worker:latest
 Build the production OCR-capable image:
 
 ```powershell
-docker build --build-arg INSTALL_OCR=true -t careertuner-job-posting-worker:ocr .
+docker build --build-arg PYTHON_VERSION=3.13 --build-arg INSTALL_OCR=true -t careertuner-job-posting-worker:ocr .
 ```
+
+The default non-OCR worker image uses Python 3.14. OCR-capable images currently use Python 3.13 because `paddlepaddle` has no Python 3.14 wheel.
 
 In `docker-compose.yml`, the worker is internal-only and shares the backend upload volume read-only at `/app/.uploads` so file paths sent by Spring remain readable by the worker.
 

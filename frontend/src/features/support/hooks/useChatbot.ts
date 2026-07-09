@@ -98,7 +98,7 @@ export function useChatbot() {
   const expandToFloating = useCallback(() => setSurface("floating"), []);
   const collapseToCorner = useCallback(() => setSurface("corner"), []);
 
-  const abortRef = useRef<AbortController>();
+  const abortRef = useRef<AbortController | null>(null);
   // 서버 발급 대화 ID. 새 대화면 null → 첫 응답에서 받아 보관, 이후 턴마다 재사용.
   const conversationIdRef = useRef<number | null>(null);
   // ③ 인테이크 가이드(스텝 UI)에서 올린 자소서 fileId — ready 시 run 요청에 프론트에서 병합한다.
@@ -106,6 +106,9 @@ export function useChatbot() {
   const pendingAttachmentIdsRef = useRef<number[]>([]);
   // 마지막 run 요청(첨부 병합 후 최종본) — 재시도 = 이 요청 전체 재실행. 세션 전환/이탈 시 비운다.
   const lastRunRequestRef = useRef<AutoPrepRequest | null>(null);
+  // 연결 끊김(챗봇 API 실패) 직전 요청을 보관 → "다시 시도"가 UI 리셋이 아니라 실제 재전송을 하게 한다.
+  // disconnected 로 가는 모든 경로가 이 ref 를 먼저 채우므로 retryConnection 시점엔 항상 최신 실패다.
+  const lastFailedActionRef = useRef<(() => void) | null>(null);
   const setPendingAttachments = useCallback((ids: number[]) => {
     pendingAttachmentIdsRef.current = ids;
   }, []);
@@ -393,6 +396,8 @@ export function useChatbot() {
       .catch((err) => {
         if (controller.signal.aborted) return;
         console.error("챗봇 API 오류:", err);
+        // 재시도용 보관 — 유저 말풍선은 이미 남아 있으므로 silent 로 조용히 재전송한다.
+        lastFailedActionRef.current = () => sendMessage(text, { ...opts, silent: true });
         setBotStatus("disconnected");
       });
   }, [run]);
@@ -405,15 +410,17 @@ export function useChatbot() {
   }, [sendMessage]);
 
   /* ── 추천 후기 압축 요약 칩 → 묶음 요약 요청(POST /chatbot/summarize-posts). ── */
-  const summarizePosts = useCallback((postIds: number[]) => {
+  const summarizePosts = useCallback((postIds: number[], opts?: { silent?: boolean }) => {
     if (!postIds || postIds.length === 0) return;
 
-    const userMsg: ChatMessage = {
-      id: nextId(), role: "user", text: "추천 후기 요약해줘",
-      evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    if (!opts?.silent) {
+      const userMsg: ChatMessage = {
+        id: nextId(), role: "user", text: "추천 후기 요약해줘",
+        evidence: [], links: [], quickReplies: [], ttsState: "idle", ttsProgress: 0,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+    }
     setBotStatus("thinking");
 
     api<ChatbotApiResponse>("/chatbot/summarize-posts", {
@@ -437,6 +444,7 @@ export function useChatbot() {
       })
       .catch((err) => {
         console.error("추천 후기 요약 API 오류:", err);
+        lastFailedActionRef.current = () => summarizePosts(postIds, { silent: true });
         setBotStatus("disconnected");
       });
   }, []);
@@ -505,7 +513,13 @@ export function useChatbot() {
   }, [interimTranscript, sendMessage]);
 
   const retryConnection = useCallback(() => {
-    setBotStatus("idle");
+    const retry = lastFailedActionRef.current;
+    lastFailedActionRef.current = null;
+    if (retry) {
+      retry(); // 마지막 실패 요청 실제 재전송(또 실패하면 catch 가 disconnected + 재시도 액션을 다시 보관)
+    } else {
+      setBotStatus("idle"); // 재전송할 이력이 없으면 기존 동작 — 입력만 다시 연다
+    }
   }, []);
 
   const toggleTts = useCallback((messageId: string) => {

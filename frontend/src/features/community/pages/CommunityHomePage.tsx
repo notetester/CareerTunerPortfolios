@@ -19,6 +19,11 @@ import "../styles/community.css";
 
 type ViewMode = "list" | "detail" | "write" | "edit" | "guidelines";
 
+/** URL ?sort= 값이 유효한 정렬 키인지 — 헤더 "인기글"(?sort=likes) 등 딥링크 진입에 쓴다. */
+function toSortKey(v: string | null): SortKey | null {
+  return v === "recent" || v === "likes" || v === "comments" || v === "personalized" ? v : null;
+}
+
 export function CommunityHomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { postId: postIdParam } = useParams();
@@ -36,6 +41,12 @@ export function CommunityHomePage() {
     }
   }, [searchParams]);
 
+  // URL ?sort= 로 진입/변경되면 해당 정렬로 연다(헤더 "인기글" → ?sort=likes 딥링크).
+  useEffect(() => {
+    const s = toSortKey(searchParams.get("sort"));
+    if (s) setSort(s);
+  }, [searchParams]);
+
   // /community/posts/:postId 딥링크(알림 클릭 등) → 상세 뷰로 진입
   useEffect(() => {
     if (deepLinkPostId != null && !Number.isNaN(deepLinkPostId)) {
@@ -46,7 +57,7 @@ export function CommunityHomePage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
   const [editData, setEditData] = useState<PostEditData | null>(null);
-  const [sort, setSort] = useState<SortKey>("recent");
+  const [sort, setSort] = useState<SortKey>(toSortKey(searchParams.get("sort")) ?? "recent");
   const [tag, setTag] = useState("");
   const [page, setPage] = useState(1);
   const PER = 8;

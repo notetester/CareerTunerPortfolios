@@ -18,6 +18,8 @@
 .nc-editor .ProseMirror p { margin: 8px 0; }
 .nc-editor .ProseMirror p:first-child { margin-top: 0; }
 .nc-editor .ProseMirror strong, .nc-editor .ProseMirror b { font-weight: 650; }
+.nc-editor .ProseMirror img { max-width: 100%; height: auto; margin: 10px 0; border-radius: 8px; display: block; }
+.nc-editor .ProseMirror img.ProseMirror-selectednode { outline: 2px solid var(--av-blue); outline-offset: 2px; }
 .nc-editor .ProseMirror ul, .nc-editor .ProseMirror ol { margin: 8px 0; padding-left: 20px; }
 .nc-editor .ProseMirror ul { list-style: disc; }
 .nc-editor .ProseMirror ol { list-style: decimal; }

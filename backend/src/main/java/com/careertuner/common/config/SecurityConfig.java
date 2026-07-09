@@ -94,13 +94,15 @@ public class SecurityConfig {
 
     /**
      * 허용 오리진(패턴). 기본값은 Vite 개발 서버 + Capacitor 네이티브 WebView 오리진.
+     * 개발 중 Vite 가 5173 외의 포트로 올라가거나, APK 테스트용 LAN IP 를 직접 호출해도
+     * 브라우저 CORS 에 막히지 않도록 로컬/LAN 패턴을 기본 허용한다.
      *   - Android WebView: http(s)://localhost
      *   - iOS WebView    : capacitor://localhost
      * 배포/LAN 테스트는 CORS_ALLOWED_ORIGINS 로 교체(쉼표 구분, 예: http://192.168.*:*,https://app.example.com).
      * 패턴이므로 와일드카드(*)를 쓰면서도 allowCredentials=true 와 함께 동작한다.
      */
     @org.springframework.beans.factory.annotation.Value(
-            "${careertuner.cors.allowed-origins:http://localhost:5173,http://localhost,https://localhost,capacitor://localhost}")
+            "${careertuner.cors.allowed-origins:http://localhost:*,http://127.0.0.1:*,http://192.168.*:*,http://localhost,https://localhost,capacitor://localhost}")
     private List<String> allowedOriginPatterns;
 
     @Bean

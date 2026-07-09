@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import {
@@ -42,6 +42,15 @@ const RESULT_LABELS: Record<string, string> = {
   PASSED: "최종합격", FAILED: "불합격", PENDING: "대기중", UNKNOWN: "비공개",
 };
 
+// 블러 오버레이에 표시할 사유(카테고리 → 사용자용 문구). 없으면 기본 문구.
+const IMG_BLUR_REASON: Record<string, string> = {
+  ad: "광고로 분류된 이미지",
+  spam: "스팸으로 분류된 이미지",
+  pii: "개인정보가 포함될 수 있는 이미지",
+  gross: "불쾌감을 줄 수 있는 이미지",
+  abuse: "민감할 수 있는 이미지",
+};
+
 export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) {
   const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments, fetchPosts, togglePostSubscription } = useCommunityStore();
   const { user } = useAuth();
@@ -51,12 +60,42 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
   const [showReport, setShowReport] = useState(false);
   const [subBusy, setSubBusy] = useState(false);
   const [aiTags, setAiTags] = useState<ParsedAiTags | null>(null);
+  const contentRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     fetchPostDetail(postId);
     fetchComments(postId);
     communityApi.getAiTags(postId).then(setAiTags);
   }, [postId, fetchPostDetail, fetchComments]);
+
+  // AI 이미지 검열에서 블러 대상으로 판정된 본문 이미지만 블러 + 사유 + 클릭하여 보기.
+  // vision 판정이 불완전하므로 글은 숨기지 않고 소프트하게 가린다(백엔드 fail-open과 정합).
+  const blurredKey = (d?.blurredImages ?? []).map((b) => `${b.url}:${b.category}`).join("|");
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    const reasons = new Map(
+      (d?.blurredImages ?? []).filter((b) => b.url).map((b) => [b.url, b.category] as const),
+    );
+    if (reasons.size === 0) return;
+    root.querySelectorAll("img").forEach((img) => {
+      const src = img.getAttribute("src") ?? "";
+      if (!reasons.has(src)) return;
+      if (img.closest(".dv-imgwrap")) return; // 이미 감싼 이미지
+      const reason = IMG_BLUR_REASON[reasons.get(src) ?? ""] ?? "민감할 수 있는 이미지";
+      const wrap = document.createElement("span");
+      wrap.className = "dv-imgwrap blurred";
+      const hint = document.createElement("span");
+      hint.className = "dv-imgwrap__hint";
+      // reason 은 고정 매핑 문자열(사용자 입력 아님) — 안전
+      hint.innerHTML = `${reason}<span>클릭하여 보기</span>`;
+      img.parentNode?.insertBefore(wrap, img);
+      wrap.appendChild(img);
+      wrap.appendChild(hint);
+      wrap.addEventListener("click", () => wrap.classList.add("revealed"), { once: true });
+    });
+    // d.content 가 바뀌면 React 가 innerHTML 을 다시 채워 래퍼가 사라지므로 재적용된다.
+  }, [d?.content, blurredKey]);
 
   // 공유 — 백엔드 없이 클라이언트에서 처리. Web Share 지원 시 시스템 시트, 아니면 링크 복사.
   const handleShare = async () => {
@@ -296,6 +335,7 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
         {/* 본문 — HTML 글(TipTap)이면 sanitize 후 렌더, 기존 평문 글이면 줄바꿈 보존(무회귀) */}
         {isHtmlContent(d.content) ? (
           <article
+            ref={contentRef}
             className="dv-prose"
             dangerouslySetInnerHTML={{ __html: sanitizePostHtml(d.content) }}
           />

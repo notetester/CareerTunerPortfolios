@@ -58,6 +58,10 @@ public class CloudinaryJobPostingStorageProvider implements JobPostingStoragePro
                     "resource_type", "auto",
                     "type", properties.getDeliveryType(),
                     "public_id", publicId,
+                    // dynamic folder mode 계정에선 public_id 의 슬래시가 Media Library 폴더로 이어지지 않으므로,
+                    // 표시 폴더를 asset_folder 로 명시해 공고 파일을 한 폴더(properties.folder)로 묶는다.
+                    // public_id 는 그대로라 delivery URL·교차접근 방지 prefix 검증은 영향 없음.
+                    "asset_folder", properties.getFolder(),
                     "overwrite", true,
                     "use_filename", false,
                     "unique_filename", false));

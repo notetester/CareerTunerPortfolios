@@ -71,6 +71,23 @@ public class NotificationController {
         return ApiResponse.ok();
     }
 
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(
+            @PathVariable Long id,
+            @AuthenticationPrincipal AuthUser authUser
+    ) {
+        notificationService.delete(id, authUser.id());
+        return ApiResponse.ok();
+    }
+
+    @DeleteMapping
+    public ApiResponse<Void> deleteAll(
+            @AuthenticationPrincipal AuthUser authUser
+    ) {
+        notificationService.deleteAll(authUser.id());
+        return ApiResponse.ok();
+    }
+
     // ───── 알림 설정 ─────
 
     @GetMapping("/preferences")

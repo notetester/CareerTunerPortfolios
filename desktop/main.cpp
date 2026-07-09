@@ -17,6 +17,8 @@
 #include "core/InterviewSession.h"
 #include "core/VoiceRecorder.h"
 #include "core/NotificationPoller.h"
+#include "core/PlannerClient.h"
+#include "core/PlannerOverlayController.h"
 #include "core/AutoPrepRunner.h"
 #include "core/AdClient.h"
 #include "core/CollaborationClient.h"
@@ -70,6 +72,8 @@ int main(int argc, char* argv[])
     VoiceRecorder     recorder;
     CameraRecorder    cameraRecorder;
     NotificationPoller poller(&api);
+    PlannerClient     planner(&api);
+    PlannerOverlayController plannerOverlayController;
     AutoPrepRunner    autoprep(&api);
     AdClient          ads(&api);
     CollaborationClient collaboration(&api);
@@ -84,12 +88,16 @@ int main(int argc, char* argv[])
     // 로그인 성공 → 알림 폴링 시작, 로그아웃 → 중지
     QObject::connect(&auth, &AuthService::loggedIn, &poller,
         [&poller](const QString&) { poller.start(); });
+    QObject::connect(&auth, &AuthService::loggedIn, &planner,
+        [&planner](const QString&) { planner.start(); });
     QObject::connect(&auth, &AuthService::loggedIn, &collaboration,
         [&collaboration](const QString&) { collaboration.refresh(); });
     QObject::connect(&auth, &AuthService::loggedIn, &ads,
         [&ads](const QString&) { ads.refresh(); });
     QObject::connect(&auth, &AuthService::loggedOut, &poller,
         [&poller]() { poller.stop(); });
+    QObject::connect(&auth, &AuthService::loggedOut, &planner,
+        [&planner]() { planner.stop(); });
     QObject::connect(&auth, &AuthService::loggedOut, &collaboration,
         [&collaboration]() { collaboration.clear(); });
     QObject::connect(&auth, &AuthService::loggedOut, &community,
@@ -109,6 +117,8 @@ int main(int argc, char* argv[])
     ctx->setContextProperty("recorder", &recorder);
     ctx->setContextProperty("cameraRecorder", &cameraRecorder);
     ctx->setContextProperty("notifications", &poller);
+    ctx->setContextProperty("plannerClient", &planner);
+    ctx->setContextProperty("plannerOverlayController", &plannerOverlayController);
     ctx->setContextProperty("autoprep", &autoprep);
     ctx->setContextProperty("desktopAds", &ads);
     ctx->setContextProperty("collaboration", &collaboration);
@@ -124,6 +134,8 @@ int main(int argc, char* argv[])
     tray.setToolTip("CareerTuner — 면접 준비 컨트롤 센터");
     QMenu trayMenu;
     QAction* showAct = trayMenu.addAction("열기");
+    QAction* plannerOverlayAct = trayMenu.addAction("플래너 오버레이 켜기");
+    QAction* plannerClickAct = trayMenu.addAction("플래너 클릭 통과 해제");
     QAction* quitAct = trayMenu.addAction("종료");
     const auto showWindow = [&engine]() {
         if (!engine.rootObjects().isEmpty()) {
@@ -133,6 +145,10 @@ int main(int argc, char* argv[])
         }
     };
     QObject::connect(showAct, &QAction::triggered, showWindow);
+    QObject::connect(plannerOverlayAct, &QAction::triggered, &plannerOverlayController,
+        [&plannerOverlayController]() { plannerOverlayController.setEnabled(true); });
+    QObject::connect(plannerClickAct, &QAction::triggered, &plannerOverlayController,
+        [&plannerOverlayController]() { plannerOverlayController.setClickThrough(false); });
     QObject::connect(quitAct, &QAction::triggered, &app, &QApplication::quit);
     QObject::connect(&tray, &QSystemTrayIcon::activated, &app,
         [showWindow](QSystemTrayIcon::ActivationReason r) {
@@ -155,6 +171,20 @@ int main(int argc, char* argv[])
                     window->alert(6000);
                 }
             }
+        });
+    QObject::connect(&planner, &PlannerClient::reminderArrived, &tray,
+        [&tray, &settings, &engine, &plannerOverlayController](
+            const QString& title, const QString& message,
+            bool desktopToast, bool desktopTaskbar, bool desktopSound) {
+            if (desktopToast && settings.trayNotify())
+                tray.showMessage(QStringLiteral("일정 알림: %1").arg(title), message, QSystemTrayIcon::Information, 6000);
+            if (desktopTaskbar && !engine.rootObjects().isEmpty()) {
+                if (auto* window = qobject_cast<QWindow*>(engine.rootObjects().first())) {
+                    window->alert(6000);
+                }
+            }
+            if (desktopSound)
+                plannerOverlayController.playReminderSound();
         });
 
     // 보관된 refresh 토큰으로 자동 로그인 시도 (실패 시 QML 이 로그인 화면 유지)

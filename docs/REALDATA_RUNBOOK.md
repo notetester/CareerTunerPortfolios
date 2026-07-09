@@ -25,7 +25,7 @@
 
 | 항목 | 상태 | 위치 |
 | --- | --- | --- |
-| Capacitor 패키징 + PWA + 네이티브 셸 | ✅ | `frontend/capacitor.config.ts` |
+| Capacitor 패키징 + PWA + 네이티브 셸 | ✅ | `frontend/capacitor.config.json` |
 | APK 자동 빌드 CI (`demo-apk-N` 태그 push) | ✅ (mock) | `.github/workflows/android-release.yml` |
 | 웹 데모 자동 배포(GitHub Pages) | ✅ (mock) | `.github/workflows/deploy-demo.yml` |
 | **CORS** — `capacitor://localhost` 등 허용, Bearer 토큰 OK | ✅ | `common/config/SecurityConfig.java` |

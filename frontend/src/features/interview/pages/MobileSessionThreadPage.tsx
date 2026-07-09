@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowUp, Camera, Check, Mic, Monitor, Sparkles } from "lucid
 import { useAuth } from "@/app/auth/AuthContext";
 import { haptic } from "@/platform/haptics";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import {
   dispatchSessionToDevices,
   generateExpectedQuestions,
@@ -363,6 +364,10 @@ export function MobileSessionThreadPage() {
               <p className="mt-1.5 text-[12px] leading-relaxed text-[#8A8F98]">
                 공고·지원건 분석을 반영해 예상 질문을 생성합니다.
               </p>
+              <AiChargeCostBadge
+                featureType="INTERVIEW_QUESTION_GEN"
+                className="mx-auto mt-3 bg-white/[0.06] text-[#aab2ef]"
+              />
               <button
                 onClick={() => void generate()}
                 disabled={generating}
@@ -472,6 +477,10 @@ export function MobileSessionThreadPage() {
                     <div className="text-[12px] leading-relaxed text-[#8A8F98]">{s.modelAnswer}</div>
                   </div>
                 )}
+                <AiChargeCostBadge
+                  featureType="INTERVIEW_FOLLOWUP_GEN"
+                  className="mx-3 mb-2 bg-white/[0.06] text-[#aab2ef]"
+                />
                 <div className="flex flex-wrap gap-1.5 px-3.5 pb-3.5 pt-1">
                   <button
                     onClick={() => void showModelAnswer(s.qid)}
@@ -506,6 +515,10 @@ export function MobileSessionThreadPage() {
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 64px)" }}
       >
         <div className="mx-auto max-w-xl rounded-2xl border border-white/[0.06] bg-[#0a0a0c] p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.04)] focus-within:border-[#5E6AD2]/40 focus-within:shadow-[0_0_0_3px_rgba(94,106,210,0.12)]">
+          <AiChargeCostBadge
+            featureType="INTERVIEW_ANSWER_EVAL"
+            className="mb-2 bg-white/[0.06] text-[#aab2ef]"
+          />
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

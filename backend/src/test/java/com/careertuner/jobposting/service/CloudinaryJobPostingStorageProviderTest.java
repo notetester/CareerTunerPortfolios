@@ -15,6 +15,7 @@ import java.net.http.HttpResponse;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.jobposting.service.JobPostingStorageProvider.Loaded;
@@ -85,6 +86,34 @@ class CloudinaryJobPostingStorageProviderTest {
         assertThat(written.path()).isNull();
         assertThat(written.reference())
                 .isEqualTo("cloudinary:image/authenticated/pdf/application-postings/42/uuid-abc");
+    }
+
+    @Test
+    void writeUploadsIntoConfiguredAssetFolder() throws Exception {
+        Cloudinary cloudinary = mock(Cloudinary.class);
+        Uploader uploader = mock(Uploader.class);
+        when(cloudinary.uploader()).thenReturn(uploader);
+        when(uploader.upload(any(), any())).thenReturn(Map.of(
+                "resource_type", "image",
+                "type", "authenticated",
+                "public_id", "custom-postings/42/uuid-abc",
+                "format", "pdf"));
+        CloudinaryProperties props = props();
+        // 기본값이 아닌 폴더로 설정 — provider 가 folder 를 하드코딩하지 않고 properties 를 실제로 읽는지 검증.
+        props.setFolder("custom-postings");
+        CloudinaryJobPostingStorageProvider provider =
+                new CloudinaryJobPostingStorageProvider(cloudinary, props);
+
+        provider.write(42L, "uuid-abc.pdf", new byte[]{1, 2, 3}, "application/pdf");
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<Map> optionsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(uploader).upload(any(), optionsCaptor.capture());
+        Map<?, ?> options = optionsCaptor.getValue();
+        // dynamic folder mode 계정에서 Media Library 폴더로 묶이도록 asset_folder 를 folder 로 지정해야 한다.
+        assertThat(options.get("asset_folder")).isEqualTo("custom-postings");
+        // public_id 는 {folder}/{caseId}/{name} 경로 유지(전송 URL·교차접근 방지 prefix 검증 근거).
+        assertThat(options.get("public_id")).isEqualTo("custom-postings/42/uuid-abc");
     }
 
     @Test

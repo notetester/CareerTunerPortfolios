@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ClipboardList, Download, Loader2, Lock, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
@@ -455,8 +456,9 @@ export function LocalAvatarTab({
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
             면접관이 준비된 질문 {trial ? 1 : preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
-            읽어주면 웹캠으로 녹화·분석합니다. 외부 API 없이 무료.
+            읽어주면 웹캠으로 녹화·분석합니다. 외부 API 없이 자체 모델로 처리합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" />
 
           {(status === "idle" || status === "scored" || status === "error") && (
             <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">

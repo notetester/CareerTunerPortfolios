@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
@@ -198,7 +199,8 @@ public class ApplicationCaseAutoPipelineService {
                 applicationCase.getCompanyName(),
                 applicationCase.getJobTitle(),
                 webEvidence).payload();
-        LocalDateTime checkedAt = LocalDateTime.now();
+        // 사용자 직접 생성 경로(CompanyAnalysisService)와 동일하게 KST 로 찍는다(JVM tz 무관 · BDisplayTime).
+        LocalDateTime checkedAt = BDisplayTime.now();
         CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
                 .applicationCaseId(applicationCase.getId())
                 .jobPostingId(jobPostingId)

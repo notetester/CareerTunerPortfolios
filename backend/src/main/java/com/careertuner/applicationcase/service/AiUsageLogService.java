@@ -21,7 +21,7 @@ public class AiUsageLogService {
     }
 
     @Transactional
-    public void recordSuccess(Long userId, Long applicationCaseId, String featureType, OpenAiResponsesClient.Usage usage) {
+    public void recordSuccess(Long userId, Long applicationCaseId, String featureType, AiUsage usage) {
         if (usage == null) {
             return;
         }

@@ -21,6 +21,7 @@ import com.careertuner.applicationcase.dto.ApplicationCaseFromJobPostingResponse
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseFromJobPostingRequest;
 import com.careertuner.applicationcase.dto.CreateApplicationCaseRequest;
+import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.applicationcase.dto.FitAnalysisResponse;
 import com.careertuner.applicationcase.dto.JobPostingMetadataResponse;
 import com.careertuner.applicationcase.dto.ConfirmJobPostingExtractionRequest;
@@ -93,7 +94,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 .favorite(Boolean.TRUE.equals(request.favorite()))
                 .build();
         applicationCaseMapper.insertApplicationCase(applicationCase);
-        return ApplicationCaseResponse.from(accessService.requireOwned(userId, applicationCase.getId()));
+        return toResponse(accessService.requireOwned(userId, applicationCase.getId()));
     }
 
     @Override
@@ -114,7 +115,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 prepared.sourceType());
 
         return new ApplicationCaseFromJobPostingResponse(
-                ApplicationCaseResponse.from(accessService.requireOwned(userId, applicationCase.getId())),
+                toResponse(accessService.requireOwned(userId, applicationCase.getId())),
                 jobPosting,
                 metadata,
                 extractionJob);
@@ -145,7 +146,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 normalizedSourceType);
 
         return new ApplicationCaseFromJobPostingResponse(
-                ApplicationCaseResponse.from(accessService.requireOwned(userId, applicationCase.getId())),
+                toResponse(accessService.requireOwned(userId, applicationCase.getId())),
                 jobPosting,
                 metadata,
                 extractionJob);
@@ -160,14 +161,14 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                         userId,
                         normalizedView,
                         includeArchivedForLegacyRequest).stream()
-                .map(ApplicationCaseResponse::from)
+                .map(ApplicationCaseServiceImpl::toResponse)
                 .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public ApplicationCaseResponse get(Long userId, Long id) {
-        return ApplicationCaseResponse.from(accessService.requireOwned(userId, id));
+        return toResponse(accessService.requireOwned(userId, id));
     }
 
     @Override
@@ -177,7 +178,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         String nextStatus = normalizeOption(request.status(), existing.getStatus(), STATUSES, "status");
         LocalDateTime archivedAt = existing.getArchivedAt();
         if (Boolean.TRUE.equals(request.archived()) && archivedAt == null) {
-            archivedAt = LocalDateTime.now();
+            // archived_at 은 Java 가 찍는 시각 → JVM tz 무관하게 KST 로(BDisplayTime).
+            archivedAt = BDisplayTime.now();
         } else if (Boolean.FALSE.equals(request.archived())) {
             archivedAt = null;
         }
@@ -197,7 +199,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         if (!existing.getStatus().equals(nextStatus)) {
             applicationCaseMapper.insertStatusHistory(id, userId, existing.getStatus(), nextStatus, "USER_STATUS_UPDATE");
         }
-        return ApplicationCaseResponse.from(accessService.requireOwned(userId, id));
+        return toResponse(accessService.requireOwned(userId, id));
     }
 
     @Override
@@ -466,7 +468,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     @Transactional(readOnly = true)
     public List<AiUsageFailureResponse> getAiUsageFailures(Long userId, Long applicationCaseId, int limit) {
         accessService.requireOwned(userId, applicationCaseId);
-        return applicationCaseMapper.findBFailureLogsByCaseId(applicationCaseId, normalizeFailureLimit(limit));
+        // created_at 은 DB CURRENT_TIMESTAMP(UTC)로 저장된다. 화면(KST) 표시를 위해 UTC→KST 로 보정한다(BDisplayTime).
+        return applicationCaseMapper.findBFailureLogsByCaseId(applicationCaseId, normalizeFailureLimit(limit)).stream()
+                .map(failure -> new AiUsageFailureResponse(
+                        failure.featureType(),
+                        failure.errorMessage(),
+                        BDisplayTime.dbToDisplay(failure.createdAt())))
+                .toList();
     }
 
     private PreparedJobPostingRequest prepareJobPostingRequest(CreateApplicationCaseFromJobPostingRequest request) {
@@ -564,10 +572,28 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     private static AnalysisResponse response(ApplicationCase applicationCase, JobAnalysis jobAnalysis, FitAnalysis fitAnalysis) {
+        if (jobAnalysis != null) {
+            // created_at 은 DB CURRENT_TIMESTAMP(UTC)로 저장된다. B 응답과 동일하게 KST 로 맞춘다(BDisplayTime).
+            jobAnalysis.setCreatedAt(BDisplayTime.dbToDisplay(jobAnalysis.getCreatedAt()));
+        }
         return new AnalysisResponse(
-                ApplicationCaseResponse.from(applicationCase),
+                toResponse(applicationCase),
                 JobAnalysisResponse.from(jobAnalysis),
                 FitAnalysisResponse.from(fitAnalysis));
+    }
+
+    /**
+     * 지원 건 응답 시각을 KST 로 맞춘다. {@code created_at}/{@code updated_at}/{@code deleted_at} 은 DB(UTC)로
+     * 저장되므로 UTC→KST 변환하고, {@code archived_at} 은 Java(now)로 이미 KST 라 그대로 둔다(BDisplayTime).
+     */
+    private static ApplicationCaseResponse toResponse(ApplicationCase applicationCase) {
+        if (applicationCase == null) {
+            return null;
+        }
+        applicationCase.setCreatedAt(BDisplayTime.dbToDisplay(applicationCase.getCreatedAt()));
+        applicationCase.setUpdatedAt(BDisplayTime.dbToDisplay(applicationCase.getUpdatedAt()));
+        applicationCase.setDeletedAt(BDisplayTime.dbToDisplay(applicationCase.getDeletedAt()));
+        return ApplicationCaseResponse.from(applicationCase);
     }
 
     private static String defaultString(String value, String defaultValue) {

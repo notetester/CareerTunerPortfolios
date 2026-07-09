@@ -1,10 +1,17 @@
 export type InquiryStatus = "pending" | "progress" | "hold" | "answered" | "closed";
 
+export interface InquiryAttachment {
+  id: number;
+  name: string;
+  size: number;
+}
+
 export interface InquiryMessage {
   who: "user" | "admin";
   name: string;
   time: string;
   text: string;
+  attachments?: InquiryAttachment[];
 }
 
 export interface Inquiry {

@@ -90,7 +90,35 @@ public class OllamaClient {
         );
 
         log.debug("Ollama 검열 요청: model={}, textLength={}", props.getModel(), userText.length());
+        return execute(request);
+    }
 
+    /**
+     * Ollama /api/chat vision 호출 — user 메시지에 base64 이미지 배열을 실어 멀티모달 판정한다.
+     * gemma4 처럼 vision capability 가 있는 모델에서만 유효하다.
+     *
+     * @param imagesBase64 data: 접두사 없는 순수 base64 문자열 목록(Ollama 네이티브 형식)
+     */
+    public String chatVision(String systemPrompt, String userText,
+                             List<String> imagesBase64, Map<String, Object> jsonSchema) {
+        OllamaChatRequest request = new OllamaChatRequest(
+                props.getVisionModel(),
+                false,
+                false,
+                Map.of("temperature", 0, "num_ctx", 8192),
+                jsonSchema,
+                List.of(
+                        new Message("system", systemPrompt),
+                        new Message("user", userText, imagesBase64)
+                )
+        );
+
+        log.debug("Ollama vision 검열 요청: model={}, images={}", props.getVisionModel(), imagesBase64.size());
+        return execute(request);
+    }
+
+    /** 공통 전송 루프 — 텍스트/vision 요청을 동일한 재시도·GPU 게이트·시간예산 정책으로 처리한다. */
+    private String execute(OllamaChatRequest request) {
         // 5xx(HttpServerErrorException)·접속/읽기 타임아웃(ResourceAccessException)에 한해
         // 지수 백오프로 최대 2회 추가 재시도(총 3회). 4xx는 즉시 전파한다.
         // 총 시간예산(재시도·백오프 포함 전체 상한). 0/음수면 무제한(OFF, 기존 동작 그대로).

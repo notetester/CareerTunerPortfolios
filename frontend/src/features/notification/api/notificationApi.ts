@@ -72,6 +72,16 @@ export async function markAllAsRead(): Promise<void> {
   await api<void>("/notifications/read-all", { method: "POST" });
 }
 
+/** 알림 단건 삭제 */
+export async function deleteNotification(id: number): Promise<void> {
+  await api<void>(`/notifications/${id}`, { method: "DELETE" });
+}
+
+/** 알림 전체 삭제(비우기) */
+export async function deleteAllNotifications(): Promise<void> {
+  await api<void>("/notifications", { method: "DELETE" });
+}
+
 // ───── 알림 설정 ─────
 
 export interface NotificationPreference {

@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.planner.mapper.PlannerMapper">
+
+    <resultMap id="MemoMap" type="com.careertuner.planner.domain.PlannerMemo">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="color" column="color"/>
+        <result property="pinned" column="pinned"/>
+        <result property="overlayVisible" column="overlay_visible"/>
+        <result property="opacity" column="opacity"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="fitAnalysisId" column="fit_analysis_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="ScheduleItemMap" type="com.careertuner.planner.domain.PlannerScheduleItem">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="title" column="title"/>
+        <result property="description" column="description"/>
+        <result property="kind" column="kind"/>
+        <result property="status" column="status"/>
+        <result property="allDay" column="all_day"/>
+        <result property="timingPrecision" column="timing_precision"/>
+        <result property="startAt" column="start_at"/>
+        <result property="endAt" column="end_at"/>
+        <result property="timezone" column="timezone"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="fitAnalysisId" column="fit_analysis_id"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="sourceRef" column="source_ref"/>
+        <result property="sourceSnapshotJson" column="source_snapshot_json"/>
+        <result property="overlayVisible" column="overlay_visible"/>
+        <result property="opacity" column="opacity"/>
+        <result property="pinned" column="pinned"/>
+        <result property="clickThrough" column="click_through"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="applicationCompanyName" column="application_company_name"/>
+        <result property="applicationJobTitle" column="application_job_title"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="applicationDeadlineDate" column="application_deadline_date"/>
+    </resultMap>
+
+    <resultMap id="ReminderMap" type="com.careertuner.planner.domain.PlannerScheduleReminder">
+        <id property="id" column="id"/>
+        <result property="scheduleItemId" column="schedule_item_id"/>
+        <result property="remindAt" column="remind_at"/>
+        <result property="offsetMinutes" column="offset_minutes"/>
+        <result property="channelsJson" column="channels_json"/>
+        <result property="soundEnabled" column="sound_enabled"/>
+        <result property="vibrationEnabled" column="vibration_enabled"/>
+        <result property="status" column="status"/>
+        <result property="sentAt" column="sent_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="StrategyAnalysisMap" type="com.careertuner.planner.domain.PlannerStrategyAnalysis">
+        <result property="fitAnalysisId" column="fit_analysis_id"/>
+        <result property="latestFitAnalysisId" column="latest_fit_analysis_id"/>
+        <result property="applicationCaseId" column="application_case_id"/>
+        <result property="companyName" column="company_name"/>
+        <result property="jobTitle" column="job_title"/>
+        <result property="deadlineDate" column="deadline_date"/>
+        <result property="fitScore" column="fit_score"/>
+        <result property="strategy" column="strategy"/>
+        <result property="recommendedStudy" column="recommended_study"/>
+        <result property="recommendedCertificates" column="recommended_certificates"/>
+        <result property="strategyActions" column="strategy_actions"/>
+        <result property="gapRecommendations" column="gap_recommendations"/>
+        <result property="certificateRecommendations" column="certificate_recommendations"/>
+        <result property="analysisCreatedAt" column="analysis_created_at"/>
+        <result property="applicationUpdatedAt" column="application_updated_at"/>
+    </resultMap>
+
+    <sql id="ScheduleItemColumns">
+        psi.id,
+        psi.user_id,
+        psi.title,
+        psi.description,
+        psi.kind,
+        psi.status,
+        psi.all_day,
+        psi.timing_precision,
+        psi.start_at,
+        psi.end_at,
+        psi.timezone,
+        psi.application_case_id,
+        psi.fit_analysis_id,
+        psi.source_type,
+        psi.source_ref,
+        psi.source_snapshot_json,
+        psi.overlay_visible,
+        psi.opacity,
+        psi.pinned,
+        psi.click_through,
+        psi.created_at,
+        psi.updated_at,
+        ac.company_name AS application_company_name,
+        ac.job_title AS application_job_title,
+        ac.deadline_date AS application_deadline_date,
+        fa.fit_score
+    </sql>
+
+    <select id="findMemos" resultMap="MemoMap">
+        SELECT *
+        FROM planner_memo
+        WHERE user_id = #{userId}
+          AND deleted_at IS NULL
+        ORDER BY pinned DESC, updated_at DESC, id DESC
+    </select>
+
+    <select id="findMemo" resultMap="MemoMap">
+        SELECT *
+        FROM planner_memo
+        WHERE id = #{memoId}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+    </select>
+
+    <insert id="insertMemo" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO planner_memo
+            (user_id, title, content, color, pinned, overlay_visible, opacity, application_case_id, fit_analysis_id)
+        VALUES
+            (#{userId}, #{title}, #{content}, #{color}, #{pinned}, #{overlayVisible}, #{opacity}, #{applicationCaseId}, #{fitAnalysisId})
+    </insert>
+
+    <update id="updateMemo">
+        UPDATE planner_memo
+        SET title = #{title},
+            content = #{content},
+            color = #{color},
+            pinned = #{pinned},
+            overlay_visible = #{overlayVisible},
+            opacity = #{opacity},
+            application_case_id = #{applicationCaseId},
+            fit_analysis_id = #{fitAnalysisId}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="deleteMemo">
+        UPDATE planner_memo
+        SET deleted_at = CURRENT_TIMESTAMP
+        WHERE id = #{memoId}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+    </update>
+
+    <select id="findScheduleItems" resultMap="ScheduleItemMap">
+        SELECT
+        <include refid="ScheduleItemColumns"/>
+        FROM planner_schedule_item psi
+        LEFT JOIN application_case ac ON ac.id = psi.application_case_id
+        LEFT JOIN fit_analysis fa ON fa.id = psi.fit_analysis_id
+        WHERE psi.user_id = #{userId}
+          AND psi.deleted_at IS NULL
+        <if test="from != null">
+          AND (psi.end_at IS NULL OR psi.end_at &gt;= #{from})
+        </if>
+        <if test="to != null">
+          AND (psi.start_at IS NULL OR psi.start_at &lt;= #{to})
+        </if>
+        ORDER BY psi.pinned DESC, psi.start_at IS NULL, psi.start_at ASC, psi.created_at DESC
+    </select>
+
+    <select id="findScheduleItem" resultMap="ScheduleItemMap">
+        SELECT
+        <include refid="ScheduleItemColumns"/>
+        FROM planner_schedule_item psi
+        LEFT JOIN application_case ac ON ac.id = psi.application_case_id
+        LEFT JOIN fit_analysis fa ON fa.id = psi.fit_analysis_id
+        WHERE psi.id = #{itemId}
+          AND psi.user_id = #{userId}
+          AND psi.deleted_at IS NULL
+    </select>
+
+    <select id="findScheduleItemByReminderId" resultMap="ScheduleItemMap">
+        SELECT
+        <include refid="ScheduleItemColumns"/>
+        FROM planner_schedule_reminder psr
+        INNER JOIN planner_schedule_item psi ON psi.id = psr.schedule_item_id
+        LEFT JOIN application_case ac ON ac.id = psi.application_case_id
+        LEFT JOIN fit_analysis fa ON fa.id = psi.fit_analysis_id
+        WHERE psr.id = #{reminderId}
+          AND psi.deleted_at IS NULL
+    </select>
+
+    <insert id="insertScheduleItem" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO planner_schedule_item
+            (user_id, title, description, kind, status, all_day, timing_precision, start_at, end_at, timezone,
+             application_case_id, fit_analysis_id, source_type, source_ref, source_snapshot_json,
+             overlay_visible, opacity, pinned, click_through)
+        VALUES
+            (#{userId}, #{title}, #{description}, #{kind}, #{status}, #{allDay}, #{timingPrecision}, #{startAt}, #{endAt}, #{timezone},
+             #{applicationCaseId}, #{fitAnalysisId}, #{sourceType}, #{sourceRef}, #{sourceSnapshotJson},
+             #{overlayVisible}, #{opacity}, #{pinned}, #{clickThrough})
+    </insert>
+
+    <update id="updateScheduleItem">
+        UPDATE planner_schedule_item
+        SET title = #{title},
+            description = #{description},
+            kind = #{kind},
+            status = #{status},
+            all_day = #{allDay},
+            timing_precision = #{timingPrecision},
+            start_at = #{startAt},
+            end_at = #{endAt},
+            timezone = #{timezone},
+            application_case_id = #{applicationCaseId},
+            fit_analysis_id = #{fitAnalysisId},
+            source_type = #{sourceType},
+            source_ref = #{sourceRef},
+            source_snapshot_json = #{sourceSnapshotJson},
+            overlay_visible = #{overlayVisible},
+            opacity = #{opacity},
+            pinned = #{pinned},
+            click_through = #{clickThrough}
+        WHERE id = #{id}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+    </update>
+
+    <update id="deleteScheduleItem">
+        UPDATE planner_schedule_item
+        SET deleted_at = CURRENT_TIMESTAMP
+        WHERE id = #{itemId}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+    </update>
+
+    <select id="findRemindersByScheduleItemIds" resultMap="ReminderMap">
+        SELECT *
+        FROM planner_schedule_reminder
+        WHERE schedule_item_id IN
+        <foreach collection="itemIds" item="itemId" open="(" separator="," close=")">
+            #{itemId}
+        </foreach>
+        ORDER BY remind_at ASC, id ASC
+    </select>
+
+    <select id="findDueReminders" resultMap="ReminderMap">
+        SELECT psr.*
+        FROM planner_schedule_reminder psr
+        INNER JOIN planner_schedule_item psi ON psi.id = psr.schedule_item_id
+        WHERE psr.status = 'PENDING'
+          AND psr.remind_at IS NOT NULL
+          AND psr.remind_at &lt;= #{now}
+          AND psi.deleted_at IS NULL
+          AND psi.status != 'CANCELED'
+        ORDER BY psr.remind_at ASC, psr.id ASC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="insertReminder" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO planner_schedule_reminder
+            (schedule_item_id, remind_at, offset_minutes, channels_json, sound_enabled, vibration_enabled, status)
+        VALUES
+            (#{scheduleItemId}, #{remindAt}, #{offsetMinutes}, #{channelsJson}, #{soundEnabled}, #{vibrationEnabled}, #{status})
+    </insert>
+
+    <delete id="deleteRemindersByItem">
+        DELETE psr
+        FROM planner_schedule_reminder psr
+        INNER JOIN planner_schedule_item psi ON psi.id = psr.schedule_item_id
+        WHERE psr.schedule_item_id = #{itemId}
+          AND psi.user_id = #{userId}
+    </delete>
+
+    <update id="markReminderSent">
+        UPDATE planner_schedule_reminder
+        SET status = 'SENT',
+            sent_at = CURRENT_TIMESTAMP
+        WHERE id = #{reminderId}
+          AND status = 'PENDING'
+    </update>
+
+    <select id="countScheduleOverlaps" resultType="int">
+        SELECT COUNT(*)
+        FROM planner_schedule_item
+        WHERE user_id = #{userId}
+          AND deleted_at IS NULL
+          AND status != 'CANCELED'
+          AND start_at IS NOT NULL
+          AND end_at IS NOT NULL
+          AND start_at &lt; #{endAt}
+          AND end_at &gt; #{startAt}
+        <if test="excludeItemId != null">
+          AND id != #{excludeItemId}
+        </if>
+    </select>
+
+    <select id="countApplicationCase" resultType="int">
+        SELECT COUNT(*)
+        FROM application_case
+        WHERE id = #{applicationCaseId}
+          AND user_id = #{userId}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="countFitAnalysis" resultType="int">
+        SELECT COUNT(*)
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE fa.id = #{fitAnalysisId}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+    </select>
+
+    <select id="findStrategyAnalysis" resultMap="StrategyAnalysisMap">
+        SELECT
+            fa.id AS fit_analysis_id,
+            (
+                SELECT MAX(latest_fa.id)
+                FROM fit_analysis latest_fa
+                WHERE latest_fa.application_case_id = fa.application_case_id
+            ) AS latest_fit_analysis_id,
+            fa.application_case_id,
+            ac.company_name,
+            ac.job_title,
+            ac.deadline_date,
+            fa.fit_score,
+            fa.strategy,
+            fa.recommended_study,
+            fa.recommended_certificates,
+            fa.strategy_actions,
+            fa.gap_recommendations,
+            fa.certificate_recommendations,
+            fa.created_at AS analysis_created_at,
+            ac.updated_at AS application_updated_at
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        WHERE fa.id = #{fitAnalysisId}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+    </select>
+</mapper>
