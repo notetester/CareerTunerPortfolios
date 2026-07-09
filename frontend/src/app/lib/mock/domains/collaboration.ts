@@ -31,7 +31,7 @@ import type {
 const currentUser: CollaborationUser = {
   id: demoUser.id,
   name: demoUser.name,
-  email: demoUser.email,
+  email: demoUser.email ?? "demo@careertuner.dev",
   plan: demoUser.plan,
   relationStatus: "SELF",
 };

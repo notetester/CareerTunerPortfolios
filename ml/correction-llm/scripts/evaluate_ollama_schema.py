@@ -9,7 +9,10 @@ import urllib.request
 from pathlib import Path
 
 from build_messages import SYSTEM_PROMPT
+from build_p1_curriculum import REPAIR_TEMPLATE
 from dataset_contract import compact_json
+from evaluate_controller_infer import patch_minor_length_shortfall, restore_repair_paragraphs
+from followup_pipeline_common import build_runtime_repair_messages
 from test_infer import check_output, read_jsonl
 
 
@@ -53,17 +56,51 @@ def response_format(task_type: str) -> dict:
     }
 
 
-def call_ollama(base_url: str, model: str, sample: dict, max_tokens: int, timeout: float) -> str:
+def call_ollama(
+    base_url: str,
+    model: str,
+    sample: dict,
+    max_tokens: int,
+    timeout: float,
+    response_mode: str = "schema",
+) -> str:
     payload = {"id": sample["id"], "task_type": sample["task_type"], "input": sample["input"]}
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": compact_json(payload)},
+    ]
+    return call_ollama_messages(
+        base_url,
+        model,
+        messages,
+        sample["task_type"],
+        max_tokens,
+        timeout,
+        response_mode,
+        temperature=0.0,
+    )
+
+
+def call_ollama_messages(
+    base_url: str,
+    model: str,
+    messages: list[dict[str, str]],
+    task_type: str,
+    max_tokens: int,
+    timeout: float,
+    response_mode: str,
+    temperature: float,
+) -> str:
     body = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": compact_json(payload)},
-        ],
-        "temperature": 0.0,
+        "messages": messages,
+        "temperature": temperature,
         "max_tokens": max_tokens,
-        "response_format": response_format(sample["task_type"]),
+        "response_format": (
+            {"type": "json_object"}
+            if response_mode == "json-object"
+            else response_format(task_type)
+        ),
     }
     url = base_url.rstrip("/") + "/v1/chat/completions"
     request = urllib.request.Request(
@@ -89,6 +126,8 @@ def main() -> None:
     parser.add_argument("--sample-id", action="append", default=[])
     parser.add_argument("--max-tokens", type=int, default=3072)
     parser.add_argument("--timeout", type=float, default=180.0)
+    parser.add_argument("--response-mode", choices=["schema", "json-object"], default="json-object")
+    parser.add_argument("--controller", action="store_true", help="Run one backend-style repair attempt.")
     parser.add_argument("--report-out", default=None)
     args = parser.parse_args()
 
@@ -102,16 +141,83 @@ def main() -> None:
     passed = 0
     for sample in samples:
         print("=" * 80)
-        print(f"{sample['id']} {sample['task_type']} ollama-schema")
-        output = call_ollama(args.base_url, args.model, sample, args.max_tokens, args.timeout)
-        print(output)
-        problems, warnings = check_output(
-            output,
+        print(f"{sample['id']} {sample['task_type']} ollama-{args.response_mode}")
+        direct_output = call_ollama(
+            args.base_url,
+            args.model,
+            sample,
+            args.max_tokens,
+            args.timeout,
+            args.response_mode,
+        )
+        direct_problems, direct_warnings = check_output(
+            direct_output,
             sample,
             preserved_meaning_mode="strict",
             unified_contract=True,
         )
-        print(f">>> {'PASS' if not problems else 'FAIL: ' + ', '.join(problems)}")
+        output = direct_output
+        problems = list(direct_problems)
+        warnings = list(direct_warnings)
+        repair_output = None
+        stage = "direct"
+        if problems and args.controller:
+            messages = build_runtime_repair_messages(
+                SYSTEM_PROMPT,
+                REPAIR_TEMPLATE,
+                sample,
+                previous_output=direct_output,
+                validation_error="; ".join(problems),
+            )
+            repair_output = call_ollama_messages(
+                args.base_url,
+                args.model,
+                messages,
+                sample["task_type"],
+                args.max_tokens,
+                args.timeout,
+                args.response_mode,
+                temperature=0.0,
+            )
+            output = repair_output
+            problems, warnings = check_output(
+                output,
+                sample,
+                preserved_meaning_mode="strict",
+                unified_contract=True,
+            )
+            stage = "repair"
+
+            restored_output = restore_repair_paragraphs(output, sample, direct_problems)
+            if restored_output != output:
+                restored_problems, restored_warnings = check_output(
+                    restored_output,
+                    sample,
+                    preserved_meaning_mode="strict",
+                    unified_contract=True,
+                )
+                if not restored_problems:
+                    output = restored_output
+                    problems = []
+                    warnings = restored_warnings
+                    stage = "repair_paragraph_restored"
+
+            patched_output = patch_minor_length_shortfall(output, sample)
+            if problems and patched_output != output:
+                patched_problems, patched_warnings = check_output(
+                    patched_output,
+                    sample,
+                    preserved_meaning_mode="strict",
+                    unified_contract=True,
+                )
+                if not patched_problems:
+                    output = patched_output
+                    problems = []
+                    warnings = patched_warnings
+                    stage = "repair_length_restored"
+
+        print(output)
+        print(f">>> {'PASS' if not problems else 'FAIL: ' + ', '.join(problems)} ({stage})")
         if not problems:
             passed += 1
         results.append(
@@ -121,7 +227,10 @@ def main() -> None:
                 "passed": not problems,
                 "problems": problems,
                 "warnings": warnings,
-                "output": output,
+                "stage": stage,
+                "direct_output": direct_output,
+                "repair_output": repair_output,
+                "final_output": output,
             }
         )
     print(f"ollama schema passed {passed}/{len(results)}")

@@ -2,14 +2,16 @@ import { useState } from "react";
 import {
   ArrowLeft, Bold, Italic, List, ListOrdered, Quote,
   Link as LinkIcon, Code, Plus, Trash2, Star, Hash, X,
-  ClipboardList,
+  ClipboardList, ImagePlus,
 } from "lucide-react";
 import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
 import { CATEGORIES, type CommunityCategory } from "../types/community";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 import { toast } from "@/features/notification/components/toast";
 import { sanitizePostHtml, isHtmlContent, plainToHtml } from "@/app/lib/postContent";
+import { pickAndInsertImage, useEditorImagePaste } from "@/app/lib/editorImage";
 
 // 백엔드 CreatePostRequest/UpdatePostRequest 의 @Size(max=20000) 와 정합
 const MAX_HTML = 20000;
@@ -137,9 +139,12 @@ export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormP
           HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
         },
       }),
+      Image.configure({ inline: false, allowBase64: false }),
     ],
     content: initialContent,
   });
+
+  useEditorImagePaste(editor, "community", toast.error);
 
   const es = useEditorState({
     editor,
@@ -333,6 +338,8 @@ export function PostEditorForm({ onCancel, onSubmit, editData }: PostEditorFormP
           <span className="wv-tooldiv" />
           <button type="button" className={"wv-tool" + (es.link ? " on" : "")} title="링크" aria-label="링크"
             onClick={setLink}><LinkIcon /></button>
+          <button type="button" className="wv-tool" title="이미지" aria-label="이미지"
+            onClick={() => editor && pickAndInsertImage(editor, "community", toast.error)}><ImagePlus /></button>
           <button type="button" className={"wv-tool" + (es.code ? " on" : "")} title="코드" aria-label="코드"
             onClick={() => editor?.chain().focus().toggleCode().run()}><Code /></button>
         </div>

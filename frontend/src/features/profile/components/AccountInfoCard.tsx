@@ -5,7 +5,7 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { requestPasswordReset } from "@/app/auth/authApi";
-import { getAccountInfo, requestEmailRegistration, setLoginId, setPhone } from "../api/nicknameProfileApi";
+import { getAccountInfo, getSocialLinkUrl, requestEmailRegistration, setLoginId, setPhone, unlinkSocial } from "../api/nicknameProfileApi";
 import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
 
 /**
@@ -26,6 +26,7 @@ export function AccountInfoCard() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendingPassword, setSendingPassword] = useState(false);
   const [savingPhone, setSavingPhone] = useState(false);
+  const [socialBusy, setSocialBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -33,7 +34,7 @@ export function AccountInfoCard() {
     try {
       const next = await getAccountInfo();
       setInfo(next);
-      setEmailDraft(next.temporaryEmail ? "" : next.email);
+      setEmailDraft(next.temporaryEmail ? "" : next.email ?? "");
       setPhoneDraft(next.phone ?? "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "계정 정보를 불러오지 못했습니다.");
@@ -45,6 +46,16 @@ export function AccountInfoCard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const linked = params.get("socialLinked");
+    if (linked) {
+      const suffix = params.get("socialMock") ? " mock 계정을 연결했습니다." : " 계정을 연결했습니다.";
+      setMessage(`${PROVIDER_LABELS[linked] ?? linked}${suffix}`);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   const submitLoginId = async () => {
     const value = loginIdDraft.trim().toLowerCase();
@@ -86,7 +97,7 @@ export function AccountInfoCard() {
   };
 
   const submitPasswordSetup = async () => {
-    if (!info || info.temporaryEmail || !info.emailVerified) {
+    if (!info || !info.email || info.temporaryEmail || !info.emailVerified) {
       setError("먼저 실제 이메일 등록과 인증을 완료해 주세요.");
       return;
     }
@@ -119,6 +130,33 @@ export function AccountInfoCard() {
       setError(e instanceof Error ? e.message : "전화번호 저장에 실패했습니다.");
     } finally {
       setSavingPhone(false);
+    }
+  };
+
+  const linkProvider = async (provider: string) => {
+    setSocialBusy(provider);
+    setError(null);
+    setMessage(null);
+    try {
+      const { url } = await getSocialLinkUrl(provider);
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "소셜 계정 연결을 시작하지 못했습니다.");
+      setSocialBusy(null);
+    }
+  };
+
+  const unlinkProvider = async (provider: string) => {
+    setSocialBusy(provider);
+    setError(null);
+    setMessage(null);
+    try {
+      setInfo(await unlinkSocial(provider));
+      setMessage(`${PROVIDER_LABELS[provider] ?? provider} 계정 연결을 해제했습니다.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "소셜 계정 연결 해제에 실패했습니다.");
+    } finally {
+      setSocialBusy(null);
     }
   };
 
@@ -267,19 +305,41 @@ export function AccountInfoCard() {
             <Link2 className="size-3.5" />
             연결된 계정
           </span>
-          {info && info.linkedProviders.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {info.linkedProviders.map((provider) => (
-                <Badge key={provider} className="bg-blue-50 text-blue-700">
-                  {PROVIDER_LABELS[provider] ?? provider}
-                </Badge>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">연결된 소셜 계정이 없습니다.</p>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {["GOOGLE", "KAKAO", "NAVER"].map((provider) => {
+              const linked = info?.linkedProviders.includes(provider) ?? false;
+              return (
+                <div key={provider} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1">
+                  <Badge className={linked ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}>
+                    {PROVIDER_LABELS[provider] ?? provider}
+                  </Badge>
+                  {linked ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      disabled={socialBusy === provider}
+                      onClick={() => void unlinkProvider(provider)}
+                    >
+                      해제
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      disabled={socialBusy === provider}
+                      onClick={() => void linkProvider(provider)}
+                    >
+                      연결
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
           <p className="text-xs text-slate-400">
-            소셜 계정 연결/해제는 로그인 설정에서 관리합니다. 남는 로그인 수단이 없으면 해제가 제한됩니다.
+            남는 로그인 수단이 없으면 해제가 제한됩니다.
           </p>
         </div>
       </CardContent>

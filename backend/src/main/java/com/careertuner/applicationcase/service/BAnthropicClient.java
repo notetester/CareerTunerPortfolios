@@ -82,7 +82,7 @@ public class BAnthropicClient {
      * 이미지에서 공고문 텍스트를 추출한다(Claude Vision OCR). 공고 이미지/스캔본을 글자로 옮긴다.
      * 실패 시 예외를 던져 상위({@code JobPostingTextExtractor})가 OpenAI Vision 으로 폴백한다.
      */
-    public String extractImageText(String contentType, byte[] bytes) {
+    public OcrPayload extractImageText(String contentType, byte[] bytes) {
         if (!configured()) {
             throw new IllegalStateException("Anthropic API key is not configured.");
         }
@@ -99,7 +99,7 @@ public class BAnthropicClient {
      * Anthropic document 입력은 200K 컨텍스트 모델 기준 최대 100페이지·32MB(공고문엔 충분).
      * 실패 시 예외를 던져 상위가 OpenAI Vision 으로 폴백한다.
      */
-    public String extractPdfText(byte[] bytes) {
+    public OcrPayload extractPdfText(byte[] bytes) {
         if (!configured()) {
             throw new IllegalStateException("Anthropic API key is not configured.");
         }
@@ -111,13 +111,22 @@ public class BAnthropicClient {
         return visionExtract(List.of(documentBlock, textBlock));
     }
 
-    private String visionExtract(List<Map<String, Object>> content) {
+    private OcrPayload visionExtract(List<Map<String, Object>> content) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", properties.getModel());
         body.put("max_tokens", properties.getMaxTokens());
         body.put("messages", List.of(Map.of("role", "user", "content", content)));
         body.put("temperature", 0);
-        return extractPlainText(post(body));
+        JsonNode root = post(body);
+        return new OcrPayload(extractPlainText(root), "claude", properties.getModel(), anthropicUsage(root));
+    }
+
+    /** Anthropic 응답 usage(input_tokens/output_tokens) → 공통 AiUsage. Claude OCR usage 기록용. */
+    private AiUsage anthropicUsage(JsonNode root) {
+        JsonNode usage = root.path("usage");
+        int in = usage.path("input_tokens").asInt(0);
+        int out = usage.path("output_tokens").asInt(0);
+        return new AiUsage(properties.getModel(), in, out, in + out);
     }
 
     /** OCR 응답용 — chat 과 달리 코드펜스를 벗기지 않고 text 블록을 그대로 이어붙인다(원문에 ``` 가 있을 수 있음). */

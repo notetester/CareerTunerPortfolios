@@ -12,6 +12,8 @@ import { MobileBottomNav } from "./MobileBottomNav";
 import { OfflineBanner } from "./OfflineBanner";
 import { RefundPolicyToastGate } from "@/features/billing/components/RefundPolicyToastGate";
 import { AdSlot } from "@/features/ads/components/AdSlot";
+import { MfaApprovalWatcher } from "@/app/components/security/MfaApprovalWatcher";
+import { PlannerFloatingOverlay } from "@/features/planner/components/PlannerFloatingOverlay";
 
 export function Root() {
   const location = useLocation();
@@ -46,6 +48,8 @@ export function Root() {
         }
       />
       <ApplicationExtractionMonitor />
+      <MfaApprovalWatcher />
+      <PlannerFloatingOverlay enabled={isAuthenticated && !isAdmin} />
       <OfflineBanner />
       <RefundPolicyToastGate enabled={isAuthenticated && !isAdmin} />
       {!isAdmin && <Header />}

@@ -14,6 +14,9 @@ public interface CorrectionMapper {
 
     CorrectionRequest findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
+    CorrectionRequest findByUserIdAndRequestKey(@Param("userId") Long userId,
+                                                @Param("requestKey") String requestKey);
+
     List<CorrectionRequest> findByUserId(@Param("userId") Long userId,
                                          @Param("applicationCaseId") Long applicationCaseId,
                                          @Param("correctionType") String correctionType,

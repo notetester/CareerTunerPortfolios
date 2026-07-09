@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { Bell, BellOff } from "lucide-react";
+import { Bell, BellOff, X, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useNotificationStore } from "../hooks/useNotificationStore";
 import { typeMeta, relTime } from "../types/notification";
+import { toast } from "./toast";
 import { ICON_MAP } from "./iconMap";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import type { Notification } from "../types/notification";
@@ -44,9 +45,12 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const {
-    notifications, unreadCount,
+    notifications, unreadCount, preference,
     fetchNotifications, pollNotifications, markAsRead, markAllAsRead,
+    deleteNotification, deleteAll, fetchPreference, setPushEnabled,
   } = useNotificationStore();
+
+  const pushEnabled = preference?.pushEnabled ?? true;
 
   useEffect(() => {
     fetchNotifications();
@@ -115,7 +119,10 @@ export function NotificationBell() {
         className="relative p-2 rounded-lg hover:bg-accent transition-colors"
         aria-label="알림"
         onClick={() => {
-          if (!open) fetchNotifications(); // 패널 열 때 최신 목록 동기화
+          if (!open) {
+            fetchNotifications(); // 패널 열 때 최신 목록 동기화
+            fetchPreference();    // 끄기 버튼 상태 동기화
+          }
           setOpen((o) => !o);
         }}
       >
@@ -133,13 +140,30 @@ export function NotificationBell() {
               <Bell className="size-4" /> 알림
               {unreadCount > 0 && <span className="ct-belln__hcount">{unreadCount}</span>}
             </h4>
-            <button
-              className="ct-belln__markall"
-              disabled={unreadCount === 0}
-              onClick={() => markAllAsRead()}
-            >
-              모두 읽음
-            </button>
+            <div className="ct-belln__headactions">
+              <button
+                className="ct-belln__markall"
+                disabled={unreadCount === 0}
+                onClick={() => markAllAsRead()}
+              >
+                모두 읽음
+              </button>
+              <button
+                className="ct-belln__clear"
+                disabled={notifications.length === 0}
+                onClick={async () => {
+                  if (notifications.length === 0) return;
+                  if (!window.confirm("모든 알림을 삭제할까요? 되돌릴 수 없습니다.")) return;
+                  try {
+                    await deleteAll();
+                  } catch {
+                    toast.error("전체 삭제에 실패했습니다.");
+                  }
+                }}
+              >
+                <Trash2 /> 전체 삭제
+              </button>
+            </div>
           </div>
 
           {/* List */}
@@ -163,6 +187,17 @@ export function NotificationBell() {
                     <div className="ct-belln__m">{n.message}</div>
                     <div className="ct-belln__time">{relTime(n.createdAt)}</div>
                   </div>
+                  <button
+                    type="button"
+                    className="ct-belln__del"
+                    aria-label="알림 삭제"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNotification(n.id).catch(() => toast.error("알림 삭제에 실패했습니다."));
+                    }}
+                  >
+                    <X />
+                  </button>
                 </div>
               ))
             )}
@@ -170,7 +205,22 @@ export function NotificationBell() {
 
           {/* Footer */}
           <div className="ct-belln__foot">
-            <button onClick={handleSeeAll}>전체 알림 보기</button>
+            <div className="ct-belln__footrow">
+              <button
+                className="ct-belln__toggle"
+                onClick={async () => {
+                  try {
+                    await setPushEnabled(!pushEnabled);
+                    toast.success(pushEnabled ? "알림을 껐어요." : "알림을 켰어요.");
+                  } catch {
+                    toast.error("알림 설정 변경에 실패했습니다.");
+                  }
+                }}
+              >
+                {pushEnabled ? <><BellOff className="size-4" /> 알림 끄기</> : <><Bell className="size-4" /> 알림 켜기</>}
+              </button>
+              <button onClick={handleSeeAll}>전체 알림 보기</button>
+            </div>
           </div>
         </div>
       )}

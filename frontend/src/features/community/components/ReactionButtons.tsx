@@ -11,6 +11,16 @@ interface ReactionButtonsProps {
 }
 
 /**
+ * 리액션 성공 토스트 문구. 추천/비추천은 공개 카운트가 즉시 갱신돼 피드백이 명확하므로 토스트 없음.
+ * 효과가 눈에 덜 보이는 개인화(LIKE/DISLIKE)·개인 저장(BOOKMARK)만 토스트로 확인해준다.
+ */
+const REACTION_TOAST: Partial<Record<ReactionType, { on: string; off: string }>> = {
+  LIKE: { on: "맞춤 탭에서 비슷한 글을 더 추천해드릴게요.", off: "‘이런 글 더 보기’를 취소했습니다." },
+  DISLIKE: { on: "맞춤 탭에서 비슷한 글을 덜 보여드릴게요.", off: "‘이런 글 그만 보기’를 취소했습니다." },
+  BOOKMARK: { on: "즐겨찾기에 추가했습니다.", off: "즐겨찾기를 해제했습니다." },
+};
+
+/**
  * 게시글 반응 바 (본문 하단, 댓글 위).
  * 성격별로 분리 배치:
  *  - 상단 독립: 익명으로 반응(상태 토글).
@@ -31,7 +41,9 @@ export function ReactionButtons({ post }: ReactionButtonsProps) {
       if (busy) return;
       setBusy(true);
       try {
-        await toggleReaction("POST", post.id, type);
+        const result = await toggleReaction("POST", post.id, type);
+        const msg = REACTION_TOAST[type];
+        if (msg) toast.success(result.active ? msg.on : msg.off);
       } catch (err) {
         toast.error(err instanceof Error && err.message ? err.message : "리액션 처리에 실패했습니다.");
       } finally {

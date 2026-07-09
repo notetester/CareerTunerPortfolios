@@ -234,14 +234,43 @@ export const nicknameProfileRoutes: MockRoute[] = [
     pattern: /^\/account\/email-registration$/,
     handler: ({ body }) => {
       const req = body as { email?: string };
-      account.email = (req?.email ?? account.email).trim().toLowerCase();
+      account.email = (req?.email ?? account.email ?? "").trim().toLowerCase();
       account.emailVerified = true;
       account.temporaryEmail = false;
       account.emailRegistrationRequired = false;
       return null;
     },
   },
+  {
+    method: "POST",
+    pattern: /^\/account\/social\/([^/]+)\/link-url$/,
+    handler: ({ params }) => {
+      const provider = String(params[0] ?? "").toUpperCase();
+      if (!account.linkedProviders.includes(provider)) {
+        account.linkedProviders = [...account.linkedProviders, provider];
+      }
+      return { url: `/profile/detail?socialLinked=${encodeURIComponent(provider)}&socialMock=1` };
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/account\/social\/([^/]+)$/,
+    handler: ({ params }) => {
+      const provider = String(params[0] ?? "").toUpperCase();
+      const hasLocal = account.passwordEnabled && (!!account.loginId || (account.emailVerified && !account.temporaryEmail));
+      const remaining = account.linkedProviders.filter((p) => p !== provider);
+      if (!hasLocal && remaining.length === 0) {
+        throw new Error("연동 해제 후 사용할 수 있는 로그인 수단이 남아 있지 않습니다.");
+      }
+      account.linkedProviders = remaining;
+      return account;
+    },
+  },
   { method: "POST", pattern: /^\/auth\/password\/reset-request$/, handler: () => null },
+  { method: "POST", pattern: /^\/auth\/find-id\/request$/, handler: () => null },
+  { method: "GET", pattern: /^\/auth\/find-id\/verify$/, handler: () => ({ loginId: account.loginId ?? "dem***01" }) },
+  { method: "GET", pattern: /^\/auth\/check\/email$/, handler: ({ query }) => ({ duplicate: query.get("value") === account.email }) },
+  { method: "GET", pattern: /^\/auth\/check\/login-id$/, handler: ({ query }) => ({ duplicate: query.get("value") === account.loginId }) },
 
   // ── 전화번호 SMS OTP(데모: 실 키 없이 발송→입력→검증 완결) ──
   { method: "GET", pattern: /^\/auth\/phone\/status$/, handler: () => ({ phone: account.phone, phoneVerified: account.phoneVerified }) },

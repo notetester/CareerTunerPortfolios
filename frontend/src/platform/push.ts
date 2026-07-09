@@ -5,6 +5,7 @@
  * - 키/플러그인 미설정: 브라우저/OS 권한 요청까지는 동작하고, 구독 생성은 건너뛴다(무해).
  */
 import { api } from "@/app/lib/api";
+import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
 import { isNativeApp, nativePlugin, platformName } from "./capacitor";
 import { toAppPath } from "./deepLink";
 
@@ -34,7 +35,7 @@ export function pushPermission(): NotificationPermission | "unsupported" {
   return Notification.permission;
 }
 
-function urlBase64ToUint8Array(base64: string): Uint8Array {
+function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(b64);
@@ -108,7 +109,7 @@ let nativePushInitialized = false;
  * 네이티브 푸시 배선 — 앱 시작 시 1회 호출(App.tsx). 네이티브가 아니면 즉시 반환.
  * 1) Android 알림 채널 4종 생성(소리/진동 제어)
  * 2) 푸시 탭 → 백엔드 FCM 이 넣는 data.url 로 앱 내 이동
- * 3) 포그라운드 수신 → 알림 목록/뱃지 갱신(동적 import 로 순환 의존 회피)
+ * 3) 포그라운드 수신 → 알림 목록/뱃지 갱신
  */
 export function initNativePush(navigate: (path: string) => void): void {
   if (nativePushInitialized || !isNativeApp()) return;
@@ -135,11 +136,9 @@ export function initNativePush(navigate: (path: string) => void): void {
   // 포그라운드 수신 — 알림 스토어 폴링을 즉시 트리거해 뱃지/토스트를 갱신한다.
   try {
     plugin.addListener("pushNotificationReceived", () => {
-      void import("@/features/notification/hooks/useNotificationStore")
-        .then(({ useNotificationStore }) => useNotificationStore.getState().pollNotifications())
-        .catch(() => {
-          /* no-op */
-        });
+      void useNotificationStore.getState().pollNotifications().catch(() => {
+        /* no-op */
+      });
     });
   } catch {
     /* no-op */

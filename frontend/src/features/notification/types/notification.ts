@@ -47,11 +47,14 @@ export type UserNotificationType =
   | "COMPANY_APPLY_RESULT"
   | "JOB_POSTING_REVIEW_RESULT"
   | "POST_HIDDEN"
+  | "POST_IMAGE_BLURRED"
+  | "COMMUNITY_STRIKE_WARNING"
   | "POST_REMOVED"
   | "POST_RESTORED"
   | "NOTICE"
   | "TICKET_ANSWERED"
   | "ACCOUNT_BLOCKED"
+  | "MFA_LOGIN_APPROVAL"
   | "FRIEND_REQUEST"
   | "FRIEND_ACCEPTED"
   | "ROOM_INVITE"
@@ -68,7 +71,8 @@ export type UserNotificationType =
   | "PAYMENT_SCHEDULED"
   | "SUBSCRIPTION_CANCELED"
   | "CREDIT_RECHARGED"
-  | "REFUND_RESULT";
+  | "REFUND_RESULT"
+  | "SCHEDULE_REMINDER";
 
 /* ── 발신자 관계 (댓글·답글·쪽지·채팅 알림의 세부 필터 차원) ── */
 export type SenderRelation = "stranger" | "friend" | "company" | "operator";
@@ -175,6 +179,8 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   COMPANY_APPLY_RESULT:      { cat: "notice",      icon: "Building2",          variant: "info",    cta: "신청 결과 보기" },
   JOB_POSTING_REVIEW_RESULT: { cat: "notice",      icon: "Briefcase",          variant: "info",    cta: "공고 검토 결과" },
   POST_HIDDEN:               { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "가이드라인 보기" },
+  POST_IMAGE_BLURRED:        { cat: "community",   icon: "EyeOff",             variant: "warning", cta: "게시글 보기" },
+  COMMUNITY_STRIKE_WARNING:  { cat: "community",   icon: "AlertTriangle",      variant: "warning", cta: "가이드라인 보기" },
   POST_REMOVED:              { cat: "community",   icon: "Trash2",             variant: "danger",  cta: "가이드라인 보기" },
   POST_RESTORED:             { cat: "community",   icon: "RotateCcw",          variant: "success", cta: "게시글 보기" },
   POST_SUMMARY_READY:        { cat: "community",   icon: "Sparkles",           variant: "info",    cta: "요약 보기" },
@@ -198,10 +204,12 @@ export const TYPE_META: Record<NotificationType, TypeMeta> = {
   SUBSCRIPTION_CANCELED:     { cat: "billing",     icon: "CalendarX",          variant: "info",    cta: "구독 상태 보기" },
   CREDIT_RECHARGED:          { cat: "billing",     icon: "CreditCard",         variant: "success", cta: "크레딧 보기" },
   REFUND_RESULT:             { cat: "billing",     icon: "CreditCard",         variant: "info",    cta: "환불 결과 보기" },
+  SCHEDULE_REMINDER:         { cat: "notice",      icon: "CalendarClock",      variant: "warning", cta: "일정 보기" },
   /* 공지 */
   NOTICE:                    { cat: "notice",      icon: "Megaphone",          variant: "warning", cta: "공지 보기" },
   TICKET_ANSWERED:           { cat: "notice",      icon: "MessageSquareReply", variant: "info",    cta: "문의 답변 보기", actor: true },
   ACCOUNT_BLOCKED:           { cat: "notice",      icon: "ShieldAlert",        variant: "danger",  cta: "문의하기" },
+  MFA_LOGIN_APPROVAL:         { cat: "notice",      icon: "ShieldCheck",        variant: "warning", cta: "로그인 승인하기" },
   /* 관리자 */
   NEW_REPORT:                { cat: "admin",       icon: "Flag",               variant: "danger",  cta: "신고 확인" },
   NEW_TICKET:                { cat: "admin",       icon: "Ticket",             variant: "info",    cta: "문의 확인",      urgent: false },
@@ -295,6 +303,8 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   COMPANY_APPLY_RESULT: "notice",
   JOB_POSTING_REVIEW_RESULT: "notice",
   POST_HIDDEN: "community",
+  POST_IMAGE_BLURRED: "community",
+  COMMUNITY_STRIKE_WARNING: "community",
   POST_REMOVED: "community",
   POST_RESTORED: "community",
   POST_SUMMARY_READY: "community",
@@ -315,10 +325,12 @@ export const TYPE_TO_CATEGORY: Record<NotificationType, NotificationCategory> = 
   SUBSCRIPTION_CANCELED: "billing",
   CREDIT_RECHARGED: "billing",
   REFUND_RESULT: "billing",
+  SCHEDULE_REMINDER: "notice",
   /* 공지/문의 */
   NOTICE: "notice",
   TICKET_ANSWERED: "notice",
   ACCOUNT_BLOCKED: "notice",
+  MFA_LOGIN_APPROVAL: "notice",
   /* 관리자 */
   NEW_REPORT: "admin",
   NEW_TICKET: "admin",

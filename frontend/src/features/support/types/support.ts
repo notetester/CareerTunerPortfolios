@@ -27,11 +27,20 @@ export interface SupportTicket {
   createdAt: string;
 }
 
+export interface TicketAttachment {
+  id: number;
+  name: string;
+  size: number;
+  contentType?: string;
+  contentUrl: string;
+}
+
 export interface TicketMessageView {
   id: number;
   senderType: "USER" | "ADMIN";
   content: string;
   createdAt: string;
+  attachments?: TicketAttachment[];
 }
 
 export interface TicketThread {

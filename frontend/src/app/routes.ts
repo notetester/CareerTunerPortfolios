@@ -7,6 +7,7 @@ import { ApplicationDetailPage } from "./pages/ApplicationDetail";
 import { AIInterviewPage } from "./pages/AIInterview";
 import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
+import { PlannerPage } from "./pages/Planner";
 import { CommunityPage } from "./pages/Community";
 import { MessengerPage } from "./pages/Messenger";
 import { BillingPage } from "./pages/Billing";
@@ -24,8 +25,11 @@ import { AuthCallbackPage } from "./pages/AuthCallback";
 import { SocialConsentPage } from "./pages/SocialConsent";
 import { VerifyEmailResultPage } from "./pages/VerifyEmailResult";
 import { ForgotPasswordPage } from "./pages/ForgotPassword";
+import { FindIdPage } from "./pages/FindId";
 import { ResetPasswordPage } from "./pages/ResetPassword";
 import { ReleaseDormantPage } from "./pages/ReleaseDormant";
+import { MfaLoginPage } from "./pages/MfaLogin";
+import { MfaApprovalsPage } from "./pages/MfaApprovals";
 import { adminRoutes } from "../admin/routes";
 import NotificationPage from "@/features/notification/pages/NotificationPage";
 import { CommunityActivityPage } from "@/features/community/pages/CommunityActivityPage";
@@ -61,11 +65,13 @@ export const router = createBrowserRouter([
       { path: "interview", Component: AIInterviewPage },
       // 모바일 세션 스레드(Claude 앱 문법) — 하단 탭 "세션" + 디스패치 딥링크 진입 (interview 소유, D)
       { path: "m/sessions", Component: MobileSessionsPage },
+      { path: "m/mfa-approvals", Component: MfaApprovalsPage },
       { path: "m/session/:id", Component: MobileSessionThreadPage },
       // 폰 마이크 핸드오프 송신 페이지 — 데스크탑 음성면접의 원격 마이크 (interview 소유, D)
       { path: "mic-remote", Component: MicRemotePage },
       { path: "correction", Component: CorrectionPage },
       { path: "analysis", Component: AnalysisPage },
+      { path: "planner", Component: PlannerPage },
       { path: "messenger", Component: MessengerPage },
       { path: "community", Component: CommunityPage },
       // 알림/딥링크용 글 상세 경로. 같은 CommunityPage가 :postId를 읽어 상세 뷰를 연다. (팀장 승인 2026-06-19)
@@ -110,8 +116,11 @@ export const router = createBrowserRouter([
       { path: "auth/social-consent", Component: SocialConsentPage },
       { path: "auth/verify-email/result", Component: VerifyEmailResultPage },
       { path: "auth/forgot-password", Component: ForgotPasswordPage },
+      { path: "auth/find-id", Component: FindIdPage },
+      { path: "auth/find-id/result", Component: FindIdPage },
       { path: "auth/reset-password", Component: ResetPasswordPage },
       { path: "auth/release-dormant", Component: ReleaseDormantPage },
+      { path: "auth/mfa", Component: MfaLoginPage },
       { path: "notifications", Component: NotificationPage },
       ...adminRoutes,
     ],

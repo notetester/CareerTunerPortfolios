@@ -18,7 +18,20 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
+import com.careertuner.auth.dto.LoginResponse;
 import com.careertuner.auth.dto.MeResponse;
+import com.careertuner.auth.dto.FindIdRequest;
+import com.careertuner.auth.dto.FindIdVerifyResponse;
+import com.careertuner.auth.dto.MfaApprovalRequest;
+import com.careertuner.auth.dto.MfaBackupCodesResponse;
+import com.careertuner.auth.dto.MfaChallengeResponse;
+import com.careertuner.auth.dto.MfaDisableRequest;
+import com.careertuner.auth.dto.MfaLoginStatusResponse;
+import com.careertuner.auth.dto.MfaLoginVerifyRequest;
+import com.careertuner.auth.dto.MfaSetupStartResponse;
+import com.careertuner.auth.dto.MfaSetupVerifyRequest;
+import com.careertuner.auth.dto.MfaStatusResponse;
+import com.careertuner.auth.dto.OAuthCallbackResult;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RefreshRequest;
@@ -26,6 +39,7 @@ import com.careertuner.auth.dto.RegisterRequest;
 import com.careertuner.auth.dto.TokenRequest;
 import com.careertuner.auth.dto.TokenResponse;
 import com.careertuner.auth.service.AuthService;
+import com.careertuner.auth.service.MfaService;
 import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -48,6 +62,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthController {
 
     private final AuthService authService;
+    private final MfaService mfaService;
     private final CareerTunerProperties props;
 
     // ── 이메일 회원가입/로그인 ──
@@ -59,9 +74,21 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ApiResponse<TokenResponse> login(@Valid @RequestBody LoginRequest request,
+    public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request,
                                             HttpServletRequest servletRequest) {
         return ApiResponse.ok(authService.login(request, LoginRequestContext.from(servletRequest)));
+    }
+
+    @PostMapping("/mfa/login/verify")
+    public ApiResponse<LoginResponse> verifyMfaLogin(@Valid @RequestBody MfaLoginVerifyRequest request,
+                                                     HttpServletRequest servletRequest) {
+        return ApiResponse.ok(authService.verifyMfaLogin(request, LoginRequestContext.from(servletRequest)));
+    }
+
+    @GetMapping("/mfa/login/status")
+    public ApiResponse<MfaLoginStatusResponse> mfaLoginStatus(@RequestParam String challengeToken,
+                                                             HttpServletRequest servletRequest) {
+        return ApiResponse.ok(authService.mfaLoginStatus(challengeToken, LoginRequestContext.from(servletRequest)));
     }
 
     @PostMapping("/refresh")
@@ -90,11 +117,57 @@ public class AuthController {
         return ApiResponse.ok(authService.me(authUser.id()));
     }
 
+    @GetMapping("/mfa/status")
+    public ApiResponse<MfaStatusResponse> mfaStatus(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(mfaService.status(authUser));
+    }
+
+    @PostMapping("/mfa/setup/start")
+    public ApiResponse<MfaSetupStartResponse> startMfaSetup(@AuthenticationPrincipal AuthUser authUser,
+                                                            @RequestParam(required = false) String deviceName) {
+        return ApiResponse.ok(mfaService.startSetup(authUser, deviceName));
+    }
+
+    @PostMapping("/mfa/setup/verify")
+    public ApiResponse<MfaBackupCodesResponse> verifyMfaSetup(@AuthenticationPrincipal AuthUser authUser,
+                                                              @Valid @RequestBody MfaSetupVerifyRequest request) {
+        return ApiResponse.ok(mfaService.verifySetup(authUser, request.code()));
+    }
+
+    @PostMapping("/mfa/disable")
+    public ApiResponse<Void> disableMfa(@AuthenticationPrincipal AuthUser authUser,
+                                        @RequestBody MfaDisableRequest request) {
+        mfaService.disable(authUser, request);
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/mfa/backup-codes/regenerate")
+    public ApiResponse<MfaBackupCodesResponse> regenerateMfaBackupCodes(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(mfaService.regenerateBackupCodes(authUser));
+    }
+
+    @GetMapping("/mfa/push/pending")
+    public ApiResponse<java.util.List<MfaChallengeResponse>> pendingMfaPush(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(mfaService.pendingPushChallenges(authUser));
+    }
+
+    @PostMapping("/mfa/push/approve")
+    public ApiResponse<Void> approveMfaPush(@AuthenticationPrincipal AuthUser authUser,
+                                            @Valid @RequestBody MfaApprovalRequest request) {
+        mfaService.approvePushChallenge(authUser, request);
+        return ApiResponse.ok();
+    }
+
     // ── 중복 체크 ──
 
     @GetMapping("/check/email")
     public ApiResponse<Map<String, Boolean>> checkEmail(@RequestParam String value) {
         return ApiResponse.ok(Map.of("duplicate", authService.isEmailTaken(value)));
+    }
+
+    @GetMapping("/check/login-id")
+    public ApiResponse<Map<String, Boolean>> checkLoginId(@RequestParam String value) {
+        return ApiResponse.ok(Map.of("duplicate", authService.isLoginIdTaken(value)));
     }
 
     // ── 이메일 인증 ──
@@ -110,6 +183,20 @@ public class AuthController {
     public ApiResponse<Void> resendVerification(@RequestParam String email) {
         authService.resendVerification(email);
         return ApiResponse.ok();
+    }
+
+    @PostMapping("/find-id/request")
+    public ApiResponse<Void> requestFindId(@Valid @RequestBody FindIdRequest request,
+                                           HttpServletRequest servletRequest) {
+        authService.requestFindId(request.email(), LoginRequestContext.from(servletRequest));
+        return ApiResponse.ok();
+    }
+
+    @GetMapping("/find-id/verify")
+    public ApiResponse<FindIdVerifyResponse> verifyFindId(@RequestParam String token,
+                                                          HttpServletRequest servletRequest) {
+        return ApiResponse.ok(new FindIdVerifyResponse(
+                authService.verifyFindId(token, LoginRequestContext.from(servletRequest))));
     }
 
     @PostMapping("/password/reset-request")
@@ -153,19 +240,49 @@ public class AuthController {
                                               HttpServletRequest servletRequest) {
         String frontend = props.getApp().getFrontendUrl();
         try {
-            TokenResponse tokens = authService.handleOAuthCallback(provider, code, state,
+            OAuthCallbackResult result = authService.handleOAuthCallback(provider, code, state,
                     LoginRequestContext.from(servletRequest));
-            String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
-                    + "&refreshToken=" + enc(tokens.refreshToken())
-                    + "&expiresIn=" + tokens.expiresIn();
-            return redirect(frontend + fragment);
+            return redirectOAuthResult(frontend, result, false);
         } catch (Exception e) {
             log.warn("[{}] OAuth 콜백 실패: {}", provider, e.getMessage());
             return redirect(frontend + "/auth/callback#error=" + enc("social_login_failed"));
         }
     }
 
+    @GetMapping("/oauth/{provider}/mock-callback")
+    public ResponseEntity<Void> oauthMockCallback(@PathVariable String provider,
+                                                  @RequestParam(required = false) String state,
+                                                  HttpServletRequest servletRequest) {
+        String frontend = props.getApp().getFrontendUrl();
+        try {
+            OAuthCallbackResult result = authService.handleOAuthMockCallback(provider, state,
+                    LoginRequestContext.from(servletRequest));
+            return redirectOAuthResult(frontend, result, true);
+        } catch (Exception e) {
+            log.warn("[{}] OAuth mock 콜백 실패: {}", provider, e.getMessage());
+            return redirect(frontend + "/auth/callback#error=" + enc("social_login_failed"));
+        }
+    }
+
     // ── 내부 ──
+
+    private ResponseEntity<Void> redirectOAuthResult(String frontend, OAuthCallbackResult result, boolean mock) {
+        if (result.linked()) {
+            String query = "/profile/detail?socialLinked=" + enc(result.provider());
+            if (mock) {
+                query += "&socialMock=1";
+            }
+            return redirect(frontend + query);
+        }
+        TokenResponse tokens = result.tokens();
+        String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
+                + "&refreshToken=" + enc(tokens.refreshToken())
+                + "&expiresIn=" + tokens.expiresIn();
+        if (mock) {
+            fragment += "&mockOAuth=1";
+        }
+        return redirect(frontend + fragment);
+    }
 
     private ResponseEntity<Void> redirect(String url) {
         return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(url)).build();

@@ -12,6 +12,7 @@ import type {
   FitGapRecommendation,
 } from "@/features/analysis/types/fitAnalysis";
 import { parseJsonList, parseJsonValue } from "@/features/analysis/types/fitAnalysis";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 
 interface LearningRecommendationPanelProps {
   analyses: FitAnalysisDetail[];
@@ -97,15 +98,18 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
                       학습 항목을 {completionRate}% 완료했습니다. 적합도를 다시 분석해 점수가 얼마나 올랐는지 확인해보세요.
                     </p>
                     {onReanalyze && (
-                      <Button
-                        size="sm"
-                        className="shrink-0 bg-green-600 text-white hover:bg-green-700"
-                        disabled={reanalyzing}
-                        onClick={onReanalyze}
-                      >
-                        <RefreshCw className={`size-3.5 ${reanalyzing ? "animate-spin" : ""}`} />
-                        {reanalyzing ? "재분석 중..." : "적합도 재분석"}
-                      </Button>
+                      <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
+                        <AiChargeCostBadge featureType="FIT_ANALYSIS" />
+                        <Button
+                          size="sm"
+                          className="bg-green-600 text-white hover:bg-green-700"
+                          disabled={reanalyzing}
+                          onClick={onReanalyze}
+                        >
+                          <RefreshCw className={`size-3.5 ${reanalyzing ? "animate-spin" : ""}`} />
+                          {reanalyzing ? "재분석 중..." : "적합도 재분석"}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}

@@ -111,6 +111,26 @@ public class UserAccountServiceImpl implements UserAccountService {
     }
 
     @Override
+    @Transactional
+    public AccountInfoResponse unlinkSocial(Long userId, String provider) {
+        User user = requireUser(userId);
+        String normalizedProvider = normalizeProvider(provider);
+        int linkedCount = mapper.countLinkedProviders(userId);
+        boolean removingExisting = mapper.findLinkedProviders(userId).stream()
+                .anyMatch(p -> normalizedProvider.equalsIgnoreCase(p));
+        if (!removingExisting) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "연결된 소셜 계정이 없습니다.");
+        }
+        boolean remainingSocial = linkedCount > 1;
+        if (!remainingSocial && !hasUsableLocalLogin(user)) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "연동 해제 후 사용할 수 있는 로그인 수단이 남아 있지 않습니다. 먼저 아이디/이메일 로그인 또는 다른 소셜 계정을 추가해 주세요.");
+        }
+        mapper.deleteSocial(userId, normalizedProvider);
+        return toAccountInfo(requireUser(userId));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public UserResumeDetailResponse getResumeDetail(Long userId) {
         UserResumeDetail detail = mapper.findResumeDetail(userId);
@@ -205,6 +225,20 @@ public class UserAccountServiceImpl implements UserAccountService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "이메일을 입력해 주세요.");
         }
         return normalized;
+    }
+
+    private String normalizeProvider(String provider) {
+        String normalized = provider == null ? "" : provider.trim().toUpperCase(Locale.ROOT);
+        if (!normalized.equals("KAKAO") && !normalized.equals("NAVER") && !normalized.equals("GOOGLE")) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 소셜 제공자입니다.");
+        }
+        return normalized;
+    }
+
+    private boolean hasUsableLocalLogin(User user) {
+        return user.isPasswordEnabled()
+                && ((user.getLoginId() != null && !user.getLoginId().isBlank())
+                || (!isTemporaryEmail(user.getEmail()) && user.isEmailVerified()));
     }
 
     private boolean isTemporaryEmail(String email) {

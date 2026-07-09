@@ -2,7 +2,10 @@ package com.careertuner.community.service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +37,12 @@ import com.careertuner.community.mapper.CommunityTagMapper;
 import com.careertuner.community.mapper.PostScrapMapper;
 import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.event.InterviewExtractRequiredEvent;
+import com.careertuner.community.moderation.domain.AiResultStatus;
+import com.careertuner.community.moderation.domain.AiTaskType;
+import com.careertuner.community.moderation.domain.PostAiResult;
+import com.careertuner.community.moderation.event.PostImageModerationRequiredEvent;
 import com.careertuner.community.moderation.event.PostModerationRequiredEvent;
+import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 import com.careertuner.community.moderation.event.PostTagRequiredEvent;
 import com.careertuner.nickname.dto.DisplayNameQuery;
 import com.careertuner.nickname.dto.DisplayNameResponse;
@@ -45,6 +53,7 @@ import com.careertuner.reward.service.RewardService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
@@ -63,6 +72,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     private final CommunitySubscriptionMapper subscriptionMapper;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final PostAiResultMapper aiResultMapper;
     private final PrivacyPolicyService privacyPolicyService;
     private final NicknameProfileService nicknameProfileService;
     private final PersonalizedFeedService personalizedFeedService;
@@ -272,6 +282,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         }
 
         eventPublisher.publishEvent(new PostModerationRequiredEvent(post.getId()));
+        eventPublisher.publishEvent(new PostImageModerationRequiredEvent(post.getId()));
         eventPublisher.publishEvent(new PostTagRequiredEvent(post.getId()));
         if (PostCategory.INTERVIEW_REVIEW == request.category()) {
             eventPublisher.publishEvent(new InterviewExtractRequiredEvent(post.getId()));
@@ -313,6 +324,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         }
 
         eventPublisher.publishEvent(new PostModerationRequiredEvent(postId));
+        eventPublisher.publishEvent(new PostImageModerationRequiredEvent(postId));
         eventPublisher.publishEvent(new PostTagRequiredEvent(postId));
         if (PostCategory.INTERVIEW_REVIEW.name().equals(post.getCategory())) {
             eventPublisher.publishEvent(new InterviewExtractRequiredEvent(postId));
@@ -456,8 +468,55 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 viewer.bookmarked(),
                 viewer.scrapped(),
                 viewer.subscribed(),
-                false
+                false,
+                resolveBlurredImages(post.getId())
         );
+    }
+
+    /**
+     * AI 이미지 검열(IMAGE_MODERATION)에서 블러 대상으로 판정된 본문 이미지 + 사유(category).
+     * 결과 없음/파싱 실패면 빈 목록 — 검열은 fail-open 이라 블러를 걸지 않는다.
+     */
+    private List<PostDetailResponse.BlurredImage> resolveBlurredImages(Long postId) {
+        try {
+            PostAiResult result = aiResultMapper.findByPostIdAndTaskType(postId, AiTaskType.IMAGE_MODERATION);
+            if (result == null || result.getStatus() != AiResultStatus.COMPLETED || result.getResultJson() == null) {
+                return List.of();
+            }
+            JsonNode root = objectMapper.readTree(result.getResultJson());
+            List<PostDetailResponse.BlurredImage> list = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            // images[] 에서 action=blur 인 항목 + 사유(category)
+            JsonNode images = root.path("images");
+            if (images.isArray()) {
+                for (JsonNode img : images) {
+                    if (!"blur".equals(img.path("action").asText())) {
+                        continue;
+                    }
+                    String url = img.path("url").asText();
+                    if (url == null || url.isBlank() || !seen.add(url)) {
+                        continue;
+                    }
+                    JsonNode cat = img.path("category");
+                    list.add(new PostDetailResponse.BlurredImage(
+                            url, cat.isMissingNode() || cat.isNull() ? null : cat.asText()));
+                }
+            }
+            // 폴백: flagged[] 만 있는 경우(수동 flag 등) — 사유 없음
+            JsonNode flagged = root.path("flagged");
+            if (flagged.isArray()) {
+                for (JsonNode node : flagged) {
+                    String url = node.asText();
+                    if (url != null && !url.isBlank() && seen.add(url)) {
+                        list.add(new PostDetailResponse.BlurredImage(url, null));
+                    }
+                }
+            }
+            return list;
+        } catch (Exception e) {
+            log.warn("이미지 검열 결과 조회 실패 postId={}: {}", postId, e.getMessage());
+            return List.of();
+        }
     }
 
     /** 차단 작성자 게시글 톰스톤 — 본문·태그·면접후기는 비우고 안내 문구만 내려간다. */
@@ -485,7 +544,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 false,
                 false,
                 false,
-                true
+                true,
+                Collections.emptyList()
         );
     }
 

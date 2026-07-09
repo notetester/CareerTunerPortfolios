@@ -9,10 +9,20 @@
         WHERE provider = #{provider} AND provider_user_id = #{providerUserId}
     </select>
 
+    <select id="findSocialByUserAndProvider" resultType="com.careertuner.auth.domain.UserSocial">
+        SELECT * FROM user_social
+        WHERE user_id = #{userId} AND provider = #{provider}
+    </select>
+
     <insert id="insertSocial" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_social (user_id, provider, provider_user_id)
         VALUES (#{userId}, #{provider}, #{providerUserId})
     </insert>
+
+    <delete id="deleteSocial">
+        DELETE FROM user_social
+        WHERE user_id = #{userId} AND provider = #{provider}
+    </delete>
 
     <!-- 이메일 인증 토큰 -->
     <insert id="insertEmailVerification" useGeneratedKeys="true" keyProperty="id">
@@ -26,6 +36,14 @@
 
     <update id="markEmailVerificationUsed">
         UPDATE email_verification SET used = 1, used_at = NOW() WHERE id = #{id}
+    </update>
+
+    <update id="expireUnusedEmailVerifications">
+        UPDATE email_verification
+        SET expired_at = CASE WHEN expired_at &gt; NOW() THEN NOW() ELSE expired_at END
+        WHERE email = #{email}
+          AND purpose = #{purpose}
+          AND used = 0
     </update>
 
     <!-- 리프레시 토큰 -->

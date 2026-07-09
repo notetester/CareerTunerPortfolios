@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { Sparkles, Youtube, Instagram, Twitter, MessageCircle } from "lucide-react";
+import { Camera, MessageCircle, Send, Sparkles, Video } from "lucide-react";
 import { isAppContext } from "@/platform/capacitor";
 
 const footerLinks = [
@@ -84,9 +84,9 @@ export function Footer() {
             {/* Social */}
             <div className="flex items-center gap-3 pt-2">
               {[
-                { icon: Youtube, label: "YouTube", href: "/company/social?channel=youtube" },
-                { icon: Instagram, label: "Instagram", href: "/company/social?channel=instagram" },
-                { icon: Twitter, label: "Twitter", href: "/company/social?channel=twitter" },
+                { icon: Video, label: "YouTube", href: "/company/social?channel=youtube" },
+                { icon: Camera, label: "Instagram", href: "/company/social?channel=instagram" },
+                { icon: Send, label: "Twitter", href: "/company/social?channel=twitter" },
                 { icon: MessageCircle, label: "KakaoTalk", href: "/company/social?channel=kakao" },
               ].map((s) => (
                 <Link

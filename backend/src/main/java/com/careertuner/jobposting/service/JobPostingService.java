@@ -12,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
+import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobposting.domain.JobPosting;
@@ -158,7 +159,7 @@ public class JobPostingService {
         if (jobPosting == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
         }
-        return JobPostingResponse.from(jobPosting);
+        return toResponse(jobPosting);
     }
 
     @Transactional(readOnly = true)
@@ -168,15 +169,24 @@ public class JobPostingService {
         if (jobPosting == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
         }
-        return JobPostingResponse.from(jobPosting);
+        return toResponse(jobPosting);
     }
 
     @Transactional(readOnly = true)
     public List<JobPostingResponse> getJobPostingRevisions(Long userId, Long applicationCaseId) {
         accessService.requireOwned(userId, applicationCaseId);
         return jobPostingMapper.findJobPostingRevisionsByCaseId(applicationCaseId).stream()
-                .map(JobPostingResponse::from)
+                .map(this::toResponse)
                 .toList();
+    }
+
+    /** created_at 은 DB CURRENT_TIMESTAMP(UTC)로 저장된다. 화면(KST) 표시를 위해 응답 직전 UTC→KST 로 보정한다. */
+    private JobPostingResponse toResponse(JobPosting jobPosting) {
+        if (jobPosting == null) {
+            return null;
+        }
+        jobPosting.setCreatedAt(BDisplayTime.dbToDisplay(jobPosting.getCreatedAt()));
+        return JobPostingResponse.from(jobPosting);
     }
 
     private JobPostingResponse saveExtractedPosting(Long applicationCaseId, ExtractedPosting extracted) {
@@ -200,7 +210,7 @@ public class JobPostingService {
                 if (inserted == null) {
                     throw new BusinessException(ErrorCode.NOT_FOUND, "저장된 공고문을 찾을 수 없습니다.");
                 }
-                return JobPostingResponse.from(inserted);
+                return toResponse(inserted);
             } catch (DuplicateKeyException ex) {
                 if (attempt == MAX_REVISION_INSERT_ATTEMPTS - 1) {
                     throw new BusinessException(ErrorCode.CONFLICT, "공고문 버전 충돌이 반복되었습니다. 다시 시도해 주세요.");

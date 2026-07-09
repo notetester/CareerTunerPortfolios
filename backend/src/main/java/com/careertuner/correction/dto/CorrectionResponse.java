@@ -24,6 +24,7 @@ public record CorrectionResponse(
         int chargedCredit,
         int totalTokens,
         int remainingCredit,
+        boolean replayed,
         LocalDateTime createdAt
 ) {
 
@@ -48,6 +49,7 @@ public record CorrectionResponse(
                 0,
                 0,
                 0,
+                false,
                 correction.getCreatedAt());
     }
 
@@ -64,6 +66,15 @@ public record CorrectionResponse(
                 chargeResult == null ? 0 : chargeResult.chargedCredit(),
                 Math.max(0, totalTokens),
                 chargeResult == null ? 0 : chargeResult.remainingCredit(),
+                false,
                 base.createdAt());
+    }
+
+    public CorrectionResponse asReplayed() {
+        return new CorrectionResponse(
+                id, applicationCaseId, correctionType, sourceType, sourceRefId,
+                originalText, improvedText, summary, issues, changeReasons, suggestions,
+                status, aiUsageLogId, chargeType, chargedCredit, totalTokens, remainingCredit,
+                true, createdAt);
     }
 }

@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { publishCreditBalanceChanged } from "@/app/lib/creditBalanceEvents";
 import { toast } from "@/features/notification/components/toast";
 import {
   acknowledgeRefundPolicy,
@@ -100,8 +101,16 @@ export async function runWithAiCharge<T>(
 export function toastAiChargeCompleted(preview: AiChargePreview, actual?: ActualAiCharge) {
   const actualType = actual?.chargeType ?? preview.chargeType;
   if (actualType === "TICKET") {
+    publishCreditBalanceChanged();
     toast.success("사용권 1회 차감이 완료되었습니다.");
   } else if (actualType === "CREDIT") {
+    const actualRemainingCredit = actual?.remainingCredit;
+    const remainingCredit = actualRemainingCredit !== undefined
+      && Number.isSafeInteger(actualRemainingCredit)
+      && actualRemainingCredit >= 0
+      ? actualRemainingCredit
+      : undefined;
+    publishCreditBalanceChanged(remainingCredit);
     if (preview.usageBased && actual?.chargedCredit == null) {
       toast.success("실제 사용량 기준 크레딧 정산이 완료되었습니다.");
       return;
