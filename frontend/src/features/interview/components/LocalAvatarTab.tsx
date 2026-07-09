@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ClipboardList, Download, Loader2, Lock, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
@@ -23,8 +24,7 @@ import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from
 import { BrowserSttTracker } from "../hooks/speechToText";
 import { createNegotiatedRecorder, isTtsSupported, mediaUnsupportedReason } from "../hooks/mediaSupport";
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
-import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
-import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
+import { type HandoffReason } from "./DeviceHandoffCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -49,7 +49,14 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
  * 채점하고(late fusion, ADR-006/007), 미동의/서버 미기동 시 온디바이스(MediaPipe)로 폴백한다.
  * 어느 경로든 원본 영상은 점수 산출 후 폐기되고 저장은 점수(JSON)만, 원하면 로컬 다운로드.
  */
-export function LocalAvatarTab({ session }: { session: InterviewSession | null }) {
+export function LocalAvatarTab({
+  session,
+  remoteCam = null,
+}: {
+  session: InterviewSession | null;
+  /** 폰 카메라 핸드오프 스트림(부모 소유). 무카메라/무마이크 기기에서 폰을 카메라로 사용. */
+  remoteCam?: MediaStream | null;
+}) {
   const tutorialActive = useTutorialStore((s) => s.mode !== "off");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -94,9 +101,8 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
 
   const ttsAvailable = isTtsSupported();
   const deviceCaps = useDeviceCapabilities();
-  // 폰 카메라 핸드오프로 받은 원격 스트림(카메라+마이크). 무카메라/무마이크 기기에서 폰을 카메라로 사용.
-  const [remoteCam, setRemoteCam] = useState<MediaStream | null>(null);
-  // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
+  // 이 기기에서 진행 불가한 원인 — 폰 핸드오프 카드는 부모(AvatarInterviewTab)가 렌더하고,
+  // 여기선 진행 가능 여부(canProceed) 게이팅에만 쓴다. remoteCam 은 부모가 소유·전달.
   const handoffReason: HandoffReason | null = !supported
     ? (mediaUnsupportedReason() ?? "unsupported")
     : deviceCaps.hasCamera === false
@@ -450,8 +456,9 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-500">
             면접관이 준비된 질문 {trial ? 1 : preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
-            읽어주면 웹캠으로 녹화·분석합니다. 외부 API 없이 무료.
+            읽어주면 웹캠으로 녹화·분석합니다. 외부 API 없이 자체 모델로 처리합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" />
 
           {(status === "idle" || status === "scored" || status === "error") && (
             <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
@@ -466,13 +473,6 @@ export function LocalAvatarTab({ session }: { session: InterviewSession | null }
                 채점·저장은 동일하게 동작합니다.
               </span>
             </label>
-          )}
-
-          {(handoffReason === "no-camera" || handoffReason === "no-microphone") && (
-            <RemoteMicConnectCard sessionId={session.id} onStream={setRemoteCam} withVideo />
-          )}
-          {handoffReason && !remoteCam && (
-            <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />
           )}
 
           {/* 화면: 면접관 placeholder(메인) + 내 웹캠(서브) */}

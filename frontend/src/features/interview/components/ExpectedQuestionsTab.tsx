@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { InterviewProgressBar } from "./InterviewProgressBar";
 import {
   generateExpectedQuestions,
@@ -141,7 +142,13 @@ function QuestionItem({
           rows={3}
           className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"
         />
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-1.5">
+            <AiChargeCostBadge featureType="INTERVIEW_ANSWER_EVAL" />
+            {isPressure && !isFollowUp && !rebuttalRequested && (
+              <AiChargeCostBadge featureType="INTERVIEW_FOLLOWUP_GEN" prefix="압박 꼬리질문" />
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -283,14 +290,17 @@ export function ExpectedQuestionsTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-bold text-slate-800">예상 면접 질문</h2>
-        {questions.length > 0 && (
-          <Button size="sm" variant="outline" className="gap-1.5" disabled={generating} onClick={handleGenerate}>
-            {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            {generating ? "생성 중…" : "질문 재생성"}
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <AiChargeCostBadge featureType="INTERVIEW_QUESTION_GEN" />
+          {questions.length > 0 && (
+            <Button size="sm" variant="outline" className="gap-1.5" disabled={generating} onClick={handleGenerate}>
+              {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              {generating ? "생성 중…" : "질문 재생성"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {error && (

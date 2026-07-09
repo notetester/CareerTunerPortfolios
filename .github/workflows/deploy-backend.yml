@@ -18,6 +18,12 @@ on:
       - 'docker-compose.prod.yml'
       - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
+    inputs:
+      correction_preflight_only:
+        description: 'EC2에서 E 첨삭 Ollama 접근 확인 후 .env만 갱신하고 배포는 생략'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -30,9 +36,84 @@ concurrency:
 env:
   BACKEND_IMAGE: ghcr.io/notetester/careertuner-backend
   WORKER_IMAGE: ghcr.io/notetester/careertuner-job-posting-worker
+  CORRECTION_AI_PROVIDER: self
+  CORRECTION_AI_BASE_URL: http://localhost:11434/v1
+  CORRECTION_AI_MODEL: careertuner-e-correction-3b:delivery-s-f16-20260708
+  CORRECTION_AI_PREFLIGHT_REQUIRED: 'false'
 
 jobs:
+  correction-ollama-preflight:
+    if: github.event_name == 'workflow_dispatch' && inputs.correction_preflight_only == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify deploy secrets are configured
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          missing=""
+          [ -z "$EC2_HOST" ]    && missing="$missing EC2_HOST"
+          [ -z "$EC2_USER" ]    && missing="$missing EC2_USER"
+          [ -z "$EC2_SSH_KEY" ] && missing="$missing EC2_SSH_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::배포 secret 미설정 ->$missing"
+            exit 1
+          fi
+
+      - name: Verify E correction Ollama and update EC2 env
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          CT_CORRECTION_PROVIDER: ${{ env.CORRECTION_AI_PROVIDER }}
+          CT_CORRECTION_BASE_URL: ${{ env.CORRECTION_AI_BASE_URL }}
+          CT_CORRECTION_MODEL: ${{ env.CORRECTION_AI_MODEL }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: CT_CORRECTION_PROVIDER,CT_CORRECTION_BASE_URL,CT_CORRECTION_MODEL
+          script: |
+            set -eu
+            cd ~/careertuner
+            test -f .env
+
+            ollama_api_base="${CT_CORRECTION_BASE_URL%/v1}"
+            check_ollama() {
+              for i in 1 2 3; do
+                if curl -fsS --connect-timeout 5 --max-time 15 "$ollama_api_base/api/version" >/dev/null \
+                  && tags="$(curl -fsS --connect-timeout 5 --max-time 20 "$ollama_api_base/api/tags")" \
+                  && printf '%s' "$tags" | grep -Fq "$CT_CORRECTION_MODEL"; then
+                  return 0
+                fi
+                echo "::warning::E correction Ollama preflight retry ${i}/3 failed"
+                sleep 5
+              done
+              return 1
+            }
+            check_ollama
+
+            backup=".env.bak.$(date +%Y%m%d%H%M%S)"
+            cp .env "$backup"
+            upsert_env() {
+              key="$1"
+              value="$2"
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*|${key}=${value}|" .env
+              else
+                printf '%s=%s\n' "$key" "$value" >> .env
+              fi
+            }
+            upsert_env CAREERTUNER_CORRECTION_AI_PROVIDER "$CT_CORRECTION_PROVIDER"
+            upsert_env CAREERTUNER_CORRECTION_AI_SELF_BASE_URL "$CT_CORRECTION_BASE_URL"
+            upsert_env CAREERTUNER_CORRECTION_AI_SELF_MODEL "$CT_CORRECTION_MODEL"
+            upsert_env CAREERTUNER_CORRECTION_AI_SELF_TEMPERATURE "0.0"
+
+            echo "E correction Ollama preflight OK"
+            echo "EC2 env backup: $backup"
+            grep -E '^CAREERTUNER_CORRECTION_AI_(PROVIDER|SELF_BASE_URL|SELF_MODEL|SELF_TEMPERATURE)=' .env | cut -d= -f1
+
   detect-changes:
+    if: github.event_name != 'workflow_dispatch' || inputs.correction_preflight_only != true
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.changes.outputs.backend }}
@@ -134,6 +215,7 @@ jobs:
           context: ./ml/job-posting-worker
           push: true
           build-args: |
+            PYTHON_VERSION=3.13
             INSTALL_OCR=true
           tags: |
             ${{ env.WORKER_IMAGE }}:latest
@@ -172,7 +254,7 @@ jobs:
           echo "배포 secret 확인됨(값 미출력)."
 
       - name: Copy compose files to EC2
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -180,8 +262,66 @@ jobs:
           source: "docker-compose.yml,docker-compose.prod.yml"
           target: "~/careertuner"
 
+      - name: Verify E correction Ollama and update EC2 env
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          CT_CORRECTION_PROVIDER: ${{ env.CORRECTION_AI_PROVIDER }}
+          CT_CORRECTION_BASE_URL: ${{ env.CORRECTION_AI_BASE_URL }}
+          CT_CORRECTION_MODEL: ${{ env.CORRECTION_AI_MODEL }}
+          CT_CORRECTION_PREFLIGHT_REQUIRED: ${{ env.CORRECTION_AI_PREFLIGHT_REQUIRED }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: CT_CORRECTION_PROVIDER,CT_CORRECTION_BASE_URL,CT_CORRECTION_MODEL,CT_CORRECTION_PREFLIGHT_REQUIRED
+          script: |
+            set -eu
+            cd ~/careertuner
+            test -f .env
+
+            ollama_api_base="${CT_CORRECTION_BASE_URL%/v1}"
+            check_ollama() {
+              for i in 1 2 3; do
+                if curl -fsS --connect-timeout 5 --max-time 15 "$ollama_api_base/api/version" >/dev/null \
+                  && tags="$(curl -fsS --connect-timeout 5 --max-time 20 "$ollama_api_base/api/tags")" \
+                  && printf '%s' "$tags" | grep -Fq "$CT_CORRECTION_MODEL"; then
+                  return 0
+                fi
+                echo "::warning::E correction Ollama preflight retry ${i}/3 failed"
+                sleep 5
+              done
+              return 1
+            }
+
+            backup=".env.bak.$(date +%Y%m%d%H%M%S)"
+            cp .env "$backup"
+            upsert_env() {
+              key="$1"
+              value="$2"
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*|${key}=${value}|" .env
+              else
+                printf '%s=%s\n' "$key" "$value" >> .env
+              fi
+            }
+            upsert_env CAREERTUNER_CORRECTION_AI_PROVIDER "$CT_CORRECTION_PROVIDER"
+            upsert_env CAREERTUNER_CORRECTION_AI_SELF_BASE_URL "$CT_CORRECTION_BASE_URL"
+            upsert_env CAREERTUNER_CORRECTION_AI_SELF_MODEL "$CT_CORRECTION_MODEL"
+            upsert_env CAREERTUNER_CORRECTION_AI_SELF_TEMPERATURE "0.0"
+            echo "EC2 env backup: $backup"
+            echo "E correction env updated"
+
+            if check_ollama; then
+              echo "E correction Ollama deploy preflight OK"
+            elif [ "$CT_CORRECTION_PREFLIGHT_REQUIRED" = "true" ]; then
+              echo "::error::E correction Ollama preflight failed and is required"
+              exit 1
+            else
+              echo "::warning::E correction Ollama is currently unreachable; backend deploy will continue with updated env"
+            fi
+
       - name: Pull & up on EC2
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}

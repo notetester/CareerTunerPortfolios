@@ -3,6 +3,7 @@ import { ArrowLeft, Mic, Radio } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import type { InterviewSession } from "../types/interview";
 import { RealtimeInterviewTab } from "./RealtimeInterviewTab";
 import { LocalVoiceInterviewTab } from "./LocalVoiceInterviewTab";
@@ -63,6 +64,7 @@ export function VoiceInterviewTab({ session }: { session: InterviewSession | nul
           <p className="text-sm text-slate-500">
             AI 면접관이 <b>음성으로 실시간 대화</b>합니다. 말로 묻고 끊김없이 주고받는 진짜 면접 경험. (OpenAI 기반)
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" className="mt-3" />
         </Card>
         <Card
           onClick={() => setMode("basic")}
@@ -71,11 +73,12 @@ export function VoiceInterviewTab({ session }: { session: InterviewSession | nul
           <div className="mb-2 flex items-center gap-2">
             <Mic className="size-5 text-emerald-600" />
             <span className="font-semibold text-slate-800">자체 AI 음성 면접</span>
-            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 무료</Badge>
+            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 자체 AI</Badge>
           </div>
           <p className="text-sm text-slate-500">
-            면접관이 질문을 읽어주면 <b>자동으로 녹음</b>됩니다. 자체 AI가 말 속도·톤·내용을 채점합니다. 외부 API 없이(무료) 동작합니다.
+            면접관이 질문을 읽어주면 <b>자동으로 녹음</b>됩니다. 자체 AI가 말 속도·톤·내용을 채점합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" className="mt-3" />
         </Card>
       </div>
     </div>

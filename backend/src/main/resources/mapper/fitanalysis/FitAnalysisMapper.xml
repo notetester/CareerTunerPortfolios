@@ -20,6 +20,7 @@
         <result property="conditionMatrix" column="condition_matrix"/>
         <result property="analysisConfidence" column="analysis_confidence"/>
         <result property="applyDecision" column="apply_decision"/>
+        <result property="certificateEvidence" column="certificate_evidence"/>
         <result property="model" column="model"/>
         <result property="promptVersion" column="prompt_version"/>
         <result property="status" column="status"/>
@@ -50,6 +51,7 @@
         fa.condition_matrix,
         fa.analysis_confidence,
         fa.apply_decision,
+        fa.certificate_evidence,
         fa.model,
         fa.prompt_version,
         fa.status,
@@ -106,9 +108,13 @@
         <result property="profileSkills" column="profile_skills"/>
         <result property="profileCertificates" column="profile_certificates"/>
         <result property="desiredJob" column="desired_job"/>
+        <result property="companySummary" column="company_summary"/>
+        <result property="recentIssues" column="recent_issues"/>
+        <result property="interviewPoints" column="interview_points"/>
     </resultMap>
 
-    <!-- 적합도 생성 입력: application_case(B) + 최신 job_analysis(B) + user_profile(A) 읽기 전용 조인. user_id로 소유권 검증. -->
+    <!-- 적합도 생성 입력: application_case(B) + 최신 job_analysis(B) + user_profile(A) + 최신 company_analysis(B, 선택)
+         읽기 전용 조인. company_analysis 는 기업 맥락(설명 참고용)일 뿐 판단값 계산엔 미사용. user_id로 소유권 검증. -->
     <select id="findGenerationSource" resultMap="FitAnalysisGenerationSourceMap">
         SELECT
             ja.id AS job_analysis_id,
@@ -124,11 +130,16 @@
             ja.duties,
             up.skills       AS profile_skills,
             up.certificates AS profile_certificates,
-            up.desired_job
+            up.desired_job,
+            ca.company_summary,
+            ca.recent_issues,
+            ca.interview_points
         FROM application_case ac
         LEFT JOIN job_analysis ja
             ON ja.id = (SELECT MAX(j.id) FROM job_analysis j WHERE j.application_case_id = ac.id)
         LEFT JOIN user_profile up ON up.user_id = ac.user_id
+        LEFT JOIN company_analysis ca
+            ON ca.id = (SELECT MAX(c.id) FROM company_analysis c WHERE c.application_case_id = ac.id)
         WHERE ac.id = #{applicationCaseId}
           AND ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
@@ -139,13 +150,13 @@
             (application_case_id, fit_score, matched_skills, missing_skills,
              recommended_study, recommended_certificates, strategy,
              source_snapshot, score_basis, gap_recommendations, certificate_recommendations,
-             strategy_actions, condition_matrix, analysis_confidence, apply_decision,
+             strategy_actions, condition_matrix, analysis_confidence, apply_decision, certificate_evidence,
              model, prompt_version, status, error_message)
         VALUES
             (#{applicationCaseId}, #{fitScore}, #{matchedSkills}, #{missingSkills},
              #{recommendedStudy}, #{recommendedCertificates}, #{strategy},
              #{sourceSnapshot}, #{scoreBasis}, #{gapRecommendations}, #{certificateRecommendations},
-             #{strategyActions}, #{conditionMatrix}, #{analysisConfidence}, #{applyDecision},
+             #{strategyActions}, #{conditionMatrix}, #{analysisConfidence}, #{applyDecision}, #{certificateEvidence},
              #{model}, #{promptVersion}, #{status}, #{errorMessage})
     </insert>
 

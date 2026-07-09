@@ -47,6 +47,9 @@ public final class CorrectionPromptCatalog {
 
             검증 실패 사유: %s
 
+            오류별 추가 지시:
+            %s
+
             이전 응답:
             <invalid_output>
             %s
@@ -65,7 +68,24 @@ public final class CorrectionPromptCatalog {
                 ? "unknown output contract violation"
                 : validationError.replaceAll("[\\r\\n]+", " ").trim();
         String invalidOutput = previousOutput == null ? "" : previousOutput.trim();
-        return SELF_REPAIR_PROMPT.formatted(reason, invalidOutput);
+        return SELF_REPAIR_PROMPT.formatted(reason, repairGuidance(reason), invalidOutput);
+    }
+
+    private static String repairGuidance(String reason) {
+        String lower = reason.toLowerCase();
+        if (lower.contains("cjk_leak")) {
+            return "모든 문자열에서 중국어·일본어 문자를 제거하고 자연스러운 한국어로 다시 작성한다.";
+        }
+        if (lower.contains("paragraph")) {
+            return "corrected_text의 문단 수를 원문과 정확히 맞추고 문단 사이는 빈 줄 하나로 구분한다.";
+        }
+        if (lower.contains("min_chars") || lower.contains("max_chars") || lower.contains("ratio")) {
+            return "corrected_text를 constraints의 min_chars 이상 max_chars 이하로 작성하고 target_chars에 최대한 맞춘다.";
+        }
+        if (lower.contains("changes")) {
+            return "changes를 3개 이상 작성하고 각 항목의 4개 필수 키를 모두 포함한다.";
+        }
+        return "검증 실패 사유에 나온 필드만 우선 수정하고 이미 유효한 필드와 JSON 구조는 유지한다.";
     }
 
     private CorrectionPromptCatalog() {

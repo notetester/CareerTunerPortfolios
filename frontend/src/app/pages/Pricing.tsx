@@ -8,6 +8,7 @@ import {
   getCreditProducts, getFeatureBenefitPolicies, getPlans,
   type AiFeatureBenefitPolicy, type CreditProduct, type SubscriptionPlan,
 } from "@/features/billing/api/billingApi";
+import { getAiFeatureLabel } from "@/features/billing/aiFeatureLabels";
 
 // 요금제 기능 비교표(마케팅 카피)는 플랜 코드별로 클라이언트에 둔다. 가격/이름은 API 값을 쓴다.
 const PLAN_FEATURES: Record<string, { label: string; value: boolean | string }[]> = {
@@ -47,21 +48,6 @@ const HIGHLIGHT_CODE = "PRO";
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
-const FEATURE_LABEL: Record<string, string> = {
-  APPLICATION_ANALYSIS: "공고/지원 건 분석",
-  JOB_POSTING_METADATA: "공고문 분석",
-  JOB_ANALYSIS: "공고 분석",
-  COMPANY_ANALYSIS: "기업 현황 조사",
-  FIT_ANALYSIS: "적합도 분석",
-  INTERVIEW_QUESTION: "예상 질문 생성",
-  INTERVIEW_ANSWER_EVAL: "면접 답변 평가",
-  INTERVIEW_REPORT: "면접 리포트",
-  CORRECTION_INTERVIEW_ANSWER: "면접 답변 첨삭",
-  CORRECTION_SELF_INTRO: "자기소개서 첨삭",
-  CORRECTION_RESUME: "이력서 첨삭",
-  CORRECTION_PORTFOLIO: "포트폴리오 첨삭",
-};
-
 function planFeatureRows(plan: SubscriptionPlan) {
   const benefits = (plan.benefits ?? []).filter((benefit) => benefit.active !== false);
   if (benefits.length === 0) return PLAN_FEATURES[plan.code] ?? [];
@@ -75,7 +61,7 @@ function featurePolicyRows(policies: AiFeatureBenefitPolicy[]) {
   return policies
     .filter((policy) => policy.active)
     .map((policy) => ({
-      feature: FEATURE_LABEL[policy.featureType] ?? policy.featureType,
+      feature: getAiFeatureLabel(policy.featureType),
       credit: policy.defaultCreditCost,
     }));
 }

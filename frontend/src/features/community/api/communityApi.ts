@@ -40,6 +40,8 @@ interface BackendPost {
   /** 신고 누적으로 가려진 글(비작성자에게 블러). */
   blurred?: boolean;
   reportCount?: number;
+  /** AI 이미지 검열에서 블러 대상으로 판정된 본문 이미지 + 사유(상세 응답에만 포함). */
+  blurredImages?: { url: string; category: string | null }[];
 }
 
 interface PostPageData {

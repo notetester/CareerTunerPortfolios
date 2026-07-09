@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   X, ArrowRight, ArrowLeft, Check, PenLine, FileText, UserRound, Briefcase,
-  Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, Github, Lightbulb,
+  Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, GitFork, Lightbulb,
   Minimize2, Maximize2, ClipboardList, CheckCircle2, RotateCcw,
 } from "lucide-react";
 
@@ -317,6 +317,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
                       company={null}
                       showFooter={false}
                       onRetry={() => void g.runReal()}
+                      onAttachCoverLetter={g.attachCoverLetter}
                       onNavigate={onNavigate}
                     />
                   )
@@ -372,10 +373,10 @@ function ServerWaitingView({ text, waitingSince, nextPollAt }: {
 
 type G = ReturnType<typeof useOnboardingGuide>;
 type FileRefs = {
-  cover: React.RefObject<HTMLInputElement>;
-  resume: React.RefObject<HTMLInputElement>;
-  portfolio: React.RefObject<HTMLInputElement>;
-  jd: React.RefObject<HTMLInputElement>;
+  cover: React.RefObject<HTMLInputElement | null>;
+  resume: React.RefObject<HTMLInputElement | null>;
+  portfolio: React.RefObject<HTMLInputElement | null>;
+  jd: React.RefObject<HTMLInputElement | null>;
 };
 
 /* ── STEP 1: 직군 ── */
@@ -450,13 +451,28 @@ function DocsStep({ g, fileRefs }: { g: G; fileRefs: FileRefs }) {
   );
 }
 
-function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.RefObject<HTMLInputElement> }) {
+function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.RefObject<HTMLInputElement | null> }) {
   const Icon = DOC_ICON[slot.icon];
   const mine = g.docs.filter((d) => d.slot === slot.key);
+  const [dragOver, setDragOver] = useState(false);
   return (
     <div>
-      <div className="flex items-center gap-2.5 rounded-xl border border-border px-3 py-2.5"
-        style={slot.key === "cover" ? { borderStyle: "dashed", borderColor: "var(--orch-point)", background: "var(--orch-surface)" } : undefined}>
+      <div className="flex items-center gap-2.5 rounded-xl border border-border px-3 py-2.5 transition-colors"
+        style={
+          dragOver
+            ? { borderStyle: "dashed", borderColor: "var(--orch-violet)", background: "var(--orch-surface)" }
+            : slot.key === "cover"
+              ? { borderStyle: "dashed", borderColor: "var(--orch-point)", background: "var(--orch-surface)" }
+              : undefined
+        }
+        onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+        onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) void g.addDoc(slot.key, slot.kind, f);
+        }}>
         <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0"
           style={{ background: "var(--orch-surface)", color: "var(--orch-violet)" }}>
           <Icon size={16} />
@@ -490,7 +506,7 @@ function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.Re
 
 function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
   const meta = LINK_FIELDS[lkey];
-  const Icon = lkey === "github" ? Github : lkey === "blog" ? ClipboardPaste : Link2;
+  const Icon = lkey === "github" ? GitFork : lkey === "blog" ? ClipboardPaste : Link2;
   const value = g.links[lkey] ?? "";
   return (
     <div>
@@ -538,11 +554,12 @@ function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
 
 /* ── STEP 4: 공고문 ── */
 function JdStep({ g, jdRef, bubble, serverMode }: {
-  g: G; jdRef: React.RefObject<HTMLInputElement>;
+  g: G; jdRef: React.RefObject<HTMLInputElement | null>;
   bubble?: string;
   /** ④ 온보딩 매핑 모드 — 붙여넣기 영역을 크게(입력 방식 자체는 링크·파일·붙여넣기 모두 동일 지원). */
   serverMode?: boolean;
 }) {
+  const [dragOver, setDragOver] = useState(false);
   return (
     <>
       <GuideBubble text={bubble ?? COPY.jd} />
@@ -554,8 +571,17 @@ function JdStep({ g, jdRef, bubble, serverMode }: {
       </div>
       <div className="flex gap-2 mb-2.5">
         <button onClick={() => jdRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+          onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) void g.addJdFile(f);
+          }}
+          style={dragOver ? { borderStyle: "dashed", borderColor: "var(--orch-violet)", color: "var(--orch-violet)" } : undefined}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
-          <FileUp size={13} /> 파일 업로드
+          <FileUp size={13} /> {dragOver ? "여기에 놓기" : "파일 업로드"}
         </button>
         <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground">
           <ClipboardPaste size={13} /> 텍스트 붙여넣기 ↓

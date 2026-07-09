@@ -402,6 +402,7 @@ export function AppHome() {
                 caseId={chat.runCaseId}
                 company={chat.runPlan?.slots.company ?? null}
                 onRetry={chat.retryRun}
+                onAttachCoverLetter={chat.attachCoverLetter}
                 onNavigate={navigateFromWork}
               />
               {chat.runError && !chat.runRunning && (

@@ -101,6 +101,7 @@ export async function runWithAiCharge<T>(
 export function toastAiChargeCompleted(preview: AiChargePreview, actual?: ActualAiCharge) {
   const actualType = actual?.chargeType ?? preview.chargeType;
   if (actualType === "TICKET") {
+    publishCreditBalanceChanged();
     toast.success("사용권 1회 차감이 완료되었습니다.");
   } else if (actualType === "CREDIT") {
     const actualRemainingCredit = actual?.remainingCredit;

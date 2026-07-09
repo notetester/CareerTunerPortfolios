@@ -14,6 +14,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import {
   generateExpectedQuestions,
   getAgentSteps,
@@ -185,6 +186,7 @@ export function PracticeTab({
             <p className="text-sm text-slate-500">
               복습 테스트를 보려면 예상 면접 질문이 필요합니다. "예상 면접 질문" 탭에서 먼저 질문을 만들어 학습하세요.
             </p>
+            <AiChargeCostBadge featureType="INTERVIEW_QUESTION_GEN" />
             <Button
               onClick={handleGenerate}
               disabled={generating}
@@ -330,15 +332,18 @@ export function PracticeTab({
             rows={5}
             className="w-full resize-y rounded-lg border border-slate-200 p-3 text-sm outline-none focus:border-blue-400"
           />
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             {isLast ? (
-              <Button
-                disabled={!draft.trim()}
-                onClick={handleSubmitAll}
-                className="gap-1.5 bg-primary text-primary-foreground"
-              >
-                <Play className="size-4" /> 제출하고 채점
-              </Button>
+              <>
+                <AiChargeCostBadge featureType="INTERVIEW_ANSWER_EVAL" prefix="문항별 채점" />
+                <Button
+                  disabled={!draft.trim()}
+                  onClick={handleSubmitAll}
+                  className="gap-1.5 bg-primary text-primary-foreground"
+                >
+                  <Play className="size-4" /> 제출하고 채점
+                </Button>
+              </>
             ) : (
               <Button disabled={!draft.trim()} onClick={goNext} className="gap-1.5">
                 다음 질문 <ArrowRight className="size-4" />

@@ -262,8 +262,11 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   /**
    * ★ 실제 실행: collect() 스냅샷 → 공고 케이스 생성 → AutoPrepRequest 조립 → 오케 SSE.
    *   목값 없음. SSE 구독/누적은 useAutoPrepRun(run)이 전담 — 완료 감지는 아래 useEffect.
+   *
+   * extraAttachmentIds: 방금 업로드해 아직 docs 상태에 반영되지 않은 첨부(attachCoverLetter 경로).
+   *   setDocs 는 비동기라 이 클로저의 docs 가 못 보므로 id 를 직접 받아 합친다.
    */
-  const runReal = useCallback(async () => {
+  const runReal = useCallback(async (extraAttachmentIds: number[] = []) => {
     // 재실행(뒤로→jd→다시 다음) 대비 클린 슬레이트 — run.start 전 잠깐의 await 구간에서
     // 아래 완료 감지 effect 가 "이전 실행의 settled parts"를 이번 실행의 완료로 오인하지 않게 한다.
     run.reset();
@@ -282,9 +285,10 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
 
     // 2) AutoPrepRequest 조립.
     //    - 자소서(ATTACHMENT) 만 attachmentFileIds 로 (이력서/포폴 제외 — 소비 핸들러 없음).
-    const attachmentFileIds = docs
-      .filter((d) => d.kind === "ATTACHMENT" && d.id != null)
-      .map((d) => d.id as number);
+    const attachmentFileIds = Array.from(new Set([
+      ...docs.filter((d) => d.kind === "ATTACHMENT" && d.id != null).map((d) => d.id as number),
+      ...extraAttachmentIds,
+    ]));
     const req: AutoPrepRequest = {
       applicationCaseId: effectiveCaseId,
       attachmentFileIds: attachmentFileIds.length ? attachmentFileIds : undefined,
@@ -294,6 +298,16 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     // 3) 오케 SSE 실행 — run.parts 누적은 useAutoPrepRun 내부, 완료는 아래 effect 가 감지해 finalize.
     void run.start(req);
   }, [caseId, ensureCase, docs, run]);
+
+  /**
+   * SKIPPED 된 WRITE 카드에서 자소서를 뒤늦게 첨부 → 그 자리에서 재실행.
+   * docs 스텝을 건너뛴 사용자가 앞 단계로 되돌아가지 않고도 교정을 이어받게 한다.
+   */
+  const attachCoverLetter = useCallback(async (file: File) => {
+    const uploaded: UploadedFile = await uploadDocument(file, "ATTACHMENT");
+    setDocs((prev) => [...prev, { slot: "cover", kind: "ATTACHMENT", file, id: uploaded.id, uploading: false }]);
+    await runReal([uploaded.id]);
+  }, [runReal]);
 
   // ★ 실행 완료 감지: analyzing 단계에서 run 이 멈추고(running=false) 전 파트가 settle 되면 결과 조립.
   //   run.parts 는 useAutoPrepRun 이 SSE 로 채우는 살아있는 상태라 클로저 문제 없이 항상 최신값을 본다.
@@ -382,6 +396,7 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     go,
     ensureCase,
     runReal,
+    attachCoverLetter,
     reset,
     collect,
   };

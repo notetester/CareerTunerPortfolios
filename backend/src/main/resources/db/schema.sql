@@ -362,6 +362,7 @@ CREATE TABLE IF NOT EXISTS fit_analysis (
     condition_matrix         JSON NULL,                     -- 요구조건-스펙 비교 매트릭스(조건/유형/판정/근거)
     analysis_confidence      JSON NULL,                     -- 분석 신뢰도(level/입력 부족 사유)
     apply_decision           JSON NULL,                     -- 지원 판단 카드(APPLY/COMPLEMENT/HOLD + 이유·행동)
+    certificate_evidence     JSON NULL,                     -- 자격증 근거 snapshot(생성 시 1회 수집, 읽기는 DB만; 공식 출처·상태·메시지)
     model                    VARCHAR(80) NULL,
     prompt_version           VARCHAR(30) NULL,
     status                   VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
@@ -541,6 +542,81 @@ CREATE TABLE IF NOT EXISTS learning_plan_task (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id), KEY idx_learning_plan_task_plan (learning_plan_id, sort_order),
     CONSTRAINT fk_learning_plan_task_plan FOREIGN KEY (learning_plan_id) REFERENCES learning_plan (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS planner_memo (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    title VARCHAR(120) NULL,
+    content TEXT NULL,
+    color VARCHAR(20) NOT NULL DEFAULT 'yellow',
+    pinned TINYINT(1) NOT NULL DEFAULT 0,
+    overlay_visible TINYINT(1) NOT NULL DEFAULT 0,
+    opacity DECIMAL(3,2) NOT NULL DEFAULT 1.00,
+    application_case_id BIGINT NULL,
+    fit_analysis_id BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL,
+    PRIMARY KEY (id),
+    KEY idx_planner_memo_user (user_id, pinned, updated_at),
+    KEY idx_planner_memo_case (application_case_id),
+    KEY idx_planner_memo_fit (fit_analysis_id),
+    CONSTRAINT fk_planner_memo_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_planner_memo_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL,
+    CONSTRAINT fk_planner_memo_fit FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS planner_schedule_item (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT NULL,
+    kind VARCHAR(30) NOT NULL DEFAULT 'TASK',
+    status VARCHAR(30) NOT NULL DEFAULT 'PLANNED',
+    all_day TINYINT(1) NOT NULL DEFAULT 0,
+    timing_precision VARCHAR(20) NOT NULL DEFAULT 'MINUTE',
+    start_at DATETIME NOT NULL,
+    end_at DATETIME NULL,
+    timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Seoul',
+    application_case_id BIGINT NULL,
+    fit_analysis_id BIGINT NULL,
+    source_type VARCHAR(40) NOT NULL DEFAULT 'MANUAL',
+    source_ref VARCHAR(120) NULL,
+    source_snapshot_json JSON NULL,
+    overlay_visible TINYINT(1) NOT NULL DEFAULT 0,
+    opacity DECIMAL(3,2) NOT NULL DEFAULT 1.00,
+    pinned TINYINT(1) NOT NULL DEFAULT 0,
+    click_through TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL,
+    PRIMARY KEY (id),
+    KEY idx_planner_schedule_user_time (user_id, start_at, end_at),
+    KEY idx_planner_schedule_case (application_case_id, start_at),
+    KEY idx_planner_schedule_fit (fit_analysis_id),
+    KEY idx_planner_schedule_source (source_type, source_ref),
+    CONSTRAINT fk_planner_schedule_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_planner_schedule_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL,
+    CONSTRAINT fk_planner_schedule_fit FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS planner_schedule_reminder (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    schedule_item_id BIGINT NOT NULL,
+    remind_at DATETIME NOT NULL,
+    offset_minutes INT NULL,
+    channels_json JSON NULL,
+    sound_enabled TINYINT(1) NOT NULL DEFAULT 1,
+    vibration_enabled TINYINT(1) NOT NULL DEFAULT 1,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    sent_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_planner_reminder_due (status, remind_at),
+    KEY idx_planner_reminder_item (schedule_item_id, remind_at),
+    CONSTRAINT fk_planner_reminder_item FOREIGN KEY (schedule_item_id) REFERENCES planner_schedule_item (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS dashboard_insight (

@@ -125,8 +125,10 @@ const JOB_FIELDS: Record<string, JobField> = {
 };
 
 export function getField(role: string | null): JobField {
-  if (!role) return DEFAULT_FIELD;
-  return JOB_FIELDS[role] ?? DEFAULT_FIELD;
+  const base = !role ? DEFAULT_FIELD : (JOB_FIELDS[role] ?? DEFAULT_FIELD);
+  // GitHub 링크는 전 직군 공통(개발직군 한정 해제) — 없으면 링크 목록 맨 앞에 추가한다.
+  if (base.links.includes("github")) return base;
+  return { ...base, links: ["github", ...base.links] };
 }
 
 /* ════════════════ 서류 슬롯 ════════════════ */
