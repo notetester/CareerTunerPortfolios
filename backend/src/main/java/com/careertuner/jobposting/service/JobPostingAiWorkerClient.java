@@ -22,6 +22,7 @@ import com.careertuner.jobposting.service.JobPostingTextExtractor.ExtractedPosti
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 @Service
 public class JobPostingAiWorkerClient {
@@ -154,7 +155,7 @@ public class JobPostingAiWorkerClient {
             JsonNode meta = root.path("meta").isMissingNode() ? root : root.path("meta");
             JsonNode modelVersions = meta.path("modelVersions");
             String qualityReportJson = jsonValue(meta.path("qualityReportJson"), meta);
-            String modelVersionsJson = jsonValue(meta.path("modelVersionsJson"), modelVersions);
+            String modelVersionsJson = mergeOcrProvider(jsonValue(meta.path("modelVersionsJson"), modelVersions), "worker");
             return new ExtractedPosting(
                     text(root.path("sourceType"), sourceType),
                     text(root.path("uploadedFileUrl"), uploadedFileUrl),
@@ -167,7 +168,9 @@ public class JobPostingAiWorkerClient {
                     qualityReportJson,
                     modelVersionsJson,
                     meta.path("fallbackEligible").asBoolean(false),
-                    text(meta.path("fallbackReason"), warnings(meta)));
+                    text(meta.path("fallbackReason"), warnings(meta)),
+                    "worker",
+                    null);
         } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Python job posting worker response is invalid.");
         }
@@ -188,6 +191,29 @@ public class JobPostingAiWorkerClient {
             return null;
         }
         return objectMapper.writeValueAsString(fallback);
+    }
+
+    /**
+     * worker modelVersionsJson 을 보존하면서 {@code ocr.provider} 만 앱 확정값으로 보강.
+     * 기존 {@code ocr} 하위 정보(예: workerModel)는 유지하고 provider 만 덮어쓴다(설계: 앱 provider 가 최종 권위, worker 세부는 보존).
+     */
+    private String mergeOcrProvider(String modelVersionsJson, String provider) {
+        try {
+            ObjectNode node;
+            if (modelVersionsJson == null || modelVersionsJson.isBlank()) {
+                node = objectMapper.createObjectNode();
+            } else {
+                JsonNode parsed = objectMapper.readTree(modelVersionsJson);
+                node = parsed.isObject() ? (ObjectNode) parsed : objectMapper.createObjectNode();
+            }
+            JsonNode existingOcr = node.path("ocr");
+            ObjectNode ocr = existingOcr.isObject() ? (ObjectNode) existingOcr : objectMapper.createObjectNode();
+            ocr.put("provider", provider);
+            node.set("ocr", ocr);
+            return objectMapper.writeValueAsString(node);
+        } catch (JacksonException ex) {
+            return modelVersionsJson;
+        }
     }
 
     private static String text(JsonNode node, String fallback) {

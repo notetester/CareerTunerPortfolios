@@ -9,6 +9,7 @@ import {
   MessageSquare, PieChart,
 } from "lucide-react";
 import { getAnalysisHistory, getAnalysisSummary, refreshAnalysisSummary } from "@/features/analysis/api/analysisSummaryApi";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import type { AnalysisRunHistoryItem } from "@/features/analysis/api/analysisSummaryApi";
 import type { AnalysisSummary } from "@/features/analysis/types/analysisSummary";
 import { AiResultBadge } from "@/features/analysis/components/AiResultBadge";
@@ -310,17 +311,19 @@ export function AnalysisPage() {
                   <div className="font-bold text-blue-900 mb-2">
                     AI 장기 취업 전략 리포트 <AiResultBadge status={summary?.analysisRun.status} />
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="border-blue-300 bg-card/70 text-blue-700 hover:bg-card"
-                    title="AI 실행 전 사용권 우선 차감과 최소·최대 크레딧 범위를 안내합니다."
-                  >
-                    <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                    {refreshing ? "재분석 중..." : "재분석 (실행 전 비용 안내)"}
-                  </Button>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <AiChargeCostBadge featureType="CAREER_TREND" />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleRefresh}
+                      disabled={refreshing}
+                      className="border-blue-300 bg-card/70 text-blue-700 hover:bg-card"
+                    >
+                      <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                      {refreshing ? "재분석 중..." : "재분석"}
+                    </Button>
+                  </div>
                 </div>
                 {summary?.analysisRun && (
                   <div className="mb-2 text-xs text-blue-600">

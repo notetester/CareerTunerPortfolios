@@ -55,7 +55,7 @@ class CorrectionModelWarmupServiceTest {
         assertThat(first.status()).isEqualTo("STARTED");
         assertThat(second.status()).isEqualTo("ALREADY_WARM");
         assertThat(requestBody.get()).contains(
-                "careertuner-e-correction-3b:latest",
+                "careertuner-e-correction-3b:delivery-s-f16-20260708",
                 "\"prompt\":\"\"",
                 "\"keep_alive\":\"600s\"");
     }

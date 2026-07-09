@@ -4,6 +4,7 @@ import { Clock3, Columns3, FileText, Map, MessageSquare, ShieldAlert, Target } f
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import type { FitAnalysisDetail, FitGapRecommendation } from "@/features/analysis/types/fitAnalysis";
 import { parseJsonList, parseJsonValue, scoreTone } from "@/features/analysis/types/fitAnalysis";
+import { StrategyScheduleButton } from "@/features/planner/components/StrategyScheduleButton";
 
 interface StrategyPanelProps {
   analyses: FitAnalysisDetail[];
@@ -59,6 +60,7 @@ export function StrategyPanel({ analyses, loading, error }: StrategyPanelProps) 
                 {next24HourActions.length > 0 && <SimpleActionList title="지원 전 24시간 액션" icon="clock" items={next24HourActions} />}
                 {adverseStrategies.length > 0 && <SimpleActionList title="불리한 조건 대응 전략" icon="shield" items={adverseStrategies} />}
                 {toneStrategies.length > 0 && <ToneStrategyCard strategies={toneStrategies} />}
+                <StrategyScheduleButton fitAnalysisId={analysis.id} />
 
                 {/* 자기소개서에 "어떤 내용을 넣을지"만 제안한다(문장 첨삭은 E 담당 첨삭 기능 사용). */}
                 {essayPoints.length > 0 && (

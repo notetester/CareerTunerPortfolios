@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, Download, Loader2, Maximize2, PhoneOff, Play, SkipForward, Video } from "lucide-react";
+import { ClipboardList, Download, Loader2, Maximize2, PhoneOff, Play, SkipForward, UserCircle2, Video } from "lucide-react";
 import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
@@ -24,8 +25,7 @@ import {
 import { computeVisualScore, VisualMetricsTracker, type VisualScoreDetail } from "../hooks/visualAnalysis";
 import { createNegotiatedRecorder, mediaUnsupportedReason } from "../hooks/mediaSupport";
 import { useDeviceCapabilities } from "../hooks/deviceCapabilities";
-import { DeviceHandoffCard, type HandoffReason } from "./DeviceHandoffCard";
-import { RemoteMicConnectCard } from "./RemoteMicConnectCard";
+import { type HandoffReason } from "./DeviceHandoffCard";
 import type {
   InterviewQuestion,
   InterviewSession,
@@ -49,7 +49,17 @@ type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
  * ADR-006/007), 미동의/서버 미기동 시 온디바이스(MediaPipe)로 폴백한다. 어느 경로든 원본 영상은
  * 점수 산출 후 폐기되고 저장은 점수(JSON)만, 원하면 로컬 다운로드.
  */
-export function AvatarTab({ session }: { session: InterviewSession | null }) {
+export function AvatarTab({
+  session,
+  remoteCam = null,
+  onFallbackToBasic,
+}: {
+  session: InterviewSession | null;
+  /** 폰 카메라 핸드오프 스트림(부모 소유). 무카메라/무마이크 기기에서 폰을 카메라로 사용. */
+  remoteCam?: MediaStream | null;
+  /** 프리미엄(HeyGen) 연결이 실패하면 부모가 베이직 화상면접으로 전환하도록 알린다. */
+  onFallbackToBasic?: () => void;
+}) {
   const tutorialActive = useTutorialStore((s) => s.mode !== "off");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +91,8 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
   const chunksRef = useRef<Blob[]>([]);
   const questionsRef = useRef<string[]>([]);
   const finishingRef = useRef(false);
+  /** 아바타 스트림 준비(SESSION_STREAM_READY) 대기 워치독 — 안 오면 연결 실패로 처리. */
+  const streamTimeoutRef = useRef<number | null>(null);
   /** 녹화 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
   const recordFormatRef = useRef<string>("webm");
 
@@ -91,9 +103,8 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
     "MediaRecorder" in window;
 
   const deviceCaps = useDeviceCapabilities();
-  // 폰 카메라 핸드오프로 받은 원격 스트림(카메라+마이크). 무카메라/무마이크 기기에서 폰을 카메라로 사용.
-  const [remoteCam, setRemoteCam] = useState<MediaStream | null>(null);
-  // 이 기기에서 진행 불가한 원인 — 있으면 "폰으로 이어하기" 안내 카드를 띄운다.
+  // 이 기기에서 진행 불가한 원인 — 폰 핸드오프 카드는 부모(AvatarInterviewTab)가 렌더하고,
+  // 여기선 진행 가능 여부(canProceed) 게이팅에만 쓴다. remoteCam 은 부모가 소유·전달.
   const handoffReason: HandoffReason | null = !supported
     ? (mediaUnsupportedReason() ?? "unsupported")
     : deviceCaps.hasCamera === false
@@ -126,6 +137,10 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
   }, []);
 
   const cleanup = () => {
+    if (streamTimeoutRef.current) {
+      clearTimeout(streamTimeoutRef.current);
+      streamTimeoutRef.current = null;
+    }
     recorderRef.current?.state === "recording" && recorderRef.current.stop();
     recorderRef.current = null;
     voiceTrackerRef.current?.dispose();
@@ -204,6 +219,10 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
       const avatar = new LiveAvatarSession(avatarSession.sessionToken, { voiceChat: false });
       avatarRef.current = avatar;
       avatar.on(SessionEvent.SESSION_STREAM_READY, () => {
+        if (streamTimeoutRef.current) {
+          clearTimeout(streamTimeoutRef.current);
+          streamTimeoutRef.current = null;
+        }
         if (avatarVideoRef.current) avatar.attach(avatarVideoRef.current);
         setStatus("live");
       });
@@ -220,6 +239,19 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
           void finishInterview();
         }
       });
+
+      // HeyGen LiveAvatar 는 체험 한도 초과·WebRTC(UDP) 차단 시 스트림이 준비되지 않고
+      // "연결 중…"에서 무한 대기한다. 일정 시간 안에 SESSION_STREAM_READY 가 안 오면
+      // 연결 실패로 보고 정리 후 베이직 화상면접 폴백을 안내한다.
+      streamTimeoutRef.current = window.setTimeout(() => {
+        streamTimeoutRef.current = null;
+        cleanup();
+        setError(
+          "아바타 면접관 연결에 실패했습니다. HeyGen 체험 한도이거나 네트워크(WebRTC)가 막혀 있을 수 있습니다. 아래 베이직 화상 면접으로 바로 진행할 수 있습니다.",
+        );
+        setStatus("error");
+      }, 25000);
+
       await avatar.start();
     } catch (err) {
       cleanup();
@@ -437,19 +469,20 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
             아바타 면접관이 준비된 질문 {preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
             음성으로 묻고, 웹캠으로 표정·자세·음성을 분석해 종합 점수를 제공합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" />
 
           {keyMissing && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
-              아바타 면접 키(HEYGEN_API_KEY)가 설정되어 있지 않아 지금은 시작할 수 없습니다. 키를 설정하면
-              바로 이용할 수 있습니다.
-            </p>
-          )}
-
-          {(handoffReason === "no-camera" || handoffReason === "no-microphone") && (
-            <RemoteMicConnectCard sessionId={session.id} onStream={setRemoteCam} withVideo />
-          )}
-          {handoffReason && !remoteCam && (
-            <DeviceHandoffCard sessionId={session.id} reason={handoffReason} />
+            <div className="space-y-2 rounded-lg bg-amber-50 p-3">
+              <p className="text-sm text-amber-700">
+                아바타 면접 키(HEYGEN_API_KEY)가 설정되어 있지 않아 지금은 시작할 수 없습니다. 키를 설정하면
+                바로 이용할 수 있습니다.
+              </p>
+              {onFallbackToBasic && (
+                <Button variant="outline" size="sm" onClick={onFallbackToBasic} className="gap-1.5">
+                  <UserCircle2 className="size-4" /> 베이직(브라우저 TTS) 화상 면접으로 진행하기
+                </Button>
+              )}
+            </div>
           )}
 
           {/* 화면: 아바타(메인) + 내 웹캠(서브) */}
@@ -563,7 +596,16 @@ export function AvatarTab({ session }: { session: InterviewSession | null }) {
             </div>
           )}
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && (
+            <div className="space-y-2">
+              <p className="text-sm text-red-500">{error}</p>
+              {onFallbackToBasic && (
+                <Button variant="outline" size="sm" onClick={onFallbackToBasic} className="gap-1.5">
+                  <UserCircle2 className="size-4" /> 베이직(브라우저 TTS) 화상 면접으로 이어하기
+                </Button>
+              )}
+            </div>
+          )}
           {note && <p className="text-xs font-semibold text-slate-500">{note}</p>}
         </CardContent>
       </Card>

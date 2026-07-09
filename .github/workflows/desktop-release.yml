@@ -18,14 +18,14 @@ jobs:
       run:
         working-directory: desktop
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      # 러너에 이미 있는 MSVC 컴파일러 + Qt 6.8.3(msvc) 설치
+      # 러너에 이미 있는 MSVC 컴파일러 + Qt 6.11.1(msvc) 설치
       # qtmultimedia: 음성 녹음(VoiceRecorder)이 Qt Multimedia 를 요구 — 없으면 CMake find_package 실패
-      - name: Install Qt 6.8.3
-        uses: jurplel/install-qt-action@v4
+      - name: Install Qt 6.11.1
+        uses: jurplel/install-qt-action@v4.3.1
         with:
-          version: '6.8.3'
+          version: '6.11.1'
           host: windows
           target: desktop
           arch: win64_msvc2022_64
@@ -48,7 +48,7 @@ jobs:
           Compress-Archive -Path build/Release/* -DestinationPath "CareerTunerDesktop-$ver-win64.zip" -Force
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.1
         with:
           name: "CareerTuner Desktop ${{ github.ref_name }}"
           files: desktop/CareerTunerDesktop-*.zip

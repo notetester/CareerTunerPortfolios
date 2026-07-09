@@ -47,6 +47,7 @@ services:
     build:
       context: ./ml/job-posting-worker
       args:
+        PYTHON_VERSION: ${JOB_POSTING_WORKER_PYTHON_VERSION:-3.14}
         INSTALL_OCR: ${JOB_POSTING_WORKER_INSTALL_OCR:-false}
     image: careertuner-job-posting-worker:latest
     restart: unless-stopped

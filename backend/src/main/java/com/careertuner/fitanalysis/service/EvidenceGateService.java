@@ -8,6 +8,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.fitanalysis.ai.FitAnalysisAiCommand;
@@ -34,6 +36,13 @@ import com.careertuner.fitanalysis.ai.FitAnalysisAiResult;
  */
 @Service
 public class EvidenceGateService {
+
+    /**
+     * 게이트 감사 추적(계측). 결정별로 <b>R3 가 실제 감사한 텍스트</b>(userFacingTexts)와 판정·사유를 남긴다.
+     * 외부 캡처(API 응답)는 조립 후 뷰라 R3 감사입력과 다르므로, FP/FN 을 깨끗이 측정하려면 이 로그가 필요하다.
+     * 순수 관측 — 동작·판정값에 영향 없음. 활성화: 이 logger 를 DEBUG 로.
+     */
+    private static final Logger AUDIT = LoggerFactory.getLogger("careertuner.evidencegate.audit");
 
     private final SkillAliasNormalizer skillAliasNormalizer = new SkillAliasNormalizer();
 
@@ -94,9 +103,18 @@ public class EvidenceGateService {
         // 2) AI matchedSkills 순환 오류: matched 인데 사용자 원본 근거에 없으면 검토 후보(텍스트 단정과 무관하게).
         auditMatchedSkills(derivedMatched, userEvidenceKeys, requiredKeys, byClaim);
         // 3) 사용자 노출 텍스트(strategy/scoreBasis/strategyActions/applyDecision)에서 보유 단정 탐지.
-        auditTextClaims(userFacingTexts(ai), detectionRequirements, userEvidenceKeys, requiredKeys, byClaim);
+        List<String> auditedTexts = userFacingTexts(ai);
+        auditTextClaims(auditedTexts, detectionRequirements, userEvidenceKeys, requiredKeys, byClaim);
 
         List<EvidenceGateDecision.Reason> reasons = new ArrayList<>(byClaim.values());
+        // 계측(관측 전용): R3 가 실제로 감사한 텍스트·탐지대상·판정. FP/FN 측정 시 이 로그를 켜서 판정단과 대조한다.
+        if (AUDIT.isDebugEnabled()) {
+            AUDIT.debug("gate status={} reasons={} detection={} auditedTexts={}",
+                    reasons.isEmpty() ? "PASSED" : "REVIEW_REQUIRED",
+                    reasons.stream().map(r -> r.type() + ":" + r.claim()).toList(),
+                    detectionRequirements.stream().map(SkillClaim::claim).toList(),
+                    auditedTexts);
+        }
         if (reasons.isEmpty()) {
             return new EvidenceGateDecision(
                     EvidenceGateDecision.STATUS_PASSED, false, null, List.of(), sources);

@@ -106,7 +106,6 @@ export default defineConfig(({ mode }) => {
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) {
-            if (id.includes('/src/admin/')) return 'admin'
             if (id.includes('/src/features/community/')) return 'community'
             if (id.includes('/src/features/collaboration/')) return 'collaboration'
             return undefined

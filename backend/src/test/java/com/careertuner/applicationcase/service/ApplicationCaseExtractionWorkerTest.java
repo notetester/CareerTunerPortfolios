@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -130,6 +131,97 @@ class ApplicationCaseExtractionWorkerTest {
         assertThat(notificationCaptor.getValue().getTargetType()).isEqualTo("APPLICATION_CASE");
         assertThat(notificationCaptor.getValue().getTargetId()).isEqualTo(10L);
         assertThat(notificationCaptor.getValue().getLink()).isEqualTo("/applications/10/overview");
+    }
+
+    @Test
+    void jobPostingMetadataLlmFailureKeepsExtractionSucceededAndFallsBackToRegex() {
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseExtractionWorker worker = worker(
+                extractionMapper, applicationCaseMapper, jobPostingMapper, jobPostingService,
+                openAiClient, aiUsageLogService, autoPipelineService, notificationService);
+        ApplicationCaseExtraction extraction = extraction(30L, 10L, 20L, 1L, "URL");
+        String jobUrl = "https://example.com/jobs/backend";
+        String extractedText = passingPostingText("Acme is hiring a Backend Engineer.");
+
+        when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
+        when(extractionMapper.claimQueuedExtraction(30L)).thenReturn(1);
+        when(extractionMapper.findRunningExtractionForUpdate(30L)).thenReturn(extraction);
+        when(jobPostingMapper.findJobPostingByIdAndCaseId(20L, 10L)).thenReturn(JobPosting.builder()
+                .id(20L).applicationCaseId(10L).revision(1).uploadedFileUrl(jobUrl).sourceType("URL").build());
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(existingCase());
+        when(jobPostingService.extractUrlJobPosting(jobUrl))
+                .thenReturn(new ExtractedPosting("URL", jobUrl, jobUrl, extractedText, null));
+        when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
+                .thenReturn(new JobPostingResponse(21L, 10L, 2, jobUrl, jobUrl, extractedText, "URL", null));
+        when(extractionMapper.markExtractionSucceeded(
+                eq(30L), eq(21L), eq("HTML_TEXT"), any(), eq("PASS"), any(), any(), eq(false), any())).thenReturn(1);
+        // 메타 LLM 이 켜져 있으나 예외 — 부가정보 실패가 추출 성공을 깨면 안 된다(fail-open).
+        when(openAiClient.configured()).thenReturn(true);
+        when(openAiClient.extractJobPostingMetadata(any())).thenThrow(new RuntimeException("metadata LLM down"));
+
+        int processed = worker.processQueuedExtractions();
+
+        assertThat(processed).isEqualTo(1);
+        // 추출은 여전히 SUCCEEDED(예외가 extractAndAnalyze 밖으로 새지 않음)
+        verify(extractionMapper).markExtractionSucceeded(
+                eq(30L), eq(21L), eq("HTML_TEXT"), any(), eq("PASS"), any(), any(), eq(false), any());
+        // 메타는 regex 폴백 사용(회사=Acme, 직무=Backend Engineer)
+        ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
+        verify(applicationCaseMapper).updateApplicationCase(caseCaptor.capture());
+        assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("Acme");
+        assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("Backend Engineer");
+    }
+
+    @Test
+    void jobPostingMetadataUsesLlmResultWhenConfiguredAndSuccessful() {
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseExtractionWorker worker = worker(
+                extractionMapper, applicationCaseMapper, jobPostingMapper, jobPostingService,
+                openAiClient, aiUsageLogService, autoPipelineService, notificationService);
+        ApplicationCaseExtraction extraction = extraction(30L, 10L, 20L, 1L, "URL");
+        String jobUrl = "https://example.com/jobs/backend";
+        String extractedText = passingPostingText("Acme is hiring a Backend Engineer.");
+
+        when(extractionMapper.findQueuedExtractions(5)).thenReturn(List.of(extraction));
+        when(extractionMapper.claimQueuedExtraction(30L)).thenReturn(1);
+        when(extractionMapper.findRunningExtractionForUpdate(30L)).thenReturn(extraction);
+        when(jobPostingMapper.findJobPostingByIdAndCaseId(20L, 10L)).thenReturn(JobPosting.builder()
+                .id(20L).applicationCaseId(10L).revision(1).uploadedFileUrl(jobUrl).sourceType("URL").build());
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(existingCase());
+        when(jobPostingService.extractUrlJobPosting(jobUrl))
+                .thenReturn(new ExtractedPosting("URL", jobUrl, jobUrl, extractedText, null));
+        when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
+                .thenReturn(new JobPostingResponse(21L, 10L, 2, jobUrl, jobUrl, extractedText, "URL", null));
+        when(extractionMapper.markExtractionSucceeded(
+                eq(30L), eq(21L), eq("HTML_TEXT"), any(), eq("PASS"), any(), any(), eq(false), any())).thenReturn(1);
+        // 구조화 LLM 메타가 성공하면 regex 보다 우선한다.
+        when(openAiClient.configured()).thenReturn(true);
+        when(openAiClient.extractJobPostingMetadata(any())).thenReturn(
+                new OpenAiResponsesClient.JobPostingMetadataPayload(
+                        "엘엘엠 코퍼레이션", "엘엘엠 백엔드 개발자", null, LocalDate.of(2026, 7, 31), null));
+
+        worker.processQueuedExtractions();
+
+        verify(openAiClient).extractJobPostingMetadata(any());
+        ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
+        verify(applicationCaseMapper).updateApplicationCase(caseCaptor.capture());
+        assertThat(caseCaptor.getValue().getCompanyName()).isEqualTo("엘엘엠 코퍼레이션");
+        assertThat(caseCaptor.getValue().getJobTitle()).isEqualTo("엘엘엠 백엔드 개발자");
+        assertThat(caseCaptor.getValue().getDeadlineDate()).isEqualTo(LocalDate.of(2026, 7, 31));
     }
 
     @Test
@@ -312,7 +404,9 @@ class ApplicationCaseExtractionWorkerTest {
                         "{\"qualityStatus\":\"REVIEW_REQUIRED\"}",
                         "{\"documentExtractionContract\":\"self_ai_v1\"}",
                         true,
-                        "ocr_low_confidence"));
+                        "ocr_low_confidence",
+                        "worker",
+                        null));
         when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
                 .thenReturn(new JobPostingResponse(23L, 10L, 2, null, fileReference, extractedText, "IMAGE", null));
         when(extractionMapper.markExtractionSucceeded(
@@ -380,6 +474,8 @@ class ApplicationCaseExtractionWorkerTest {
                         "{\"qualityStatus\":\"AUTO_OK\"}",
                         "{\"documentExtractionContract\":\"self_ai_v1\"}",
                         false,
+                        null,
+                        "worker",
                         null));
         when(extractionMapper.markExtractionFailed(
                 eq(40L),

@@ -9,6 +9,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
+import com.careertuner.fitanalysis.certificate.CertificateNeedGate;
 
 /**
  * 적합도 분석 AI의 mock 구현 (API 키 미발급 단계 기본 동작).
@@ -55,7 +56,14 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
 
         int fitScore = score(required, preferred, profileLower, profile.isEmpty());
         List<String> study = missing.stream().limit(4).map(skill -> skill + " 집중 학습").toList();
-        List<String> certificates = recommendCertificates(command.desiredJob());
+        // 자격증은 보조 전략 — cert-need-gate 가 켜질 때만 추천을 생성한다. 필요 신호가 없으면 빈 목록(NOT_NEEDED)이라
+        // 일반 직무에 자격증이 무분별하게 붙지 않는다(3B 프롬프트 과대반영 차단). userRequested 플래그는 후속 연동.
+        CertificateNeedGate.Decision certGate = CertificateNeedGate.evaluate(
+                required, preferred, command.duties(), command.jobTitle(),
+                command.profileCertificates(), missing, false);
+        List<String> certificates = certGate.active()
+                ? recommendCertificates(command.desiredJob())
+                : List.of();
         String strategy = strategy(command, matched, missing, fitScore);
         List<String> scoreBasis = scoreBasis(required, matched, missing, fitScore);
         List<FitGapRecommendation> gapRecommendations = gapRecommendations(required, preferred, missing);

@@ -85,18 +85,10 @@ updates:
     patterns: ["*"]
     multi-ecosystem-group: "careertuner-dependencies"
     ignore:
-      # Runtime contracts: Java 21 (eclipse-temurin) and Python 3.13 (paddlepaddle
-      # publishes no cp314 wheel — see ml/job-posting-worker/requirements-ocr.txt).
       # eclipse-temurin: block majors only, so 21.x base refreshes still flow.
       - dependency-name: "eclipse-temurin"
         update-types:
           - "version-update:semver-major"
-      # python: pin to 3.13.x — block MINOR (3.13 -> 3.14 would break OCR) and
-      # MAJOR; 3.13.x patch refreshes still flow.
-      - dependency-name: "python"
-        update-types:
-          - "version-update:semver-major"
-          - "version-update:semver-minor"
 
   - package-ecosystem: "github-actions"
     directory: "/"

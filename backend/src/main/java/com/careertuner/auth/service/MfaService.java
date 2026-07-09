@@ -31,6 +31,8 @@ import com.careertuner.auth.mapper.MfaMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.service.NotificationService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
 
@@ -48,6 +50,7 @@ public class MfaService {
     private final MfaSecretCipher secretCipher;
     private final PasswordEncoder passwordEncoder;
     private final SecurityHistoryService securityHistoryService;
+    private final NotificationService notificationService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional(readOnly = true)
@@ -131,7 +134,7 @@ public class MfaService {
         }
         mfaMapper.expireOldChallenges(LocalDateTime.now());
         String token = randomToken(32);
-        mfaMapper.insertChallenge(MfaChallenge.builder()
+        MfaChallenge challenge = MfaChallenge.builder()
                 .userId(user.getId())
                 .challengeToken(token)
                 .challengeType("LOGIN")
@@ -140,8 +143,12 @@ public class MfaService {
                 .expiresAt(LocalDateTime.now().plus(CHALLENGE_TTL))
                 .ipAddress(context != null ? truncate(context.ipAddress(), 45) : null)
                 .userAgent(context != null ? truncate(context.userAgent(), 500) : null)
-                .build());
+                .build();
+        mfaMapper.insertChallenge(challenge);
         securityHistoryService.record("MFA_LOGIN", "REQUIRED", user.getId(), true, user.getEmail(), null);
+        if (policy().isAllowPushApproval() && setting.isPushEnabled()) {
+            notifyMfaApprovalRequest(user, challenge);
+        }
         return LoginResponse.mfaRequired(token, policy().isAllowPushApproval() ? "TOTP_OR_PUSH" : "TOTP", CHALLENGE_TTL.toSeconds());
     }
 
@@ -324,6 +331,22 @@ public class MfaService {
                 challenge.getExpiresAt(),
                 challenge.getCreatedAt()
         );
+    }
+
+    /**
+     * CareerTuner 앱에서 승인할 수 있도록 기존 알림/푸시 파이프라인에 MFA 승인 요청을 태운다.
+     * FCM 서비스계정이 설정된 운영 환경에서는 실제 모바일 푸시가 발송되고,
+     * 개발 환경에서는 로깅 폴백으로 남아 MFA 흐름 자체를 막지 않는다.
+     */
+    private void notifyMfaApprovalRequest(User user, MfaChallenge challenge) {
+        notificationService.notify(Notification.builder()
+                .userId(user.getId())
+                .type("MFA_LOGIN_APPROVAL")
+                .targetType("MFA_CHALLENGE")
+                .title("CareerTuner 로그인 승인 요청")
+                .message("방금 비밀번호 로그인이 시도되었습니다. 본인이 맞다면 앱에서 승인해 주세요.")
+                .link("/m/mfa-approvals?challengeToken=" + enc(challenge.getChallengeToken()))
+                .build());
     }
 
     private String otpauthUri(User user, String secret) {

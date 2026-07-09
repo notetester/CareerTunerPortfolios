@@ -5,9 +5,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-# Qt 6.5+ : Quick(QML) · Network(HTTP/SSE) · Widgets(트레이) · Multimedia(음성 녹음)
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick QuickControls2 Network Widgets Multimedia)
-qt_standard_project_setup(REQUIRES 6.5)
+# Qt 6.11+ : Quick(QML) · Network(HTTP/SSE) · Widgets(트레이) · Multimedia(음성 녹음)
+find_package(Qt6 6.11 REQUIRED COMPONENTS Quick QuickControls2 Network Widgets Multimedia)
+qt_standard_project_setup(REQUIRES 6.11)
 
 if (COMMAND qt_policy)
     qt_policy(SET QTP0004 NEW)
@@ -23,6 +23,8 @@ qt_add_executable(CareerTunerDesktop
     core/InterviewSession.h   core/InterviewSession.cpp
     core/VoiceRecorder.h      core/VoiceRecorder.cpp
     core/NotificationPoller.h core/NotificationPoller.cpp
+    core/PlannerClient.h      core/PlannerClient.cpp
+    core/PlannerOverlayController.h core/PlannerOverlayController.cpp
     core/AutoPrepRunner.h     core/AutoPrepRunner.cpp
     core/AdClient.h           core/AdClient.cpp
     core/CollaborationClient.h core/CollaborationClient.cpp
@@ -50,10 +52,15 @@ qt_add_qml_module(CareerTunerDesktop
         qml/CollaborationPage.qml
         qml/BoardPage.qml
         qml/NotificationCenter.qml
+        qml/PlannerOverlay.qml
         qml/PhonePanel.qml
         qml/InputBar.qml
         qml/NewJobDialog.qml
 )
+
+if (WIN32)
+    target_link_libraries(CareerTunerDesktop PRIVATE user32)
+endif()
 
 target_link_libraries(CareerTunerDesktop PRIVATE
     Qt6::Quick

@@ -51,14 +51,8 @@ class SelfLlmCorrectionProviderTest {
         assertThat(requestBody.get()).contains(
                 "careertuner-e-correction-3b:latest",
                 "SELF_INTRO_CORRECTION",
-                "json_schema",
-                "risk_flags",
-                "additionalProperties",
                 "\"max_tokens\":3072",
-                "\"minItems\":3",
-                "\"const\":true",
-                "\"maxItems\":0",
-                "strict");
+                "\"response_format\":{\"type\":\"json_object\"}");
     }
 
     @Test
@@ -114,6 +108,48 @@ class SelfLlmCorrectionProviderTest {
     }
 
     @Test
+    @DisplayName("fills a repair response that is at most three characters below the minimum")
+    void correct_restoresMinorLengthShortfallAfterRepair() throws IOException {
+        SelfLlmCorrectionProvider provider = provider(
+                responseJson(true, "123456789"), new AtomicReference<>());
+        SelfCorrectionInput input = new SelfCorrectionInput(
+                "sample", "SELF_INTRO_CORRECTION", "원문", "직무",
+                Map.of(), List.of(), Map.of("min_chars", 10, "max_chars", 12));
+
+        CorrectionPayload payload = provider.correct(
+                command(input),
+                "careertuner-e-correction-3b:latest",
+                Duration.ofSeconds(2),
+                new SelfLlmCorrectionProvider.RepairContext(
+                        "corrected_text exceeds max_chars 12.",
+                        "{}"));
+
+        assertThat(payload.improvedText()).isEqualTo("123456789.");
+    }
+
+    @Test
+    @DisplayName("keeps rejecting a repair response more than three characters below the minimum")
+    void correct_rejectsLargeLengthShortfallAfterRepair() throws IOException {
+        SelfLlmCorrectionProvider provider = provider(
+                responseJson(true, "123456"), new AtomicReference<>());
+        SelfCorrectionInput input = new SelfCorrectionInput(
+                "sample", "SELF_INTRO_CORRECTION", "원문", "직무",
+                Map.of(), List.of(), Map.of("min_chars", 10, "max_chars", 12));
+
+        SelfCorrectionOutputParser.InvalidOutputException failure = catchThrowableOfType(
+                () -> provider.correct(
+                        command(input),
+                        "careertuner-e-correction-3b:latest",
+                        Duration.ofSeconds(2),
+                        new SelfLlmCorrectionProvider.RepairContext(
+                                "corrected_text is shorter than min_chars 10.",
+                                "{}")),
+                SelfCorrectionOutputParser.InvalidOutputException.class);
+
+        assertThat(failure).hasMessageContaining("shorter than min_chars 10");
+    }
+
+    @Test
     @DisplayName("rejects collapsed paragraphs when paragraph preservation is required")
     void correct_rejectsCollapsedParagraphs() throws IOException {
         SelfLlmCorrectionProvider provider = provider(
@@ -130,6 +166,54 @@ class SelfLlmCorrectionProviderTest {
                 SelfCorrectionOutputParser.InvalidOutputException.class);
 
         assertThat(failure).hasMessageContaining("preserve at least 2 paragraphs");
+    }
+
+    @Test
+    @DisplayName("restores paragraph boundaries after a paragraph repair response")
+    void correct_restoresParagraphsAfterRepair() throws IOException {
+        SelfLlmCorrectionProvider provider = provider(
+                responseJson(true, "첫 문장입니다. 둘째 문장입니다. 셋째 문장입니다."), new AtomicReference<>());
+        SelfCorrectionInput input = new SelfCorrectionInput(
+                "sample", "SELF_INTRO_CORRECTION", "첫 문단\n\n둘째 문단\n\n셋째 문단", "직무",
+                Map.of(), List.of(), Map.of(
+                        "min_chars", 1,
+                        "max_chars", 100,
+                        "preserve_paragraphs", true));
+
+        CorrectionPayload payload = provider.correct(
+                command(input),
+                "careertuner-e-correction-3b:latest",
+                Duration.ofSeconds(2),
+                new SelfLlmCorrectionProvider.RepairContext(
+                        "corrected_text must preserve at least 3 paragraphs.",
+                        "{}"));
+
+        assertThat(payload.improvedText()).isEqualTo("첫 문장입니다.\n\n둘째 문장입니다.\n\n셋째 문장입니다.");
+    }
+
+    @Test
+    @DisplayName("keeps rejecting a paragraph repair when sentence boundaries are insufficient")
+    void correct_rejectsUnrestorableParagraphRepair() throws IOException {
+        SelfLlmCorrectionProvider provider = provider(
+                responseJson(true, "첫 문장입니다. 둘째 문장입니다."), new AtomicReference<>());
+        SelfCorrectionInput input = new SelfCorrectionInput(
+                "sample", "SELF_INTRO_CORRECTION", "첫 문단\n\n둘째 문단\n\n셋째 문단", "직무",
+                Map.of(), List.of(), Map.of(
+                        "min_chars", 1,
+                        "max_chars", 100,
+                        "preserve_paragraphs", true));
+
+        SelfCorrectionOutputParser.InvalidOutputException failure = catchThrowableOfType(
+                () -> provider.correct(
+                        command(input),
+                        "careertuner-e-correction-3b:latest",
+                        Duration.ofSeconds(2),
+                        new SelfLlmCorrectionProvider.RepairContext(
+                                "corrected_text must preserve at least 3 paragraphs.",
+                                "{}")),
+                SelfCorrectionOutputParser.InvalidOutputException.class);
+
+        assertThat(failure).hasMessageContaining("preserve at least 3 paragraphs");
     }
 
     private SelfLlmCorrectionProvider provider(String responseBody, AtomicReference<String> requestBody)

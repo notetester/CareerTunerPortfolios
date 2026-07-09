@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ClipboardList, Loader2, Mic, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
@@ -200,22 +201,48 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       void startRecording(); // TTS 미지원이면 바로 녹음
       return;
     }
-    const utter = new SpeechSynthesisUtterance(
-      `${questionIdx + 1}번 질문. ${questions[questionIdx].question}`,
-    );
+    const questionText = questions[questionIdx].question;
+    const utter = new SpeechSynthesisUtterance(`${questionIdx + 1}번 질문. ${questionText}`);
     utter.lang = "ko-KR";
     setSpeaking(true);
-    utter.onend = () => {
-      setSpeaking(false);
-      void startRecording(); // 다 읽으면 자동 녹음
-    };
-    utter.onerror = () => {
-      // TTS 실패(WebView 등)해도 탭을 막지 않는다 — 질문은 화면 텍스트로 대신하고 바로 녹음.
+
+    // ⚠ 크롬 speechSynthesis 는 기기에 따라 onend/onerror 가 아예 안 터진다
+    // (ko 보이스 미로딩, speak() 큐 스턱, 백그라운드 탭 등). 녹음 시작을 TTS 이벤트에만
+    // 의존하면 그런 노트북에서 "녹음이 아예 시작 안 됨 / 마이크 레벨 막대 안 움직임"이 된다.
+    // → onstart 여부 + 예상 낭독시간 기반 워치독으로, 어떤 경우에도 녹음이 반드시 시작되게 한다.
+    // startRecording 은 recorderRef 가드로 idempotent 라 이벤트/워치독 중복 호출은 안전하다.
+    let triggered = false;
+    let ttsStarted = false;
+    const begin = () => {
+      if (triggered) return;
+      triggered = true;
+      try {
+        window.speechSynthesis.cancel(); // 스턱/강제진행 시 남은 낭독이 녹음에 섞이지 않게 정리
+      } catch {
+        // 무시
+      }
       setSpeaking(false);
       void startRecording();
     };
+    utter.onstart = () => {
+      ttsStarted = true;
+    };
+    utter.onend = begin; // 다 읽으면 자동 녹음
+    utter.onerror = begin; // TTS 실패(WebView 등)해도 탭을 막지 않는다 — 텍스트로 진행 + 바로 녹음
+
+    // (1) TTS 가 시작조차 못 하면(보이스 없음/큐 스턱) 곧바로 녹음으로 넘어간다.
+    const noStartGuard = window.setTimeout(() => {
+      if (!ttsStarted) begin();
+    }, 1500);
+    // (2) 시작은 했는데 onend 가 안 오는 기기 대비 — 글자수 기반 상한 후 강제 녹음.
+    const endGuard = window.setTimeout(begin, Math.min(3000 + questionText.length * 130, 16000));
+
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utter);
+    return () => {
+      window.clearTimeout(noStartGuard);
+      window.clearTimeout(endGuard);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questionIdx, status, questions]);
 
@@ -416,7 +443,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
           <CardTitle className="flex items-center gap-2 text-base">
             <Mic className="size-4 text-emerald-600" />
             자체 AI 음성 면접
-            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 무료</Badge>
+            <Badge className="bg-emerald-100 text-emerald-700">베이직 · 자체 AI</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -424,6 +451,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
             면접관이 질문을 읽어주면 답변을 녹음하세요(다 읽으면 자동으로 녹음 시작). 6문제를 마치면 자체 AI가
             한 번에 채점합니다(말 속도·톤·내용). 외부 API 없이 동작합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" />
 
           {serveOff && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">

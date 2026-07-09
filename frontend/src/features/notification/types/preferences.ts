@@ -192,6 +192,7 @@ export const NOTIFICATION_RULE_GROUPS: Array<{
       { type: "NOTICE", label: "공지" },
       { type: "TICKET_ANSWERED", label: "문의 답변/처리" },
       { type: "ACCOUNT_BLOCKED", label: "계정 제한" },
+      { type: "MFA_LOGIN_APPROVAL", label: "2단계 로그인 승인" },
       { type: "COMPANY_APPLY_RESULT", label: "기업 계정 신청 결과" },
       { type: "JOB_POSTING_REVIEW_RESULT", label: "공고 검토 결과" },
     ],
