@@ -214,9 +214,6 @@ QDateTime PlannerClient::parseDateTime(const QString& value) const
     if (!parsed.isValid()) {
         parsed = QDateTime::fromString(value.left(19), QStringLiteral("yyyy-MM-ddTHH:mm:ss"));
     }
-    if (parsed.isValid() && parsed.timeSpec() == Qt::LocalTime) {
-        parsed.setTimeSpec(Qt::LocalTime);
-    }
     return parsed;
 }
 
