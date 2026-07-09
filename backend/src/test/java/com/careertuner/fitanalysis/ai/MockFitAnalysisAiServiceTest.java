@@ -68,6 +68,31 @@ class MockFitAnalysisAiServiceTest {
     }
 
     @Test
+    void userRequestedOpensGateEvenWithoutPostingSignal() {
+        // 학습/자격증 탭 요청(userRequested=true) → 공고 신호가 없어도 자격증 관점을 평가·표시(후순위라도). 무조건 추천은 아님.
+        FitAnalysisAiResult result = service.generate(new FitAnalysisAiCommand(
+                "테스트기업", "백엔드 개발자",
+                List.of("Java", "Spring"), List.of("AWS"), "REST API 개발",
+                List.of("Java"), List.of(), "백엔드 개발자", null, true));
+
+        assertThat(result.recommendedCertificates()).isNotEmpty();
+    }
+
+    @Test
+    void userRequestedOnlyGateDowngradesAllPrioritiesToLow() {
+        // 객관적 신호 없이 사용자 요청만(OPTIONAL_LOW_PRIORITY) → 평가는 하되 강한 추천 카드가 되지 않게 전부 LOW.
+        FitAnalysisAiResult result = service.generate(new FitAnalysisAiCommand(
+                "테스트기업", "백엔드 개발자",
+                List.of("Java", "Spring"), List.of("AWS"), "REST API 개발",
+                List.of("Java"), List.of(), "백엔드 개발자", null, true));
+
+        assertThat(result.certificateRecommendations()).isNotEmpty();
+        assertThat(result.certificateRecommendations())
+                .allSatisfy(cert -> assertThat(cert.priority()).isEqualTo("LOW"));
+        assertThat(result.certificateRecommendations().get(0).reason()).contains("우선순위는 낮");
+    }
+
+    @Test
     void postingNamingCertificateProducesRecommendations() {
         // cert-need-gate ON(공고에 자격증 명시) → 자격증 추천 생성.
         FitAnalysisAiResult result = service.generate(new FitAnalysisAiCommand(

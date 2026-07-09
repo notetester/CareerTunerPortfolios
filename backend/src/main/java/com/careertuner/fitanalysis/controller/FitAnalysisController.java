@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
@@ -54,8 +55,9 @@ public class FitAnalysisController {
      */
     @PostMapping("/application-cases/{applicationCaseId}")
     public ApiResponse<FitAnalysisDetailResponse> generate(@AuthenticationPrincipal AuthUser authUser,
-                                                           @PathVariable Long applicationCaseId) {
-        return ApiResponse.ok(fitAnalysisService.generate(authUser.id(), applicationCaseId));
+                                                           @PathVariable Long applicationCaseId,
+                                                           @RequestParam(defaultValue = "false") boolean certificateStrategy) {
+        return ApiResponse.ok(fitAnalysisService.generate(authUser.id(), applicationCaseId, certificateStrategy));
     }
 
     @PatchMapping("/{fitAnalysisId}/learning-tasks/{taskId}")

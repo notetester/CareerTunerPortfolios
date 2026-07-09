@@ -20,6 +20,7 @@ import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 import com.careertuner.fitanalysis.certificate.CertificateEvidenceService;
+import com.careertuner.fitanalysis.certificate.CertificateNeedGate;
 import com.careertuner.fitanalysis.dto.CertificateEvidenceResponse;
 import com.careertuner.fitanalysis.dto.CertificateEvidenceSnapshot;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
@@ -73,7 +74,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     }
 
     @Override
-    public FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId) {
+    public FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy) {
         // 외부 I/O(AI 호출·자격증 근거 조회)는 트랜잭션 밖에서 수행한다 — DB 커넥션을 물지 않아, Q-Net 등 외부 장애가
         // 커넥션 풀을 고갈시켜 무관한 조회까지 막는 일이 없다. DB 쓰기만 아래 transactionTemplate 로 짧게 감싼다.
         FitAnalysisGenerationSource source = fitAnalysisMapper.findGenerationSource(userId, applicationCaseId);
@@ -90,7 +91,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 parseList(source.getProfileSkills()),
                 parseList(source.getProfileCertificates()),
                 source.getDesiredJob(),
-                composeCompanyContext(source));
+                composeCompanyContext(source),
+                certificateStrategy);
 
         FitAnalysisResult previous = fitAnalysisMapper.findLatestByUserIdAndApplicationCaseId(userId, applicationCaseId);
         FitAnalysisAiResult ai = fitAnalysisAiService.generate(command);
@@ -102,7 +104,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
 
         // 자격증 근거는 생성 시 1회만 수집·영속한다(읽기 경로에서는 provider 호출 금지 — Q-Net 장애가 조회 성능에 영향
         // 없게). best-effort: 수집이 실패해도 적합도 분석 생성을 중단하지 않고 판단값도 바꾸지 않는다.
-        String certificateEvidence = collectCertificateEvidenceJson(ai.recommendedCertificates());
+        String certificateEvidence = collectCertificateEvidenceJson(command, ai);
 
         FitAnalysisResult row = FitAnalysisResult.builder()
                 .applicationCaseId(applicationCaseId)
@@ -276,14 +278,22 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
      * 추천 자격증 근거를 생성 시 1회 수집해 snapshot JSON 으로 만든다. 근거가 없으면(게이트 OFF/provider 미활성)
      * null 을 반환해 컬럼을 비운다(기존 응답과 동일 degrade). 수집·직렬화 실패는 분석 전체를 막지 않는다(null 반환).
      */
-    private String collectCertificateEvidenceJson(List<String> recommendedCertificates) {
+    private String collectCertificateEvidenceJson(FitAnalysisAiCommand command, FitAnalysisAiResult ai) {
         try {
-            List<CertificateEvidenceResponse> items = certificateEvidenceService.collect(recommendedCertificates);
-            if (items == null || items.isEmpty()) {
-                return null;
+            // 게이트 판정(상태·신호)을 함께 저장 — 탭 요청이어도 무조건 추천이 아니라 평가이므로 NOT_NEEDED/OPTIONAL 도
+            // 정상. 규칙엔진(mock)과 동일 입력·동일 순수함수라 판정이 일치한다(판단값은 바꾸지 않음).
+            CertificateNeedGate.Decision decision = CertificateNeedGate.evaluate(
+                    command.requiredSkills(), command.preferredSkills(), command.duties(), command.jobTitle(),
+                    command.profileCertificates(), ai.missingSkills(), command.userRequested());
+            List<CertificateEvidenceResponse> items = certificateEvidenceService.collect(ai.recommendedCertificates());
+            if (!decision.active() && (items == null || items.isEmpty())) {
+                return null; // 게이트 OFF + 근거 없음 → 자격증 섹션 숨김(기존 동작).
             }
-            return objectMapper.writeValueAsString(
-                    new CertificateEvidenceSnapshot(java.time.LocalDateTime.now().toString(), items));
+            return objectMapper.writeValueAsString(new CertificateEvidenceSnapshot(
+                    java.time.LocalDateTime.now().toString(),
+                    decision.status().name(),
+                    decision.triggeredSignals(),
+                    items == null ? List.of() : items));
         } catch (RuntimeException e) {
             return null;
         }
@@ -338,8 +348,6 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         // 읽기 경로: 저장된 snapshot 만 역직렬화(외부 API 호출 없음). null 이면 기존과 동일하게 근거 섹션 없음.
         CertificateEvidenceSnapshot certSnapshot = parseValue(result.getCertificateEvidence(),
                 new TypeReference<CertificateEvidenceSnapshot>() {}, null);
-        List<CertificateEvidenceResponse> certEvidence =
-                certSnapshot == null || certSnapshot.items() == null ? List.of() : certSnapshot.items();
         return FitAnalysisDetailResponse.of(
                 result,
                 tasks,
@@ -349,7 +357,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 next24HourActions(actions, gaps),
                 toneStrategies(result.getFitScore(), gaps),
                 safety(result.getId()),
-                certEvidence);
+                certSnapshot);
     }
 
     /** evidence gate 결정과 evidence 버킷 스냅샷을 C-only 테이블에 저장한다(원본·점수 미변경). */

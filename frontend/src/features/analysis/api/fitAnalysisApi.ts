@@ -18,9 +18,11 @@ export function getFitAnalysisHistory(applicationCaseId: number) {
 /**
  * 적합도 분석 생성/재생성(C 담당 AI 12~15). 백엔드는 현재 mock, API 키 주입 시 실 분석으로 전환된다.
  */
-export function generateFitAnalysis(applicationCaseId: number) {
+export function generateFitAnalysis(applicationCaseId: number, certificateStrategy = false) {
+  // certificateStrategy=true(학습/자격증 탭 요청)면 자격증 관점을 함께 평가한다(무조건 추천은 아님).
+  const query = certificateStrategy ? "?certificateStrategy=true" : "";
   return runWithAiCharge("FIT_ANALYSIS", (headers) =>
-    api<FitAnalysisDetail>(`/fit-analyses/application-cases/${applicationCaseId}`, { method: "POST", headers }));
+    api<FitAnalysisDetail>(`/fit-analyses/application-cases/${applicationCaseId}${query}`, { method: "POST", headers }));
 }
 
 export function updateFitAnalysisLearningTask(fitAnalysisId: number, taskId: number, completed: boolean) {

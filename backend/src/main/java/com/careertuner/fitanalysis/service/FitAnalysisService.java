@@ -21,7 +21,14 @@ public interface FitAnalysisService {
      * 지원 건의 공고 분석 결과와 사용자 프로필을 비교해 적합도 분석을 생성/저장한다(C 담당 AI 12~15).
      * API 키가 없으면 mock, 있으면 동일 흐름으로 실제 구조화 분석이 동작한다.
      */
-    FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId);
+    /** 기본 생성(자격증 전략 평가 미요청). */
+    default FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId) {
+        return generate(userId, applicationCaseId, false);
+    }
+
+    /** certificateStrategy=true 면 학습/자격증 탭의 명시 요청으로 보고 자격증 관점을 함께 <b>평가</b>한다
+     * (무조건 추천이 아니라 평가 — 결과는 NOT_NEEDED/OPTIONAL_LOW_PRIORITY 도 정상). */
+    FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy);
 
     FitAnalysisLearningTaskResponse updateLearningTask(Long userId,
                                                        Long fitAnalysisId,

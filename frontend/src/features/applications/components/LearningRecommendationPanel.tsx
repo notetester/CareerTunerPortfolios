@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/ca
 import { Progress } from "@/app/components/ui/progress";
 import { updateFitAnalysisLearningTask } from "@/features/analysis/api/fitAnalysisApi";
 import type {
-  CertificateEvidenceItem,
+  CertificateEvidenceSnapshot,
   FitAnalysisDetail,
   FitAnalysisLearningTask,
   FitCertificateRecommendation,
@@ -125,7 +125,7 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
                   </div>
                 )}
                 <CertificateList recommendations={detailedCertificates} fallbackItems={certificates} />
-                <CertificateEvidenceSection items={analysis.certificateEvidence ?? []} />
+                <CertificateEvidenceSection snapshot={analysis.certificateEvidence ?? null} />
               </CardContent>
             </Card>
           );
@@ -135,15 +135,22 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
   );
 }
 
-/** 자격증 근거(공식 출처 조회 snapshot). 확인된 것만 말하고, 확인 못 하면 솔직하게 안내(생성 시 1회 수집, 조회는 DB만). */
-function CertificateEvidenceSection({ items }: { items: CertificateEvidenceItem[] }) {
-  if (items.length === 0) return null;
+/** 자격증 전략·근거(공식 출처 조회 snapshot). 탭 요청이어도 '평가'라 후순위/불필요도 정상. 확인 못 하면 솔직하게 안내. */
+function CertificateEvidenceSection({ snapshot }: { snapshot: CertificateEvidenceSnapshot | null }) {
+  if (!snapshot) return null;
+  const items = snapshot.items ?? [];
+  const verdict = strategyVerdict(snapshot.strategyStatus);
   return (
     <div>
       <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
         <Award className="size-4 text-blue-600" />
-        자격증 근거 (공식 출처 확인)
+        자격증 전략 · 근거
+        {verdict && <EvidencePill tone={verdict.tone}>{verdict.label}</EvidencePill>}
       </div>
+      {verdict?.note && <p className="mb-2 text-xs leading-5 text-slate-500">{verdict.note}</p>}
+      {items.length === 0 ? (
+        <p className="text-xs leading-5 text-slate-500">{emptyItemsMessage(snapshot.strategyStatus)}</p>
+      ) : (
       <ul className="space-y-2">
         {items.map((item) => (
           <li key={item.certName} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -171,8 +178,30 @@ function CertificateEvidenceSection({ items }: { items: CertificateEvidenceItem[
           </li>
         ))}
       </ul>
+      )}
     </div>
   );
+}
+
+/** items 가 비었을 때의 솔직한 안내 — '미연동/확인 못함'을 '자격증 불필요'로 오분류하지 않는다(판정과 문구 일치). */
+function emptyItemsMessage(status: string | null): string {
+  if (status === "NOT_NEEDED" || status === "OPTIONAL_LOW_PRIORITY") {
+    return "현재 공고 기준으로는 자격증보다 실무 경험·프로젝트 보완이 우선입니다.";
+  }
+  // RECOMMENDED/REQUIRED/USE_EXISTING 인데 근거가 비어 있음 = 공식 출처 조회 미연동/확인 실패 — 불필요가 아니다.
+  return "공식 출처 근거 조회가 아직 연동되지 않았거나 확인하지 못했습니다. 위 추천 자격증은 참고하되, 일정은 임의로 제시하지 않습니다.";
+}
+
+/** 게이트 판정 → 화면 배지·안내(솔직 표현). 탭 요청이어도 후순위/불필요가 정상 결과다. */
+function strategyVerdict(status: string | null): { label: string; tone: "green" | "slate" | "amber" | "blue" | "red"; note?: string } | null {
+  switch (status) {
+    case "REQUIRED_OR_STRONGLY_PREFERRED": return { label: "강하게 필요", tone: "red" };
+    case "RECOMMENDED": return { label: "추천", tone: "blue" };
+    case "USE_EXISTING_AS_STRENGTH": return { label: "보유 강점 활용", tone: "green" };
+    case "OPTIONAL_LOW_PRIORITY": return { label: "후순위", tone: "slate", note: "있으면 도움되지만 현재 우선순위는 낮습니다. 실무 경험 보완이 먼저입니다." };
+    case "NOT_NEEDED": return { label: "현 시점 불필요", tone: "slate", note: "이 공고에서는 자격증보다 프로젝트·배포·경험 보완이 더 중요합니다." };
+    default: return null;
+  }
 }
 
 function EvidenceBadge({ status, registration }: { status: string; registration: string | null }) {

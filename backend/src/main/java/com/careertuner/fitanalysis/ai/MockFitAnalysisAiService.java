@@ -57,10 +57,11 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         int fitScore = score(required, preferred, profileLower, profile.isEmpty());
         List<String> study = missing.stream().limit(4).map(skill -> skill + " 집중 학습").toList();
         // 자격증은 보조 전략 — cert-need-gate 가 켜질 때만 추천을 생성한다. 필요 신호가 없으면 빈 목록(NOT_NEEDED)이라
-        // 일반 직무에 자격증이 무분별하게 붙지 않는다(3B 프롬프트 과대반영 차단). userRequested 플래그는 후속 연동.
+        // 일반 직무에 자격증이 무분별하게 붙지 않는다(3B 프롬프트 과대반영 차단). userRequested(학습/자격증 탭 요청)면
+        // 게이트가 열려 후순위 자격증도 평가·표시하되, 무조건 추천이 아니라 OPTIONAL_LOW_PRIORITY 등으로 솔직히 낸다.
         CertificateNeedGate.Decision certGate = CertificateNeedGate.evaluate(
                 required, preferred, command.duties(), command.jobTitle(),
-                command.profileCertificates(), missing, false);
+                command.profileCertificates(), missing, command.userRequested());
         List<String> certificates = certGate.active()
                 ? recommendCertificates(command.desiredJob())
                 : List.of();
@@ -68,7 +69,8 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         List<String> scoreBasis = scoreBasis(required, matched, missing, fitScore);
         List<FitGapRecommendation> gapRecommendations = gapRecommendations(required, preferred, missing);
         List<FitLearningRoadmapItem> learningRoadmap = learningRoadmap(gapRecommendations);
-        List<FitCertificateRecommendation> certificateRecommendations = certificateRecommendations(certificates, command.desiredJob());
+        List<FitCertificateRecommendation> certificateRecommendations =
+                certificateRecommendations(certificates, command.desiredJob(), certGate.status());
         List<String> strategyActions = strategyActions(matched, gapRecommendations, fitScore);
         List<FitConditionMatch> conditionMatrix = conditionMatrix(required, preferred, profileLower);
         FitApplyDecision applyDecision = applyDecision(fitScore, matched, gapRecommendations);
@@ -233,15 +235,22 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         return result;
     }
 
-    private List<FitCertificateRecommendation> certificateRecommendations(List<String> certificates, String desiredJob) {
+    private List<FitCertificateRecommendation> certificateRecommendations(List<String> certificates, String desiredJob,
+            com.careertuner.fitanalysis.certificate.CertificateStrategyStatus gateStatus) {
+        // 게이트가 '후순위(OPTIONAL_LOW_PRIORITY)'로 판정하면(예: 객관적 신호 없이 사용자 요청만) 우선순위를 전부 LOW 로
+        // 낮추고 사유도 후순위로 서술 — 요청 시 평가는 하되 '강한 추천 카드'로 보이지 않게(판정과 표시 일치).
+        boolean lowPriorityOnly =
+                gateStatus == com.careertuner.fitanalysis.certificate.CertificateStrategyStatus.OPTIONAL_LOW_PRIORITY;
+        String job = desiredJob == null || desiredJob.isBlank() ? "희망" : desiredJob;
         List<FitCertificateRecommendation> result = new ArrayList<>();
         for (int index = 0; index < certificates.size(); index++) {
             String name = certificates.get(index);
             result.add(new FitCertificateRecommendation(
                     name,
-                    index == 0 ? "HIGH" : index == 1 ? "MEDIUM" : "LOW",
-                    "%s 직무 준비를 객관적으로 보완하는 데 활용할 수 있습니다.".formatted(
-                            desiredJob == null || desiredJob.isBlank() ? "희망" : desiredJob)));
+                    lowPriorityOnly ? "LOW" : index == 0 ? "HIGH" : index == 1 ? "MEDIUM" : "LOW",
+                    lowPriorityOnly
+                            ? "요청에 따라 평가한 후보입니다. 현 공고 기준 우선순위는 낮으며, %s 직무 장기 보완용으로 참고하세요.".formatted(job)
+                            : "%s 직무 준비를 객관적으로 보완하는 데 활용할 수 있습니다.".formatted(job)));
         }
         return result;
     }
