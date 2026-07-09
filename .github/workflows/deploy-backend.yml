@@ -215,6 +215,7 @@ jobs:
           context: ./ml/job-posting-worker
           push: true
           build-args: |
+            PYTHON_VERSION=3.13
             INSTALL_OCR=true
           tags: |
             ${{ env.WORKER_IMAGE }}:latest
