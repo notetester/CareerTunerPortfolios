@@ -52,7 +52,7 @@ const IMG_BLUR_REASON: Record<string, string> = {
 };
 
 export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) {
-  const { currentPost: d, comments, detailLoading, error, fetchPostDetail, fetchComments, fetchPosts, togglePostSubscription } = useCommunityStore();
+  const { currentPost: d, comments, detailLoading, detailNotFound, detailError, fetchPostDetail, fetchComments, fetchPosts, togglePostSubscription } = useCommunityStore();
   const { user } = useAuth();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel } = useLoginDialog();
   const navigate = useNavigate();
@@ -181,11 +181,14 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
   }
 
   if (!d) {
+    // 404 는 삭제·숨김·없는 글을 구분하지 않는다(백엔드가 모두 NOT_FOUND). 오래된 알림 링크가 주로 여기로 온다.
     return (
       <div className="cv-page">
         <div className="dv-wrap">
           <button className="dv-back" onClick={onBack}><ArrowLeft /> 커뮤니티로 돌아가기</button>
-          <p className="av-empty">{error ?? "게시글을 불러올 수 없습니다."}</p>
+          <p className="av-empty">
+            {detailNotFound ? "삭제되었거나 볼 수 없는 게시글입니다." : (detailError ?? "게시글을 불러올 수 없습니다.")}
+          </p>
         </div>
       </div>
     );
