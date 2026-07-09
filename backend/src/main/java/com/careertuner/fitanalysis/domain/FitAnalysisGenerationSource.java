@@ -27,4 +27,8 @@ public class FitAnalysisGenerationSource {
     private String profileSkills;         // user_profile.skills (JSON)
     private String profileCertificates;   // user_profile.certificates (JSON)
     private String desiredJob;            // user_profile.desired_job
+    // B(company_analysis) 기업 맥락 — 설명 생성(strategy) 참고용. 판단값 계산엔 미사용(뉴로-심볼릭 불변식).
+    private String companySummary;        // company_analysis.company_summary
+    private String recentIssues;          // company_analysis.recent_issues
+    private String interviewPoints;       // company_analysis.interview_points
 }

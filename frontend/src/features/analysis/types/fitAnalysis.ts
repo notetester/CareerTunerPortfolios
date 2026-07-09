@@ -91,6 +91,29 @@ export interface FitAnalysisLearningTask {
   completedAt: string | null;
 }
 
+export interface CertificateScheduleRound {
+  round: string | null;
+  docRegStart: string | null;
+  docRegEnd: string | null;
+  docExam: string | null;
+  docPass: string | null;
+  pracExamStart: string | null;
+  pracExamEnd: string | null;
+  pracPass: string | null;
+}
+
+// 자격증 근거(생성 시 수집된 snapshot). 확인된 것만 말하고, 확인 못 하면 message 로 솔직하게 안내한다.
+export interface CertificateEvidenceItem {
+  certName: string;
+  kind: string; // NATIONAL_TECHNICAL | NATIONAL_PROFESSIONAL | PRIVATE_OR_OTHER | UNKNOWN
+  scheduleStatus: string; // VERIFIED_CURRENT | OFFICIAL_NO_SCHEDULE | UPSTREAM_UNAVAILABLE | MANUAL_REQUIRED | NOT_APPLICABLE
+  registrationStatus: string | null;
+  message: string;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  scheduleRounds: CertificateScheduleRound[];
+}
+
 export interface FitAnalysisDetail {
   id: number;
   applicationCaseId: number;
@@ -120,6 +143,7 @@ export interface FitAnalysisDetail {
   createdAt: string | null;
   application: FitAnalysisApplication;
   learningTasks: FitAnalysisLearningTask[];
+  certificateEvidence?: CertificateEvidenceItem[];
 }
 
 export function parseJsonValue<T>(value: string | null | undefined, fallback: T): T {

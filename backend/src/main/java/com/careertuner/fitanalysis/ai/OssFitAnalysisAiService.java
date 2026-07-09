@@ -73,7 +73,7 @@ public class OssFitAnalysisAiService implements FitAnalysisAiService {
                 join(command.requiredSkills()), join(command.preferredSkills()), command.duties(),
                 join(command.profileSkills()), join(command.profileCertificates()),
                 skeleton.fitScore(), trainingDecision(skeleton.applyDecision()),
-                join(matched), join(missingRequired), join(missingPreferred));
+                join(matched), join(missingRequired), join(missingPreferred), command.companyContext());
 
         // 3. 자체모델 호출(설명만) + grounding guard. '부족 역량을 보유로 서술'(reports/24 E1)하면 재호출, 소진 시 throw → 폴백.
         List<String> missing = new ArrayList<>(missingRequired);
