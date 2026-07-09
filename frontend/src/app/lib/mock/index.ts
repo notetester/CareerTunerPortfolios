@@ -14,6 +14,7 @@ import {
   demoAnalysisHistory,
   demoCareerPlan,
   demoApplicationCases,
+  demoCareerCertificateStrategy,
   demoFitAnalyses,
   findFitByApplicationCase,
   findFitHistoryByApplicationCase,
@@ -95,7 +96,15 @@ const coreRoutes: MockRoute[] = [
     handler: ({ body }) => {
       const email = String((body as { email?: unknown })?.email ?? "").toLowerCase();
       setMockSession(email.startsWith("admin@") ? demoAdminUser : demoUser);
-      return { ...demoTokenResponse, user: getMockSession() };
+      // MFA 도입 이후 LoginResponse 는 token 을 중첩으로 담는다 — flat 반환 시 로그인이 조용히 실패(토큰 미저장).
+      return {
+        mfaRequired: false,
+        mfaSetupRecommended: false,
+        challengeToken: null,
+        challengeMethod: null,
+        expiresIn: demoTokenResponse.expiresIn,
+        token: { ...demoTokenResponse, user: getMockSession() },
+      };
     },
   },
   { method: "POST", pattern: /^\/auth\/register$/, handler: ok(demoTokenResponse) },
@@ -293,6 +302,8 @@ const coreRoutes: MockRoute[] = [
 
   // ── C: 적합도 분석 ──
   { method: "GET", pattern: /^\/fit-analyses$/, handler: ok(demoFitAnalyses) },
+  // 장기 커리어 자격증 전략(사용자 단위, 현재 지원 건과 분리)
+  { method: "GET", pattern: /^\/fit-analyses\/career-certificate-strategy$/, handler: ok(demoCareerCertificateStrategy) },
   {
     method: "GET",
     pattern: /^\/fit-analyses\/application-cases\/(\d+)$/,
