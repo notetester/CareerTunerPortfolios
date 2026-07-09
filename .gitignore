@@ -82,6 +82,16 @@ pnpm-debug.log*
 # ----- Local agent files -----
 .agents/
 
+# ----- Obsidian local state -----
+.obsidian/workspace.json
+.obsidian/workspaces.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+.obsidian/hotkeys.json
+.obsidian/graph.json
+.obsidian/plugins/
+.obsidian/themes/
+
 # ----- Submodule working-tree contents -----
 # The parent repo tracks only the gitlink pointer for these paths.
 # Files inside are owned by each submodule repository.

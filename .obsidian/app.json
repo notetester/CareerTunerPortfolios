@@ -1,0 +1,31 @@
+{
+  "attachmentFolderPath": "docs/attachments",
+  "alwaysUpdateLinks": false,
+  "newFileLocation": "current",
+  "promptDelete": true,
+  "showUnsupportedFiles": false,
+  "userIgnoreFilters": [
+    ".git/",
+    ".gradle/",
+    ".tmp/",
+    ".venv/",
+    ".venv-ai/",
+    ".claude/",
+    ".agents/",
+    "node_modules/",
+    "backend/.gradle/",
+    "backend/build/",
+    "backend/data/",
+    "backend/logs/",
+    "frontend/node_modules/",
+    "frontend/dist/",
+    "frontend/dist-apk/",
+    "frontend/android/.gradle/",
+    "frontend/android/build/",
+    "frontend/android/app/build/",
+    "desktop/build-*/",
+    "logs/",
+    "*.log",
+    "*.class"
+  ]
+}

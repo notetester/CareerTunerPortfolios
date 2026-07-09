@@ -68,6 +68,8 @@ Spring Boot 4.1.0 · Java 21 · MyBatis · MySQL 8 · Spring Security · springd
 
 ## 문서
 
+- [docs/00_KNOWLEDGE_MAP.md](docs/00_KNOWLEDGE_MAP.md) — Obsidian/Codex/Claude Code용 프로젝트 지식맵 진입점
+- [docs/OBSIDIAN.md](docs/OBSIDIAN.md) — repo 루트 Obsidian Vault 운영 원칙
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 전체 아키텍처/데이터 모델/로드맵
 - [docs/PRODUCT_STRUCTURE.md](docs/PRODUCT_STRUCTURE.md) — 사용자 관점의 전체 메뉴/제품 구조
 - [docs/FEATURE_MODULE_STRUCTURE.md](docs/FEATURE_MODULE_STRUCTURE.md) — 기능별 폴더 구조/담당 범위/공통 충돌 파일
