@@ -5,22 +5,26 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * LLM 구조화 결과 결정적 후처리.
- * 1) 날짜 YYYY-MM 만 허용 2) school/company/title 원문 대조 3) 전 null 항목 제거 4) period 파생.
+ * 1) 날짜 정규화(YYYY-MM 등) 2) school/company/title 원문 대조 3) 전 null 항목 제거 4) period 파생.
  */
 public final class ProfileResumePostProcessor {
 
     private static final Pattern YEAR_MONTH = Pattern.compile("^\\d{4}-\\d{2}$");
+    /** 2022.03 / 2022/03 / 2022-03-01 / 2022년 3월 / 2022년03월 */
+    private static final Pattern DATE_FLEX = Pattern.compile(
+            "(\\d{4})\\s*[.\\-/년]\\s*(\\d{1,2})(?:\\s*[.\\-/월]\\s*\\d{1,2})?");
+    private static final Pattern TOKEN = Pattern.compile("[\\p{IsHangul}A-Za-z0-9]{2,}");
     private static final List<String> EDUCATION_STATUS =
             List.of("졸업", "재학", "휴학", "중퇴", "수료", "졸업예정");
 
     private ProfileResumePostProcessor() {
     }
 
-    @SuppressWarnings("unchecked")
     public static List<Map<String, String>> processEducation(Object raw, String sourceText) {
         List<Map<String, Object>> rows = asMapList(raw);
         List<Map<String, String>> out = new ArrayList<>();
@@ -44,7 +48,6 @@ public final class ProfileResumePostProcessor {
         return out;
     }
 
-    @SuppressWarnings("unchecked")
     public static List<Map<String, String>> processCareer(Object raw, String sourceText) {
         List<Map<String, Object>> rows = asMapList(raw);
         List<Map<String, String>> out = new ArrayList<>();
@@ -69,7 +72,6 @@ public final class ProfileResumePostProcessor {
         return out;
     }
 
-    @SuppressWarnings("unchecked")
     public static List<Map<String, String>> processProjects(Object raw, String sourceText) {
         List<Map<String, Object>> rows = asMapList(raw);
         List<Map<String, String>> out = new ArrayList<>();
@@ -111,15 +113,40 @@ public final class ProfileResumePostProcessor {
         return "";
     }
 
+    /**
+     * 날짜를 YYYY-MM 으로 정규화.
+     * 허용: 2022-03, 2022.03, 2022/03, 2022-03-15, 2022년 3월, 2022년03월.
+     * 현재/present 등 진행 중 표기는 빈 문자열(종료월 없음).
+     */
     public static String normalizeDate(String value) {
         if (value == null || value.isBlank()) {
             return "";
         }
         String trimmed = value.trim();
-        return YEAR_MONTH.matcher(trimmed).matches() ? trimmed : "";
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.equals("현재") || lower.equals("present") || lower.equals("now")
+                || lower.equals("재직중") || lower.equals("재직 중") || lower.contains("현재")) {
+            return "";
+        }
+        if (YEAR_MONTH.matcher(trimmed).matches()) {
+            return trimmed;
+        }
+        Matcher m = DATE_FLEX.matcher(trimmed);
+        if (m.find()) {
+            int year = Integer.parseInt(m.group(1));
+            int month = Integer.parseInt(m.group(2));
+            if (year < 1950 || year > 2100 || month < 1 || month > 12) {
+                return "";
+            }
+            return String.format(Locale.ROOT, "%04d-%02d", year, month);
+        }
+        return "";
     }
 
-    /** 공백 제거 후 원문에 부분 문자열로 존재하는지. */
+    /**
+     * 원문 대조. 공백 제거 후 부분 문자열 일치 + 토큰 폴백
+     * (LLM 이 "서울대" / 원문 "서울대학교", 또는 반대 약칭을 어느 정도 허용).
+     */
     public static boolean appearsInSource(String value, String sourceText) {
         if (value == null || value.isBlank()) {
             return false;
@@ -129,7 +156,33 @@ public final class ProfileResumePostProcessor {
         }
         String needle = value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
         String hay = sourceText.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
-        return !needle.isEmpty() && hay.contains(needle);
+        if (needle.isEmpty()) {
+            return false;
+        }
+        if (hay.contains(needle) || needle.contains(hay) && hay.length() >= 2) {
+            return true;
+        }
+        // needle 토큰 → hay (2글자 이상)
+        Matcher nm = TOKEN.matcher(needle);
+        String longest = "";
+        while (nm.find()) {
+            String t = nm.group();
+            if (t.length() > longest.length()) {
+                longest = t;
+            }
+            if (t.length() >= 2 && hay.contains(t)) {
+                return true;
+            }
+        }
+        // hay 의 긴 토큰(4+)이 needle 에 포함 (약칭 확장 케이스 완화)
+        Matcher hm = TOKEN.matcher(hay);
+        while (hm.find()) {
+            String t = hm.group();
+            if (t.length() >= 4 && needle.contains(t)) {
+                return true;
+            }
+        }
+        return longest.length() >= 4 && hay.contains(longest);
     }
 
     private static String normalizeStatus(String status) {
@@ -138,9 +191,17 @@ public final class ProfileResumePostProcessor {
         }
         String trimmed = status.trim();
         for (String allowed : EDUCATION_STATUS) {
-            if (allowed.equals(trimmed)) {
+            if (allowed.equals(trimmed) || trimmed.contains(allowed)) {
                 return allowed;
             }
+        }
+        // 영문 관용
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.contains("graduat")) {
+            return "졸업";
+        }
+        if (lower.contains("enroll") || lower.contains("attend") || lower.contains("studying")) {
+            return "재학";
         }
         return "";
     }
@@ -164,7 +225,6 @@ public final class ProfileResumePostProcessor {
         return true;
     }
 
-    @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> asMapList(Object raw) {
         if (!(raw instanceof List<?> list)) {
             return List.of();

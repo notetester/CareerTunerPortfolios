@@ -126,6 +126,15 @@ careertuner:
         base-url: ${PROFILE_AI_FINETUNED_BASE_URL:}
         model: ${PROFILE_AI_FINETUNED_MODEL:qwen3-profile-lora-v4}
         timeout: ${PROFILE_AI_FINETUNED_TIMEOUT:240s}
+    # 이력서 문서 → 학력/경력/프로젝트 구조화. 챗봇 Ollama(AI_OLLAMA_BASE_URL + qwen3:8b)와 동일 경로.
+    # skills 는 KNOWN_SKILLS 스캔(LLM 아님). 끄기: PROFILE_RESUME_STRUCTURER_ENABLED=false
+    resume-structurer:
+      enabled: ${PROFILE_RESUME_STRUCTURER_ENABLED:true}
+      base-url: ${PROFILE_RESUME_OLLAMA_BASE_URL:${AI_OLLAMA_BASE_URL:http://localhost:11434}}
+      model: ${PROFILE_RESUME_OLLAMA_MODEL:${AI_AGENT_MODEL:qwen3:8b}}
+      num-ctx: ${PROFILE_RESUME_OLLAMA_NUM_CTX:8192}
+      num-predict: ${PROFILE_RESUME_OLLAMA_NUM_PREDICT:2048}
+      timeout: ${PROFILE_RESUME_OLLAMA_TIMEOUT:120s}
   analysis:
     ai:
       # C 적합도/취업분석 AI provider. openai(기본/폴백) | oss(자체 파인튜닝 careertuner-c-career-strategy-3b)

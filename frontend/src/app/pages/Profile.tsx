@@ -13,6 +13,7 @@ import {
   diagnoseProfileCompleteness,
   extractProfileSkills,
   getProfile,
+  draftHasStructuredFields,
   importProfileDocument,
   pollProfileAnalyze,
   PROFILE_DOC_ACCEPT,
@@ -382,9 +383,44 @@ export function ProfilePage() {
     setMessage("AI 결과를 자기소개/강점 메모에 추가했습니다. 저장을 눌러 반영해 주세요.");
   };
 
+  /** draft → 폼 state 만 반영(DB 저장은 사용자가 저장 버튼). 빈 배열은 건너뜀. */
+  const mergeDraftIntoForm = (
+    draft: ProfileAnalyzeDraft,
+    opts: {
+      education: boolean;
+      career: boolean;
+      projects: boolean;
+      skills: boolean;
+      portfolioLinks: boolean;
+    },
+  ) => {
+    const nonEmptyArray = (v: unknown): v is unknown[] => Array.isArray(v) && v.length > 0;
+    setForm((prev) => {
+      const next = { ...prev };
+      if (opts.education && nonEmptyArray(draft.education)) {
+        next.education = parseEntries(draft.education, createEducation);
+      }
+      if (opts.career && nonEmptyArray(draft.career)) {
+        next.career = parseEntries(draft.career, createCareer);
+      }
+      if (opts.projects && nonEmptyArray(draft.projects)) {
+        next.experiences = parseEntries(draft.projects, createExperience);
+      }
+      if (opts.skills && Array.isArray(draft.skills) && draft.skills.length) {
+        next.skillsText = arrayToLines(mergeUniqueLines(prev.skillsText, draft.skills));
+      }
+      if (opts.portfolioLinks && Array.isArray(draft.portfolioLinks) && draft.portfolioLinks.length) {
+        next.portfolioLinksText = arrayToLines(
+          mergeUniqueLines(prev.portfolioLinksText, draft.portfolioLinks),
+        );
+      }
+      return next;
+    });
+  };
+
   /**
-   * 문서 첨부: upload → import(텍스트 덤프) → (이력서만) analyze 폴링 → 확인 카드.
-   * 기존 내용이 있으면 confirm() 으로 덮어쓰기 확인.
+   * 문서 첨부: upload → import(텍스트 덤프) → analyze 폴링 → 폼 자동 반영 + 확인 카드.
+   * 이력서/자소서 탭 모두 구조화 분석을 돌린다(파일에 학력·경력이 있는 경우 대비).
    */
   const handleDocumentAttach = async (file: File, target: ProfileImportTarget) => {
     const existing =
@@ -397,39 +433,69 @@ export function ProfilePage() {
     setError(null);
     setMessage(null);
     setAnalyzeError(null);
+    setAnalyzeDraft(null);
     try {
       const uploaded = await uploadProfileFile(file, "RESUME");
       const imported = await importProfileDocument(uploaded.id, target);
       const nextForm = toForm(imported.profile);
       setForm(nextForm);
       setSavedSnapshot(serializeProfileForm(nextForm));
-      if (imported.truncated) {
-        setMessage("일부만 저장했습니다. 긴 문서는 앞부분만 반영됩니다.");
-      } else {
-        setMessage(target === "RESUME_TEXT" ? "이력서 원문을 가져왔습니다." : "자기소개서 원문을 가져왔습니다.");
-      }
+      const dumpMsg = imported.truncated
+        ? "일부만 저장했습니다. 긴 문서는 앞부분만 반영됩니다."
+        : target === "RESUME_TEXT"
+          ? "이력서 원문을 가져왔습니다."
+          : "자기소개서 원문을 가져왔습니다.";
+      setMessage(`${dumpMsg} 학력·경력 분석 중…`);
 
-      if (target === "RESUME_TEXT") {
-        setAnalyzeStatus("running");
-        setAnalyzeDraft(null);
-        try {
-          const started = await startProfileAnalyze(uploaded.id);
-          const finished = await pollProfileAnalyze(started.jobId);
-          if (finished.status === "DONE" && finished.draft) {
-            setAnalyzeDraft(finished.draft);
-            setAnalyzeStatus("done");
-          } else {
-            setAnalyzeStatus("failed");
-            setAnalyzeError(finished.errorMessage || "구조화 분석은 실패했어요. 폼을 직접 채워주세요.");
-          }
-        } catch (analyzeErr) {
-          setAnalyzeStatus("failed");
-          setAnalyzeError(
-            analyzeErr instanceof Error
-              ? analyzeErr.message
-              : "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
-          );
+      // 항상 구조화 분석 (이전: RESUME_TEXT 만 → 자소서 탭/경로에서 analyze 누락)
+      setAnalyzeStatus("running");
+      try {
+        const started = await startProfileAnalyze(uploaded.id);
+        if (!started?.jobId) {
+          throw new Error("분석 작업을 시작하지 못했습니다.");
         }
+        const finished = await pollProfileAnalyze(started.jobId);
+        if (finished.status === "DONE" && finished.draft) {
+          setAnalyzeDraft(finished.draft);
+          setAnalyzeStatus("done");
+          if (draftHasStructuredFields(finished.draft)) {
+            // 폼에 바로 채움(저장 전 미리보기). DB 는 저장 버튼으로.
+            mergeDraftIntoForm(finished.draft, {
+              education: true,
+              career: true,
+              projects: true,
+              skills: true,
+              portfolioLinks: true,
+            });
+            setMessage(
+              "원문 저장 + 학력·경력·스킬을 폼에 채웠어요. 경력/스킬 탭을 확인한 뒤 저장을 눌러 주세요.",
+            );
+            // 구조 필드가 있으면 경험 탭으로 안내
+            if (
+              (Array.isArray(finished.draft.education) && finished.draft.education.length) ||
+              (Array.isArray(finished.draft.career) && finished.draft.career.length) ||
+              (Array.isArray(finished.draft.projects) && finished.draft.projects.length)
+            ) {
+              changeProfileTab("experience");
+            } else if (Array.isArray(finished.draft.skills) && finished.draft.skills.length) {
+              changeProfileTab("skills");
+            }
+          } else {
+            setMessage(`${dumpMsg} 구조 항목은 비어 있어요. 원문만 반영됐습니다.`);
+          }
+        } else {
+          setAnalyzeStatus("failed");
+          setAnalyzeError(finished.errorMessage || "구조화 분석은 실패했어요. 폼을 직접 채워주세요.");
+          setMessage(dumpMsg);
+        }
+      } catch (analyzeErr) {
+        setAnalyzeStatus("failed");
+        setAnalyzeError(
+          analyzeErr instanceof Error
+            ? analyzeErr.message
+            : "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
+        );
+        setMessage(dumpMsg);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "첨부에 실패했어요. 다시 시도해 주세요.");
@@ -438,7 +504,7 @@ export function ProfilePage() {
     }
   };
 
-  /** 확인 카드에서 승인된 필드만 폼에 반영(자동 DB 커밋 금지 — 저장 버튼으로 확정). */
+  /** 확인 카드에서 다시 적용(자동 반영 후 수정했을 때). DB 미커밋. */
   const applyAnalyzeDraft = (opts: {
     education: boolean;
     career: boolean;
@@ -447,33 +513,7 @@ export function ProfilePage() {
     portfolioLinks: boolean;
   }) => {
     if (!analyzeDraft) return;
-    const nonEmptyArray = (v: unknown): v is unknown[] => Array.isArray(v) && v.length > 0;
-    setForm((prev) => {
-      const next = { ...prev };
-      // 빈 [] 적용 금지 — parseEntries([]) 가 빈 항목 1개로 바꿔 기존 폼을 지운다.
-      if (opts.education && nonEmptyArray(analyzeDraft.education)) {
-        next.education = parseEntries(analyzeDraft.education, createEducation);
-      }
-      if (opts.career && nonEmptyArray(analyzeDraft.career)) {
-        next.career = parseEntries(analyzeDraft.career, createCareer);
-      }
-      if (opts.projects && nonEmptyArray(analyzeDraft.projects)) {
-        next.experiences = parseEntries(analyzeDraft.projects, createExperience);
-      }
-      if (opts.skills && Array.isArray(analyzeDraft.skills) && analyzeDraft.skills.length) {
-        next.skillsText = arrayToLines(mergeUniqueLines(prev.skillsText, analyzeDraft.skills));
-      }
-      if (
-        opts.portfolioLinks &&
-        Array.isArray(analyzeDraft.portfolioLinks) &&
-        analyzeDraft.portfolioLinks.length
-      ) {
-        next.portfolioLinksText = arrayToLines(
-          mergeUniqueLines(prev.portfolioLinksText, analyzeDraft.portfolioLinks),
-        );
-      }
-      return next;
-    });
+    mergeDraftIntoForm(analyzeDraft, opts);
     setAnalyzeDraft(null);
     setAnalyzeStatus("idle");
     setMessage("추출 결과를 폼에 반영했습니다. 저장을 눌러 확정해 주세요.");
@@ -486,11 +526,31 @@ export function ProfilePage() {
   };
 
   const insertResumeTemplate = () => {
-    update("resumeText", [form.resumeText.trim(), resumeTemplate].filter(Boolean).join("\n\n"));
+    const before = countTemplateCopies(form.resumeText, resumeTemplate);
+    const next = insertGuideTemplate(form.resumeText, resumeTemplate, {
+      alreadyHas: "이력서 입력 틀이 이미 있어요.",
+      appendConfirm: "작성 중인 내용 뒤에 입력 틀을 붙일까요?",
+    });
+    if (next == null) {
+      setMessage("이력서 입력 틀이 이미 있어요. 「파일에서 가져오기」와는 다른 버튼입니다.");
+      return;
+    }
+    update("resumeText", next);
+    if (before >= 2) setMessage("중복으로 붙어 있던 입력 틀을 하나로 정리했어요.");
   };
 
   const insertSelfIntroTemplate = () => {
-    update("selfIntro", [form.selfIntro.trim(), selfIntroTemplate].filter(Boolean).join("\n\n"));
+    const before = countTemplateCopies(form.selfIntro, selfIntroTemplate);
+    const next = insertGuideTemplate(form.selfIntro, selfIntroTemplate, {
+      alreadyHas: "자기소개 입력 틀이 이미 있어요.",
+      appendConfirm: "작성 중인 내용 뒤에 입력 틀을 붙일까요?",
+    });
+    if (next == null) {
+      setMessage("자기소개 입력 틀이 이미 있어요. 「파일에서 가져오기」와는 다른 버튼입니다.");
+      return;
+    }
+    update("selfIntro", next);
+    if (before >= 2) setMessage("중복으로 붙어 있던 입력 틀을 하나로 정리했어요.");
   };
 
   return (
@@ -635,10 +695,8 @@ export function ProfilePage() {
                 </TabsContent>
               )}
 
-              {activeTab === "resume" && (
-                <TabsContent value="resume" className="mt-5">
-                <TabGuide tab="resume" status={tabStatuses.resume} />
-                {(analyzeStatus === "running" || analyzeDraft || analyzeError) && (
+              {(analyzeStatus === "running" || analyzeDraft || analyzeError) && (
+                <div className="mb-4">
                   <AnalyzeConfirmCard
                     status={analyzeStatus}
                     draft={analyzeDraft}
@@ -646,7 +704,12 @@ export function ProfilePage() {
                     onApply={applyAnalyzeDraft}
                     onDismiss={dismissAnalyzeDraft}
                   />
-                )}
+                </div>
+              )}
+
+              {activeTab === "resume" && (
+                <TabsContent value="resume" className="mt-5">
+                <TabGuide tab="resume" status={tabStatuses.resume} />
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -1305,18 +1368,20 @@ function AnalyzeConfirmCard({
         {status === "running" && (
           <div className="flex items-center gap-2 text-slate-600">
             <Loader2 className="size-4 animate-spin" />
-            구조화 분석 중… 원문은 이미 저장됐습니다.
+            Ollama(qwen3)로 학력·경력 분석 중… 원문은 이미 저장됐습니다. 1~2분 걸릴 수 있어요.
           </div>
         )}
         {status === "failed" && (
           <p className="text-amber-800">{error || "구조화 분석은 실패했어요. 폼을 직접 채워주세요."}</p>
         )}
         {status === "done" && !hasAny && (
-          <p className="text-slate-600">추출된 구조 항목이 없습니다. 원문만 반영됐습니다.</p>
+          <p className="text-slate-600">추출된 구조 항목이 없습니다. 원문만 반영됐습니다. (표·스캔 PDF는 인식이 약합니다)</p>
         )}
         {status === "done" && hasAny && (
           <>
-            <p className="text-slate-600">반영할 항목을 선택한 뒤 적용하세요. 저장 버튼을 눌러야 DB에 확정됩니다.</p>
+            <p className="text-slate-600">
+              폼에 미리 채워 두었습니다. 다시 적용할 항목만 고르세요. <b>저장</b>을 눌러야 DB에 확정됩니다.
+            </p>
             <div className="flex flex-col gap-2">
               {eduCount > 0 && (
                 <label className="flex items-center gap-2">
@@ -1456,6 +1521,68 @@ function TagBlock({ title, values, tone = "blue" }: { title: string; values: str
       </div>
     </div>
   );
+}
+
+/**
+ * 「입력 틀 추가」는 파일 추출이 아니다. 기존 구현은 클릭마다 template 을 append 해서
+ * 같은 안내 문단이 여러 번 쌓였다. 빈 칸이면 1회 삽입, 이미 틀이 있으면 중복 제거/유지.
+ */
+function countTemplateCopies(text: string, template: string): number {
+  const body = text ?? "";
+  const marker = template.trim().slice(0, 40);
+  if (!marker || !body.includes(marker)) return 0;
+  let count = 0;
+  let from = 0;
+  while (from < body.length) {
+    const idx = body.indexOf(marker, from);
+    if (idx < 0) break;
+    count += 1;
+    from = idx + marker.length;
+  }
+  return count;
+}
+
+function insertGuideTemplate(
+  current: string,
+  template: string,
+  copy: { alreadyHas: string; appendConfirm: string },
+): string | null {
+  const trimmed = (current ?? "").trim();
+  const tpl = template.trim();
+  const copies = countTemplateCopies(trimmed, tpl);
+
+  // 틀이 2번 이상 붙어 있으면 한 덩어리로 정리(사용자 작성 문장 앞에 틀이 여러 번인 경우)
+  if (copies >= 2) {
+    // 첫 틀 위치 이전 사용자 텍스트 + 틀 1개 + 마지막 틀 이후 텍스트는 보수적으로 틀만 1회로
+    const marker = tpl.slice(0, 40);
+    const first = trimmed.indexOf(marker);
+    const prefix = first > 0 ? trimmed.slice(0, first).trim() : "";
+    // 모든 틀 블록 제거 후 접두 + 틀 1회
+    let rest = trimmed;
+    while (rest.includes(marker)) {
+      const i = rest.indexOf(marker);
+      // template 전체 길이에 가깝게 잘라 냄
+      const end = i + tpl.length;
+      const before = rest.slice(0, i);
+      const after = rest.slice(Math.min(end, rest.length));
+      rest = (before + after).replace(/\n{3,}/g, "\n\n").trim();
+    }
+    const userOnly = [prefix, rest].filter(Boolean).join("\n\n").trim();
+    return userOnly ? `${userOnly}\n\n${tpl}` : tpl;
+  }
+
+  if (!trimmed) {
+    return tpl;
+  }
+  if (copies === 1) {
+    // 이미 한 번 있음 — 또 붙이지 않음
+    return null;
+  }
+  // 사용자 본문만 있을 때: 확인 후 뒤에 1회 append
+  if (typeof window !== "undefined" && !window.confirm(copy.appendConfirm)) {
+    return null;
+  }
+  return `${trimmed}\n\n${tpl}`;
 }
 
 function ListBlock({ title, values }: { title: string; values: string[] }) {

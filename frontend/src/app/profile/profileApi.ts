@@ -141,13 +141,13 @@ export function getProfileAnalyze(jobId: string): Promise<ProfileAnalyzeResponse
   });
 }
 
-/** PENDING 이 끝날 때까지 폴링. */
+/** PENDING 이 끝날 때까지 폴링. 원격 Ollama 콜드스타트 대비 기본 ~4분. */
 export async function pollProfileAnalyze(
   jobId: string,
   options: { intervalMs?: number; maxAttempts?: number } = {},
 ): Promise<ProfileAnalyzeResponse> {
-  const intervalMs = options.intervalMs ?? 1500;
-  const maxAttempts = options.maxAttempts ?? 80;
+  const intervalMs = options.intervalMs ?? 2000;
+  const maxAttempts = options.maxAttempts ?? 120;
   for (let i = 0; i < maxAttempts; i++) {
     const res = await getProfileAnalyze(jobId);
     if (res.status !== "PENDING") return res;
@@ -156,8 +156,22 @@ export async function pollProfileAnalyze(
   return {
     jobId,
     status: "FAILED",
-    errorMessage: "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
+    errorMessage: "구조화 분석 시간이 초과됐어요. 원문은 저장됐고, 폼은 직접 채워 주세요.",
   };
+}
+
+/** draft 에 반영할 비어 있지 않은 구조 필드가 있는지. */
+export function draftHasStructuredFields(draft: ProfileAnalyzeDraft | null | undefined): boolean {
+  if (!draft) return false;
+  const n = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+  return (
+    n(draft.education) +
+      n(draft.career) +
+      n(draft.projects) +
+      n(draft.skills) +
+      n(draft.portfolioLinks) >
+    0
+  );
 }
 
 /** 프로필 문서 첨부 허용 확장자/MIME (.doc 제외). */

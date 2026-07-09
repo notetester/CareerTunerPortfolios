@@ -25,8 +25,9 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * 이력서 텍스트 → education/career/projects (LLM) + skills 스캔 + portfolio URL.
  * Ollama 요청 형태는 BLocalLlmClient 와 동일(think:false, format=JSON Schema).
- * 별칭 모델 기본값 qwen3:8b — 챗봇과 동일 모델이면 재적재 회피. env 로 오버라이드 가능.
- * LLM 실패 시 skills/portfolioLinks 만 채운 degraded draft 를 반환한다(교육·경력·프로젝트 빈 배열).
+ * <p>기본 엔드포인트·모델은 <b>챗봇과 동일</b> ({@code AI_OLLAMA_BASE_URL} + {@code AI_AGENT_MODEL}/qwen3:8b)
+ * 로 맞춰 Tailscale 공유 Ollama 재적재를 피한다. B 분석 전용 모델(jobposting-r1)과 분리.
+ * LLM 실패 시 skills/portfolioLinks 만 채운 degraded draft 를 반환한다.
  */
 @Slf4j
 @Component
@@ -49,9 +50,10 @@ public class ProfileResumeStructurer {
     public ProfileResumeStructurer(
             ObjectMapper objectMapper,
             @Value("${careertuner.profile.resume-structurer.enabled:true}") boolean llmEnabled,
-            @Value("${careertuner.profile.resume-structurer.base-url:${B_ANALYSIS_OLLAMA_BASE_URL:http://localhost:11434}}")
+            // 챗봇(langchain4j)과 같은 Tailscale Ollama — B_ANALYSIS 전용 URL/모델과 섞지 않는다.
+            @Value("${careertuner.profile.resume-structurer.base-url:${AI_OLLAMA_BASE_URL:http://localhost:11434}}")
             String baseUrl,
-            @Value("${careertuner.profile.resume-structurer.model:${PROFILE_RESUME_OLLAMA_MODEL:qwen3:8b}}")
+            @Value("${careertuner.profile.resume-structurer.model:${PROFILE_RESUME_OLLAMA_MODEL:${AI_AGENT_MODEL:qwen3:8b}}}")
             String model,
             @Value("${careertuner.profile.resume-structurer.num-ctx:8192}") int numCtx,
             @Value("${careertuner.profile.resume-structurer.num-predict:2048}") int numPredict,
@@ -63,6 +65,8 @@ public class ProfileResumeStructurer {
         this.numCtx = numCtx;
         this.numPredict = numPredict;
         this.readTimeout = readTimeout;
+        log.info("이력서 구조화 Ollama: enabled={} baseUrl={} model={} numCtx={}",
+                llmEnabled, baseUrl, model, numCtx);
     }
 
     /**
@@ -88,14 +92,19 @@ public class ProfileResumeStructurer {
                 educationRaw = llm.getOrDefault("education", List.of());
                 careerRaw = llm.getOrDefault("career", List.of());
                 projectsRaw = llm.getOrDefault("projects", List.of());
+                log.info("이력서 구조화 LLM raw sizes edu={} career={} projects={} sourceChars={}",
+                        sizeOf(educationRaw), sizeOf(careerRaw), sizeOf(projectsRaw), source.length());
             } catch (RuntimeException ex) {
-                log.warn("이력서 구조화 LLM 실패 — skills/URL 만 반환: {}", ex.getMessage());
+                log.warn("이력서 구조화 LLM 실패 — skills/URL 만 반환: {} ({})",
+                        ex.getMessage(), ex.getClass().getSimpleName(), ex);
             }
         }
 
         List<Map<String, String>> education = ProfileResumePostProcessor.processEducation(educationRaw, source);
         List<Map<String, String>> career = ProfileResumePostProcessor.processCareer(careerRaw, source);
         List<Map<String, String>> projects = ProfileResumePostProcessor.processProjects(projectsRaw, source);
+        log.info("이력서 구조화 post-process kept edu={} career={} projects={} skills={}",
+                education.size(), career.size(), projects.size(), skills.size());
 
         return new ProfileAnalyzeDraft(education, career, projects, skills, portfolioLinks);
     }
@@ -180,17 +189,23 @@ public class ProfileResumeStructurer {
     }
 
     private static Map<String, Object> jsonSchema() {
+        // List.of / Map.of 는 null 원소를 허용하지 않음 — status enum 에 null 넣으면 NPE(메시지 null).
         Map<String, Object> stringOrNull = Map.of("type", List.of("string", "null"));
+        Map<String, Object> statusType = new LinkedHashMap<>();
+        statusType.put("type", List.of("string", "null"));
+        statusType.put("enum", List.of("졸업", "재학", "휴학", "중퇴", "수료", "졸업예정"));
+
+        Map<String, Object> educationProps = new LinkedHashMap<>();
+        educationProps.put("school", stringOrNull);
+        educationProps.put("major", stringOrNull);
+        educationProps.put("startDate", stringOrNull);
+        educationProps.put("endDate", stringOrNull);
+        educationProps.put("status", statusType);
         Map<String, Object> educationItem = Map.of(
                 "type", "object",
-                "properties", Map.of(
-                        "school", stringOrNull,
-                        "major", stringOrNull,
-                        "startDate", stringOrNull,
-                        "endDate", stringOrNull,
-                        "status", Map.of("type", List.of("string", "null"),
-                                "enum", List.of("졸업", "재학", "휴학", "중퇴", "수료", "졸업예정", null))),
+                "properties", educationProps,
                 "additionalProperties", false);
+
         Map<String, Object> careerItem = Map.of(
                 "type", "object",
                 "properties", Map.of(
@@ -220,6 +235,10 @@ public class ProfileResumeStructurer {
                         "projects", Map.of("type", "array", "items", projectItem)),
                 "required", List.of("education", "career", "projects"),
                 "additionalProperties", false);
+    }
+
+    private static int sizeOf(Object raw) {
+        return raw instanceof List<?> list ? list.size() : 0;
     }
 
     public static List<String> extractUrls(String text) {

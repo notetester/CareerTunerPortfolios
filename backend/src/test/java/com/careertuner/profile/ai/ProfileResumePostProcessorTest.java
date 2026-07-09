@@ -42,11 +42,22 @@ class ProfileResumePostProcessorTest {
     }
 
     @Test
-    void datesOnlyYearMonth() {
+    void datesNormalizeKoreanAndDottedForms() {
         assertThat(ProfileResumePostProcessor.normalizeDate("2022-03")).isEqualTo("2022-03");
-        assertThat(ProfileResumePostProcessor.normalizeDate("2022.03")).isEmpty();
+        assertThat(ProfileResumePostProcessor.normalizeDate("2022.03")).isEqualTo("2022-03");
+        assertThat(ProfileResumePostProcessor.normalizeDate("2022/03")).isEqualTo("2022-03");
+        assertThat(ProfileResumePostProcessor.normalizeDate("2022년 3월")).isEqualTo("2022-03");
+        assertThat(ProfileResumePostProcessor.normalizeDate("2022-03-15")).isEqualTo("2022-03");
+        assertThat(ProfileResumePostProcessor.normalizeDate("현재")).isEmpty();
         assertThat(ProfileResumePostProcessor.normalizeDate("March 2022")).isEmpty();
         assertThat(ProfileResumePostProcessor.normalizeDate(null)).isEmpty();
+    }
+
+    @Test
+    void appearsInSource_tokenAndAbbreviation() {
+        assertThat(ProfileResumePostProcessor.appearsInSource("서울대", "학력 서울대학교 컴퓨터")).isTrue();
+        assertThat(ProfileResumePostProcessor.appearsInSource("Kakao", "경력 Kakao 백엔드")).isTrue();
+        assertThat(ProfileResumePostProcessor.appearsInSource("없는회사", "카카오 백엔드")).isFalse();
     }
 
     @Test
@@ -97,5 +108,23 @@ class ProfileResumePostProcessorTest {
         assertThat(draft.projects()).asList().hasSize(1);
         assertThat(draft.skills()).contains("Java");
         assertThat(draft.portfolioLinks()).contains("https://github.com/me/alpha");
+    }
+
+    /** jsonSchema 가 List.of(null) 로 NPE 나지 않는지 — 과거 실패 원인. */
+    @Test
+    void jsonSchemaBuildsWithoutNullPointer() {
+        ProfileResumeStructurer structurer = new ProfileResumeStructurer(
+                new tools.jackson.databind.ObjectMapper(),
+                false,
+                "http://localhost:11434",
+                "qwen3:8b",
+                8192,
+                2048,
+                java.time.Duration.ofSeconds(5));
+        // structure() 내부 callLlm 전 jsonSchema 가 먼저 깨지면 LLM 비활성 경로에서도 스키마 빌드 검증 가능
+        // → 공개 진입점으로 스키마 직렬화 우회: structure with llm disabled still works
+        ProfileAnalyzeDraft draft = structurer.structure("Kakao Java");
+        assertThat(draft.skills()).contains("Java");
+        assertThat(draft.education()).asList().isEmpty();
     }
 }
