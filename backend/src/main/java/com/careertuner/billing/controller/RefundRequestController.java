@@ -16,6 +16,7 @@ import com.careertuner.billing.dto.RefundEligibilityResponse;
 import com.careertuner.billing.service.RefundRequestService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.SitesFinancialMutation;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class RefundRequestController {
         return ApiResponse.ok(service.listMine(authUser.id()));
     }
 
+    @SitesFinancialMutation
     @PostMapping
     public ApiResponse<RefundRequestResponse> create(
             @AuthenticationPrincipal AuthUser authUser,

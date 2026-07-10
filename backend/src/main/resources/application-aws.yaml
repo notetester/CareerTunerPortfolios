@@ -13,6 +13,7 @@ careertuner:
   app:
     # nginx가 웹과 /api를 같은 HTTPS 도메인에서 제공한다. OAuth 콜백·이메일 링크 조립에 사용된다.
     frontend-url: ${APP_FRONTEND_URL:https://careertuner.kro.kr}
+    sites-frontend-url: ${APP_SITES_FRONTEND_URL:https://careertuner-backup.career-tuner-4654.chatgpt.site}
     api-base-url: ${APP_API_BASE_URL:https://careertuner.kro.kr}
   oauth:
     mock-enabled: ${OAUTH_MOCK_ENABLED:false}

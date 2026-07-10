@@ -59,7 +59,11 @@ public class JwtTokenProvider {
         return new AuthUser(Long.valueOf(c.getSubject()), c.get("email", String.class), c.get("role", String.class));
     }
 
-    public record OauthState(String type, String provider, Long userId) {
+    public record OauthState(String type, String provider, Long userId, String frontendClient) {
+
+        public OauthState(String type, String provider, Long userId) {
+            this(type, provider, userId, null);
+        }
 
         public boolean login() {
             return "oauth_state".equals(type);
@@ -72,29 +76,43 @@ public class JwtTokenProvider {
 
     /** OAuth 콜백 검증용 서명 state 토큰(5분). 세션/쿠키 없이 CSRF 를 방지한다. */
     public String createOauthState(String provider) {
+        return createOauthState(provider, null);
+    }
+
+    public String createOauthState(String provider, String frontendClient) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(provider)
                 .id(UUID.randomUUID().toString())
                 .claim("type", "oauth_state")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(300)))
-                .signWith(key)
-                .compact();
+                .signWith(key);
+        if (frontendClient != null && !frontendClient.isBlank()) {
+            builder.claim("frontendClient", frontendClient);
+        }
+        return builder.compact();
     }
 
     /** 로그인한 사용자가 소셜 계정을 연동할 때 쓰는 서명 state 토큰(5분). */
     public String createOauthLinkState(String provider, Long userId) {
+        return createOauthLinkState(provider, userId, null);
+    }
+
+    public String createOauthLinkState(String provider, Long userId, String frontendClient) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(provider)
                 .id(UUID.randomUUID().toString())
                 .claim("type", "oauth_link_state")
                 .claim("userId", userId)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(300)))
-                .signWith(key)
-                .compact();
+                .signWith(key);
+        if (frontendClient != null && !frontendClient.isBlank()) {
+            builder.claim("frontendClient", frontendClient);
+        }
+        return builder.compact();
     }
 
     public boolean validateOauthState(String state, String provider) {
@@ -112,7 +130,7 @@ public class JwtTokenProvider {
             }
             Object userIdClaim = c.get("userId");
             Long userId = userIdClaim instanceof Number n ? n.longValue() : null;
-            return new OauthState(type, c.getSubject(), userId);
+            return new OauthState(type, c.getSubject(), userId, c.get("frontendClient", String.class));
         } catch (Exception e) {
             return null;
         }

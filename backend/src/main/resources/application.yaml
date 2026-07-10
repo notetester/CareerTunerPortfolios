@@ -74,6 +74,8 @@ careertuner:
   app:
     # 소셜 로그인 완료/이메일 링크가 향하는 프런트엔드 주소
     frontend-url: ${APP_FRONTEND_URL:http://localhost:5173}
+    # Codex Sites 백업 프런트. Worker가 named client 헤더를 붙인 요청에만 사용된다.
+    sites-frontend-url: ${APP_SITES_FRONTEND_URL:}
     # OAuth redirect-uri·이메일 링크 조립에 쓰는 백엔드 주소
     api-base-url: ${APP_API_BASE_URL:http://localhost:8080}
   jwt:
