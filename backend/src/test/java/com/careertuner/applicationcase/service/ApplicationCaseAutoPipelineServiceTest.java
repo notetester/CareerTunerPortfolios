@@ -205,8 +205,9 @@ class ApplicationCaseAutoPipelineServiceTest {
     }
 
     @Test
-    void initialRunWithoutSelectionUsesAutoChainAndLeavesProvenanceNull() {
-        // 선택이 없으면(프로필 provider NULL) 기존 자동 체인으로 돌고 provenance 컬럼은 전부 NULL 로 남는다(현행 보존).
+    void initialRunWithoutSelectionUsesAutoChainMarksInitialWithNullProviderProvenance() {
+        // 선택이 없으면(프로필 provider NULL) 기존 자동 체인으로 돌지만, run_mode 는 여전히 INITIAL 로 찍는다
+        // ("초기 실행은 항상 INITIAL" 계약 — MANUAL·레거시와 구분). provider provenance 컬럼만 NULL 로 남는다.
         stubRunnableDraftCase();
         stubAnalysisInsertCallbacks();
         BAnalysisGenerationService generation = mock(BAnalysisGenerationService.class);
@@ -229,13 +230,16 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(jobAnalysisMapper).insertJobAnalysis(jobCaptor.capture());
         assertThat(jobCaptor.getValue().getRequestedProvider()).isNull();
         assertThat(jobCaptor.getValue().getActualProvider()).isNull();
+        assertThat(jobCaptor.getValue().getActualModel()).isNull();
         assertThat(jobCaptor.getValue().getFallbackUsed()).isNull();
-        assertThat(jobCaptor.getValue().getRunMode()).isNull();
+        assertThat(jobCaptor.getValue().getAttemptPath()).isNull();
+        assertThat(jobCaptor.getValue().getRunMode()).isEqualTo("INITIAL");
 
         ArgumentCaptor<CompanyAnalysis> companyCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
         verify(companyAnalysisMapper).insertCompanyAnalysis(companyCaptor.capture());
         assertThat(companyCaptor.getValue().getRequestedProvider()).isNull();
-        assertThat(companyCaptor.getValue().getRunMode()).isNull();
+        assertThat(companyCaptor.getValue().getActualProvider()).isNull();
+        assertThat(companyCaptor.getValue().getRunMode()).isEqualTo("INITIAL");
     }
 
     @Test

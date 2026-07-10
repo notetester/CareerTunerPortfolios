@@ -295,15 +295,21 @@ public class BAnalysisGenerationService {
             if (!providerAvailable(provider)) {
                 continue;
             }
-            attempts.add(provider.name());
-            try {
-                JobAnalysisPayload payload = attemptJob(provider, applicationCase, postingText, classification);
-                log.info("Preferred job analysis ({}) succeeded (requested={})", provider, preferred);
-                return new GeneratedJobAnalysis(payload, null, null,
-                        provenance(preferred, provider, payload.usage(), attempts));
-            } catch (RuntimeException ex) {
-                lastError = safeMessage(ex);
-                log.warn("Preferred job analysis ({}) failed: {}", provider, lastError);
+            // LOCAL 은 자동/strict 경로와 동일하게 maxRetries 만큼 재시도한다(선택 provider 실패 후 폴백 회복력 보존).
+            // 각 시도를 attempt_path 에 그대로 기록한다(예: LOCAL 2회 → ["...","LOCAL","LOCAL"]).
+            int maxAttempts = maxAttemptsFor(provider);
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                attempts.add(provider.name());
+                try {
+                    JobAnalysisPayload payload = attemptJob(provider, applicationCase, postingText, classification);
+                    log.info("Preferred job analysis ({}) succeeded (requested={}, attempt {}/{})",
+                            provider, preferred, attempt, maxAttempts);
+                    return new GeneratedJobAnalysis(payload, null, null,
+                            provenance(preferred, provider, payload.usage(), attempts));
+                } catch (RuntimeException ex) {
+                    lastError = safeMessage(ex);
+                    log.warn("Preferred job analysis ({}) attempt {}/{} failed: {}", provider, attempt, maxAttempts, lastError);
+                }
             }
         }
         attempts.add(SELF_RULES_ATTEMPT);
@@ -332,16 +338,21 @@ public class BAnalysisGenerationService {
             if (!providerAvailable(provider)) {
                 continue;
             }
-            attempts.add(provider.name());
-            try {
-                CompanyAnalysisPayload payload = attemptCompany(provider, applicationCase, postingText,
-                        classification, usableWeb, includeWeb);
-                log.info("Preferred company analysis ({}) succeeded (requested={})", provider, preferred);
-                return new GeneratedCompanyAnalysis(payload, null, null,
-                        provenance(preferred, provider, payload.usage(), attempts));
-            } catch (RuntimeException ex) {
-                lastError = safeMessage(ex);
-                log.warn("Preferred company analysis ({}) failed: {}", provider, lastError);
+            // LOCAL 은 자동/strict 경로와 동일하게 maxRetries 만큼 재시도한다(폴백 회복력 보존, attempt_path 에 각 시도 기록).
+            int maxAttempts = maxAttemptsFor(provider);
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                attempts.add(provider.name());
+                try {
+                    CompanyAnalysisPayload payload = attemptCompany(provider, applicationCase, postingText,
+                            classification, usableWeb, includeWeb);
+                    log.info("Preferred company analysis ({}) succeeded (requested={}, attempt {}/{})",
+                            provider, preferred, attempt, maxAttempts);
+                    return new GeneratedCompanyAnalysis(payload, null, null,
+                            provenance(preferred, provider, payload.usage(), attempts));
+                } catch (RuntimeException ex) {
+                    lastError = safeMessage(ex);
+                    log.warn("Preferred company analysis ({}) attempt {}/{} failed: {}", provider, attempt, maxAttempts, lastError);
+                }
             }
         }
         attempts.add(SELF_RULES_ATTEMPT);
@@ -367,6 +378,15 @@ public class BAnalysisGenerationService {
             }
         }
         return ordered;
+    }
+
+    /**
+     * provider 별 최대 시도 횟수. LOCAL 은 자동/strict 경로와 동일하게 {@code 1 + maxRetries}(일시 실패 회복),
+     * hosted(CLAUDE/OPENAI)는 1회(통신 재시도는 각 client 내부). preferred 경로가 provider 를 넘기기 전
+     * 이만큼 반복 시도한다.
+     */
+    private int maxAttemptsFor(BAnalysisProvider provider) {
+        return provider == BAnalysisProvider.LOCAL ? 1 + properties.getLocalLlm().getMaxRetries() : 1;
     }
 
     /** preferred 경로 성공 provenance — actual=성공 provider, fallback_used=선택과 다르면 true. */

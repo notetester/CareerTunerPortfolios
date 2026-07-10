@@ -298,11 +298,14 @@ public class ApplicationCaseAutoPipelineService {
     }
 
     /**
-     * 초기 등록 preferred 경로의 provenance(요청·실제 provider·모델·폴백여부·시도순서)를 공고분석 행에 기록한다.
-     * run_mode 는 항상 {@code INITIAL}(수동 strict=MANUAL 과 구분). provenance 가 null(선택 없는 자동 체인)이면
-     * 아무 컬럼도 세팅하지 않아 기존 동작대로 전부 NULL 로 남는다.
+     * 초기 파이프라인이 만드는 공고분석 행에 run_mode 와 provenance 를 기록한다.
+     * {@code run_mode} 는 <b>항상</b> {@code INITIAL} — 등록 시 provider 선택 여부와 무관하게 초기 실행임을 표시해
+     * 수동 strict(=MANUAL)·레거시(=NULL)와 구분한다("초기 실행은 항상 INITIAL" 계약). provider provenance
+     * (요청·실제 provider·모델·폴백여부·시도순서)는 선택이 있었던 preferred 경로에서만 채우고, 자동 체인
+     * (provenance=null)은 이 컬럼들만 NULL 로 남긴다(run_mode 는 여전히 INITIAL).
      */
     private void applyInitialRunProvenance(JobAnalysis.JobAnalysisBuilder builder, AnalysisProvenance provenance) {
+        builder.runMode(RUN_MODE_INITIAL);
         if (provenance == null) {
             return;
         }
@@ -310,12 +313,12 @@ public class ApplicationCaseAutoPipelineService {
                 .actualProvider(provenance.actualProvider())
                 .actualModel(provenance.actualModel())
                 .fallbackUsed(provenance.fallbackUsed())
-                .attemptPath(provenance.attemptPathJson())
-                .runMode(RUN_MODE_INITIAL);
+                .attemptPath(provenance.attemptPathJson());
     }
 
-    /** 초기 등록 preferred 경로의 provenance 를 기업분석 행에 기록한다(공고분석과 동일 계약, run_mode=INITIAL). */
+    /** 초기 파이프라인이 만드는 기업분석 행에 run_mode(항상 INITIAL)와 provenance 를 기록한다(공고분석과 동일 계약). */
     private void applyInitialRunProvenance(CompanyAnalysis.CompanyAnalysisBuilder builder, AnalysisProvenance provenance) {
+        builder.runMode(RUN_MODE_INITIAL);
         if (provenance == null) {
             return;
         }
@@ -323,8 +326,7 @@ public class ApplicationCaseAutoPipelineService {
                 .actualProvider(provenance.actualProvider())
                 .actualModel(provenance.actualModel())
                 .fallbackUsed(provenance.fallbackUsed())
-                .attemptPath(provenance.attemptPathJson())
-                .runMode(RUN_MODE_INITIAL);
+                .attemptPath(provenance.attemptPathJson());
     }
 
     private void createFitAnalysis(Long userId, Long applicationCaseId) {

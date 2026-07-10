@@ -1532,6 +1532,37 @@ class BAnalysisGenerationServiceTest {
         verify(localLlmClient, never()).chat(anyString(), anyString(), any());
     }
 
+    @Test
+    void generateJobAnalysisPreferredRetriesLocalPerMaxRetriesBeforeFallingThrough() {
+        // preferred=CLAUDE 실패 후 LOCAL 로 폴백할 때, LOCAL 은 자동/strict 경로와 동일하게 maxRetries 만큼
+        // 재시도한다 — 한 번의 일시 실패로 바로 OpenAI/self-rules 로 넘어가지 않고, attempt_path 에 LOCAL 반복을 남긴다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        properties.getLocalLlm().setMaxRetries(1); // LOCAL 최대 2회(1 재시도)
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any()))
+                .thenThrow(new RuntimeException("local first attempt fails"))
+                .thenReturn(validJobJson());
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenThrow(new RuntimeException("claude down"));
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result = service.generateJobAnalysisPreferred(
+                applicationCase(), postingText(), BAnalysisProvider.CLAUDE);
+
+        assertThat(result.fellBack()).isFalse();
+        var provenance = result.provenance();
+        assertThat(provenance.requestedProvider()).isEqualTo("CLAUDE");
+        assertThat(provenance.actualProvider()).isEqualTo("LOCAL");
+        assertThat(provenance.fallbackUsed()).isTrue();
+        // CLAUDE 1회 실패 + LOCAL 2회(1실패+1성공) → attempt_path 에 LOCAL 반복 기록.
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"CLAUDE\",\"LOCAL\",\"LOCAL\"]");
+        verify(localLlmClient, org.mockito.Mockito.times(2)).chat(anyString(), anyString(), any());
+    }
+
     private static String validJobJson() {
         return """
                 {
