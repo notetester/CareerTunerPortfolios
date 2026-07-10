@@ -33,9 +33,14 @@ export async function getJobAnalysis(applicationCaseId: number): Promise<JobAnal
   })) ?? null;
 }
 
-export function createJobAnalysis(applicationCaseId: number): Promise<JobAnalysis> {
+/**
+ * strict 수동 재분석 — provider 필수(백엔드가 누락·무효를 400 으로 거절). 사용자가 picker 로 고른
+ * 단일 provider 만 시도하며 교차 폴백·self-rules 안전망이 없다(자동 체인은 초기 파이프라인 전용).
+ */
+export function createJobAnalysis(applicationCaseId: number, provider: string): Promise<JobAnalysis> {
+  const params = new URLSearchParams({ provider });
   return runWithAiCharge("JOB_ANALYSIS", (headers) =>
-    api<JobAnalysis>(`/application-cases/${applicationCaseId}/job-analysis`, {
+    api<JobAnalysis>(`/application-cases/${applicationCaseId}/job-analysis?${params}`, {
       method: "POST",
       headers,
     }));
@@ -64,9 +69,11 @@ export async function getCompanyAnalysis(applicationCaseId: number): Promise<Com
   })) ?? null;
 }
 
-export function createCompanyAnalysis(applicationCaseId: number): Promise<CompanyAnalysis> {
+/** strict 수동 재분석 — provider 필수(백엔드가 누락·무효를 400 으로 거절). {@link createJobAnalysis} 와 동일 정책. */
+export function createCompanyAnalysis(applicationCaseId: number, provider: string): Promise<CompanyAnalysis> {
+  const params = new URLSearchParams({ provider });
   return runWithAiCharge("COMPANY_RESEARCH", (headers) =>
-    api<CompanyAnalysis>(`/application-cases/${applicationCaseId}/company-analysis`, {
+    api<CompanyAnalysis>(`/application-cases/${applicationCaseId}/company-analysis?${params}`, {
       method: "POST",
       headers,
     }));

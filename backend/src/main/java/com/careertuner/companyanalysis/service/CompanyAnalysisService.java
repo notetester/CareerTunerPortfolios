@@ -18,6 +18,8 @@ import com.careertuner.applicationcase.service.ApplicationCaseAnalysisStatusServ
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService.StrictCompanyResult;
+import com.careertuner.applicationcase.service.BAnalysisProvider;
 import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
 import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.common.exception.BusinessException;
@@ -130,6 +132,79 @@ public class CompanyAnalysisService {
                 }
                 aiUsageLogService.recordLocalSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
                 // 기업 분석 저장이 성공하면 사용자에게 완료 알림을 남긴다.
+                notificationService.notify(Notification.builder()
+                        .userId(userId)
+                        .type("COMPANY_ANALYSIS_COMPLETE")
+                        .targetType("APPLICATION_CASE")
+                        .targetId(applicationCaseId)
+                        .title("기업 분석이 완료되었습니다")
+                        .message("%s · %s 기업 분석 결과가 준비되었습니다.".formatted(
+                                applicationCase.getCompanyName(), applicationCase.getJobTitle()))
+                        .link("/applications/" + applicationCaseId + "/company-analysis")
+                        .build());
+                return response;
+            });
+        } catch (RuntimeException ex) {
+            restorePreviousStatus(userId, applicationCaseId, previousStatus, ex);
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, userFacingFailureMessage(ex, "기업 분석 결과 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."));
+            throw ex;
+        }
+    }
+
+    /**
+     * strict 수동 재분석 — 고른 provider 하나로만 기업 분석을 다시 실행한다(자동 순서·self-rules 미사용).
+     * 웹 근거는 비-모델 보조 입력이라 있으면 쓰고 없으면 공고-only(그건 strict 실패가 아니다). 성공 시
+     * provenance(선택=실제 provider·모델·attempt_path·run_mode=MANUAL·fallback_used=false)를 저장하고,
+     * 실패 시 <b>기존 분석을 보존</b>한 채 상태만 되돌리고 예외를 던진다. 자동 {@link #createCompanyAnalysis(Long, Long)}
+     * 와 구조는 같지만 생성 경로·provenance 만 다르다(자동 경로 무수정).
+     */
+    public CompanyAnalysisResponse createCompanyAnalysisStrict(Long userId, Long applicationCaseId, BAnalysisProvider provider) {
+        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
+        ensureAnalysisRunnable(applicationCase.getStatus());
+        JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
+        String sourceText = accessService.sourceText(jobPosting);
+        String previousStatus = applicationCase.getStatus();
+        statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
+        try {
+            List<CompanyWebEvidence> webEvidence = collectWebEvidence(applicationCase);
+            StrictCompanyResult strict =
+                    bAnalysisGenerationService.generateCompanyAnalysisStrict(applicationCase, sourceText, webEvidence, provider);
+            var payload = canonicalizer.canonicalizeForStorage(
+                    strict.payload(),
+                    jobPosting.getId(),
+                    jobPosting.getRevision(),
+                    sourceText,
+                    applicationCase.getCompanyName(),
+                    applicationCase.getJobTitle(),
+                    webEvidence).payload();
+            LocalDateTime checkedAt = BDisplayTime.now();
+            return transactionTemplate.execute(status -> {
+                CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
+                        .applicationCaseId(applicationCaseId)
+                        .jobPostingId(jobPosting.getId())
+                        .jobPostingRevision(jobPosting.getRevision())
+                        .companySummary(blankToNull(payload.companySummary()))
+                        .recentIssues(blankToNull(payload.recentIssues()))
+                        .industry(compactColumnText(payload.industry(), COMPANY_INDUSTRY_MAX_LENGTH))
+                        .competitors(payload.competitors())
+                        .interviewPoints(blankToNull(payload.interviewPoints()))
+                        .sources(payload.sources())
+                        .verifiedFacts(payload.verifiedFacts())
+                        .aiInferences(payload.aiInferences())
+                        .sourceType("JOB_POSTING")
+                        .checkedAt(checkedAt)
+                        .refreshRecommendedAt(checkedAt.plusDays(30))
+                        .requestedProvider(provider.name())
+                        .actualProvider(provider.name())
+                        .actualModel(payload.usage() == null ? null : payload.usage().model())
+                        .fallbackUsed(false)
+                        .attemptPath(BAnalysisProvider.toAttemptPathJson(strict.attempts()))
+                        .runMode("MANUAL")
+                        .build();
+                companyAnalysisMapper.insertCompanyAnalysis(companyAnalysis);
+                CompanyAnalysisResponse response = toResponse(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(applicationCaseId));
+                statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
+                aiUsageLogService.recordLocalSuccess(userId, applicationCaseId, FEATURE_COMPANY_RESEARCH, payload.usage());
                 notificationService.notify(Notification.builder()
                         .userId(userId)
                         .type("COMPANY_ANALYSIS_COMPLETE")

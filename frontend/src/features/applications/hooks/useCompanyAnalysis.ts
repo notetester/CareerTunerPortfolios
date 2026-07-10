@@ -48,7 +48,7 @@ export function useCompanyAnalysis(applicationCaseId: number | null, enabled = t
     }
   }, [applicationCaseId, enabled]);
 
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (provider: string) => {
     const requestSeq = ++requestSeqRef.current;
     if (!applicationCaseId || !enabled) return null;
 
@@ -56,7 +56,7 @@ export function useCompanyAnalysis(applicationCaseId: number | null, enabled = t
     setError(null);
     setReviewError(null);
     try {
-      const analysis = await createCompanyAnalysis(applicationCaseId);
+      const analysis = await createCompanyAnalysis(applicationCaseId, provider);
       const analysisHistory = await getCompanyAnalysisHistory(applicationCaseId);
       if (requestSeq !== requestSeqRef.current) return null;
       setCompanyAnalysis(analysis);

@@ -291,14 +291,14 @@ export function ApplicationDetailPage() {
     navigate("/applications");
   };
 
-  const handleGenerateJobAnalysis = async () => {
-    const analysis = await generateJobAnalysis();
+  const handleGenerateJobAnalysis = async (provider: string) => {
+    const analysis = await generateJobAnalysis(provider);
     await refreshBFailureLogs();
     return analysis;
   };
 
-  const handleGenerateCompanyAnalysis = async () => {
-    const analysis = await generateCompanyAnalysis();
+  const handleGenerateCompanyAnalysis = async (provider: string) => {
+    const analysis = await generateCompanyAnalysis(provider);
     await refreshBFailureLogs();
     return analysis;
   };
@@ -558,6 +558,7 @@ export function ApplicationDetailPage() {
                   viewHref={detailPath(id, "jobAnalysis")}
                   editHref={detailPath(id, "jobAnalysis", "edit")}
                   latestJobPostingRevision={jobPosting?.revision ?? null}
+                  sourceType={applicationCase.sourceType}
                   onGenerate={handleGenerateJobAnalysis}
                   onReview={reviewJobAnalysis}
                 />
@@ -577,6 +578,7 @@ export function ApplicationDetailPage() {
                   viewHref={detailPath(id, "companyAnalysis")}
                   editHref={detailPath(id, "companyAnalysis", "edit")}
                   latestJobPostingRevision={jobPosting?.revision ?? null}
+                  sourceType={applicationCase.sourceType}
                   onGenerate={handleGenerateCompanyAnalysis}
                   onReview={reviewCompanyAnalysis}
                 />

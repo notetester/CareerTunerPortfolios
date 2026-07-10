@@ -66,7 +66,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
     private static final Set<String> JOB_POSTING_JSON_SOURCE_TYPES = Set.of("TEXT", "MANUAL", "URL");
     private static final Set<String> JOB_POSTING_UPLOAD_SOURCE_TYPES = Set.of("PDF", "IMAGE");
-    private static final Set<String> ANALYSIS_PROVIDERS = Set.of("LOCAL", "CLAUDE", "OPENAI");
+    // 분석 provider 유효값은 BAnalysisProvider enum 이 단일 소스(validateProvider/validateStrictProvider 가 사용).
     private static final Set<String> OCR_PROVIDERS = Set.of("CLAUDE", "OPENAI", "SELF_OCR");
     private static final Set<String> STATUSES = Set.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED");
     private static final int MAX_EXTRACTION_LOOKUP_CASE_IDS = 200;
@@ -261,14 +261,25 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
      */
     private static String validateProvider(String value, String field) {
         if (value == null || value.isBlank()) {
-            return null;
+            return null; // 등록은 optional — 생략은 기본 자동 체인. (blank 만 자동, 무효값은 아래서 거절)
         }
-        String normalized = value.trim().toUpperCase(Locale.ROOT);
-        if (!ANALYSIS_PROVIDERS.contains(normalized)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT,
-                    "지원하지 않는 분석 모델입니다: %s=%s".formatted(field, value));
+        // 공유 타입으로 단일 판정 — 비어 있지 않은 무효값은 자동으로 조용히 흘리지 않고 400 으로 거절한다.
+        return BAnalysisProvider.parse(value)
+                .map(BAnalysisProvider::name)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT,
+                        "지원하지 않는 분석 모델입니다: %s=%s".formatted(field, value)));
+    }
+
+    /**
+     * strict 재분석 provider 검증 — provider <b>필수</b>. 누락/공백·무효값 모두 부수효과 전 400 으로 거절한다
+     * (parse 의 empty-collapse 를 required 경로에서 활용 — 자동 체인으로 흘러가지 않는다).
+     */
+    private static BAnalysisProvider validateStrictProvider(String value) {
+        if (value == null || value.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "재분석할 모델(provider)을 지정해 주세요.");
         }
-        return normalized;
+        return BAnalysisProvider.parse(value).orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INPUT,
+                "지원하지 않는 분석 모델입니다: %s".formatted(value)));
     }
 
     /**
@@ -477,6 +488,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     @Override
+    public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId, String provider) {
+        BAnalysisProvider selected = validateStrictProvider(provider); // 누락·무효 = 부수효과 전 400
+        guardInitialRunNotInProgress(applicationCaseId);
+        return jobAnalysisService.createJobAnalysisStrict(userId, applicationCaseId, selected);
+    }
+
+    @Override
     public JobAnalysisResponse getJobAnalysis(Long userId, Long applicationCaseId) {
         return jobAnalysisService.getJobAnalysis(userId, applicationCaseId);
     }
@@ -495,6 +513,13 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
         guardInitialRunNotInProgress(applicationCaseId);
         return companyAnalysisService.createCompanyAnalysis(userId, applicationCaseId);
+    }
+
+    @Override
+    public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId, String provider) {
+        BAnalysisProvider selected = validateStrictProvider(provider); // 누락·무효 = 부수효과 전 400
+        guardInitialRunNotInProgress(applicationCaseId);
+        return companyAnalysisService.createCompanyAnalysisStrict(userId, applicationCaseId, selected);
     }
 
     @Override
