@@ -3,18 +3,25 @@ package com.careertuner.applicationcase.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
@@ -32,14 +39,32 @@ import tools.jackson.databind.ObjectMapper;
 
 class ApplicationCaseAutoPipelineServiceTest {
 
-    @Test
-    void runAfterExtractionPassCreatesSelfHostedAnalysisFitStrategyAndInterviewPrep() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
-        CompanyAnalysisMapper companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
-        FitAnalysisMapper fitAnalysisMapper = mock(FitAnalysisMapper.class);
-        InterviewMapper interviewMapper = mock(InterviewMapper.class);
-        ObjectMapper objectMapper = new ObjectMapper();
+    private ApplicationCaseMapper applicationCaseMapper;
+    private ApplicationCaseInitialRunMapper initialRunMapper;
+    private JobAnalysisMapper jobAnalysisMapper;
+    private CompanyAnalysisMapper companyAnalysisMapper;
+    private FitAnalysisMapper fitAnalysisMapper;
+    private InterviewMapper interviewMapper;
+    private com.careertuner.companyanalysis.service.CompanyAnalysisService companyAnalysisService;
+    private ObjectMapper objectMapper;
+    private ApplicationCaseAutoPipelineService service;
+
+    private static final String POSTING_TEXT = """
+            Acme is hiring a Backend Engineer.
+            Responsibilities: build Spring APIs, operate MySQL services, and improve Docker deployment.
+            Qualifications: Java, Spring Boot, MyBatis, MySQL, REST, Docker, Testing.
+            Preferred: React and TypeScript collaboration experience.
+            """.repeat(3);
+
+    @BeforeEach
+    void setUp() {
+        applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        companyAnalysisMapper = mock(CompanyAnalysisMapper.class);
+        fitAnalysisMapper = mock(FitAnalysisMapper.class);
+        interviewMapper = mock(InterviewMapper.class);
+        objectMapper = new ObjectMapper();
         BAnalysisProperties properties = new BAnalysisProperties();
         BAnalysisGenerationService bAnalysisGenerationService = new BAnalysisGenerationService(
                 properties,
@@ -48,10 +73,10 @@ class ApplicationCaseAutoPipelineServiceTest {
                 objectMapper,
                 mock(BAnthropicClient.class),
                 mock(OpenAiResponsesClient.class));
-        com.careertuner.companyanalysis.service.CompanyAnalysisService companyAnalysisService =
-                mock(com.careertuner.companyanalysis.service.CompanyAnalysisService.class);
-        ApplicationCaseAutoPipelineService service = new ApplicationCaseAutoPipelineService(
+        companyAnalysisService = mock(com.careertuner.companyanalysis.service.CompanyAnalysisService.class);
+        service = new ApplicationCaseAutoPipelineService(
                 applicationCaseMapper,
+                initialRunMapper,
                 jobAnalysisMapper,
                 companyAnalysisMapper,
                 fitAnalysisMapper,
@@ -63,34 +88,17 @@ class ApplicationCaseAutoPipelineServiceTest {
                 companyAnalysisService,
                 runtimeSettingServiceReturningFallback(),
                 mock(com.careertuner.reward.service.RewardService.class));
-        String postingText = """
-                Acme is hiring a Backend Engineer.
-                Responsibilities: build Spring APIs, operate MySQL services, and improve Docker deployment.
-                Qualifications: Java, Spring Boot, MyBatis, MySQL, REST, Docker, Testing.
-                Preferred: React and TypeScript collaboration experience.
-                """.repeat(3);
+    }
 
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .companyName("Acme")
-                .jobTitle("Backend Engineer")
-                .sourceType("PDF")
-                .status("DRAFT")
-                .build());
-        when(applicationCaseMapper.markAnalysisStarted(10L, 1L, "DRAFT")).thenReturn(1);
-        when(applicationCaseMapper.markReadyAfterAnalysis(10L, 1L, "DRAFT")).thenReturn(1);
-        when(fitAnalysisMapper.findGenerationSource(1L, 10L)).thenReturn(fitSource());
-        doAnswer(invocation -> {
-            invocation.<FitAnalysisResult>getArgument(0).setId(70L);
-            return null;
-        }).when(fitAnalysisMapper).insertFitAnalysis(any(FitAnalysisResult.class));
-        doAnswer(invocation -> {
-            invocation.<InterviewSession>getArgument(0).setId(80L);
-            return null;
-        }).when(interviewMapper).insertSession(any(InterviewSession.class));
+    @Test
+    void runAfterExtractionPassCreatesSelfHostedAnalysisFitStrategyAndInterviewPrep() {
+        stubRunnableDraftCase();
+        stubAnalysisInsertCallbacks();
+        // 등록 경로가 만든 초기 실행 프로필이 PENDING 이고 claim 에 성공하는 실제 흐름.
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
 
-        service.runAfterExtractionPass(1L, 10L, 20L, 2, postingText);
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
 
         ArgumentCaptor<JobAnalysis> jobCaptor = ArgumentCaptor.forClass(JobAnalysis.class);
         verify(jobAnalysisMapper).insertJobAnalysis(jobCaptor.capture());
@@ -119,6 +127,14 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(interviewMapper, atLeastOnce()).insertQuestion(any(InterviewQuestion.class));
         verify(applicationCaseMapper).markReadyAfterAnalysis(10L, 1L, "DRAFT");
 
+        // 프로필 claim 과 완료 처리가 같은 execution_token 으로 fencing 되는지 잠근다.
+        ArgumentCaptor<String> claimToken = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).claimForRun(eq(10L), claimToken.capture());
+        ArgumentCaptor<String> doneToken = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).markDone(eq(10L), doneToken.capture());
+        assertThat(doneToken.getValue()).isEqualTo(claimToken.getValue());
+        verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
+
         ArgumentCaptor<AiUsageLog> usageCaptor = ArgumentCaptor.forClass(AiUsageLog.class);
         verify(applicationCaseMapper, atLeastOnce()).insertAiUsageLog(usageCaptor.capture());
         assertThat(usageCaptor.getAllValues())
@@ -127,6 +143,109 @@ class ApplicationCaseAutoPipelineServiceTest {
         assertThat(usageCaptor.getAllValues())
                 .allMatch(log -> "self-rules-v1".equals(log.getModel()))
                 .allMatch(log -> Integer.valueOf(0).equals(log.getCreditUsed()));
+    }
+
+    @Test
+    void skipsPipelineWhenInitialRunProfileAlreadyClaimed() {
+        stubRunnableDraftCase();
+        // 프로필은 있으나 다른 실행이 이미 claim/완료 → claimForRun 이 0행. 초기 파이프라인 재진입 금지.
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(0);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+        verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), anyString());
+        verify(applicationCaseMapper, never()).markReadyAfterAnalysis(anyLong(), anyLong(), anyString());
+        verify(initialRunMapper, never()).markDone(anyLong(), anyString());
+        verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void marksProfileFailedWhenCaseNotInRunnableState() {
+        // 프로필 claim 은 성공했지만 케이스가 DRAFT/READY 가 아니라 ANALYZING 진입게이트를 통과하지 못한다.
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L).userId(1L).companyName("Acme").jobTitle("Backend Engineer")
+                .sourceType("PDF").status("ANALYZING").build());
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        // 파이프라인 미실행 + 프로필은 자신의 토큰으로 FAILED 회수.
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+        verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), anyString());
+        ArgumentCaptor<String> claimToken = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).claimForRun(eq(10L), claimToken.capture());
+        verify(initialRunMapper).markFailed(eq(10L), eq(claimToken.getValue()), anyString());
+        verify(initialRunMapper, never()).markDone(anyLong(), anyString());
+    }
+
+    @Test
+    void restoresStatusAndFailsProfileWhenPipelineThrows() {
+        stubRunnableDraftCase();
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        // 파이프라인 도중(웹검색 단계) 런타임 예외 발생.
+        doThrow(new RuntimeException("web search boom"))
+                .when(companyAnalysisService).collectWebEvidence(any(ApplicationCase.class));
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        verify(applicationCaseMapper).restoreAnalysisStatus(10L, 1L, "DRAFT");
+        ArgumentCaptor<String> claimToken = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).claimForRun(eq(10L), claimToken.capture());
+        verify(initialRunMapper).markFailed(eq(10L), eq(claimToken.getValue()), anyString());
+        verify(initialRunMapper, never()).markDone(anyLong(), anyString());
+        verify(applicationCaseMapper, never()).markReadyAfterAnalysis(anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void runsWithoutProfileForLegacyCasesGatedOnlyByAnalyzingCas() {
+        stubRunnableDraftCase();
+        stubAnalysisInsertCallbacks();
+        // 프로필이 없는 케이스(레거시·수동 create) — claim 없이 ANALYZING 게이트로만 가드하고 정상 실행.
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(null);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        verify(jobAnalysisMapper).insertJobAnalysis(any());
+        verify(applicationCaseMapper).markReadyAfterAnalysis(10L, 1L, "DRAFT");
+        verify(initialRunMapper, never()).claimForRun(anyLong(), anyString());
+        verify(initialRunMapper, never()).markDone(anyLong(), anyString());
+        verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
+    }
+
+    private void stubRunnableDraftCase() {
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .companyName("Acme")
+                .jobTitle("Backend Engineer")
+                .sourceType("PDF")
+                .status("DRAFT")
+                .build());
+        when(applicationCaseMapper.markAnalysisStarted(10L, 1L, "DRAFT")).thenReturn(1);
+        when(applicationCaseMapper.markReadyAfterAnalysis(10L, 1L, "DRAFT")).thenReturn(1);
+    }
+
+    private void stubAnalysisInsertCallbacks() {
+        when(fitAnalysisMapper.findGenerationSource(1L, 10L)).thenReturn(fitSource());
+        doAnswer(invocation -> {
+            invocation.<FitAnalysisResult>getArgument(0).setId(70L);
+            return null;
+        }).when(fitAnalysisMapper).insertFitAnalysis(any(FitAnalysisResult.class));
+        doAnswer(invocation -> {
+            invocation.<InterviewSession>getArgument(0).setId(80L);
+            return null;
+        }).when(interviewMapper).insertSession(any(InterviewSession.class));
+    }
+
+    private static ApplicationCaseInitialRun pendingProfile() {
+        return ApplicationCaseInitialRun.builder()
+                .applicationCaseId(10L)
+                .state("PENDING")
+                .build();
     }
 
     /** runtime_setting 미설정 시 @Value 기본값(2번째 인자)을 그대로 돌려주는 스텁 — 기존 동작 보존. */

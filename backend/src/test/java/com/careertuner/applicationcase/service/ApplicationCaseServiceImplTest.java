@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -1372,6 +1373,80 @@ class ApplicationCaseServiceImplTest {
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
         verify(usageLogService, never()).recordFailure(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
+    }
+
+    @Test
+    void createJobAnalysisRejectedWhileInitialRunInProgress() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+        // 초기 자동 파이프라인이 아직 RUNNING → 사용자의 수동 재분석은 CONFLICT 로 막는다.
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("RUNNING"));
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+
+        verify(jobAnalysisService, never()).createJobAnalysis(anyLong(), anyLong());
+    }
+
+    @Test
+    void createCompanyAnalysisRejectedWhileInitialRunPending() {
+        CompanyAnalysisService companyAnalysisService = mock(CompanyAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                mock(JobAnalysisService.class), companyAnalysisService, initialRunMapper);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("PENDING"));
+
+        assertThatThrownBy(() -> service.createCompanyAnalysis(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+
+        verify(companyAnalysisService, never()).createCompanyAnalysis(anyLong(), anyLong());
+    }
+
+    @Test
+    void manualAnalysisProceedsWhenInitialRunFinishedOrAbsent() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        CompanyAnalysisService companyAnalysisService = mock(CompanyAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, companyAnalysisService, initialRunMapper);
+        // 프로필이 DONE 이면(또는 아예 없으면) 기존 재분석 경로를 그대로 통과시킨다.
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("DONE"));
+        when(initialRunMapper.findByApplicationCaseId(11L)).thenReturn(null);
+
+        service.createJobAnalysis(1L, 10L);
+        service.createCompanyAnalysis(1L, 11L);
+
+        verify(jobAnalysisService).createJobAnalysis(1L, 10L);
+        verify(companyAnalysisService).createCompanyAnalysis(1L, 11L);
+    }
+
+    private static ApplicationCaseServiceImpl serviceWithGuardCollaborators(
+            JobAnalysisService jobAnalysisService,
+            CompanyAnalysisService companyAnalysisService,
+            ApplicationCaseInitialRunMapper initialRunMapper) {
+        return new ApplicationCaseServiceImpl(
+                mock(ApplicationCaseMapper.class),
+                mock(ApplicationCaseExtractionMapper.class),
+                mock(ApplicationCaseAccessService.class),
+                mock(JobPostingService.class),
+                jobAnalysisService,
+                companyAnalysisService,
+                mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class),
+                mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class),
+                initialRunMapper);
+    }
+
+    private static ApplicationCaseInitialRun initialRun(String state) {
+        return ApplicationCaseInitialRun.builder()
+                .applicationCaseId(10L)
+                .state(state)
+                .build();
     }
 
     @Test

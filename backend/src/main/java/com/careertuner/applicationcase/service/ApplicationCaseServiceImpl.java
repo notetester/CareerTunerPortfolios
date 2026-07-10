@@ -237,6 +237,19 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     /**
+     * 초기 자동 파이프라인이 아직 진행 중(프로필 PENDING/RUNNING)이면 사용자의 수동 재분석을 CONFLICT 로 거절한다.
+     * 초기 실행과 수동 실행이 같은 지원 건에서 동시에 분석 행을 만들지 않도록 막는 가드다. 프로필이 없거나
+     * 이미 DONE/FAILED 면 통과시켜 기존 재분석 경로를 그대로 둔다.
+     */
+    private void guardInitialRunNotInProgress(Long applicationCaseId) {
+        ApplicationCaseInitialRun run = initialRunMapper.findByApplicationCaseId(applicationCaseId);
+        if (run != null && ("PENDING".equals(run.getState()) || "RUNNING".equals(run.getState()))) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "초기 분석이 아직 진행 중입니다. 완료된 후 다시 시도해 주세요.");
+        }
+    }
+
+    /**
      * 분석 provider 선택값 검증·정규화. 생략(null/공백)이면 null(현행 기본 체인). 비어 있지 않으면 대문자 정규화하고,
      * LOCAL/CLAUDE/OPENAI 가 아니면 사용자의 명시 선택이 유효하지 않으므로 400(INVALID_INPUT)으로 거절한다
      * — 조용히 무시하지 않는다(서버 재검증 규칙 일치).
@@ -458,6 +471,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
+        guardInitialRunNotInProgress(applicationCaseId);
         return jobAnalysisService.createJobAnalysis(userId, applicationCaseId);
     }
 
@@ -478,6 +492,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
+        guardInitialRunNotInProgress(applicationCaseId);
         return companyAnalysisService.createCompanyAnalysis(userId, applicationCaseId);
     }
 
