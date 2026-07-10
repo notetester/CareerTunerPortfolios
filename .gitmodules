@@ -13,3 +13,8 @@
 	url = https://github.com/notetester/CareerTunerAI.git
 	branch = main
 	ignore = dirty
+[submodule "docs/obsidian-vault"]
+	path = docs/obsidian-vault
+	url = https://github.com/notetester/CareerTunerObsidian.git
+	branch = main
+	ignore = dirty

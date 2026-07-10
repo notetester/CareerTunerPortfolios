@@ -119,6 +119,40 @@ class FitAnalysisServiceImplTest {
         assertThat(response.scoreBreakdown().stream().mapToInt(item -> item.earned()).sum()).isEqualTo(100);
     }
 
+    @Test
+    void careerStrategyExcludesHeldCertsAndMarksThemAsStrengths() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        var profile = new com.careertuner.fitanalysis.domain.CareerProfileSource();
+        profile.setDesiredJob("데이터 엔지니어");
+        profile.setProfileCertificates("[\"SQLD\"]");
+        when(mapper.findCareerProfile(1L)).thenReturn(profile);
+
+        var strategy = service.careerCertificateStrategy(1L);
+
+        // 데이터 직군 카탈로그(SQLD/ADsP/빅데이터분석기사)에서 보유(SQLD)는 강점으로, 후보에선 제외.
+        assertThat(strategy.heldStrengths()).containsExactly("SQLD");
+        assertThat(strategy.longTermCandidates())
+                .extracting(c -> c.name())
+                .containsExactly("ADsP", "빅데이터분석기사");
+        // 장기 관점 표현 — 이번 지원 건 전략처럼 말하지 않는다.
+        assertThat(strategy.longTermCandidates().get(0).reason()).contains("이번 지원 건과는 별개");
+        assertThat(strategy.note()).contains("실무 프로젝트");
+    }
+
+    @Test
+    void careerStrategyWithoutDesiredJobDegradesHonestly() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        when(mapper.findCareerProfile(1L)).thenReturn(null);
+
+        var strategy = service.careerCertificateStrategy(1L);
+
+        assertThat(strategy.longTermCandidates()).isEmpty();
+        assertThat(strategy.heldStrengths()).isEmpty();
+        assertThat(strategy.note()).contains("희망 직무를 등록");
+    }
+
     private static FitAnalysisGenerationSource source() {
         FitAnalysisGenerationSource source = new FitAnalysisGenerationSource();
         source.setJobAnalysisId(30L);
