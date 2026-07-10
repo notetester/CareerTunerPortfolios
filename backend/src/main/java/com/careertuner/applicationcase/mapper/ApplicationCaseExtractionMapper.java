@@ -25,6 +25,8 @@ public interface ApplicationCaseExtractionMapper {
 
     List<ApplicationCaseExtraction> findQueuedExtractions(@Param("limit") int limit);
 
+    ApplicationCaseExtraction findExtractionById(@Param("id") Long id);
+
     ApplicationCaseExtraction findRunningExtractionForUpdate(@Param("id") Long id);
 
     int claimQueuedExtraction(@Param("id") Long id);

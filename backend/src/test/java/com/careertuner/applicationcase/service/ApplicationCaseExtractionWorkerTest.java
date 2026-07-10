@@ -274,7 +274,7 @@ class ApplicationCaseExtractionWorkerTest {
         verify(openAiClient, never()).extractJobPostingMetadata(any());
         verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
         verify(jobPostingService, never()).extractUrlJobPosting(any());
-        verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any());
+        verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any(), any());
         verify(jobPostingService, never()).saveExtractedJobPosting(any(), any(), any());
 
         ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
@@ -327,7 +327,7 @@ class ApplicationCaseExtractionWorkerTest {
                 .sourceType("PDF")
                 .build());
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(existingCase());
-        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "PDF", fileReference))
+        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "PDF", fileReference, null))
                 .thenReturn(new ExtractedPosting("PDF", fileReference, null, extractedText, null));
         when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
                 .thenReturn(new JobPostingResponse(22L, 10L, 2, null, fileReference, extractedText, "PDF", null));
@@ -345,7 +345,7 @@ class ApplicationCaseExtractionWorkerTest {
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
-        verify(jobPostingService).extractUploadedJobPosting(1L, 10L, "PDF", fileReference);
+        verify(jobPostingService).extractUploadedJobPosting(1L, 10L, "PDF", fileReference, null);
         verify(extractionMapper).markExtractionSucceeded(
                 eq(32L),
                 eq(22L),
@@ -378,6 +378,7 @@ class ApplicationCaseExtractionWorkerTest {
                 autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(39L, 10L, 20L, 1L, "IMAGE");
+        extraction.setOcrRequestedProvider("OPENAI"); // 등록 시 고른 OCR provider 가 워커→추출로 이어져야 한다
         String fileReference = "local:application-postings/10/posting.png";
         String extractedText = "Responsibilities: build APIs. Qualifications: Java and Spring.";
 
@@ -391,7 +392,7 @@ class ApplicationCaseExtractionWorkerTest {
                 .uploadedFileUrl(fileReference)
                 .sourceType("IMAGE")
                 .build());
-        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference))
+        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference, "OPENAI"))
                 .thenReturn(new ExtractedPosting(
                         "IMAGE",
                         fileReference,
@@ -423,6 +424,8 @@ class ApplicationCaseExtractionWorkerTest {
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
+        // 등록 시 고른 OCR provider 를 추출 서비스까지 그대로 전달하는지 잠근다(라우팅 배선).
+        verify(jobPostingService).extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference, "OPENAI");
         verify(openAiClient, never()).extractJobPostingMetadata(any());
         verify(applicationCaseMapper, never()).updateApplicationCase(any());
         verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
@@ -461,7 +464,7 @@ class ApplicationCaseExtractionWorkerTest {
                 .uploadedFileUrl(fileReference)
                 .sourceType("IMAGE")
                 .build());
-        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference))
+        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference, null))
                 .thenReturn(new ExtractedPosting(
                         "IMAGE",
                         fileReference,
@@ -526,6 +529,7 @@ class ApplicationCaseExtractionWorkerTest {
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
                 applicationCaseMapper,
@@ -533,6 +537,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(33L, 10L, 20L, 1L, "URL");
         String jobUrl = "https://example.com/jobs/backend";
@@ -592,6 +597,8 @@ class ApplicationCaseExtractionWorkerTest {
         verify(notificationService).notify(notificationCaptor.capture());
         assertThat(notificationCaptor.getValue().getType()).isEqualTo("JOB_POSTING_EXTRACTION_FAILED");
         assertThat(notificationCaptor.getValue().getLink()).isEqualTo("/applications/10/overview");
+        // 추출 실패 종결 시 초기 실행 프로필을 닫아(PENDING 누수 방지) 수동 분석 CONFLICT 영구 차단을 막는지 잠근다.
+        verify(autoPipelineService).abandonInitialRunIfPending(eq(10L), any(String.class));
     }
 
     @Test
@@ -741,6 +748,7 @@ class ApplicationCaseExtractionWorkerTest {
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
                 applicationCaseMapper,
@@ -748,6 +756,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction stale = ApplicationCaseExtraction.builder()
                 .id(35L)
@@ -788,7 +797,7 @@ class ApplicationCaseExtractionWorkerTest {
                 any());
         assertThat(reasonCaptor.getValue()).contains("timed out");
         verify(jobPostingMapper, never()).findJobPostingByIdAndCaseId(any(), any());
-        verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any());
+        verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any(), any());
         verify(openAiClient, never()).extractJobPostingMetadata(any());
 
         ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);
@@ -796,6 +805,8 @@ class ApplicationCaseExtractionWorkerTest {
         assertThat(notificationCaptor.getValue().getType()).isEqualTo("JOB_POSTING_EXTRACTION_FAILED");
         assertThat(notificationCaptor.getValue().getTargetId()).isEqualTo(10L);
         assertThat(notificationCaptor.getValue().getLink()).isEqualTo("/applications/10/overview");
+        // stale 만료도 추출 실패 종결 — 초기 실행 프로필을 닫아 PENDING 누수를 막는지 잠근다.
+        verify(autoPipelineService).abandonInitialRunIfPending(eq(10L), any(String.class));
     }
 
     @Test
@@ -807,6 +818,7 @@ class ApplicationCaseExtractionWorkerTest {
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
                 applicationCaseMapper,
@@ -814,6 +826,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction stale = ApplicationCaseExtraction.builder()
                 .id(36L)
@@ -852,6 +865,8 @@ class ApplicationCaseExtractionWorkerTest {
                 eq(false),
                 any());
         verify(notificationService, never()).notify(any());
+        // 실패 마킹 경합에서 진 쪽은 프로필도 건드리지 않는다(이긴 쪽 종결 처리에 맡김).
+        verify(autoPipelineService, never()).abandonInitialRunIfPending(any(), any());
     }
 
     @Test
@@ -897,17 +912,25 @@ class ApplicationCaseExtractionWorkerTest {
                                                           AiUsageLogService aiUsageLogService,
                                                           ApplicationCaseAutoPipelineService autoPipelineService,
                                                           NotificationService notificationService) {
-        return new ApplicationCaseExtractionWorker(
+        TransactionTemplate transactionTemplate = transactionTemplate();
+        // strict 재추출과 공유하는 lifecycle 은 실제 processor 로 구동한다 — 기존 워커 테스트 검증(저장·mark·알림·
+        // 케이스 메타)이 그대로 processor 를 통과하며 리팩터링이 의미보존임을 증명한다.
+        JobPostingExtractionProcessor extractionProcessor = new JobPostingExtractionProcessor(
                 extractionMapper,
                 applicationCaseMapper,
-                jobPostingMapper,
                 jobPostingService,
                 new ApplicationCaseExtractionQualityGate(new ObjectMapper()),
                 openAiClient,
                 aiUsageLogService,
-                autoPipelineService,
                 notificationService,
-                transactionTemplate());
+                transactionTemplate);
+        return new ApplicationCaseExtractionWorker(
+                extractionMapper,
+                jobPostingMapper,
+                jobPostingService,
+                autoPipelineService,
+                extractionProcessor,
+                transactionTemplate);
     }
 
     private static ApplicationCaseExtraction extraction(Long id,

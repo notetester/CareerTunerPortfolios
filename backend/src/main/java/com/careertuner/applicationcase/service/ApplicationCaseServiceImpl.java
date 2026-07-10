@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
+import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.domain.FitAnalysis;
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
@@ -28,6 +29,7 @@ import com.careertuner.applicationcase.dto.ConfirmJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -55,7 +57,6 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final String DEFAULT_COMPANY_NAME = "\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694";
     private static final String DEFAULT_JOB_TITLE = "\uC9C1\uBB34\uBA85 \uD655\uC778 \uD544\uC694";
     private static final String EXTRACTION_STATUS_QUEUED = "QUEUED";
-    private static final String EXTRACTION_STATUS_FAILED = "FAILED";
     private static final String EXTRACTION_STATUS_SUCCEEDED = "SUCCEEDED";
     private static final String EXTRACTION_QUALITY_PASS = "PASS";
     private static final String EXTRACTION_QUALITY_REVIEW_REQUIRED = "REVIEW_REQUIRED";
@@ -65,6 +66,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
     private static final Set<String> JOB_POSTING_JSON_SOURCE_TYPES = Set.of("TEXT", "MANUAL", "URL");
     private static final Set<String> JOB_POSTING_UPLOAD_SOURCE_TYPES = Set.of("PDF", "IMAGE");
+    private static final Set<String> ANALYSIS_PROVIDERS = Set.of("LOCAL", "CLAUDE", "OPENAI");
+    private static final Set<String> OCR_PROVIDERS = Set.of("CLAUDE", "OPENAI", "SELF_OCR");
     private static final Set<String> STATUSES = Set.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED");
     private static final int MAX_EXTRACTION_LOOKUP_CASE_IDS = 200;
     private static final Set<String> LIST_VIEWS = Set.of("ACTIVE", "ARCHIVED", "DELETED");
@@ -79,6 +82,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private final OpenAiResponsesClient openAiClient;
     private final NotificationMapper notificationMapper;
     private final ApplicationCaseAutoPipelineService autoPipelineService;
+    private final ApplicationCaseInitialRunMapper initialRunMapper;
+    private final JobPostingReextractionService reextractionService;
 
     @Override
     @Transactional
@@ -101,6 +106,9 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     @Transactional
     public ApplicationCaseFromJobPostingResponse createFromJobPosting(Long userId,
                                                                       CreateApplicationCaseFromJobPostingRequest request) {
+        // 부수효과(케이스·공고·추출 큐 생성) 전에 선택값을 먼저 검증·정규화 → 잘못된 요청은 아무 행도 만들지 않고 400.
+        String jobProvider = validateProvider(request.jobAnalysisProvider(), "jobAnalysisProvider");
+        String companyProvider = validateProvider(request.companyAnalysisProvider(), "companyAnalysisProvider");
         PreparedJobPostingRequest prepared = prepareJobPostingRequest(request);
         JobPostingMetadataResponse metadata = safeDefaultMetadata();
         ApplicationCase applicationCase = insertApplicationCase(userId, metadata, prepared.sourceType(), request.favorite());
@@ -113,6 +121,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCase.getId(),
                 jobPosting.id(),
                 prepared.sourceType());
+        // 초기 실행 프로필(PENDING) — 등록 시 고른 공고/기업 분석 provider(검증·정규화됨)를 저장(async 파이프라인이 읽음).
+        createInitialRunProfile(applicationCase.getId(), jobProvider, companyProvider);
 
         return new ApplicationCaseFromJobPostingResponse(
                 toResponse(accessService.requireOwned(userId, applicationCase.getId())),
@@ -126,7 +136,14 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     public ApplicationCaseFromJobPostingResponse createFromJobPostingUpload(Long userId,
                                                                             MultipartFile file,
                                                                             String sourceType,
-                                                                            Boolean favorite) {
+                                                                            Boolean favorite,
+                                                                            String jobAnalysisProvider,
+                                                                            String companyAnalysisProvider,
+                                                                            String ocrProvider) {
+        // 부수효과(파일 저장·케이스·추출 큐) 전에 선택값을 먼저 검증·정규화 → 잘못된 요청은 파일도 저장하지 않고 400.
+        String jobProvider = validateProvider(jobAnalysisProvider, "jobAnalysisProvider");
+        String companyProvider = validateProvider(companyAnalysisProvider, "companyAnalysisProvider");
+        String ocrRequestedProvider = validateOcrProvider(ocrProvider);
         String normalizedSourceType = normalizeOption(sourceType, null, JOB_POSTING_UPLOAD_SOURCE_TYPES, "sourceType");
         JobPostingMetadataResponse metadata = safeDefaultMetadata();
         ApplicationCase applicationCase = insertApplicationCase(
@@ -139,11 +156,15 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCase.getId(),
                 file,
                 normalizedSourceType);
+        // 선택한 OCR provider 를 추출 작업에 스냅샷 → 워커가 이 값으로 primary OCR 을 라우팅한다(미선택=기본 자동 체인).
         ApplicationCaseExtractionResponse extractionJob = queueExtraction(
                 userId,
                 applicationCase.getId(),
                 jobPosting.id(),
-                normalizedSourceType);
+                normalizedSourceType,
+                ocrRequestedProvider);
+        // 초기 실행 프로필(PENDING). 분석 provider(검증·정규화됨) 저장.
+        createInitialRunProfile(applicationCase.getId(), jobProvider, companyProvider);
 
         return new ApplicationCaseFromJobPostingResponse(
                 toResponse(accessService.requireOwned(userId, applicationCase.getId())),
@@ -209,6 +230,62 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         if (deleted == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
         }
+    }
+
+    /** 초기 실행 프로필(PENDING)을 만든다. provider 는 이미 등록 메서드 시작부에서 검증·정규화된 값이다. */
+    private void createInitialRunProfile(Long applicationCaseId, String jobAnalysisProvider, String companyAnalysisProvider) {
+        initialRunMapper.insertPending(ApplicationCaseInitialRun.builder()
+                .applicationCaseId(applicationCaseId)
+                .jobAnalysisProvider(jobAnalysisProvider)
+                .companyAnalysisProvider(companyAnalysisProvider)
+                .build());
+    }
+
+    /**
+     * 초기 자동 파이프라인이 아직 진행 중(프로필 PENDING/RUNNING)이면 사용자의 수동 재분석을 CONFLICT 로 거절한다.
+     * 초기 실행과 수동 실행이 같은 지원 건에서 동시에 분석 행을 만들지 않도록 막는 가드다. 프로필이 없거나
+     * 이미 DONE/FAILED 면 통과시켜 기존 재분석 경로를 그대로 둔다.
+     */
+    private void guardInitialRunNotInProgress(Long applicationCaseId) {
+        ApplicationCaseInitialRun run = initialRunMapper.findByApplicationCaseId(applicationCaseId);
+        if (run != null && ("PENDING".equals(run.getState()) || "RUNNING".equals(run.getState()))) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "초기 분석이 아직 진행 중입니다. 완료된 후 다시 시도해 주세요.");
+        }
+    }
+
+    /**
+     * 분석 provider 선택값 검증·정규화. 생략(null/공백)이면 null(현행 기본 체인). 비어 있지 않으면 대문자 정규화하고,
+     * LOCAL/CLAUDE/OPENAI 가 아니면 사용자의 명시 선택이 유효하지 않으므로 400(INVALID_INPUT)으로 거절한다
+     * — 조용히 무시하지 않는다(서버 재검증 규칙 일치).
+     */
+    private static String validateProvider(String value, String field) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (!ANALYSIS_PROVIDERS.contains(normalized)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "지원하지 않는 분석 모델입니다: %s=%s".formatted(field, value));
+        }
+        return normalized;
+    }
+
+    /**
+     * OCR provider 선택값 검증·정규화. 생략(null/공백)이면 null(기본 자동 체인: Claude→OpenAI→워커).
+     * 비어 있지 않으면 대문자 정규화하고 CLAUDE/OPENAI/SELF_OCR 가 아니면 400 으로 거절한다
+     * (분석 provider 와 후보 집합이 달라 별도 검증 — LOCAL 은 OCR 대상 아님).
+     */
+    private static String validateOcrProvider(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (!OCR_PROVIDERS.contains(normalized)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "지원하지 않는 OCR 모델입니다: ocrProvider=%s".formatted(value));
+        }
+        return normalized;
     }
 
     @Override
@@ -308,31 +385,10 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     @Override
-    @Transactional
-    public ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId) {
-        accessService.requireOwned(userId, applicationCaseId);
-        if (extractionMapper.countActiveExtractionsByApplicationCaseId(applicationCaseId) > 0) {
-            throw new BusinessException(ErrorCode.CONFLICT, "이미 진행 중인 공고 추출 작업이 있습니다.");
-        }
-
-        ApplicationCaseExtraction latestExtraction = extractionMapper.findLatestExtractionByApplicationCaseId(applicationCaseId);
-        if (latestExtraction == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "Job posting extraction job was not found.");
-        }
-        if (!EXTRACTION_STATUS_FAILED.equals(latestExtraction.getStatus())) {
-            throw new BusinessException(ErrorCode.CONFLICT, "실패한 최신 공고 추출 작업만 재시도할 수 있습니다.");
-        }
-
-        Long failedJobPostingId = latestExtraction.getJobPostingId();
-        if (failedJobPostingId == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
-        }
-        jobPostingService.getJobPostingByIdForCase(userId, applicationCaseId, failedJobPostingId);
-        return queueExtraction(
-                userId,
-                applicationCaseId,
-                failedJobPostingId,
-                latestExtraction.getSourceType());
+    public ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId, String ocrProvider) {
+        // 수동 재추출은 strict 정책(선택 provider 단일 호출·교차 폴백 금지·성공은 revision 만 갱신·초기 실행 프로필 불변).
+        // 진입 검증·짧은 TX 경계·상태 전이는 전용 서비스에 위임한다. 초기 실행 프로필은 재개(reopenForRetry)하지 않는다.
+        return reextractionService.reextract(userId, applicationCaseId, ocrProvider);
     }
 
     @Override
@@ -416,6 +472,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
+        guardInitialRunNotInProgress(applicationCaseId);
         return jobAnalysisService.createJobAnalysis(userId, applicationCaseId);
     }
 
@@ -436,6 +493,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
 
     @Override
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
+        guardInitialRunNotInProgress(applicationCaseId);
         return companyAnalysisService.createCompanyAnalysis(userId, applicationCaseId);
     }
 
@@ -513,15 +571,25 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         return applicationCase;
     }
 
+    /** OCR provider 선택이 없는 경로(TEXT/URL/MANUAL 등)용 — 기본 자동 체인으로 추출한다. */
     private ApplicationCaseExtractionResponse queueExtraction(Long userId,
                                                               Long applicationCaseId,
                                                               Long jobPostingId,
                                                               String sourceType) {
+        return queueExtraction(userId, applicationCaseId, jobPostingId, sourceType, null);
+    }
+
+    private ApplicationCaseExtractionResponse queueExtraction(Long userId,
+                                                              Long applicationCaseId,
+                                                              Long jobPostingId,
+                                                              String sourceType,
+                                                              String ocrRequestedProvider) {
         ApplicationCaseExtraction extraction = ApplicationCaseExtraction.builder()
                 .applicationCaseId(applicationCaseId)
                 .jobPostingId(jobPostingId)
                 .userId(userId)
                 .sourceType(sourceType)
+                .ocrRequestedProvider(ocrRequestedProvider)
                 .status(EXTRACTION_STATUS_QUEUED)
                 .build();
         try {
