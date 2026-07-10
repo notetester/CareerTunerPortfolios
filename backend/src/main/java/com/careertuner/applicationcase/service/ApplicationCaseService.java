@@ -30,7 +30,10 @@ public interface ApplicationCaseService {
     ApplicationCaseFromJobPostingResponse createFromJobPostingUpload(Long userId,
                                                                      MultipartFile file,
                                                                      String sourceType,
-                                                                     Boolean favorite);
+                                                                     Boolean favorite,
+                                                                     String jobAnalysisProvider,
+                                                                     String companyAnalysisProvider,
+                                                                     String ocrProvider);
 
     List<ApplicationCaseResponse> list(Long userId, String view, boolean includeArchived);
 
@@ -58,7 +61,7 @@ public interface ApplicationCaseService {
 
     List<ApplicationCaseExtractionResponse> getLatestJobPostingExtractions(Long userId, List<Long> applicationCaseIds);
 
-    ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId);
+    ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId, String ocrProvider);
 
     ApplicationCaseExtractionResponse reviewJobPostingExtraction(Long userId,
                                                                  Long applicationCaseId,

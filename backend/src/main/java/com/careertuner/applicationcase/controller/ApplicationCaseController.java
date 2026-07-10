@@ -67,8 +67,12 @@ public class ApplicationCaseController {
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam("file") MultipartFile file,
             @RequestParam("sourceType") String sourceType,
-            @RequestParam(defaultValue = "false") boolean favorite) {
-        return ApiResponse.ok(applicationCaseService.createFromJobPostingUpload(authUser.id(), file, sourceType, favorite));
+            @RequestParam(defaultValue = "false") boolean favorite,
+            @RequestParam(required = false) String jobAnalysisProvider,
+            @RequestParam(required = false) String companyAnalysisProvider,
+            @RequestParam(required = false) String ocrProvider) {
+        return ApiResponse.ok(applicationCaseService.createFromJobPostingUpload(
+                authUser.id(), file, sourceType, favorite, jobAnalysisProvider, companyAnalysisProvider, ocrProvider));
     }
 
     @GetMapping
@@ -165,8 +169,10 @@ public class ApplicationCaseController {
     @PostMapping("/{id}/job-posting/extraction/retry")
     @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ApplicationCaseExtractionResponse> retryJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
-                                                                                   @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id));
+                                                                                   @PathVariable Long id,
+                                                                                   @RequestParam(value = "ocrProvider", required = false) String ocrProvider) {
+        // provider 누락은 파라미터 바인딩 예외(500)가 아니라 서비스의 명시적 검증(400 INVALID_INPUT)으로 처리한다.
+        return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id, ocrProvider));
     }
 
     @PatchMapping("/{id}/job-posting/extraction/review")

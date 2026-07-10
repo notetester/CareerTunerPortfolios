@@ -18,6 +18,8 @@ public class ApplicationCaseExtraction {
     private Long jobPostingId;
     private Long userId;
     private String sourceType;
+    /** 등록 시 사용자가 고른 OCR provider 스냅샷(CLAUDE/OPENAI/SELF_OCR). 미선택=NULL → 기본 자동 체인. 워커가 라우팅에 읽는다. */
+    private String ocrRequestedProvider;
     private String status;
     private String errorMessage;
     private String extractionStrategy;

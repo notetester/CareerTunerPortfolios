@@ -9,6 +9,7 @@
         <result property="jobPostingId" column="job_posting_id"/>
         <result property="userId" column="user_id"/>
         <result property="sourceType" column="source_type"/>
+        <result property="ocrRequestedProvider" column="ocr_requested_provider"/>
         <result property="status" column="status"/>
         <result property="errorMessage" column="error_message"/>
         <result property="extractionStrategy" column="extraction_strategy"/>
@@ -27,10 +28,11 @@
 
     <insert id="insertApplicationCaseExtraction" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO application_case_extraction
-            (application_case_id, job_posting_id, user_id, source_type, status, error_message, started_at, finished_at)
+            (application_case_id, job_posting_id, user_id, source_type, ocr_requested_provider,
+             status, error_message, started_at, finished_at)
         VALUES
-            (#{applicationCaseId}, #{jobPostingId}, #{userId}, #{sourceType}, #{status},
-             #{errorMessage}, #{startedAt}, #{finishedAt})
+            (#{applicationCaseId}, #{jobPostingId}, #{userId}, #{sourceType}, #{ocrRequestedProvider},
+             #{status}, #{errorMessage}, #{startedAt}, #{finishedAt})
     </insert>
 
     <select id="findActiveExtractionsByUserId" resultMap="ApplicationCaseExtractionResultMap">
@@ -109,6 +111,12 @@
         WHERE status = 'QUEUED'
         ORDER BY created_at ASC, id ASC
         LIMIT #{limit}
+    </select>
+
+    <select id="findExtractionById" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT *
+        FROM application_case_extraction
+        WHERE id = #{id}
     </select>
 
     <select id="findRunningExtractionForUpdate" resultMap="ApplicationCaseExtractionResultMap">

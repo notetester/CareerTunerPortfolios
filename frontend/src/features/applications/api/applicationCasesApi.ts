@@ -118,10 +118,16 @@ export async function getLatestApplicationCaseExtraction(
   }
 }
 
-export function retryApplicationCaseExtraction(applicationCaseId: number): Promise<ApplicationCaseExtraction> {
-  return api<ApplicationCaseExtraction>(`/application-cases/${applicationCaseId}/job-posting/extraction/retry`, {
-    method: "POST",
-  });
+// 수동 재추출은 strict 정책 — 사용자가 고른 OCR provider 를 필수로 전달한다(백엔드가 provider 없으면 400).
+export function retryApplicationCaseExtraction(
+  applicationCaseId: number,
+  ocrProvider: string,
+): Promise<ApplicationCaseExtraction> {
+  const params = new URLSearchParams({ ocrProvider });
+  return api<ApplicationCaseExtraction>(
+    `/application-cases/${applicationCaseId}/job-posting/extraction/retry?${params}`,
+    { method: "POST" },
+  );
 }
 
 export function reviewApplicationCaseExtraction(

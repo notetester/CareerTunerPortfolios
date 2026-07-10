@@ -74,11 +74,6 @@ export function getLatestExtractionStatus(applicationCaseId: number): Promise<{ 
   });
 }
 
-/** 실패한 최신 추출을 재큐잉(B: 진행 중 작업이 있거나 최신이 FAILED 가 아니면 409 — 호출부가 무해하게 무시). */
-export function retryExtraction(applicationCaseId: number): Promise<void> {
-  return api<void>(`/application-cases/${applicationCaseId}/job-posting/extraction/retry`, { method: "POST" });
-}
-
 // ── 가이드 포폴 스텝: GitHub 링크 → README 원문 ──
 // 실패도 HTTP 200 + ok:false 로 내려온다(백엔드 계약) — throw 대신 결과값으로 성공/실패를 구분한다.
 export interface GithubReadmeResult {

@@ -36,6 +36,7 @@ import {
   getApplicationSourceLabel,
 } from "../types/applicationCase";
 import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
+import { OcrRetryButton } from "../components/OcrRetryButton";
 import { useApplicationCaseExtractions } from "../hooks/useApplicationCaseExtractions";
 import type { ApplicationCaseExtraction } from "../types/applicationCase";
 import { formatKoreaDate } from "../utils/dateFormat";
@@ -116,7 +117,7 @@ function ApplicationCard({
   onToggleFavorite(applicationCase: ApplicationCase): void;
   onRestore(applicationCase: ApplicationCase): void;
   onHideFromTrash(applicationCase: ApplicationCase): void;
-  onRetryExtraction(applicationCase: ApplicationCase): void;
+  onRetryExtraction(applicationCase: ApplicationCase, ocrProvider: string): void;
 }) {
   const isTrash = mode === "trash";
   const title = (
@@ -193,17 +194,13 @@ function ApplicationCard({
         </div>
 
         {!isTrash && extraction?.status === "FAILED" && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
+          <OcrRetryButton
+            sourceType={extraction.sourceType}
+            retrying={retryingExtraction}
+            disabled={busy}
+            onRetry={(provider) => onRetryExtraction(applicationCase, provider)}
             className="w-fit border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-            disabled={busy || retryingExtraction}
-            onClick={() => onRetryExtraction(applicationCase)}
-          >
-            {retryingExtraction ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            다시 추출
-          </Button>
+          />
         )}
 
         <div className="mt-auto flex items-end justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
@@ -583,7 +580,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
                 onToggleFavorite={(item) => void handleToggleFavorite(item)}
                 onRestore={(item) => void handleRestore(item)}
                 onHideFromTrash={(item) => void handleHideFromTrash(item)}
-                onRetryExtraction={(item) => void retryExtraction(item.id)}
+                onRetryExtraction={(item, provider) => void retryExtraction(item.id, provider)}
               />
             ))}
           </div>

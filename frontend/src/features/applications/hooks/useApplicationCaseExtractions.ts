@@ -49,11 +49,11 @@ export function useApplicationCaseExtractions(applicationCaseIds: number[], enab
     }
   }, [enabled, ids]);
 
-  const retry = useCallback(async (applicationCaseId: number) => {
+  const retry = useCallback(async (applicationCaseId: number, ocrProvider: string) => {
     setRetryingId(applicationCaseId);
     setError(null);
     try {
-      const next = await retryApplicationCaseExtraction(applicationCaseId);
+      const next = await retryApplicationCaseExtraction(applicationCaseId, ocrProvider);
       setExtractions((current) => ({ ...current, [applicationCaseId]: next }));
       registerApplicationCaseExtraction(next);
       return next;

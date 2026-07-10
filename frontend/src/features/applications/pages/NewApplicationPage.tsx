@@ -43,6 +43,7 @@ import {
 import { getJobPosting } from "../api/jobPostingsApi";
 import { ApplicationExtractionBadge, getApplicationExtractionStatusLabel } from "../components/ApplicationExtractionBadge";
 import { LoginRequiredState } from "../components/LoginRequiredState";
+import { OcrRetryButton } from "../components/OcrRetryButton";
 import type { ApplicationCase, ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
 import {
   APPLICATION_SOURCE_OPTIONS,
@@ -399,13 +400,13 @@ export function NewApplicationPage() {
     }
   };
 
-  const handleRetryExtraction = async () => {
+  const handleRetryExtraction = async (ocrProvider: string) => {
     if (!createdCase) return;
 
     setBusy(true);
     setError(null);
     try {
-      const nextExtraction = await retryApplicationCaseExtraction(createdCase.id);
+      const nextExtraction = await retryApplicationCaseExtraction(createdCase.id, ocrProvider);
       setExtractionJob(nextExtraction);
       registerApplicationCaseExtraction(nextExtraction);
       setConfirmedText("");
@@ -586,7 +587,7 @@ export function NewApplicationPage() {
                   <ExtractionFailureState
                     extraction={extractionJob}
                     busy={busy}
-                    onRetry={() => void handleRetryExtraction()}
+                    onRetry={(provider) => void handleRetryExtraction(provider)}
                     onExit={handleExitCreatedCase}
                   />
                 ) : (
@@ -780,7 +781,7 @@ function ExtractionFailureState({
 }: {
   extraction: ApplicationCaseExtraction;
   busy: boolean;
-  onRetry(): void;
+  onRetry(ocrProvider: string): void;
   onExit(): void;
 }) {
   return (
@@ -802,10 +803,14 @@ function ExtractionFailureState({
         <Button type="button" variant="outline" disabled={busy} onClick={onExit}>
           상세로 이동
         </Button>
-        <Button type="button" className="bg-red-600 text-white hover:bg-red-700" disabled={busy} onClick={onRetry}>
-          {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-          다시 추출
-        </Button>
+        <OcrRetryButton
+          sourceType={extraction.sourceType}
+          retrying={busy}
+          onRetry={onRetry}
+          size="default"
+          variant="default"
+          className="bg-red-600 text-white hover:bg-red-700"
+        />
       </div>
     </div>
   );
