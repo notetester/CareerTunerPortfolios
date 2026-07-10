@@ -593,7 +593,8 @@ class ApplicationCaseServiceImplTest {
         when(jobPostingService.saveUploadedJobPostingReferenceForNewCase(1L, 10L, file, "PDF"))
                 .thenReturn(postingResponse);
 
-        ApplicationCaseFromJobPostingResponse response = service.createFromJobPostingUpload(1L, file, "PDF", true);
+        ApplicationCaseFromJobPostingResponse response =
+                service.createFromJobPostingUpload(1L, file, "PDF", true, null, null);
 
         ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
         ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
@@ -610,6 +611,45 @@ class ApplicationCaseServiceImplTest {
         assertThat(response.metadata().companyName()).isEqualTo("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694");
         assertThat(response.metadata().deadlineDate()).isNull();
         assertThat(response.extractionJob().id()).isEqualTo(30L);
+    }
+
+    @Test
+    void createFromJobPostingUploadCreatesProfileWithSelectedProviders() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
+        MultipartFile file = mock(MultipartFile.class);
+
+        doAnswer(invocation -> {
+            ((ApplicationCase) invocation.getArgument(0)).setId(12L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ((ApplicationCaseExtraction) invocation.getArgument(0)).setId(32L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(12L, 1L)).thenReturn(
+                ApplicationCase.builder().id(12L).userId(1L).sourceType("PDF").status("DRAFT").build());
+        when(jobPostingService.saveUploadedJobPostingReferenceForNewCase(1L, 12L, file, "PDF")).thenReturn(
+                new JobPostingResponse(22L, 12L, 1, null, "local:p.pdf", null, "PDF", LocalDateTime.now()));
+
+        // 업로드(PDF) 등록도 분석 모델 선택값을 보존해야 한다(기본 체인으로 조용히 바뀌면 안 됨).
+        service.createFromJobPostingUpload(1L, file, "PDF", true, "claude", "openai");
+
+        ArgumentCaptor<ApplicationCaseInitialRun> captor = ArgumentCaptor.forClass(ApplicationCaseInitialRun.class);
+        verify(initialRunMapper).insertPending(captor.capture());
+        assertThat(captor.getValue().getApplicationCaseId()).isEqualTo(12L);
+        assertThat(captor.getValue().getJobAnalysisProvider()).isEqualTo("CLAUDE");
+        assertThat(captor.getValue().getCompanyAnalysisProvider()).isEqualTo("OPENAI");
     }
 
     @Test
@@ -2074,7 +2114,7 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
-    void createFromJobPostingDropsUnknownProviderSelectionToNull() {
+    void createFromJobPostingRejectsUnknownProviderSelection() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
         ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
@@ -2101,13 +2141,12 @@ class ApplicationCaseServiceImplTest {
         when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(11L), any(JobPostingRequest.class)))
                 .thenReturn(new JobPostingResponse(21L, 11L, 1, "role", null, null, "TEXT", LocalDateTime.now()));
 
-        service.createFromJobPosting(1L, new CreateApplicationCaseFromJobPostingRequest(
-                "role", null, null, "TEXT", false, "gpt-9", ""));
-
-        ArgumentCaptor<ApplicationCaseInitialRun> captor = ArgumentCaptor.forClass(ApplicationCaseInitialRun.class);
-        verify(initialRunMapper).insertPending(captor.capture());
-        assertThat(captor.getValue().getJobAnalysisProvider()).isNull();   // 알 수 없는 값 → null
-        assertThat(captor.getValue().getCompanyAnalysisProvider()).isNull(); // 공백 → null
+        // 비어있지 않은 알 수 없는 provider = 유효하지 않은 명시 선택 → 조용히 null 로 바꾸지 않고 400 으로 거절.
+        assertThatThrownBy(() -> service.createFromJobPosting(1L, new CreateApplicationCaseFromJobPostingRequest(
+                "role", null, null, "TEXT", false, "gpt-9", null)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        verify(initialRunMapper, never()).insertPending(any());
     }
 
     private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,

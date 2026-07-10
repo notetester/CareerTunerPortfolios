@@ -132,7 +132,9 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     public ApplicationCaseFromJobPostingResponse createFromJobPostingUpload(Long userId,
                                                                             MultipartFile file,
                                                                             String sourceType,
-                                                                            Boolean favorite) {
+                                                                            Boolean favorite,
+                                                                            String jobAnalysisProvider,
+                                                                            String companyAnalysisProvider) {
         String normalizedSourceType = normalizeOption(sourceType, null, JOB_POSTING_UPLOAD_SOURCE_TYPES, "sourceType");
         JobPostingMetadataResponse metadata = safeDefaultMetadata();
         ApplicationCase applicationCase = insertApplicationCase(
@@ -150,8 +152,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCase.getId(),
                 jobPosting.id(),
                 normalizedSourceType);
-        // 초기 실행 프로필(PENDING). 업로드 경로의 OCR·분석 provider 선택값 배선은 OCR 라우터 슬라이스에서 추가한다.
-        createInitialRunProfile(applicationCase.getId(), null, null);
+        // 초기 실행 프로필(PENDING). 분석 provider 선택값 저장(OCR 선택값 배선은 OCR 라우터 슬라이스에서 추가).
+        createInitialRunProfile(applicationCase.getId(), jobAnalysisProvider, companyAnalysisProvider);
 
         return new ApplicationCaseFromJobPostingResponse(
                 toResponse(accessService.requireOwned(userId, applicationCase.getId())),
@@ -219,22 +221,30 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         }
     }
 
-    /** 등록 시 초기 실행 프로필(PENDING)을 만든다. provider 는 정규화 후 알 수 없는 값이면 null(현행 기본 체인). */
+    /** 등록 시 초기 실행 프로필(PENDING)을 만든다. provider 는 검증 후 저장(생략=null=현행 기본 체인, 유효하지 않은 명시값=400). */
     private void createInitialRunProfile(Long applicationCaseId, String jobAnalysisProvider, String companyAnalysisProvider) {
         initialRunMapper.insertPending(ApplicationCaseInitialRun.builder()
                 .applicationCaseId(applicationCaseId)
-                .jobAnalysisProvider(normalizeProvider(jobAnalysisProvider))
-                .companyAnalysisProvider(normalizeProvider(companyAnalysisProvider))
+                .jobAnalysisProvider(validateProvider(jobAnalysisProvider, "jobAnalysisProvider"))
+                .companyAnalysisProvider(validateProvider(companyAnalysisProvider, "companyAnalysisProvider"))
                 .build());
     }
 
-    /** 분석 provider 선택값 정규화: 대문자 트림 후 알려진 값(LOCAL/CLAUDE/OPENAI)만 유지, 그 외·공백은 null. */
-    private static String normalizeProvider(String value) {
+    /**
+     * 분석 provider 선택값 검증·정규화. 생략(null/공백)이면 null(현행 기본 체인). 비어 있지 않으면 대문자 정규화하고,
+     * LOCAL/CLAUDE/OPENAI 가 아니면 사용자의 명시 선택이 유효하지 않으므로 400(INVALID_INPUT)으로 거절한다
+     * — 조용히 무시하지 않는다(서버 재검증 규칙 일치).
+     */
+    private static String validateProvider(String value, String field) {
         if (value == null || value.isBlank()) {
             return null;
         }
         String normalized = value.trim().toUpperCase(Locale.ROOT);
-        return ANALYSIS_PROVIDERS.contains(normalized) ? normalized : null;
+        if (!ANALYSIS_PROVIDERS.contains(normalized)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "지원하지 않는 분석 모델입니다: %s=%s".formatted(field, value));
+        }
+        return normalized;
     }
 
     @Override

@@ -30,7 +30,9 @@ public interface ApplicationCaseService {
     ApplicationCaseFromJobPostingResponse createFromJobPostingUpload(Long userId,
                                                                      MultipartFile file,
                                                                      String sourceType,
-                                                                     Boolean favorite);
+                                                                     Boolean favorite,
+                                                                     String jobAnalysisProvider,
+                                                                     String companyAnalysisProvider);
 
     List<ApplicationCaseResponse> list(Long userId, String view, boolean includeArchived);
 

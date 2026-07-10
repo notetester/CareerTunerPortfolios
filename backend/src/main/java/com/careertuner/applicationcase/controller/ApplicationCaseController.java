@@ -63,8 +63,11 @@ public class ApplicationCaseController {
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam("file") MultipartFile file,
             @RequestParam("sourceType") String sourceType,
-            @RequestParam(defaultValue = "false") boolean favorite) {
-        return ApiResponse.ok(applicationCaseService.createFromJobPostingUpload(authUser.id(), file, sourceType, favorite));
+            @RequestParam(defaultValue = "false") boolean favorite,
+            @RequestParam(required = false) String jobAnalysisProvider,
+            @RequestParam(required = false) String companyAnalysisProvider) {
+        return ApiResponse.ok(applicationCaseService.createFromJobPostingUpload(
+                authUser.id(), file, sourceType, favorite, jobAnalysisProvider, companyAnalysisProvider));
     }
 
     @GetMapping
