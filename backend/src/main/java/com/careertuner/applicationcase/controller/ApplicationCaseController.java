@@ -191,11 +191,14 @@ public class ApplicationCaseController {
         return ApiResponse.ok(applicationCaseService.confirmEditedPosting(authUser.id(), id, request));
     }
 
+    // 수동 재분석은 strict — provider 필수. required=false 로 받아 서비스에서 검증(누락·무효 400)하므로 자동 체인
+    // (무인자 서비스 메서드)에는 컨트롤러에서 도달하지 않는다. 자동 체인은 autoprep/초기 파이프라인 내부에만 남는다.
     @PostMapping("/{id}/job-analysis")
     @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<JobAnalysisResponse> createJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                              @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createJobAnalysis(authUser.id(), id));
+                                                              @PathVariable Long id,
+                                                              @RequestParam(required = false) String provider) {
+        return ApiResponse.ok(applicationCaseService.createJobAnalysis(authUser.id(), id, provider));
     }
 
     @GetMapping("/{id}/job-analysis")
@@ -224,8 +227,9 @@ public class ApplicationCaseController {
     @PostMapping("/{id}/company-analysis")
     @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<CompanyAnalysisResponse> createCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                                      @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createCompanyAnalysis(authUser.id(), id));
+                                                                      @PathVariable Long id,
+                                                                      @RequestParam(required = false) String provider) {
+        return ApiResponse.ok(applicationCaseService.createCompanyAnalysis(authUser.id(), id, provider));
     }
 
     @GetMapping("/{id}/company-analysis")

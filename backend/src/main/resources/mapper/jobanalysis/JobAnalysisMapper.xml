@@ -11,10 +11,12 @@
     <insert id="insertJobAnalysis" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO job_analysis
             (application_case_id, job_posting_id, job_posting_revision, employment_type, experience_level, required_skills,
-             preferred_skills, duties, qualifications, difficulty, summary, evidence, ambiguous_conditions)
+             preferred_skills, duties, qualifications, difficulty, summary, evidence, ambiguous_conditions,
+             requested_provider, actual_provider, actual_model, fallback_used, attempt_path, run_mode)
         VALUES
             (#{applicationCaseId}, #{jobPostingId}, #{jobPostingRevision}, #{employmentType}, #{experienceLevel}, #{requiredSkills},
-             #{preferredSkills}, #{duties}, #{qualifications}, #{difficulty}, #{summary}, #{evidence}, #{ambiguousConditions})
+             #{preferredSkills}, #{duties}, #{qualifications}, #{difficulty}, #{summary}, #{evidence}, #{ambiguousConditions},
+             #{requestedProvider}, #{actualProvider}, #{actualModel}, #{fallbackUsed}, #{attemptPath}, #{runMode})
     </insert>
 
     <select id="findLatestJobAnalysisByCaseId" resultType="com.careertuner.jobanalysis.domain.JobAnalysis">

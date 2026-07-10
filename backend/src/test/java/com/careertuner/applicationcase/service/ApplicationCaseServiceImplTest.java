@@ -1431,6 +1431,163 @@ class ApplicationCaseServiceImplTest {
         verify(companyAnalysisService).createCompanyAnalysis(1L, 11L);
     }
 
+    // ── strict 수동 재분석: 컨트롤러 → provider 필수 overload. 누락·무효 400(부수효과·guard 전), 초기실행 409,
+    //    strict overload 위임, 무인자 자동 메서드 미호출. ──
+
+    @Test
+    void strictJobAnalysisRejectsMissingProviderBeforeGuardAndDelegate() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(initialRunMapper, never()).findByApplicationCaseId(anyLong()); // provider 검증이 guard 보다 먼저
+        verify(jobAnalysisService, never()).createJobAnalysisStrict(anyLong(), anyLong(), any());
+        verify(jobAnalysisService, never()).createJobAnalysis(anyLong(), anyLong()); // 무인자 자동 경로 미도달
+    }
+
+    @Test
+    void strictJobAnalysisRejectsInvalidProvider() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L, "GEMINI"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(jobAnalysisService, never()).createJobAnalysisStrict(anyLong(), anyLong(), any());
+        verify(jobAnalysisService, never()).createJobAnalysis(anyLong(), anyLong());
+    }
+
+    @Test
+    void strictJobAnalysisRejectedWhileInitialRunInProgress() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("RUNNING"));
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L, "CLAUDE"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+
+        verify(jobAnalysisService, never()).createJobAnalysisStrict(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void strictJobAnalysisRejectedWhileInitialRunPending() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("PENDING"));
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L, "CLAUDE"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+
+        verify(jobAnalysisService, never()).createJobAnalysisStrict(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void strictJobAnalysisDelegatesToStrictOverloadNotAutoMethod() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("DONE"));
+
+        service.createJobAnalysis(1L, 10L, "claude"); // 대소문자 무시 정규화
+
+        verify(jobAnalysisService).createJobAnalysisStrict(1L, 10L, BAnalysisProvider.CLAUDE);
+        verify(jobAnalysisService, never()).createJobAnalysis(anyLong(), anyLong());
+    }
+
+    @Test
+    void strictCompanyAnalysisRejectsMissingProviderAndDelegatesWhenValid() {
+        CompanyAnalysisService companyAnalysisService = mock(CompanyAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                mock(JobAnalysisService.class), companyAnalysisService, initialRunMapper);
+
+        assertThatThrownBy(() -> service.createCompanyAnalysis(1L, 10L, "  "))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        verify(companyAnalysisService, never()).createCompanyAnalysisStrict(anyLong(), anyLong(), any());
+        verify(companyAnalysisService, never()).createCompanyAnalysis(anyLong(), anyLong());
+
+        when(initialRunMapper.findByApplicationCaseId(11L)).thenReturn(null);
+        service.createCompanyAnalysis(1L, 11L, "OPENAI");
+        verify(companyAnalysisService).createCompanyAnalysisStrict(1L, 11L, BAnalysisProvider.OPENAI);
+        verify(companyAnalysisService, never()).createCompanyAnalysis(anyLong(), anyLong());
+    }
+
+    // ── JobAnalysisService strict: 성공 시 6 provenance 저장, 실패 시 insert 없음·이전 상태 복원(기존 이력 보존). ──
+
+    @Test
+    void createJobAnalysisStrictStoresProvenanceOnSuccess() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
+
+        ApplicationCase applicationCase = applicationCase("READY");
+        JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
+        Usage usage = new Usage("claude-haiku", 100, 50, 150);
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
+        when(bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, "Java Spring REST API", BAnalysisProvider.CLAUDE))
+                .thenReturn(new BAnalysisGenerationService.StrictJobResult(jobAnalysisPayload(usage), List.of(BAnalysisProvider.CLAUDE)));
+        when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
+
+        service.createJobAnalysisStrict(1L, 10L, BAnalysisProvider.CLAUDE);
+
+        ArgumentCaptor<JobAnalysis> captor = ArgumentCaptor.forClass(JobAnalysis.class);
+        verify(jobAnalysisMapper).insertJobAnalysis(captor.capture());
+        JobAnalysis saved = captor.getValue();
+        assertThat(saved.getRequestedProvider()).isEqualTo("CLAUDE");
+        assertThat(saved.getActualProvider()).isEqualTo("CLAUDE");
+        assertThat(saved.getActualModel()).isEqualTo("claude-haiku");
+        assertThat(saved.getFallbackUsed()).isFalse();
+        assertThat(saved.getAttemptPath()).isEqualTo("[\"CLAUDE\"]");
+        assertThat(saved.getRunMode()).isEqualTo("MANUAL");
+        verify(statusService).markReadyAfterAnalysis(1L, 10L, "READY");
+    }
+
+    @Test
+    void createJobAnalysisStrictPreservesExistingOnFailure() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
+
+        ApplicationCase applicationCase = applicationCase("READY");
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(jobPosting(30L, 2, "Java Spring REST API"));
+        when(bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, "Java Spring REST API", BAnalysisProvider.CLAUDE))
+                .thenThrow(new IllegalStateException("Claude 재분석 실패"));
+
+        assertThatThrownBy(() -> service.createJobAnalysisStrict(1L, 10L, BAnalysisProvider.CLAUDE))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class)); // 기존 이력 보존
+        verify(statusService).restorePreviousStatus(1L, 10L, "READY");
+    }
+
     private static ApplicationCaseServiceImpl serviceWithGuardCollaborators(
             JobAnalysisService jobAnalysisService,
             CompanyAnalysisService companyAnalysisService,
