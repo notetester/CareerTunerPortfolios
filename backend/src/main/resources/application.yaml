@@ -169,6 +169,13 @@ careertuner:
       private-cert-uddi: ${CAREERTUNER_CERT_PRIVATE_UDDI:uddi:fadae7c0-8b78-400d-9581-d4003721de76}
       private-cert-snapshot: ${CAREERTUNER_CERT_PRIVATE_SNAPSHOT:20251231}
       timeout-seconds: ${CAREERTUNER_CERT_TIMEOUT_SECONDS:15}
+    # 국가자격 종목 목록 오프라인 스냅샷(공공데이터포털 파일 번들, 연 단위 갱신 성격 — API 도 동일 시점 스냅샷 반환).
+    # 스냅샷이 로드되면 종류 판별(T/S)·라우팅이 Q-Net 게이트웨이 장애와 무관하게 동작한다. 신규 스냅샷 파일을
+    # resources/cert/ 에 추가하고 resource·label 만 교체하면 된다. 로드 실패 시 자동으로 기존 네트워크 경로 사용.
+    catalog-snapshot:
+      enabled: ${CAREERTUNER_CERT_CATALOG_SNAPSHOT_ENABLED:true}
+      resource: ${CAREERTUNER_CERT_CATALOG_SNAPSHOT_RESOURCE:cert/national-qualification-catalog-20251231.csv}
+      label: ${CAREERTUNER_CERT_CATALOG_SNAPSHOT_LABEL:20251231}
   anthropic:
     # 면접 LLM 1차(기본) provider(Claude Haiku). 선생(합성 데이터 증류)·런타임 공통.
     # 키가 비어 있으면 자동으로 OpenAI 로 폴백한다(로드맵 Phase 4).
