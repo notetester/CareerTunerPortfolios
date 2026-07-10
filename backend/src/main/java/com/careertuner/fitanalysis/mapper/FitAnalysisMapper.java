@@ -5,6 +5,7 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import com.careertuner.fitanalysis.domain.CareerProfileSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisLearningTask;
@@ -25,6 +26,9 @@ public interface FitAnalysisMapper {
      */
     FitAnalysisGenerationSource findGenerationSource(@Param("userId") Long userId,
                                                      @Param("applicationCaseId") Long applicationCaseId);
+
+    /** 장기 커리어 전략용 사용자 프로필(user_profile, 읽기 전용). 특정 지원 건과 무관한 사용자 단위 조회. 없으면 null. */
+    CareerProfileSource findCareerProfile(@Param("userId") Long userId);
 
     /**
      * 재분석 히스토리: 해당 지원 건의 모든 적합도 분석 이력(오래된 순).

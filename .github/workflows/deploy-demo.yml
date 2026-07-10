@@ -55,7 +55,7 @@ jobs:
           set -e
           echo "Scanning frontend/dist before publishing..."
 
-          if grep -RInE "YOUR_DB_PASSWORD|dbuser|jdbc:mysql|DB_PASSWORD|JWT_SECRET|OPENAI_API_KEY|client_secret|client-secret|54\.[0-9]+\.[0-9]+\.[0-9]+" frontend/dist; then
+          if grep -RInE "YOUR_DB_PASSWORD|dbuser|jdbc:mysql|DB_PASSWORD|JWT_SECRET|OPENAI_API_KEY|client_secret|client-secret|CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY|serviceKey=|54\.[0-9]+\.[0-9]+\.[0-9]+" frontend/dist; then
             echo "Potential secret found in dist. Stop deployment."
             exit 1
           fi

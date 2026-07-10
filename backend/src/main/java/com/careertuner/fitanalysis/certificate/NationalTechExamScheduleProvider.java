@@ -49,7 +49,7 @@ public class NationalTechExamScheduleProvider {
     @Autowired
     public NationalTechExamScheduleProvider(
             @Value("${careertuner.certificate.data-go-kr.service-key:}") String serviceKey,
-            @Value("${careertuner.certificate.data-go-kr.qnet-base-url:https://openapi.q-net.or.kr/api/service/rest}")
+            @Value("${careertuner.certificate.data-go-kr.qnet-base-url:http://openapi.q-net.or.kr/api/service/rest}")
             String qnetBaseUrl,
             @Value("${careertuner.certificate.data-go-kr.timeout-seconds:15}") long timeoutSeconds) {
         this(serviceKey, qnetBaseUrl, Duration.ofSeconds(timeoutSeconds <= 0 ? 15 : timeoutSeconds),
