@@ -11,8 +11,8 @@ export type UploadKind = "RESUME" | "PORTFOLIO" | "POSTING" | "ATTACHMENT";
 export interface UploadedFile {
   id: number;
   originalName: string;
-  contentType?: string;
-  sizeBytes?: number;
+  contentType?: string | null;
+  sizeBytes?: number | null;
 }
 
 /** 파일 업로드 → fileId. 플랜 게이팅(무료 1개 등)은 실행 시 백엔드가 적용. */

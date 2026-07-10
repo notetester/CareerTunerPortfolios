@@ -67,6 +67,7 @@ public class ProfileServiceImpl implements ProfileService {
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final FileService fileService;
+    private final ProfilePortfolioService profilePortfolioService;
     private final DocumentTextExtractor documentTextExtractor;
     private final ProfileResumeStructurer profileResumeStructurer;
     private final TransactionTemplate transactionTemplate;
@@ -278,7 +279,9 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = requireUser(authUser);
         requireAiConsent(userId);
         requireResumeAnalysisConsent(userId);
-        ProfileAiResult result = profileAiService.evaluate(findOrEmpty(userId), featureType);
+        UserProfile profile = findOrEmpty(userId);
+        profile.setPortfolioEvidence(profilePortfolioService.evidenceText(userId));
+        ProfileAiResult result = profileAiService.evaluate(profile, featureType);
         recordAi(userId, result);
         // 스펙(프로필) 분석이 성공하면 사용자에게 완료 알림을 남긴다.
         if ("SUCCESS".equals(result.status())) {

@@ -67,6 +67,7 @@ class ProfileDocumentImportServiceTest {
                 mock(NotificationService.class),
                 new ObjectMapper(),
                 fileService,
+                mock(ProfilePortfolioService.class),
                 new DocumentTextExtractor(),
                 mock(ProfileResumeStructurer.class),
                 transactionTemplate);

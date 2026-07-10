@@ -15,6 +15,10 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.method.HandlerMethod;
 
+import com.careertuner.ai.autoprep.AutoPrepController;
+import com.careertuner.ai.autoprep.AutoPrepIntakeService;
+import com.careertuner.ai.autoprep.AutoPrepOrchestrator;
+import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -79,6 +83,31 @@ class ConsentPolicyInterceptorTest {
                 request("POST", "/api/profile/import/analyze"), new MockHttpServletResponse(), handler("resume")))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("이력서 분석 개인정보");
+    }
+
+    @Test
+    void autoPrepExecutionRequiresResumeConsentBeforePortfolioEvidenceProcessing() throws Exception {
+        when(consentService.hasRequiredConsents(7L)).thenReturn(true);
+        when(consentService.hasCurrentConsent(7L, ConsentType.AI_DATA)).thenReturn(true);
+        when(consentService.hasCurrentConsent(7L, ConsentType.RESUME_ANALYSIS)).thenReturn(false);
+
+        AutoPrepController autoPrepController = new AutoPrepController(
+                mock(AutoPrepOrchestrator.class), mock(AutoPrepIntakeService.class));
+        HandlerMethod autoPrepRun = new HandlerMethod(
+                autoPrepController,
+                AutoPrepController.class.getMethod("run", AuthUser.class, AutoPrepRequest.class));
+        HandlerMethod autoPrepStream = new HandlerMethod(
+                autoPrepController,
+                AutoPrepController.class.getMethod("runStream", AuthUser.class, AutoPrepRequest.class));
+
+        assertThatThrownBy(() -> interceptor.preHandle(
+                request("POST", "/api/auto-prep/run"), new MockHttpServletResponse(), autoPrepRun))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSENT_REQUIRED);
+        assertThatThrownBy(() -> interceptor.preHandle(
+                request("POST", "/api/auto-prep/run/stream"), new MockHttpServletResponse(), autoPrepStream))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSENT_REQUIRED);
     }
 
     private MockHttpServletRequest request(String method, String uri) {

@@ -6,7 +6,7 @@ export interface MockContext {
   path: string; // 쿼리스트링 제거된 경로 (예: /fit-analyses/201/learning-tasks/2011)
   query: URLSearchParams; // 파싱된 쿼리스트링 (목록/필터/페이지네이션 핸들러용)
   params: string[]; // 정규식 캡처 그룹
-  body: unknown; // JSON 파싱된 요청 본문(가능할 때)
+  body: unknown; // 문자열 JSON은 파싱하고, FormData/Blob 등 다른 BodyInit은 원형 그대로 전달
 }
 
 export type MockHandler = (ctx: MockContext) => unknown;
