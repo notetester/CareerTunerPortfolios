@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import tools.jackson.databind.JsonNode;
@@ -31,6 +32,8 @@ public class OllamaModelProbe {
     private final HttpClient httpClient;
     private volatile CachedResult cached;
 
+    // 생성자가 둘(테스트용 HttpClient 주입 오버로드)이라 Spring 이 사용할 primary 생성자를 명시한다.
+    @Autowired
     public OllamaModelProbe(BAnalysisProperties properties, ObjectMapper objectMapper) {
         this(properties, objectMapper, HttpClient.newBuilder()
                 .connectTimeout(properties.getLocalLlm().getConnectTimeout())
