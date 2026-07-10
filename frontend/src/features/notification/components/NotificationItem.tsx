@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import type { Notification } from "../types/notification";
 import { typeMeta, relTime } from "../types/notification";
 import { ICON_MAP } from "./iconMap";
+import { safeInternalAppPath } from "../lib/navigationLink";
 
 interface NotificationItemProps {
   notification: Notification;
@@ -42,18 +43,19 @@ function NotiIcon({ n, size }: { n: Notification; size: "sm" | "md" }) {
 export function NotificationItem({ notification: n, size = "md", onRead, onDelete }: NotificationItemProps) {
   const meta = typeMeta(n.type);
   const navigate = useNavigate();
+  const navigationTarget = safeInternalAppPath(n.link);
 
   const handleClick = () => {
     onRead(n.id);
-    if (n.link) {
-      navigate(n.link);
+    if (navigationTarget) {
+      navigate(navigationTarget);
     }
   };
 
   return (
     <div
       className={`ct-noti ${!n.isRead ? "unread" : ""}`}
-      style={{ cursor: n.link ? "pointer" : undefined }}
+      style={{ cursor: navigationTarget ? "pointer" : undefined }}
       onClick={handleClick}
     >
       {!n.isRead && <span className="ct-noti__dot" />}
@@ -61,7 +63,7 @@ export function NotificationItem({ notification: n, size = "md", onRead, onDelet
       <div className="ct-noti__body">
         <div className="ct-noti__t">{n.title}</div>
         {n.message && <div className="ct-noti__m">{n.message}</div>}
-        {n.link && (
+        {navigationTarget && (
           <span className="ct-noti__link">{meta.cta} <ArrowRight /></span>
         )}
       </div>

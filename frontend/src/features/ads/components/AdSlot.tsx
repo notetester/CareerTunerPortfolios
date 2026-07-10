@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { fetchAds, recordAdClick, recordAdImpression } from "../api/adsApi";
 import type { Ad, AdPlacement, AdPlatform } from "../types/ads";
+import { safeWebOrInternalUrl } from "@/features/notification/lib/navigationLink";
 
 /** 현재 실행 플랫폼 추정. 네이티브 앱 래퍼는 전역 플래그를 세팅할 수 있어 우선 확인한다. */
 function detectPlatform(): AdPlatform {
@@ -86,8 +87,9 @@ export function AdSlot({ placement, platform, limit = 1, className }: AdSlotProp
 }
 
 function openLink(url: string | null) {
-  if (!url) return;
-  window.open(url, "_blank", "noopener,noreferrer");
+  const target = safeWebOrInternalUrl(url);
+  if (!target) return;
+  window.open(target, "_blank", "noopener,noreferrer");
 }
 
 interface AdItemProps {
