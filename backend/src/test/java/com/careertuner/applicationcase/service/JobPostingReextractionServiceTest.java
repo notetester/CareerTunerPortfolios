@@ -66,15 +66,41 @@ class JobPostingReextractionServiceTest {
     }
 
     @Test
-    void rejectsWhenLatestExtractionIsNotFailed() {
+    void rejectsWhenLatestExtractionIsStillActive() {
+        // 진행 중(QUEUED/RUNNING)인 추출은 재추출 대상이 아니다 — 종결(성공/실패)된 최신만 허용.
         Fixture f = new Fixture();
         when(f.extractionMapper.findLatestExtractionByApplicationCaseId(10L))
-                .thenReturn(extraction(40L, 10L, 20L, "PDF", "SUCCEEDED"));
+                .thenReturn(extraction(40L, 10L, 20L, "PDF", "RUNNING"));
 
         assertThatThrownBy(() -> f.service.reextract(1L, 10L, "CLAUDE"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
         verify(f.extractionMapper, never()).insertApplicationCaseExtraction(any());
+    }
+
+    @Test
+    void allowsReextractionWhenLatestSucceeded() {
+        // 성공한 공고도 다른 OCR 모델로 재추출할 수 있다(품질 개선). SUCCEEDED 최신은 거절되지 않고 새 strict 추출을
+        // 만들며, 성공 시 자동 분석 없이 finalizeSucceeded 까지만 간다(기존 분석은 revision 비교로 stale).
+        Fixture f = new Fixture();
+        f.stubTerminalPdfLatest("SUCCEEDED");
+        JobPosting posting = JobPosting.builder()
+                .id(20L).applicationCaseId(10L).revision(1)
+                .uploadedFileUrl("local:application-postings/10/posting.pdf").sourceType("PDF").build();
+        when(f.jobPostingService.getJobPostingDomainForCase(1L, 10L, 20L)).thenReturn(posting);
+        ExtractedPosting extracted = new ExtractedPosting("PDF", posting.getUploadedFileUrl(), null, "재추출 본문", null,
+                "claude", "claude-x");
+        when(f.jobPostingService.extractUploadedJobPostingStrict(1L, 10L, "PDF", posting.getUploadedFileUrl(), "CLAUDE"))
+                .thenReturn(extracted);
+        ExtractionResult result = new ExtractionResult(posting, extracted, null, true, null, false);
+        when(f.processor.evaluate(any(ApplicationCaseExtraction.class), eq(posting), eq(extracted))).thenReturn(result);
+
+        f.service.reextract(1L, 10L, "CLAUDE");
+
+        verify(f.extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        verify(f.jobPostingService).extractUploadedJobPostingStrict(1L, 10L, "PDF", posting.getUploadedFileUrl(), "CLAUDE");
+        verify(f.processor).finalizeSucceeded(any(ApplicationCaseExtraction.class), eq(result));
+        verify(f.processor, never()).finalizeFailed(any(), any(), any());
     }
 
     @Test
@@ -254,6 +280,31 @@ class JobPostingReextractionServiceTest {
         assertThat(f.notifiedTypes()).contains("JOB_POSTING_EXTRACTION_FAILED");
     }
 
+    @Test
+    void strictFailureOnSucceededLatestPreservesExistingSuccessRevision() {
+        // #3 핵심 시나리오: 최신 추출이 SUCCEEDED(성공 공고)인데 사용자가 다른 OCR 모델로 재추출했다가 실패해도,
+        // 기존 성공 revision·분석을 보존한다 — 새 FAILED 이력만 남고 save(새 revision)·성공 마킹·케이스 메타 갱신은 없다.
+        RealFixture f = new RealFixture();
+        // 기본 fixture 의 latest=FAILED 를 SUCCEEDED 로 덮어 성공 공고 재추출 시나리오로 만든다.
+        when(f.extractionMapper.findLatestExtractionByApplicationCaseId(10L))
+                .thenReturn(extraction(40L, 10L, 20L, "PDF", "SUCCEEDED"));
+        // strict OCR 실패는 예외가 아니라 FAILED 마커로 온다(교차 폴백 없음).
+        f.stubStrictOcr(new ExtractedPosting("PDF", "local:x.pdf", null, "", null,
+                "IMAGE_PDF_OCR", 0, "FAILED", null, null, false,
+                "선택한 OCR 모델(CLAUDE)로 공고문을 추출하지 못했습니다.", null, null));
+        when(f.extractionMapper.markExtractionFailed(eq(41L), any(), any(), any(), eq("FAILED"), any(), any(), anyBoolean(), any()))
+                .thenReturn(1);
+
+        f.service.reextract(1L, 10L, "CLAUDE");
+
+        // 기존 성공 공고 보존: 새 revision save 없음 + 성공 마킹 없음 + 케이스 메타 갱신 없음. FAILED 이력만.
+        verify(f.extractionMapper).markExtractionFailed(eq(41L), any(), any(), any(), eq("FAILED"), any(), any(), anyBoolean(), any());
+        verify(f.jobPostingService, never()).saveExtractedJobPosting(any(), any(), any());
+        verify(f.extractionMapper, never()).markExtractionSucceeded(any(), any(), any(), any(), any(), any(), any(), anyBoolean(), any());
+        verify(f.applicationCaseMapper, never()).updateApplicationCase(any());
+        assertThat(f.notifiedTypes()).contains("JOB_POSTING_EXTRACTION_FAILED");
+    }
+
     /** strict lifecycle 을 real processor 로 구동하기 위한 fixture(저장·상태 전이·알림을 실제로 통과시킨다). */
     private static final class RealFixture {
         final ApplicationCaseAccessService accessService = mock(ApplicationCaseAccessService.class);
@@ -319,8 +370,13 @@ class JobPostingReextractionServiceTest {
 
         /** 실패한 PDF 최신 추출 + 진행 중 없음 + insert 시 id=41 부여 + claim 성공을 기본 세팅한다. */
         void stubFailedPdfLatest() {
+            stubTerminalPdfLatest("FAILED");
+        }
+
+        /** 종결(성공/실패) 상태의 PDF 최신 추출 + 진행 중 없음 + insert id=41 + claim 성공을 세팅한다. */
+        void stubTerminalPdfLatest(String latestStatus) {
             when(extractionMapper.findLatestExtractionByApplicationCaseId(10L))
-                    .thenReturn(extraction(40L, 10L, 20L, "PDF", "FAILED"));
+                    .thenReturn(extraction(40L, 10L, 20L, "PDF", latestStatus));
             when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
             doAnswer(invocation -> {
                 invocation.<ApplicationCaseExtraction>getArgument(0).setId(41L);
