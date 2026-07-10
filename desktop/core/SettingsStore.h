@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QSettings>
 #include <QString>
+#include <memory>
 
 // 앱 로컬 영속 설정(QSettings 래퍼).
 // - 토큰(자동로그인) · 서버 주소 · 저장 폴더 · 자동 저장 · 트레이 알림을 재시작 후에도 유지한다.
@@ -14,6 +15,8 @@ class SettingsStore : public QObject
     Q_PROPERTY(bool    autoSave   READ autoSave   WRITE setAutoSave   NOTIFY changed)
     Q_PROPERTY(bool    autoLogin  READ autoLogin  WRITE setAutoLogin  NOTIFY changed)
     Q_PROPERTY(bool    trayNotify READ trayNotify WRITE setTrayNotify NOTIFY changed)
+    Q_PROPERTY(bool    portableMode READ isPortableMode CONSTANT)
+    Q_PROPERTY(QString settingsPath READ settingsPath CONSTANT)
     // 서버 주소 프리셋 (설정 화면 콤보박스용 — 값은 아래 static 상수의 단일 소스)
     Q_PROPERTY(QString localServerUrl     READ localServerUrl     CONSTANT)
     Q_PROPERTY(QString tailscaleServerUrl READ tailscaleServerUrl CONSTANT)
@@ -23,9 +26,14 @@ public:
     // 기본 서버 주소의 단일 소스 — ApiClient 기본값·설정 화면 프리셋이 전부 여기를 쓴다
     static QString defaultBaseUrl() { return QStringLiteral("https://careertuner-dev.example.invalid"); }  // 팀 공용(Tailscale)
     static QString localBaseUrl()   { return QStringLiteral("http://localhost:8080"); }                 // 로컬 시연용
+    static QString portableDataDir();
+    static QString settingsPathForCurrentMode();
+    static std::unique_ptr<QSettings> createSettings();
 
     QString localServerUrl() const     { return localBaseUrl(); }
     QString tailscaleServerUrl() const { return defaultBaseUrl(); }
+    bool isPortableMode() const { return !portableDataDir().isEmpty(); }
+    QString settingsPath() const { return settingsPathForCurrentMode(); }
 
     QString baseUrl() const;
     void setBaseUrl(const QString& v);
@@ -54,5 +62,5 @@ signals:
     void changed();
 
 private:
-    QSettings m_s;
+    std::unique_ptr<QSettings> m_s;
 };

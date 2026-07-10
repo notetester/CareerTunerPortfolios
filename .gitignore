@@ -82,6 +82,22 @@ pnpm-debug.log*
 # ----- Local agent files -----
 .agents/
 
+# ----- Obsidian local state -----
+# The repository root can be opened as an Obsidian vault. Stable shared
+# settings may be tracked under .obsidian/, but volatile workspace state and
+# personal plugins should stay local. Team plugins can be added intentionally
+# through review with `git add -f .obsidian/plugins/<plugin-id>/...`.
+.obsidian/workspace.json
+.obsidian/workspaces.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+.obsidian/.trash/
+.obsidian/graph.json
+.obsidian/backlink.json
+.obsidian/bookmarks.json
+.obsidian/recent-files-obsidian.json
+.obsidian/plugins/
+
 # ----- Submodule working-tree contents -----
 # The parent repo tracks only the gitlink pointer for these paths.
 # Files inside are owned by each submodule repository.

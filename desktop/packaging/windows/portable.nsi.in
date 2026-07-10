@@ -1,0 +1,30 @@
+Unicode true
+
+!define APP_NAME "CareerTuner Desktop Portable"
+!define APP_VERSION "@APP_VERSION@"
+!define APP_EXE "CareerTunerDesktop.exe"
+!define DIST_DIR "@DIST_DIR@"
+!define PORTABLE_DATA_DIR "CareerTunerDesktopData"
+
+Name "${APP_NAME}"
+OutFile "@PORTABLE_OUT@"
+RequestExecutionLevel user
+SilentInstall silent
+AutoCloseWindow true
+SetCompressor /SOLID lzma
+
+Section
+    InitPluginsDir
+    SetOutPath "$PLUGINSDIR\app"
+    File /r "${DIST_DIR}\*.*"
+
+    StrCpy $0 "$EXEDIR\${PORTABLE_DATA_DIR}"
+    ClearErrors
+    CreateDirectory "$0"
+    IfErrors 0 run
+        StrCpy $0 "$LOCALAPPDATA\CareerTunerDesktopPortable"
+        CreateDirectory "$0"
+
+    run:
+    ExecWait "$\"$PLUGINSDIR\app\${APP_EXE}$\" --portable-data-dir $\"$0$\""
+SectionEnd
