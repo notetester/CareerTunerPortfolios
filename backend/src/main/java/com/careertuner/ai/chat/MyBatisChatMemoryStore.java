@@ -38,7 +38,43 @@ public class MyBatisChatMemoryStore implements ChatMemoryStore {
 
     @Override
     public void updateMessages(Object memoryId, List<ChatMessage> messages) {
-        mapper.upsert(toLong(memoryId), ChatMessageSerializer.messagesToJson(normalizeSystemFirst(messages)));
+        Long conversationId = toLong(memoryId);
+        mapper.upsert(conversationId, ChatMessageSerializer.messagesToJson(normalizeSystemFirst(messages)));
+        stampTitleFromFirstUserMessage(conversationId, messages);
+    }
+
+    /**
+     * 일반 대화도 목록에서 구분되도록, 첫 사용자 발화 앞부분을 제목으로 1회 스탬프한다.
+     * user 메시지가 정확히 1개인 턴(=첫 턴)에만 시도하고, WHERE title IS NULL 가드라
+     * 인테이크 세션의 bindCase 제목("{회사} {직무}")과도 충돌하지 않는다(그쪽은 무조건 UPDATE로 덮음).
+     */
+    private void stampTitleFromFirstUserMessage(Long conversationId, List<ChatMessage> messages) {
+        dev.langchain4j.data.message.UserMessage first = null;
+        int userCount = 0;
+        for (ChatMessage m : messages) {
+            if (m instanceof dev.langchain4j.data.message.UserMessage u) {
+                userCount++;
+                if (first == null) {
+                    first = u;
+                }
+            }
+        }
+        if (userCount != 1 || first == null) {
+            return;
+        }
+        String text = first.singleText();
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        String title = text.strip().replaceAll("\\s+", " ");
+        if (title.length() > 40) {
+            title = title.substring(0, 40) + "…";
+        }
+        try {
+            mapper.updateTitleIfNull(conversationId, title);
+        } catch (RuntimeException ex) {
+            // 제목은 부가 정보 — 실패해도 대화 저장 자체를 깨지 않는다.
+        }
     }
 
     /**
@@ -98,9 +134,9 @@ public class MyBatisChatMemoryStore implements ChatMemoryStore {
         mapper.bindCase(conversationId, applicationCaseId, title);
     }
 
-    /** 유저의 인테이크(지원건) 세션 목록(최근순 최대 5). 사이드바용. */
-    public List<Map<String, Object>> listIntakeSessions(Long userId) {
-        return mapper.findIntakeSessionsByUser(userId);
+    /** 유저의 최근 대화 목록(인테이크+일반, 최근순 최대 20). 사이드바 "대화 목록"용. */
+    public List<Map<String, Object>> listRecentConversations(Long userId) {
+        return mapper.findRecentConversationsByUser(userId);
     }
 
     /** 대화 소유자 user_id(없으면 null). 메시지 조회 권한 확인용. */

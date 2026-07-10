@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.consent.dto.ConsentRequest;
 import com.careertuner.consent.dto.ConsentStatusResponse;
 import com.careertuner.consent.service.ConsentService;
@@ -36,5 +37,11 @@ public class ConsentController {
     @PostMapping("/ai/revoke")
     public ApiResponse<ConsentStatusResponse> revokeAi(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.revokeAi(authUser));
+    }
+
+    @PostMapping("/{consentType}/revoke")
+    public ApiResponse<ConsentStatusResponse> revoke(@AuthenticationPrincipal AuthUser authUser,
+                                                     @org.springframework.web.bind.annotation.PathVariable String consentType) {
+        return ApiResponse.ok(service.revoke(authUser, ConsentType.from(consentType)));
     }
 }

@@ -2,7 +2,7 @@ import { Link } from "react-router";
 import { Camera, MessageCircle, Send, Sparkles, Video } from "lucide-react";
 import { isAppContext } from "@/platform/capacitor";
 
-const footerLinks = [
+export const FOOTER_SECTIONS = [
   {
     title: "서비스",
     links: [
@@ -50,9 +50,18 @@ const footerLinks = [
       { label: "이용약관", href: "/legal/terms" },
       { label: "개인정보처리방침", href: "/legal/privacy" },
       { label: "AI 데이터 이용 동의", href: "/legal/ai-data-consent" },
+      { label: "이력서 분석 동의", href: "/legal/resume-analysis-consent" },
+      { label: "마케팅 수신 동의", href: "/legal/marketing" },
       { label: "저작권 정책", href: "/legal/copyright" },
     ],
   },
+];
+
+export const FOOTER_SOCIAL_LINKS = [
+  { icon: Video, label: "YouTube", href: "/company/social?channel=youtube" },
+  { icon: Camera, label: "Instagram", href: "/company/social?channel=instagram" },
+  { icon: Send, label: "Twitter", href: "/company/social?channel=twitter" },
+  { icon: MessageCircle, label: "KakaoTalk", href: "/company/social?channel=kakao" },
 ];
 
 export function Footer() {
@@ -62,7 +71,7 @@ export function Footer() {
   return (
     <footer className="bg-muted text-muted-foreground">
       {/* Main footer */}
-      <div className="max-w-[1400px] mx-auto px-6 pt-12 pb-8">
+      <div className="max-w-[1400px] mx-auto px-6 pt-12 pb-[calc(6rem+env(safe-area-inset-bottom))] xl:pb-8">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-12">
           {/* Brand */}
           <div className="col-span-2 md:col-span-3 lg:col-span-1 space-y-4">
@@ -76,19 +85,18 @@ export function Footer() {
               AI 기반 채용공고 분석 및 맞춤형 면접 지원 플랫폼
             </p>
             <div className="space-y-1 text-sm">
-              <p>상호: (주)에이아이잡프렙</p>
-              <p>사업자등록번호: 000-00-00000</p>
-              <p>대표: 홍길동</p>
-              <p>이메일: redacted-5752040532f5106a@example.com</p>
+              <p>운영: CareerTuner 프로젝트 팀</p>
+              <p>공개 단계: 포트폴리오·공개 베타</p>
+              <p>
+                이메일:{" "}
+                <a className="hover:text-foreground hover:underline" href="mailto:support@careertuner.dev">
+                  support@careertuner.dev
+                </a>
+              </p>
             </div>
             {/* Social */}
             <div className="flex items-center gap-3 pt-2">
-              {[
-                { icon: Video, label: "YouTube", href: "/company/social?channel=youtube" },
-                { icon: Camera, label: "Instagram", href: "/company/social?channel=instagram" },
-                { icon: Send, label: "Twitter", href: "/company/social?channel=twitter" },
-                { icon: MessageCircle, label: "KakaoTalk", href: "/company/social?channel=kakao" },
-              ].map((s) => (
+              {FOOTER_SOCIAL_LINKS.map((s) => (
                 <Link
                   key={s.label}
                   to={s.href}
@@ -102,7 +110,7 @@ export function Footer() {
           </div>
 
           {/* Links */}
-          {footerLinks.map((section) => (
+          {FOOTER_SECTIONS.map((section) => (
             <div key={section.title} className="space-y-4">
               <h4 className="font-semibold text-foreground text-sm">{section.title}</h4>
               <ul className="space-y-2">

@@ -36,8 +36,12 @@ public interface ChatMemoryMapper {
                   @Param("applicationCaseId") Long applicationCaseId,
                   @Param("title") String title);
 
-    /** 유저의 인테이크(지원건) 세션 목록 — application_case_id 있는 것만, 최근순 최대 5(사이드바용). */
-    List<Map<String, Object>> findIntakeSessionsByUser(@Param("userId") Long userId);
+    /** 유저의 최근 대화 목록 — 인테이크(지원건)+일반 상담, 최근순 최대 20(사이드바 "대화 목록"용). */
+    List<Map<String, Object>> findRecentConversationsByUser(@Param("userId") Long userId);
+
+    /** 제목 없는 대화에 첫 사용자 발화 요약을 제목으로 스탬프(title IS NULL 일 때만). */
+    void updateTitleIfNull(@Param("conversationId") Long conversationId,
+                           @Param("title") String title);
 
     /** 대화 소유자 user_id(없으면 null). 메시지 조회 권한 확인용. */
     Long findOwnerUserId(@Param("conversationId") Long conversationId);

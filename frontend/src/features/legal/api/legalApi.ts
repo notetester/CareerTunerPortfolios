@@ -7,6 +7,7 @@ export type LegalDocType =
   | "privacy"
   | "marketing"
   | "ai-data-consent"
+  | "resume-analysis-consent"
   | "copyright";
 
 export const LEGAL_DOC_TYPES = [
@@ -14,6 +15,7 @@ export const LEGAL_DOC_TYPES = [
   "privacy",
   "marketing",
   "ai-data-consent",
+  "resume-analysis-consent",
   "copyright",
 ] as const;
 
@@ -25,6 +27,7 @@ export const ROUTE_TO_DOC_TYPE: Record<string, LegalDocType> = {
   privacy: "privacy",
   marketing: "marketing",
   "ai-data-consent": "ai-data-consent",
+  "resume-analysis-consent": "resume-analysis-consent",
   copyright: "copyright",
 };
 

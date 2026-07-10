@@ -21,6 +21,13 @@ langchain4j:
     chat-model:
       base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
 
+# 이력서 구조화도 챗봇과 같은 Tailscale Ollama(qwen3:8b). base 기본값과 동일·명시만.
+careertuner:
+  profile:
+    resume-structurer:
+      base-url: ${PROFILE_RESUME_OLLAMA_BASE_URL:${AI_OLLAMA_BASE_URL:http://localhost:11434}}
+      model: ${PROFILE_RESUME_OLLAMA_MODEL:${AI_AGENT_MODEL:qwen3:8b}}
+
 # 프런트를 tailscale serve(HTTPS)로 노출해 원격/모바일에서 접속하는 경우의 예시.
 # (마이크/카메라는 HTTPS 필수 — frontend/vite.config.ts 의 allowedHosts 주석 참고)
 # careertuner:

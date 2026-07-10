@@ -8,6 +8,7 @@ export type LegalDocType =
   | "privacy"
   | "marketing"
   | "ai-data-consent"
+  | "resume-analysis-consent"
   | "copyright";
 
 /** 버전 라이프사이클 배지 — 백엔드가 effective_date vs NOW() 로 계산해 내려준다. */

@@ -50,6 +50,7 @@ import { interviewExtraRoutes } from "./domains/interviewExtra";
 import { collaborationRoutes } from "./domains/collaboration";
 import { privacyRoutes } from "./domains/privacy";
 import { companyRoutes } from "./domains/company";
+import { legalRoutes } from "./domains/legal";
 import { adsRoutes } from "./domains/ads";
 import { nicknameProfileRoutes } from "./domains/nicknameProfile";
 import { adminRoutes } from "./domains/admin";
@@ -457,6 +458,7 @@ const routes: MockRoute[] = [
   ...collaborationRoutes,
   ...privacyRoutes,
   ...companyRoutes,
+  ...legalRoutes,
   ...adsRoutes,
   ...nicknameProfileRoutes,
   ...adminRoutes,

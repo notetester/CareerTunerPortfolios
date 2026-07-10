@@ -1,6 +1,5 @@
 package com.careertuner.legal.service;
 
-import java.util.Collections;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -27,10 +26,7 @@ public class LegalServiceImpl implements LegalService {
 
         LegalDocumentVersion live = legalMapper.findLiveVersion(type.dbValue());
         if (live == null) {
-            // 시행본 없음 → 라벨만 채운 빈 본문(404 아님).
-            return new LegalDocResponse(
-                    type.dbValue(), type.label(), null, null, null, null,
-                    Collections.emptyList());
+            return DefaultLegalDocumentCatalog.response(type);
         }
 
         List<LegalClause> clauses = legalMapper.findClausesByVersionId(live.getId());

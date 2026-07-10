@@ -16,6 +16,8 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 - JDK 21
 - MySQL 8 — 개발은 할당받은 **`team1_db`** 사용. 스키마/시드 적용(최초 1회):
   `src/main/resources/db/schema.sql` → `src/main/resources/db/data.sql` 순서로 실행(IntelliJ Database 콘솔 권장).
+- 기존 DB를 갱신할 때는 코드 배포 전에 `src/main/resources/db/patches/20260710_a_consent_document_version.sql`을 적용해
+  동의 이력의 `consent_version` 컬럼과 기존 데이터 보정을 먼저 완료한다.
 
 ## 실행
 

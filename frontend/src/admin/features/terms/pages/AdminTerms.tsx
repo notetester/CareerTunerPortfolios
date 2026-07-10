@@ -16,6 +16,7 @@ const DOC_TABS: { key: LegalDocType; label: string }[] = [
   { key: "privacy", label: "개인정보처리방침" },
   { key: "marketing", label: "마케팅 수신 동의" },
   { key: "ai-data-consent", label: "AI 데이터 이용 동의" },
+  { key: "resume-analysis-consent", label: "이력서 분석 동의" },
   { key: "copyright", label: "저작권 정책" },
 ];
 

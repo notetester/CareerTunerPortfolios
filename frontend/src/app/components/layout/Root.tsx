@@ -1,6 +1,8 @@
 import { lazy, Suspense } from "react";
 import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
+import { useConsent } from "@/app/auth/ConsentContext";
+import { RequiredConsentBoundary } from "@/app/auth/ConsentGate";
 import { LandingPage } from "@/features/landing/pages/LandingPage";
 import { isNativeApp } from "@/platform/capacitor";
 import { OnboardingFlow, isOnboarded } from "@/features/onboarding/OnboardingFlow";
@@ -27,6 +29,7 @@ const AdSlot = lazy(() =>
 export function Root() {
   const location = useLocation();
   const { isAuthenticated, loading } = useAuth();
+  const { status: consentStatus } = useConsent();
   // 앱(네이티브) 진입: 온보딩 미완료면 온보딩 퍼널, 완료면 검색창 메인(AppHome).
   // 웹에선 ?ob(온보딩)·?home(검색창 메인) 쿼리로 미리볼 수 있다(디자인 확인용).
   const search = typeof window !== "undefined" ? window.location.search : "";
@@ -58,7 +61,7 @@ export function Root() {
       />
       <ApplicationExtractionMonitor />
       <MfaApprovalWatcher />
-      <PlannerFloatingOverlay enabled={isAuthenticated && !isAdmin} />
+      <PlannerFloatingOverlay enabled={isAuthenticated && !isAdmin && consentStatus?.aiDataAgreed === true} />
       <OfflineBanner />
       <RefundPolicyToastGate enabled={isAuthenticated && !isAdmin} />
       {!isAdmin && <Header />}
@@ -69,7 +72,9 @@ export function Root() {
       )}
       {/* 하단 탭에 콘텐츠가 가리지 않도록 모바일에서 하단 패딩(탭 높이 + safe-area) 확보 */}
       <main className={`flex-1 ${showMobileNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] xl:pb-0" : ""}`}>
-        <Outlet />
+        <RequiredConsentBoundary>
+          <Outlet />
+        </RequiredConsentBoundary>
       </main>
       {!isApplicationDetail && !isAdmin && !isMessenger && <Footer />}
       {/* 하단 탭이 있는 모바일에서는 플로팅 챗봇이 탭과 겹치므로 데스크톱에서만 띄운다(모바일은 더보기>고객센터). */}

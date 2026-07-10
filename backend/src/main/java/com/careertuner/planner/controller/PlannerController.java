@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.planner.dto.PlannerDashboardResponse;
 import com.careertuner.planner.dto.PlannerMemoRequest;
 import com.careertuner.planner.dto.PlannerMemoResponse;
@@ -90,6 +92,7 @@ public class PlannerController {
     }
 
     @PostMapping("/strategy-drafts/fit-analyses/{fitAnalysisId}")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<PlannerStrategyDraftResponse> createStrategyDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long fitAnalysisId) {

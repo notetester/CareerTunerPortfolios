@@ -1,19 +1,13 @@
 package com.careertuner.ai.autoprep;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
-import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.springframework.stereotype.Component;
 
+import com.careertuner.common.text.DocumentTextExtractor;
+import com.careertuner.common.text.DocumentTextExtractor.Extraction;
 import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.user.domain.User;
@@ -27,6 +21,8 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <p>플랜 게이팅: 무료(FREE/BASIC) 1개, 유료(PRO/PREMIUM) 5개. (요금제 세부 정책은 E와 추후 조정 — TODO)
  * 한도 초과분은 버리고 로그만 남긴다. 개별 파일 로드 실패도 건너뛰어 항상 진행한다.
+ * 텍스트 추출은 {@link DocumentTextExtractor} 에 위임하고, 절단({@link #MAX_TEXT_CHARS})은 로더에 남긴다.
+ * 추출 실패(스캔 PDF 등)는 throw 하지 않고 text=null 로 유지한다(항상 진행 — AutoPrep 원칙).
  */
 @Slf4j
 @Component
@@ -35,10 +31,11 @@ public class AutoPrepAttachmentLoader {
 
     private static final int FREE_LIMIT = 1;
     private static final int PAID_LIMIT = 5;
-    private static final int MAX_TEXT_CHARS = 12000;
+    static final int MAX_TEXT_CHARS = 12000;
 
     private final UserMapper userMapper;
     private final FileService fileService;
+    private final DocumentTextExtractor documentTextExtractor;
 
     public List<PrepAttachment> load(Long userId, List<Long> fileIds) {
         if (fileIds == null || fileIds.isEmpty()) {
@@ -77,64 +74,35 @@ public class AutoPrepAttachmentLoader {
         FileAsset asset = download.asset();
         String contentType = asset.getContentType();
         String text = null;
-        if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("text")) {
-            text = truncate(new String(download.bytes(), StandardCharsets.UTF_8));
-        } else if (isPdf(contentType, asset.getOriginalName())) {
-            text = truncate(extractPdfText(download.bytes(), asset.getId()));
-        } else if (isDocx(contentType, asset.getOriginalName())) {
-            text = truncate(extractDocxText(download.bytes(), asset.getId()));
+        // 추출 대상 형식만 시도 — 그 외(이미지 등)는 text=null 유지(기존 동작)
+        if (isExtractable(contentType, asset.getOriginalName())) {
+            Extraction extraction = documentTextExtractor.extract(
+                    download.bytes(), contentType, asset.getOriginalName());
+            if (extraction.isSuccess()) {
+                text = truncate(extraction.text());
+            } else {
+                log.debug("AutoPrep 첨부 텍스트 추출 실패 fileId={} reason={}",
+                        asset.getId(), extraction.reason());
+            }
         }
         return new PrepAttachment(asset.getId(), asset.getOriginalName(), contentType, asset.getSizeBytes(), text);
     }
 
-    /** contentType 이 pdf 이거나(브라우저별 편차 대비) 확장자가 .pdf 면 PDF 로 본다. */
-    private static boolean isPdf(String contentType, String originalName) {
-        if (contentType != null && contentType.toLowerCase(Locale.ROOT).contains("pdf")) {
-            return true;
+    /** text/* · markdown · pdf · docx 만 공용 추출기에 넘긴다. 구형 .doc 은 미지원(text=null). */
+    private static boolean isExtractable(String contentType, String originalName) {
+        if (contentType != null) {
+            String ct = contentType.toLowerCase(Locale.ROOT);
+            if (ct.startsWith("text/") || ct.contains("markdown")
+                    || ct.contains("pdf") || ct.contains("wordprocessingml")) {
+                return true;
+            }
         }
-        return originalName != null && originalName.toLowerCase(Locale.ROOT).endsWith(".pdf");
-    }
-
-    /**
-     * contentType 이 wordprocessingml 이거나 확장자가 .docx 면 Word 문서로 본다(PDF 판정과 같은 관용 규칙).
-     * 구형 .doc(OLE2)은 파서가 poi-scratchpad 에 있어 현재 의존성으로는 못 읽는다 — 여기서 걸리지 않는다.
-     */
-    private static boolean isDocx(String contentType, String originalName) {
-        if (contentType != null && contentType.toLowerCase(Locale.ROOT).contains("wordprocessingml")) {
-            return true;
+        if (originalName == null) {
+            return false;
         }
-        return originalName != null && originalName.toLowerCase(Locale.ROOT).endsWith(".docx");
-    }
-
-    /**
-     * 텍스트 PDF 본문 추출 — B 의 {@code JobPostingTextExtractor.extractTextPdf} 와 동일 패턴(PDFBox).
-     * 스캔/이미지 PDF 는 추출 결과가 비어 null 을 돌려준다(Vision OCR 은 별도 작업 — MASTER_PLAN §6).
-     * 추출 실패해도 throw 하지 않는다 — 첨부 자체(메타)는 유지하고 text 만 비운다(항상 진행 원칙).
-     */
-    private String extractPdfText(byte[] bytes, Long fileId) {
-        try (PDDocument document = Loader.loadPDF(bytes)) {
-            String text = new PDFTextStripper().getText(document).trim();
-            return text.isEmpty() ? null : text;
-        } catch (IOException ex) {
-            log.warn("AutoPrep 첨부 PDF 텍스트 추출 실패 fileId={}: {}", fileId, ex.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * .docx 본문 추출 — poi-ooxml(관리자 Excel 내보내기용으로 이미 있는 의존성)의 XWPF 를 쓴다.
-     * PDF 와 같은 원칙: 실패해도 throw 하지 않고 text 만 비운다(첨부 메타는 유지 — 항상 진행).
-     * 암호화·손상 파일은 POI 가 unchecked 로 던지므로 RuntimeException 도 함께 삼킨다.
-     */
-    private String extractDocxText(byte[] bytes, Long fileId) {
-        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes));
-             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
-            String text = extractor.getText().trim();
-            return text.isEmpty() ? null : text;
-        } catch (IOException | RuntimeException ex) {
-            log.warn("AutoPrep 첨부 DOCX 텍스트 추출 실패 fileId={}: {}", fileId, ex.getMessage());
-            return null;
-        }
+        String lower = originalName.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".markdown")
+                || lower.endsWith(".pdf") || lower.endsWith(".docx");
     }
 
     private static String truncate(String text) {
