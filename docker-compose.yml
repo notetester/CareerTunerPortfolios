@@ -47,14 +47,18 @@ services:
     build:
       context: ./ml/job-posting-worker
       args:
-        PYTHON_VERSION: ${JOB_POSTING_WORKER_PYTHON_VERSION:-3.14}
+        # INSTALL_OCR=true 와 함께 사용해도 Paddle wheel 이 있는 안전한 기본값을 유지한다.
+        PYTHON_VERSION: ${JOB_POSTING_WORKER_PYTHON_VERSION:-3.12}
         INSTALL_OCR: ${JOB_POSTING_WORKER_INSTALL_OCR:-false}
     image: careertuner-job-posting-worker:latest
     restart: unless-stopped
     expose:
       - "8091"
+    environment:
+      JOB_POSTING_AI_CACHE_DIR: ${JOB_POSTING_AI_CACHE_DIR:-/app/.cache/job-posting-ai}
     volumes:
       - media_uploads:/app/.uploads:ro
+      - job_posting_ai_cache:/app/.cache/job-posting-ai
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health', timeout=3).read()"]
       interval: 30s
@@ -72,4 +76,5 @@ services:
 
 volumes:
   media_uploads:
+  job_posting_ai_cache:
   qdrant_storage:

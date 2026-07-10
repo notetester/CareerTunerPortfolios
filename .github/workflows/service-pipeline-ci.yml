@@ -6,6 +6,7 @@ on:
       - 'backend/**'
       - 'ml/job-posting-worker/**'
       - 'docker-compose.yml'
+      - '.github/workflows/deploy-backend.yml'
       - '.github/workflows/service-pipeline-ci.yml'
   push:
     branches: [dev, main]
@@ -13,6 +14,7 @@ on:
       - 'backend/**'
       - 'ml/job-posting-worker/**'
       - 'docker-compose.yml'
+      - '.github/workflows/deploy-backend.yml'
       - '.github/workflows/service-pipeline-ci.yml'
   workflow_dispatch:
 
@@ -26,10 +28,11 @@ concurrency:
 
 jobs:
   detect-changes:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-ci]
     outputs:
       backend: ${{ steps.changes.outputs.backend }}
       worker: ${{ steps.changes.outputs.worker }}
+      worker_ocr: ${{ steps.changes.outputs.worker_ocr }}
       compose: ${{ steps.changes.outputs.compose }}
     steps:
       - name: Checkout
@@ -48,6 +51,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             backend=true
             worker=true
+            worker_ocr=true
             compose=true
           else
             if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
@@ -66,12 +70,16 @@ jobs:
 
             backend=false
             worker=false
+            worker_ocr=false
             compose=false
             if grep -Eq '^(backend/|\.github/workflows/service-pipeline-ci\.yml$)' changed-files.txt; then
               backend=true
             fi
             if grep -Eq '^(ml/job-posting-worker/|\.github/workflows/service-pipeline-ci\.yml$)' changed-files.txt; then
               worker=true
+            fi
+            if grep -Eq '^(ml/job-posting-worker/(Dockerfile|requirements(-ocr)?\.txt)|docker-compose\.yml|\.github/workflows/(deploy-backend|service-pipeline-ci)\.yml)$' changed-files.txt; then
+              worker_ocr=true
             fi
             if grep -Eq '^(docker-compose\.yml|\.github/workflows/service-pipeline-ci\.yml)$' changed-files.txt; then
               compose=true
@@ -80,15 +88,17 @@ jobs:
 
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "worker=$worker" >> "$GITHUB_OUTPUT"
+          echo "worker_ocr=$worker_ocr" >> "$GITHUB_OUTPUT"
           echo "compose=$compose" >> "$GITHUB_OUTPUT"
           echo "backend-test: $backend"
           echo "worker-test: $worker"
           echo "worker-docker-build: $worker or $compose"
+          echo "worker-ocr-build: $worker_ocr"
 
   backend-test:
     needs: detect-changes
     if: needs.detect-changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-ci]
     defaults:
       run:
         working-directory: backend
@@ -105,9 +115,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      # GitHub hosted runner는 매 실행마다 프로젝트 build/ 디렉터리가 비어 있어, Gradle 의
-      # 증분 javac 메타데이터와 직전 class 파일을 활용하지 못하고 1,800여 main class를 매번
-      # 전부 다시 컴파일한다. task/dependency 캐시는 setup-gradle이 맡고, 아래 소형 캐시는
+      # checkout 정리 후에는 프로젝트 build/ 디렉터리가 비어 있어, Gradle 의 증분 javac
+      # 메타데이터와 직전 class 파일을 활용하지 못하고 1,800여 main class를 다시 컴파일한다.
+      # task/dependency 캐시는 setup-gradle이 맡고, 아래 소형 캐시는
       # 소스가 바뀐 PR에서도 변경된 Java 파일만 재컴파일할 수 있는 입력만 복원한다.
       # test-results/reports는 포함하지 않아 테스트 실행 결과 자체를 재사용하지 않는다.
       - name: Restore incremental Java compilation state
@@ -150,7 +160,7 @@ jobs:
   worker-test:
     needs: detect-changes
     if: needs.detect-changes.outputs.worker == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-ci]
     defaults:
       run:
         working-directory: ml/job-posting-worker
@@ -182,8 +192,8 @@ jobs:
 
   worker-docker-build:
     needs: detect-changes
-    if: needs.detect-changes.outputs.worker == 'true' || needs.detect-changes.outputs.compose == 'true'
-    runs-on: ubuntu-latest
+    if: needs.detect-changes.outputs.worker == 'true' || needs.detect-changes.outputs.worker_ocr == 'true' || needs.detect-changes.outputs.compose == 'true'
+    runs-on: [self-hosted, linux, x64, careertuner-ci]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -204,3 +214,11 @@ jobs:
 
       - name: Run worker image smoke test
         run: python ml/job-posting-worker/scripts/23_run_worker_docker_smoke.py --image careertuner-job-posting-worker:ci --container-name careertuner-job-posting-worker-ci --output .tmp/job_posting_worker_docker_smoke.json
+
+      - name: Run OCR worker image smoke test
+        if: needs.detect-changes.outputs.worker_ocr == 'true'
+        run: python ml/job-posting-worker/scripts/23_run_worker_docker_smoke.py --install-ocr --image careertuner-job-posting-worker:ci-ocr --container-name careertuner-job-posting-worker-ci-ocr --host-port 8092 --output .tmp/job_posting_worker_ocr_docker_smoke.json
+
+      - name: Validate OCR runtime imports
+        if: needs.detect-changes.outputs.worker_ocr == 'true'
+        run: docker run --rm --entrypoint python careertuner-job-posting-worker:ci-ocr -c "import paddle, paddleocr, paddlex, fitz, cv2"

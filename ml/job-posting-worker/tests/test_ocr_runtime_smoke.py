@@ -18,6 +18,19 @@ def load_script():
 
 
 class OcrRuntimeSmokeTest(unittest.TestCase):
+    def test_accepts_layout_and_line_ocr_sources(self):
+        module = load_script()
+        text = "Company: Acme\nResponsibilities: build production APIs\n" * 3
+
+        self.assertTrue(module.extraction_ok(
+            {"textSource": "PPSTRUCTURE", "qualityStatus": "REVIEW_REQUIRED"},
+            text,
+        ))
+        self.assertTrue(module.extraction_ok(
+            {"textSource": "PADDLE_OCR", "qualityStatus": "PASS"},
+            text,
+        ))
+
     def test_reports_missing_ocr_modules(self):
         module = load_script()
 
