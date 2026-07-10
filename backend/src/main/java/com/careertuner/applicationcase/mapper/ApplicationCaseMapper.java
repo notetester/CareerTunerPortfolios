@@ -53,6 +53,10 @@ public interface ApplicationCaseMapper {
                              @Param("newStatus") String newStatus,
                              @Param("memo") String memo);
 
+    /** 상태 변경 타임라인(관리자 상세 노출용, 최신순). */
+    java.util.List<com.careertuner.applicationcase.domain.ApplicationCaseStatusHistory> findStatusHistoryByCaseId(
+            @Param("applicationCaseId") Long applicationCaseId);
+
     FitAnalysis findLatestFitAnalysisByCaseId(Long applicationCaseId);
 
     void insertAiUsageLog(AiUsageLog aiUsageLog);

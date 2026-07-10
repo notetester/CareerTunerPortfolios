@@ -467,6 +467,8 @@ CREATE TABLE IF NOT EXISTS dashboard_todo (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- C 고도화 정규화 테이블은 운영 DB 점진 적용을 위해 patches/20260612_c_strategy_tables.sql 과 동일하게 관리한다.
+-- ⚠ 감사 기록 테이블: 생성 시점의 점수 변화·diff 를 기록한다. 사용자 히스토리 API 는 fit_analysis 행에서
+--    실시간 계산하므로 현재 읽기 소비자는 없다(의도된 append-only 감사 로그 — 회색지대 QA 에서 처분 확정).
 CREATE TABLE IF NOT EXISTS fit_analysis_history (
     id BIGINT NOT NULL AUTO_INCREMENT, fit_analysis_id BIGINT NOT NULL, application_case_id BIGINT NOT NULL,
     previous_score INT NULL, new_score INT NULL, diff_summary JSON NULL,

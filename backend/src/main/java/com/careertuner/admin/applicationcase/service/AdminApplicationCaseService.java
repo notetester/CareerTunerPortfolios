@@ -76,7 +76,10 @@ public class AdminApplicationCaseService {
                 companyAnalysisMapper.findCompanyAnalysisHistoryByCaseId(id).stream()
                         .map(this::toCompanyAnalysisResponse)
                         .toList(),
-                aiUsageMapper.findBUsageLogsByCaseId(id, 100));
+                aiUsageMapper.findBUsageLogsByCaseId(id, 100),
+                applicationCaseMapper.findStatusHistoryByCaseId(id).stream()
+                        .peek(h -> h.setCreatedAt(BDisplayTime.dbToDisplay(h.getCreatedAt())))
+                        .toList());
     }
 
     private JobPostingResponse toJobPostingResponse(JobPosting jobPosting) {

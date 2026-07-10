@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import type { ChangeEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -146,14 +147,17 @@ function Panel({
   icon: Icon,
   action,
   children,
+  id,
 }: {
   title: string;
   icon: LucideIcon;
   action?: ReactNode;
   children: ReactNode;
+  /** 헤더 하위메뉴(?tab=friends|discover) 스크롤 앵커용 */
+  id?: string;
 }) {
   return (
-    <section className="rounded-lg border border-border bg-card">
+    <section id={id} className="rounded-lg border border-border bg-card scroll-mt-24">
       <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Icon className="size-4 text-primary" />
@@ -236,6 +240,17 @@ function AttachmentButton({
 }
 
 export function MessengerPage() {
+  // 헤더 하위메뉴 의도(?tab=friends|discover) 배선 — 단일 뷰라 해당 패널로 스크롤해 초점을 준다.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab !== "friends" && tab !== "discover") return;
+    const anchor = document.getElementById(tab === "friends" ? "messenger-friends" : "messenger-discover");
+    // 데이터 로드로 레이아웃이 잡힌 뒤 스크롤되도록 다음 프레임에 실행.
+    const timer = window.setTimeout(() => anchor?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [conversations, setConversations] = useState<ConversationSummaryResponse[]>([]);
   const [discoverRooms, setDiscoverRooms] = useState<ConversationSummaryResponse[]>([]);
   const [friends, setFriends] = useState<FriendResponse[]>([]);
@@ -622,7 +637,7 @@ export function MessengerPage() {
           </div>
 
           <div className="space-y-4">
-            <Panel title="친구" icon={Users}>
+            <Panel id="messenger-friends" title="친구" icon={Users}>
               <div className="space-y-3 p-3">
                 <div className="flex gap-2">
                   <Input
@@ -754,7 +769,7 @@ export function MessengerPage() {
               </div>
             </Panel>
 
-            <Panel title="공개/비공개방 찾기" icon={Globe2}>
+            <Panel id="messenger-discover" title="공개/비공개방 찾기" icon={Globe2}>
               <div className="space-y-3 p-3">
                 <div className="flex gap-2">
                   <Input

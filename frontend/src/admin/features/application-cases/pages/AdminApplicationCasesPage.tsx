@@ -897,6 +897,24 @@ function OverviewTab({
         <Info label="기업 분석" value={`${detail.companyAnalyses.length}개`} />
         <Info label="AI 로그" value={`${detail.usageLogs.length}개`} />
       </GridSection>
+
+      {/* 상태 변경 타임라인 — 상태 변경 시 기록만 되고 어디서도 안 읽히던 이력을 노출(회색지대 QA). */}
+      <GridSection title="상태 변경 이력" empty={(detail.statusHistory ?? []).length === 0} emptyMessage="상태 변경 이력이 없습니다.">
+        {(detail.statusHistory ?? []).map((entry) => (
+          <div key={entry.id} className="rounded-lg border border-slate-200 bg-card p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">{entry.previousStatus ?? "생성"}</Badge>
+              <span className="text-slate-400">→</span>
+              <Badge className="bg-blue-100 text-blue-700">{entry.newStatus}</Badge>
+              <span className="ml-auto text-xs text-slate-400">{new Date(entry.createdAt).toLocaleString()}</span>
+            </div>
+            <div className="mt-1.5 text-xs text-slate-500">
+              변경자: {entry.changedByName ?? "알 수 없음"}
+              {entry.memo ? ` · ${entry.memo}` : ""}
+            </div>
+          </div>
+        ))}
+      </GridSection>
     </>
   );
 }
