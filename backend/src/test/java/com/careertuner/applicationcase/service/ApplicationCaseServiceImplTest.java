@@ -2146,6 +2146,36 @@ class ApplicationCaseServiceImplTest {
                 "role", null, null, "TEXT", false, "gpt-9", null)))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        // 잘못된 provider는 케이스·공고·추출 큐·프로필 이전에 거절 → 아무 부수효과 없음.
+        verify(applicationCaseMapper, never()).insertApplicationCase(any());
+        verify(jobPostingService, never()).saveJobPostingForExtractionQueue(any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        verify(initialRunMapper, never()).insertPending(any());
+    }
+
+    @Test
+    void createFromJobPostingUploadRejectsUnknownProviderBeforeStoringFile() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
+        MultipartFile file = mock(MultipartFile.class);
+
+        assertThatThrownBy(() -> service.createFromJobPostingUpload(1L, file, "PDF", true, "gpt-9", null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        // 파일 저장(saveUploadedJobPostingReferenceForNewCase) 이전에 거절 → orphan 파일·행 없음.
+        verify(applicationCaseMapper, never()).insertApplicationCase(any());
+        verify(jobPostingService, never()).saveUploadedJobPostingReferenceForNewCase(any(), any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
         verify(initialRunMapper, never()).insertPending(any());
     }
 

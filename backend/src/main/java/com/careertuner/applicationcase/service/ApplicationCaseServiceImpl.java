@@ -105,6 +105,9 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     @Transactional
     public ApplicationCaseFromJobPostingResponse createFromJobPosting(Long userId,
                                                                       CreateApplicationCaseFromJobPostingRequest request) {
+        // 부수효과(케이스·공고·추출 큐 생성) 전에 선택값을 먼저 검증·정규화 → 잘못된 요청은 아무 행도 만들지 않고 400.
+        String jobProvider = validateProvider(request.jobAnalysisProvider(), "jobAnalysisProvider");
+        String companyProvider = validateProvider(request.companyAnalysisProvider(), "companyAnalysisProvider");
         PreparedJobPostingRequest prepared = prepareJobPostingRequest(request);
         JobPostingMetadataResponse metadata = safeDefaultMetadata();
         ApplicationCase applicationCase = insertApplicationCase(userId, metadata, prepared.sourceType(), request.favorite());
@@ -117,8 +120,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCase.getId(),
                 jobPosting.id(),
                 prepared.sourceType());
-        // 초기 실행 프로필(PENDING) — 등록 시 고른 공고/기업 분석 provider 를 저장한다(async 파이프라인이 읽음).
-        createInitialRunProfile(applicationCase.getId(), request.jobAnalysisProvider(), request.companyAnalysisProvider());
+        // 초기 실행 프로필(PENDING) — 등록 시 고른 공고/기업 분석 provider(검증·정규화됨)를 저장(async 파이프라인이 읽음).
+        createInitialRunProfile(applicationCase.getId(), jobProvider, companyProvider);
 
         return new ApplicationCaseFromJobPostingResponse(
                 toResponse(accessService.requireOwned(userId, applicationCase.getId())),
@@ -135,6 +138,9 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                                                                             Boolean favorite,
                                                                             String jobAnalysisProvider,
                                                                             String companyAnalysisProvider) {
+        // 부수효과(파일 저장·케이스·추출 큐) 전에 선택값을 먼저 검증·정규화 → 잘못된 요청은 파일도 저장하지 않고 400.
+        String jobProvider = validateProvider(jobAnalysisProvider, "jobAnalysisProvider");
+        String companyProvider = validateProvider(companyAnalysisProvider, "companyAnalysisProvider");
         String normalizedSourceType = normalizeOption(sourceType, null, JOB_POSTING_UPLOAD_SOURCE_TYPES, "sourceType");
         JobPostingMetadataResponse metadata = safeDefaultMetadata();
         ApplicationCase applicationCase = insertApplicationCase(
@@ -152,8 +158,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCase.getId(),
                 jobPosting.id(),
                 normalizedSourceType);
-        // 초기 실행 프로필(PENDING). 분석 provider 선택값 저장(OCR 선택값 배선은 OCR 라우터 슬라이스에서 추가).
-        createInitialRunProfile(applicationCase.getId(), jobAnalysisProvider, companyAnalysisProvider);
+        // 초기 실행 프로필(PENDING). 분석 provider(검증·정규화됨) 저장. OCR 선택값 배선은 OCR 라우터 슬라이스에서 추가.
+        createInitialRunProfile(applicationCase.getId(), jobProvider, companyProvider);
 
         return new ApplicationCaseFromJobPostingResponse(
                 toResponse(accessService.requireOwned(userId, applicationCase.getId())),
@@ -221,12 +227,12 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         }
     }
 
-    /** 등록 시 초기 실행 프로필(PENDING)을 만든다. provider 는 검증 후 저장(생략=null=현행 기본 체인, 유효하지 않은 명시값=400). */
+    /** 초기 실행 프로필(PENDING)을 만든다. provider 는 이미 등록 메서드 시작부에서 검증·정규화된 값이다. */
     private void createInitialRunProfile(Long applicationCaseId, String jobAnalysisProvider, String companyAnalysisProvider) {
         initialRunMapper.insertPending(ApplicationCaseInitialRun.builder()
                 .applicationCaseId(applicationCaseId)
-                .jobAnalysisProvider(validateProvider(jobAnalysisProvider, "jobAnalysisProvider"))
-                .companyAnalysisProvider(validateProvider(companyAnalysisProvider, "companyAnalysisProvider"))
+                .jobAnalysisProvider(jobAnalysisProvider)
+                .companyAnalysisProvider(companyAnalysisProvider)
                 .build());
     }
 
