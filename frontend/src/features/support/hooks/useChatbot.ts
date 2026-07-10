@@ -489,7 +489,11 @@ export function useChatbot() {
   /* ── 자소서 첨부: 업로드 → 마지막 실행 요청에 첨부를 얹어 재실행(WRITE 가 소비). ── */
   const attachCoverLetter = useCallback(async (file: File) => {
     const req = lastRunRequestRef.current;
-    if (!req) return; // 실행 이력이 없으면 no-op(첨부 어포던스는 SKIPPED 카드 = 실행 후에만 노출됨)
+    if (!req) {
+      // 비정상 상태(실행 이력 없음) — 조용한 no-op 대신 throw 해서 첨부 버튼의 catch 가
+      // 실패 문구를 렌더하게 한다(정상 흐름에선 SKIPPED 카드 = 실행 후라 도달 안 함).
+      throw new Error("실행 이력이 없어 첨부할 수 없어요. 준비를 다시 시작해 주세요.");
+    }
     const uploaded = await uploadAttachment(file);
     const next: AutoPrepRequest = {
       ...req,

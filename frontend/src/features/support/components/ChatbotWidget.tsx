@@ -498,7 +498,13 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       {m.interviewReport && (
                         <InterviewResultCard
                           data={m.interviewReport}
-                          onContinueCorrection={() => sendMessage("이 면접 결과로 자소서 첨삭 이어서 해줘")}
+                          onContinueCorrection={() => {
+                            // caseId 가 있으면 E 첨삭 페이지로 결정적 딥링크(자소서 탭+지원건 프리셀렉트).
+                            // 없을 때만 기존 자연어 재진입 폴백(LLM 재해석 의존).
+                            const cid = m.interviewReport?.caseId;
+                            if (cid != null) navigateFromWork(`/correction?tab=cover&caseId=${cid}`);
+                            else sendMessage("이 면접 결과로 자소서 첨삭 이어서 해줘");
+                          }}
                           onOpenCase={(cid) => navigateFromWork(`/applications/${cid}`)}
                         />
                       )}
@@ -1226,8 +1232,24 @@ function SiteLinkButtons({ links }: { links: SiteLink[] }) {
     }
   }, [navigate]);
 
+  // 추천 커뮤니티 글이 2개 이상이면 개별 링크 위에 "모아보기" 버튼 — 목록 화면(?ids=)에서 그 글들만 필터.
+  // postId 묶음은 링크 URL(/community/posts/{id})에서 파생(summaryChip 은 최대 3개 캡이라 링크가 전수).
+  const communityIds = links
+    .map((l) => /^\/community\/posts\/(\d+)$/.exec(l.url)?.[1])
+    .filter((id): id is string => id != null);
+
   return (
     <div className="flex flex-col gap-1.5">
+      {communityIds.length >= 2 && (
+        <button
+          onClick={() => navigate(`/community?ids=${communityIds.join(",")}`)}
+          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg text-white text-[13px] font-bold hover:opacity-90 transition-opacity"
+          style={{ background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}
+        >
+          <ArrowRight size={14} />
+          추천 글 {communityIds.length}개 모아보기
+        </button>
+      )}
       {links.map((link) => (
         <button
           key={link.url}

@@ -140,7 +140,8 @@ export function actionFor(key: string, caseId: number | null): PartAction | null
     case "FIT":
       return caseId ? { label: "지원 건 열기", path: `/applications/${caseId}/fit` } : null;
     case "WRITE":
-      return caseId ? { label: "교정 확인", path: `/applications/${caseId}` } : null;
+      // 자소서 교정 결과 → E 첨삭 페이지 딥링크(tab=cover 자소서 탭 + caseId 프리셀렉트 — Correction.tsx 가 이미 소비).
+      return caseId ? { label: "자소서 첨삭 이어가기", path: `/correction?tab=cover&caseId=${caseId}` } : null;
     case "COMMUNITY":
       return { label: "커뮤니티에서 보기", path: "/community" };
     default:
