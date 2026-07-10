@@ -338,21 +338,19 @@ public class BAnalysisGenerationService {
             if (!providerAvailable(provider)) {
                 continue;
             }
-            // LOCAL 은 자동/strict 경로와 동일하게 maxRetries 만큼 재시도한다(폴백 회복력 보존, attempt_path 에 각 시도 기록).
-            int maxAttempts = maxAttemptsFor(provider);
-            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-                attempts.add(provider.name());
-                try {
-                    CompanyAnalysisPayload payload = attemptCompany(provider, applicationCase, postingText,
-                            classification, usableWeb, includeWeb);
-                    log.info("Preferred company analysis ({}) succeeded (requested={}, attempt {}/{})",
-                            provider, preferred, attempt, maxAttempts);
-                    return new GeneratedCompanyAnalysis(payload, null, null,
-                            provenance(preferred, provider, payload.usage(), attempts));
-                } catch (RuntimeException ex) {
-                    lastError = safeMessage(ex);
-                    log.warn("Preferred company analysis ({}) attempt {}/{} failed: {}", provider, attempt, maxAttempts, lastError);
-                }
+            // 기업 자동 체인(generateCompanyAnalysis)은 provider 를 1회만 시도하므로 preferred 도 그대로 1회다.
+            // (공고 자동 체인은 LOCAL 을 재시도하지만 기업 자동 체인엔 재시도가 없다 — 기본 체인 보존이 목적이므로
+            // 여기서 새 재시도 정책을 만들지 않는다. 기업 재시도를 도입하려면 자동 체인·strict 와 함께 별도 변경.)
+            attempts.add(provider.name());
+            try {
+                CompanyAnalysisPayload payload = attemptCompany(provider, applicationCase, postingText,
+                        classification, usableWeb, includeWeb);
+                log.info("Preferred company analysis ({}) succeeded (requested={})", provider, preferred);
+                return new GeneratedCompanyAnalysis(payload, null, null,
+                        provenance(preferred, provider, payload.usage(), attempts));
+            } catch (RuntimeException ex) {
+                lastError = safeMessage(ex);
+                log.warn("Preferred company analysis ({}) failed: {}", provider, lastError);
             }
         }
         attempts.add(SELF_RULES_ATTEMPT);
@@ -381,9 +379,9 @@ public class BAnalysisGenerationService {
     }
 
     /**
-     * provider 별 최대 시도 횟수. LOCAL 은 자동/strict 경로와 동일하게 {@code 1 + maxRetries}(일시 실패 회복),
-     * hosted(CLAUDE/OPENAI)는 1회(통신 재시도는 각 client 내부). preferred 경로가 provider 를 넘기기 전
-     * 이만큼 반복 시도한다.
+     * 공고 preferred 경로의 provider 별 최대 시도 횟수. LOCAL 은 <b>공고</b> 자동 체인({@link #generateJobAnalysis})
+     * 과 동일하게 {@code 1 + maxRetries}(일시 실패 회복), hosted(CLAUDE/OPENAI)는 1회(통신 재시도는 각 client 내부).
+     * 기업 자동 체인은 재시도가 없으므로 기업 preferred 는 이 헬퍼를 쓰지 않고 1회만 시도한다(기본 체인 보존).
      */
     private int maxAttemptsFor(BAnalysisProvider provider) {
         return provider == BAnalysisProvider.LOCAL ? 1 + properties.getLocalLlm().getMaxRetries() : 1;

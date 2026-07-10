@@ -1533,6 +1533,36 @@ class BAnalysisGenerationServiceTest {
     }
 
     @Test
+    void generateCompanyAnalysisPreferredDoesNotRetryLocalMatchingAutoChain() {
+        // 기업 자동 체인(generateCompanyAnalysis)은 provider 를 1회만 시도하므로, preferred 기업 경로도 LOCAL 을
+        // 재시도하지 않는다(공고 preferred 와 달리). maxRetries 가 설정돼 있어도 기업은 1회 후 다음 provider 로 넘어간다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        properties.getLocalLlm().setMaxRetries(2); // 재시도 정책이 있어도 기업 preferred 는 무시(1회)
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenThrow(new RuntimeException("local down"));
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.model()).thenReturn("claude-haiku-test");
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result = service.generateCompanyAnalysisPreferred(
+                applicationCase(), postingText(), List.of(), BAnalysisProvider.LOCAL);
+
+        assertThat(result.fellBack()).isFalse();
+        var provenance = result.provenance();
+        assertThat(provenance.requestedProvider()).isEqualTo("LOCAL");
+        assertThat(provenance.actualProvider()).isEqualTo("CLAUDE");
+        assertThat(provenance.fallbackUsed()).isTrue();
+        // LOCAL 1회만 시도(재시도 없음) → attempt_path 에 LOCAL 이 한 번만.
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"LOCAL\",\"CLAUDE\"]");
+        verify(localLlmClient, org.mockito.Mockito.times(1)).chat(anyString(), anyString(), any());
+    }
+
+    @Test
     void generateJobAnalysisPreferredRetriesLocalPerMaxRetriesBeforeFallingThrough() {
         // preferred=CLAUDE 실패 후 LOCAL 로 폴백할 때, LOCAL 은 자동/strict 경로와 동일하게 maxRetries 만큼
         // 재시도한다 — 한 번의 일시 실패로 바로 OpenAI/self-rules 로 넘어가지 않고, attempt_path 에 LOCAL 반복을 남긴다.
