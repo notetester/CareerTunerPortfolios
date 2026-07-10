@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.correction.dto.CorrectionCreateRequest;
 import com.careertuner.correction.dto.CorrectionResponse;
 import com.careertuner.correction.dto.CorrectionWarmupResponse;
@@ -25,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/corrections")
 @RequiredArgsConstructor
+@RequiresConsent(ConsentType.AI_DATA)
 public class CorrectionController {
 
     private final CorrectionService correctionService;

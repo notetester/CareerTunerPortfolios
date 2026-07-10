@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Brain, CheckCircle2, FileText, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Upload, User, X } from "lucide-react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -28,7 +28,8 @@ import {
   type UserProfile,
 } from "../profile/profileApi";
 import { draftPickFromCounts } from "../profile/profileDraftMerge";
-import { getMyConsents, type ConsentStatus } from "../auth/consentApi";
+import type { ConsentStatus } from "../auth/consentApi";
+import { useConsent } from "../auth/ConsentContext";
 
 interface EducationEntry {
   school: string;
@@ -217,6 +218,7 @@ const selfIntroTemplate = `지원동기:
 - 입사 후 어떤 방식으로 기여하고 성장할지 적습니다.`;
 
 export function ProfilePage() {
+  const { status: consent } = useConsent();
   const [searchParams, setSearchParams] = useSearchParams();
   const [form, setForm] = useState<ProfileForm>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -229,7 +231,6 @@ export function ProfilePage() {
   const [summaryResult, setSummaryResult] = useState<ProfileAiResponse | null>(null);
   const [skillsResult, setSkillsResult] = useState<ProfileAiResponse | null>(null);
   const [completeness, setCompleteness] = useState<ProfileCompleteness | null>(null);
-  const [consent, setConsent] = useState<ConsentStatus | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState(() => serializeProfileForm(emptyForm));
   const [docImporting, setDocImporting] = useState(false);
   const [analyzeDraft, setAnalyzeDraft] = useState<ProfileAnalyzeDraft | null>(null);
@@ -237,23 +238,24 @@ export function ProfilePage() {
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const resumeFileRef = useRef<HTMLInputElement>(null);
   const selfIntroFileRef = useRef<HTMLInputElement>(null);
+  const initialCompletenessRequested = useRef(false);
 
   const skillItems = useMemo(() => linesToArray(form.skillsText), [form.skillsText]);
   const selectedSkillSet = useMemo(() => new Set(skillItems.map((item) => item.toLowerCase())), [skillItems]);
   const isDirty = useMemo(() => serializeProfileForm(form) !== savedSnapshot, [form, savedSnapshot]);
   const tabStatuses = useMemo(() => getProfileTabStatuses(form, summaryResult, skillsResult, completeness), [form, summaryResult, skillsResult, completeness]);
   const aiConsentAgreed = consent?.aiDataAgreed === true;
+  const resumeAnalysisAgreed = consent?.resumeAnalysisAgreed === true;
+  const profileAiAllowed = aiConsentAgreed && resumeAnalysisAgreed;
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [profile, consentStatus] = await Promise.all([getProfile(), getMyConsents().catch(() => null)]);
+      const profile = await getProfile();
       const nextForm = toForm(profile);
       setForm(nextForm);
       setSavedSnapshot(serializeProfileForm(nextForm));
-      setConsent(consentStatus);
-      setCompleteness(await diagnoseProfileCompleteness().catch(() => null));
     } catch (err) {
       setError(err instanceof Error ? err.message : "프로필을 불러오지 못했습니다.");
     } finally {
@@ -264,6 +266,12 @@ export function ProfilePage() {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (loading || !profileAiAllowed || initialCompletenessRequested.current) return;
+    initialCompletenessRequested.current = true;
+    void diagnoseProfileCompleteness().then(setCompleteness).catch(() => setCompleteness(null));
+  }, [loading, profileAiAllowed]);
 
   useEffect(() => {
     setActiveTab(normalizeProfileTab(searchParams.get("tab")));
@@ -309,7 +317,7 @@ export function ProfilePage() {
       }
       await saveProfile(toRequest(form));
       setSavedSnapshot(serializeProfileForm(form));
-      const nextCompleteness = await diagnoseProfileCompleteness().catch(() => null);
+      const nextCompleteness = profileAiAllowed ? await diagnoseProfileCompleteness().catch(() => null) : null;
       setCompleteness(nextCompleteness);
       if (showSuccess) setMessage("프로필이 저장되었습니다.");
       return true;
@@ -322,8 +330,10 @@ export function ProfilePage() {
   };
 
   const runAi = async (type: AiToolType, options: { saveBeforeRun?: boolean } = {}) => {
-    if (!aiConsentAgreed) {
-      setError("AI 데이터 동의가 꺼져 있어 AI 분석을 실행할 수 없습니다. 설정에서 AI 데이터 활용 동의를 켜 주세요.");
+    if (!profileAiAllowed) {
+      setError(!aiConsentAgreed
+        ? "AI 데이터 동의가 꺼져 있어 분석을 실행할 수 없습니다. 설정에서 다시 동의해 주세요."
+        : "이력서 분석 개인정보 동의가 꺼져 있어 프로필 분석을 실행할 수 없습니다. 설정에서 다시 동의해 주세요.");
       return;
     }
     if (isDirty && !options.saveBeforeRun) {
@@ -423,6 +433,10 @@ export function ProfilePage() {
    * 이력서/자소서 탭 모두 구조화 분석을 돌린다(파일에 학력·경력이 있는 경우 대비).
    */
   const handleDocumentAttach = async (file: File, target: ProfileImportTarget) => {
+    if (!resumeAnalysisAgreed) {
+      setError("이력서 분석 개인정보 수집·이용 동의가 필요합니다. 설정에서 동의한 뒤 파일을 가져와 주세요.");
+      return;
+    }
     const existing =
       target === "RESUME_TEXT" ? form.resumeText.trim() : form.selfIntro.trim();
     if (existing) {
@@ -616,7 +630,7 @@ export function ProfilePage() {
                   type="summary"
                   active={activeAiView === "summary"}
                   loading={aiLoading === "summary"}
-                  disabled={!!aiLoading || !aiConsentAgreed}
+                  disabled={!!aiLoading || !profileAiAllowed}
                   icon={<Sparkles className="size-4" />}
                   onClick={() => void runAi("summary", { saveBeforeRun: isDirty })}
                 />
@@ -624,7 +638,7 @@ export function ProfilePage() {
                   type="skills"
                   active={activeAiView === "skills"}
                   loading={aiLoading === "skills"}
-                  disabled={!!aiLoading || !aiConsentAgreed}
+                  disabled={!!aiLoading || !profileAiAllowed}
                   icon={<Brain className="size-4" />}
                   onClick={() => void runAi("skills", { saveBeforeRun: isDirty })}
                 />
@@ -632,7 +646,7 @@ export function ProfilePage() {
                   type="completeness"
                   active={activeAiView === "completeness"}
                   loading={aiLoading === "completeness"}
-                  disabled={!!aiLoading || !aiConsentAgreed}
+                  disabled={!!aiLoading || !profileAiAllowed}
                   icon={<CheckCircle2 className="size-4" />}
                   onClick={() => void runAi("completeness", { saveBeforeRun: isDirty })}
                 />
@@ -715,7 +729,7 @@ export function ProfilePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={docImporting}
+                        disabled={docImporting || !resumeAnalysisAgreed}
                         onClick={() => resumeFileRef.current?.click()}
                       >
                         {docImporting ? (
@@ -763,7 +777,7 @@ export function ProfilePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={docImporting}
+                        disabled={docImporting || !resumeAnalysisAgreed}
                         onClick={() => selfIntroFileRef.current?.click()}
                       >
                         {docImporting ? (
@@ -1179,21 +1193,23 @@ function CompletenessResultPanel({ result, onApply }: { result: ProfileCompleten
 }
 
 function ConsentStatusBox({ consent }: { consent: ConsentStatus | null }) {
-  const agreed = consent?.aiDataAgreed === true;
+  const aiAgreed = consent?.aiDataAgreed === true;
+  const resumeAgreed = consent?.resumeAnalysisAgreed === true;
+  const agreed = aiAgreed && resumeAgreed;
   return (
     <div className={`rounded-lg border px-3 py-3 text-sm ${agreed ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
       <div className={`font-bold ${agreed ? "text-green-700" : "text-amber-800"}`}>
-        AI 데이터 동의 상태: {agreed ? "동의함" : "동의 필요"}
+        프로필 AI 처리 동의: {agreed ? "사용 가능" : "동의 필요"}
       </div>
       <p className={`mt-1 text-xs leading-5 ${agreed ? "text-green-700" : "text-amber-700"}`}>
         {agreed
-          ? "프로필 요약, 역량 추출, 완성도 진단을 실행할 수 있습니다."
-          : "동의가 꺼져 있으면 프로필 저장은 가능하지만 AI 분석은 제한됩니다."}
+          ? "AI 데이터 이용 동의와 이력서 분석 동의가 모두 활성화되어 있습니다."
+          : `${!aiAgreed ? "AI 데이터 이용 동의" : ""}${!aiAgreed && !resumeAgreed ? "와 " : ""}${!resumeAgreed ? "이력서 분석 동의" : ""}가 필요합니다. 수동 프로필 편집은 계속 사용할 수 있습니다.`}
       </p>
       {!agreed && (
-        <a className="mt-2 inline-flex text-xs font-bold text-blue-600 hover:underline" href="/settings">
+        <Link className="mt-2 inline-flex text-xs font-bold text-blue-600 hover:underline" to={aiAgreed ? "/settings?tab=privacy" : "/settings?tab=ai-consent"}>
           동의 설정으로 이동
-        </a>
+        </Link>
       )}
     </div>
   );

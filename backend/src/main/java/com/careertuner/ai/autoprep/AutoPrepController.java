@@ -13,6 +13,8 @@ import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
 import com.careertuner.ai.autoprep.dto.AutoPrepResponse;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 
 import lombok.RequiredArgsConstructor;
 
@@ -22,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/auto-prep")
 @RequiredArgsConstructor
+@RequiresConsent(ConsentType.AI_DATA)
 public class AutoPrepController {
 
     private final AutoPrepOrchestrator orchestrator;

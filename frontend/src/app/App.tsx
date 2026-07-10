@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { RouterProvider } from "react-router";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "./auth/AuthContext";
+import { ConsentProvider } from "./auth/ConsentContext";
 import { AppLockGate } from "./components/AppLockGate";
 import { router } from "./routes";
 import { initNativeShell } from "@/platform/nativeShell";
@@ -31,9 +32,11 @@ export default function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
       <AuthProvider>
-        <AppLockGate>
-          <RouterProvider router={router} />
-        </AppLockGate>
+        <ConsentProvider>
+          <AppLockGate>
+            <RouterProvider router={router} />
+          </AppLockGate>
+        </ConsentProvider>
       </AuthProvider>
     </ThemeProvider>
   );

@@ -17,6 +17,7 @@ public class UserConsent {
     private Long id;
     private Long userId;
     private String consentType;
+    private String consentVersion;
     private boolean agreed;
     private LocalDateTime agreedAt;
     private LocalDateTime revokedAt;

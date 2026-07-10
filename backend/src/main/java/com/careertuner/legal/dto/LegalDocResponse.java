@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * 공개 법적 문서 조회 응답.
- * 시행본이 없으면 sections 는 빈 리스트로 내려가며(404 아님), 나머지 메타는 null.
+ * 관리자 시행본이 없으면 코드에 포함된 기본 문서를 반환한다.
  */
 public record LegalDocResponse(
         String docType,

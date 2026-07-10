@@ -12,7 +12,7 @@ import com.careertuner.legal.service.LegalService;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 공개 법적 문서 조회 (permitAll). docType = terms|privacy|marketing.
+ * 공개 법적 문서 조회 (permitAll). 지원하는 슬러그는 {@link com.careertuner.legal.domain.LegalDocType}에서 관리한다.
  */
 @RestController
 @RequestMapping("/api/legal")
