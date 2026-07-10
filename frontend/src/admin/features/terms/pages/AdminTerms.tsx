@@ -431,7 +431,9 @@ export default function AdminTerms() {
                   href="#"
                   onClick={(e) => {
                     e.preventDefault();
+                    // DRAFT=편집 폼 로드, 그 외(시행중/종료)=클릭해도 무반응이던 것을 공개 미리보기로 연결
                     if (ver.status === "DRAFT") fillFromDraft(ver.id);
+                    else window.open(`/legal/${docType}`, "_blank", "noopener,noreferrer");
                   }}
                 >
                   <span style={{ minWidth: 0, flex: 1 }}>

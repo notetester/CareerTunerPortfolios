@@ -614,7 +614,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         </section>
 
         {loading && summary && (
-          <div className="fixed bottom-5 right-5 rounded-full border border-slate-200 bg-card px-4 py-2 text-sm text-slate-600 shadow-lg">
+          <div className="fixed right-5 z-40 bottom-[calc(56px+1.25rem+env(safe-area-inset-bottom,0px))] xl:bottom-5 rounded-full border border-slate-200 bg-card px-4 py-2 text-sm text-slate-600 shadow-lg">
             <Loader2 className="mr-2 inline size-4 animate-spin text-blue-600" />
             최신 데이터 동기화 중
           </div>

@@ -177,6 +177,8 @@
         LEFT JOIN users reviewer ON reviewer.id = gr.reviewed_by
         <where>
             <include refid="AdminFitAnalysisFilters"/>
+            <!-- 사용자가 삭제(soft delete)한 지원 건의 분석은 관리자 지원건 목록과 동일하게 제외 -->
+            AND ac.deleted_at IS NULL
         </where>
         ORDER BY fa.created_at DESC, fa.id DESC
         LIMIT #{c.size} OFFSET #{c.offset}
@@ -190,6 +192,8 @@
         LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
         <where>
             <include refid="AdminFitAnalysisFilters"/>
+            <!-- 사용자가 삭제(soft delete)한 지원 건의 분석은 관리자 지원건 목록과 동일하게 제외 -->
+            AND ac.deleted_at IS NULL
         </where>
     </select>
 

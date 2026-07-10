@@ -153,7 +153,7 @@ export function AdminAiSettingsPage() {
         {error && <div className="break-words rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
         {savedMessage && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{savedMessage}</div>}
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardHeader className="gap-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -196,7 +196,7 @@ export function AdminAiSettingsPage() {
                         className={`flex min-h-32 items-start gap-3 rounded-lg border p-4 transition-colors ${
                           enabled && allowedStages.includes(stage)
                             ? "border-amber-300 bg-amber-50"
-                            : "border-slate-200 bg-white"
+                            : "border-slate-200 bg-card"
                         }`}
                       >
                         <input
@@ -239,7 +239,7 @@ export function AdminAiSettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="border-slate-200 bg-card">
           <CardHeader className="gap-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>

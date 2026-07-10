@@ -38,11 +38,13 @@ self.addEventListener('push', (event) => {
   }
 
   const title = payload.title || 'CareerTuner';
-  const url = payload.url || '/';
+  // 서브패스 배포(/CareerTunerDemo/ 등)에서 루트 절대경로는 404 — SW 등록 스코프 기준으로 해석한다.
+  const scope = self.registration.scope; // 예: https://host/CareerTunerDemo/
+  const url = new URL(payload.url || '.', scope).href;
   const options = {
     body: payload.body || '',
-    icon: '/icons/icon-192.png',
-    badge: '/icons/favicon-32.png',
+    icon: new URL('icons/icon-192.png', scope).href,
+    badge: new URL('icons/favicon-32.png', scope).href,
     data: { url },
     // 같은 알림이 연속 도착하면 배너를 덮어쓴다(스팸 방지).
     tag: payload.tag || 'careertuner',
@@ -54,7 +56,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const targetUrl = (event.notification.data && event.notification.data.url) || self.registration.scope;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {

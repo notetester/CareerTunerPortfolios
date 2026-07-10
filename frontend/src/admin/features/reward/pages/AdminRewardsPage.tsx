@@ -82,7 +82,7 @@ function RulesSection({ flash }: { flash: (m: string) => void }) {
   };
 
   return (
-    <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+    <section className="mb-5 rounded-xl border border-slate-200 bg-card p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-800">적립 규칙 (이벤트별 on/off · 값)</h3>
         <button type="button" className="av-btn text-xs" onClick={() => void load()} disabled={loading}>
@@ -184,7 +184,7 @@ function LevelsSection({ flash }: { flash: (m: string) => void }) {
   };
 
   return (
-    <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+    <section className="mb-5 rounded-xl border border-slate-200 bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-slate-800">레벨 정책 (임계 포인트 · 레벨업 보상)</h3>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-sm">
@@ -270,7 +270,7 @@ function CouponsSection({ flash }: { flash: (m: string) => void }) {
   };
 
   return (
-    <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+    <section className="mb-5 rounded-xl border border-slate-200 bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-slate-800">쿠폰 (CREDIT 즉시적립 · PERCENT/AMOUNT 결제할인)</h3>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-sm">
@@ -341,7 +341,7 @@ function HistorySection() {
   const totalPages = Math.max(1, Math.ceil(total / size));
 
   return (
-    <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4">
+    <section className="mb-5 rounded-xl border border-slate-200 bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-slate-800">리워드 적립 이력</h3>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input className="av-input" placeholder="이메일·이름·사유 검색" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
@@ -358,7 +358,7 @@ function HistorySection() {
       </div>
       <div className="max-h-[50vh] overflow-auto rounded-lg border border-slate-100">
         <table className="w-full min-w-[820px] text-sm">
-          <thead className="sticky top-0 z-10 bg-white">
+          <thead className="sticky top-0 z-10 bg-card">
             <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
               <th className="px-3 py-2">시각</th>
               <th className="px-3 py-2">사용자</th>

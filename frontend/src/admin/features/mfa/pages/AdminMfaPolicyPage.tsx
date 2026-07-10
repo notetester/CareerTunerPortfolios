@@ -54,7 +54,7 @@ export function AdminMfaPolicyPage() {
         </Button>
       }
     >
-      <Card className="border border-slate-200 bg-white">
+      <Card className="border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="text-base">2단계 인증 운영 정책</CardTitle>
         </CardHeader>

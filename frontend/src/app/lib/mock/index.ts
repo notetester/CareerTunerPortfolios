@@ -53,6 +53,7 @@ import { companyRoutes } from "./domains/company";
 import { legalRoutes } from "./domains/legal";
 import { adsRoutes } from "./domains/ads";
 import { nicknameProfileRoutes } from "./domains/nicknameProfile";
+import { plannerRoutes, rewardRoutes } from "./domains/planner";
 import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
@@ -461,6 +462,8 @@ const routes: MockRoute[] = [
   ...legalRoutes,
   ...adsRoutes,
   ...nicknameProfileRoutes,
+  ...plannerRoutes,
+  ...rewardRoutes,
   ...adminRoutes,
 ];
 
