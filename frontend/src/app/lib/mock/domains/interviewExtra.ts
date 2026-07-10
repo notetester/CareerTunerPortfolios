@@ -249,6 +249,8 @@ export const interviewExtraRoutes: MockRoute[] = [
   // 세션 삭제(soft delete) · 복원(복습 시각 기록) — api<void>
   { method: "DELETE", pattern: /^\/interview\/sessions\/(\d+)$/, handler: ok(null) },
   { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/resume$/, handler: ok(null) },
+  // 기기 핸드오프 알림 발송 — 목에서는 외부 푸시 없이 성공 계약만 재현한다.
+  { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/dispatch$/, handler: ok(null) },
 
   // 음성 모의면접 트랜스크립트 채점 — api<number>
   { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/score-voice$/, handler: ({ body }) => scoreVoiceTranscript(body) },

@@ -743,7 +743,7 @@ CREATE TABLE IF NOT EXISTS file_asset (
     id            BIGINT NOT NULL AUTO_INCREMENT,
     owner_user_id BIGINT NOT NULL,
     kind          VARCHAR(20) NOT NULL,                       -- AUDIO/VIDEO/RESUME/PORTFOLIO/POSTING/ATTACHMENT
-    ref_type      VARCHAR(30) NULL,                           -- 연결 대상 종류 (예: INTERVIEW_ANSWER)
+    ref_type      VARCHAR(30) NULL,                           -- 연결 대상 종류 (예: INTERVIEW_ANSWER/USER_PROFILE_PORTFOLIO)
     ref_id        BIGINT NULL,                                -- 연결 대상 id
     original_name VARCHAR(255) NULL,
     content_type  VARCHAR(120) NULL,
@@ -1557,11 +1557,15 @@ CREATE TABLE IF NOT EXISTS post_ai_result (
     model         VARCHAR(80)  NULL,
     error_message VARCHAR(1000) NULL,
     attempt_count INT          NOT NULL DEFAULT 0,
+    review_action VARCHAR(10)  NULL COMMENT '경계 검열 결과 수동 결정(HIDE/KEEP)',
+    reviewed_by   BIGINT       NULL COMMENT '경계 검열 결과를 결정한 관리자 ID',
+    reviewed_at   DATETIME     NULL COMMENT '경계 검열 결과 수동 검토 시각',
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at  DATETIME     NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_post_ai_result_task (post_id, task_type),
     KEY idx_post_ai_result_status (task_type, status, completed_at),
+    KEY idx_post_ai_result_review (task_type, status, review_action, completed_at),
     CONSTRAINT fk_post_ai_result_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -3129,6 +3133,7 @@ CREATE TABLE IF NOT EXISTS user_reward_history (
     id           BIGINT       NOT NULL AUTO_INCREMENT,
     user_id      BIGINT       NOT NULL,
     event_code   VARCHAR(40)  NOT NULL COMMENT '적립 이벤트 또는 LEVEL_UP/COUPON_ISSUE',
+    idempotency_key VARCHAR(120) NULL COMMENT '동일 참조 이벤트 중복 적립 방지 키',
     point_delta  INT          NOT NULL DEFAULT 0,
     credit_delta INT          NOT NULL DEFAULT 0,
     level_before INT          NULL,
@@ -3138,6 +3143,7 @@ CREATE TABLE IF NOT EXISTS user_reward_history (
     reason       VARCHAR(255) NULL,
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_user_reward_history_idempotency (user_id, idempotency_key),
     KEY idx_user_reward_history_user (user_id, created_at),
     KEY idx_user_reward_history_event (event_code),
     CONSTRAINT fk_user_reward_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE

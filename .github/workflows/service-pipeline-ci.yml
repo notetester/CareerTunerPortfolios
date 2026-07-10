@@ -105,6 +105,26 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
 
+      # GitHub hosted runner는 매 실행마다 프로젝트 build/ 디렉터리가 비어 있어, Gradle 의
+      # 증분 javac 메타데이터와 직전 class 파일을 활용하지 못하고 1,800여 main class를 매번
+      # 전부 다시 컴파일한다. task/dependency 캐시는 setup-gradle이 맡고, 아래 소형 캐시는
+      # 소스가 바뀐 PR에서도 변경된 Java 파일만 재컴파일할 수 있는 입력만 복원한다.
+      # test-results/reports는 포함하지 않아 테스트 실행 결과 자체를 재사용하지 않는다.
+      - name: Restore incremental Java compilation state
+        uses: actions/cache@v5
+        with:
+          path: |
+            backend/.gradle
+            backend/build/classes/java/main
+            backend/build/classes/java/test
+            backend/build/generated/sources/annotationProcessor/java/main
+            backend/build/generated/sources/annotationProcessor/java/test
+            backend/build/tmp/compileJava
+            backend/build/tmp/compileTestJava
+          key: backend-javac-${{ runner.os }}-${{ hashFiles('backend/build.gradle', 'backend/gradle/wrapper/gradle-wrapper.properties') }}-${{ hashFiles('backend/src/main/java/**', 'backend/src/test/java/**') }}
+          restore-keys: |
+            backend-javac-${{ runner.os }}-${{ hashFiles('backend/build.gradle', 'backend/gradle/wrapper/gradle-wrapper.properties') }}-
+
       - name: Initialize MySQL test database
         env:
           MYSQL_PWD: root

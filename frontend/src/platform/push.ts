@@ -6,8 +6,15 @@
  */
 import { api } from "@/app/lib/api";
 import type { PluginListenerHandle } from "@capacitor/core";
+import {
+  PushNotifications,
+  type ActionPerformed,
+  type Channel,
+  type PushNotificationsPlugin,
+} from "@capacitor/push-notifications";
 import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
-import { isNativeApp, nativePlugin, platformName } from "./capacitor";
+import { safeInternalAppPath } from "@/features/notification/lib/navigationLink";
+import { isNativeApp, platformName } from "./capacitor";
 import { toAppPath } from "./deepLink";
 
 // 개발용 기본 VAPID 공개키(비밀 아님) — 백엔드 careertuner.push.vapid.public-key 기본값과 반드시 동일.
@@ -46,16 +53,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 async function registerNative(): Promise<PushRegisterResult> {
-  interface CapPush {
-    requestPermissions: () => Promise<{ receive: string }>;
-    register: () => Promise<void>;
-    addListener: {
-      (event: "registration", cb: (data: { value?: string }) => void): Promise<PluginListenerHandle>;
-      (event: "registrationError", cb: () => void): Promise<PluginListenerHandle>;
-    };
-  }
-  const plugin = nativePlugin<CapPush>("PushNotifications");
-  if (!plugin) return "permission-only";
+  const plugin = PushNotifications;
   const perm = await plugin.requestPermissions();
   if (perm.receive !== "granted") return "denied";
   return await new Promise<PushRegisterResult>((resolve) => {
@@ -108,28 +106,14 @@ async function registerNative(): Promise<PushRegisterResult> {
   });
 }
 
-interface CapPushChannel {
-  id: string;
-  name: string;
-  description?: string;
-  importance?: number;
-  sound?: string;
-  vibration?: boolean;
-}
-
-interface CapPushInit {
-  addListener: (event: string, cb: (data: unknown) => void) => void;
-  createChannel?: (channel: CapPushChannel) => Promise<void>;
-}
-
 /**
  * Android 알림 채널 4종 — 백엔드 PushMessage(ct_alerts*)의 채널 id 와 정확히 일치해야 한다.
  * FCM 메시지가 androidChannelId 로 채널을 골라 수신자의 소리/진동 설정을 반영한다.
  * 채널 속성은 최초 생성 시 고정되므로(안드로이드 정책) 설정 조합별로 채널을 나눈다.
  */
-function createAndroidChannels(plugin: CapPushInit): void {
-  if (platformName() !== "android" || !plugin.createChannel) return;
-  const channels: CapPushChannel[] = [
+function createAndroidChannels(plugin: PushNotificationsPlugin): void {
+  if (platformName() !== "android") return;
+  const channels: Channel[] = [
     { id: "ct_alerts", name: "알림", description: "소리와 진동이 있는 기본 알림", importance: 4, vibration: true },
     { id: "ct_alerts_sound", name: "알림(소리만)", description: "소리만 울리는 알림", importance: 4, vibration: false },
     { id: "ct_alerts_vibrate", name: "알림(진동만)", description: "진동만 울리는 알림", importance: 4, sound: "", vibration: true },
@@ -154,31 +138,30 @@ export function initNativePush(navigate: (path: string) => void): void {
   if (nativePushInitialized || !isNativeApp()) return;
   nativePushInitialized = true;
 
-  const plugin = nativePlugin<CapPushInit>("PushNotifications");
-  if (!plugin) return;
+  const plugin = PushNotifications;
 
   createAndroidChannels(plugin);
 
   // 푸시 알림 탭(백그라운드/종료 상태 포함) → data.url 경로로 이동.
   try {
-    plugin.addListener("pushNotificationActionPerformed", (event) => {
-      const data = (event as { notification?: { data?: Record<string, unknown> } })?.notification?.data;
+    void plugin.addListener("pushNotificationActionPerformed", (event: ActionPerformed) => {
+      const data = event.notification.data as Record<string, unknown> | undefined;
       const url = data?.url;
       if (typeof url !== "string" || !url) return;
-      const path = url.startsWith("/") ? url : toAppPath(url);
+      const path = safeInternalAppPath(url.startsWith("/") ? url : toAppPath(url));
       if (path) navigate(path);
-    });
+    }).catch(() => {});
   } catch {
     /* 푸시 탭 이동은 보조라 실패해도 무시 */
   }
 
   // 포그라운드 수신 — 알림 스토어 폴링을 즉시 트리거해 뱃지/토스트를 갱신한다.
   try {
-    plugin.addListener("pushNotificationReceived", () => {
+    void plugin.addListener("pushNotificationReceived", () => {
       void useNotificationStore.getState().pollNotifications().catch(() => {
         /* no-op */
       });
-    });
+    }).catch(() => {});
   } catch {
     /* no-op */
   }

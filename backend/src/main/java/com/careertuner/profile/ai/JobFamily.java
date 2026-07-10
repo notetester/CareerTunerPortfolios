@@ -80,6 +80,7 @@ public enum JobFamily {
                 value(profile.getSkills()),
                 value(profile.getCareer()),
                 value(profile.getProjects()),
+                value(profile.getPortfolioEvidence()),
                 value(profile.getResumeText()),
                 value(profile.getSelfIntro()))
                 .toLowerCase(Locale.ROOT);

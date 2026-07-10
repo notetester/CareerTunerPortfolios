@@ -499,8 +499,12 @@ public class PlannerServiceImpl implements PlannerService {
         if (applicationCaseId != null && plannerMapper.countApplicationCase(userId, applicationCaseId) == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "연결할 지원 건을 찾을 수 없습니다.");
         }
-        if (fitAnalysisId != null && plannerMapper.countFitAnalysis(userId, fitAnalysisId) == 0) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "연결할 적합도 분석을 찾을 수 없습니다.");
+        if (fitAnalysisId != null && plannerMapper.countFitAnalysis(userId, fitAnalysisId, applicationCaseId) == 0) {
+            String message = applicationCaseId == null
+                    ? "연결할 적합도 분석을 찾을 수 없습니다."
+                    : "선택한 적합도 분석은 연결할 지원 건의 결과가 아닙니다.";
+            ErrorCode errorCode = applicationCaseId == null ? ErrorCode.NOT_FOUND : ErrorCode.INVALID_INPUT;
+            throw new BusinessException(errorCode, message);
         }
     }
 

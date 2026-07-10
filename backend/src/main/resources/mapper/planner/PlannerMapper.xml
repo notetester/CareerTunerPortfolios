@@ -313,6 +313,9 @@
         WHERE fa.id = #{fitAnalysisId}
           AND ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
+        <if test="applicationCaseId != null">
+          AND fa.application_case_id = #{applicationCaseId}
+        </if>
     </select>
 
     <select id="findStrategyAnalysis" resultMap="StrategyAnalysisMap">

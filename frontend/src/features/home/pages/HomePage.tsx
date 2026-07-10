@@ -335,7 +335,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                 )}
               </div>
               <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
-                <Button className="bg-blue-600 hover:bg-blue-700 gap-2" onClick={() => navigate("/applications")}>
+                <Button className="bg-blue-600 hover:bg-blue-700 gap-2" onClick={() => navigate("/applications/new")}>
                   <Plus className="size-4" />
                   새 지원 건
                 </Button>

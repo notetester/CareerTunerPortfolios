@@ -91,6 +91,22 @@ class RewardEconomyRoundTripTest {
     }
 
     @Test
+    void grant_replaysConcreteReferenceWithoutDuplicatingReward() {
+        Long userId = createUser("rt.reward.idempotent@ct.test");
+
+        RewardGrantResult first = rewardService.grant(userId, "CREDIT_PURCHASE", "PAYMENT", 991L);
+        RewardGrantResult replay = rewardService.grant(userId, "CREDIT_PURCHASE", "PAYMENT", 991L);
+
+        assertThat(first.applied()).isTrue();
+        assertThat(replay.applied()).isFalse();
+        assertThat(replay.skipReason()).isEqualTo("ALREADY_GRANTED");
+        assertThat(rewardMapper.findAccount(userId).getActivityPoint()).isEqualTo(50);
+        assertThat(rewardMapper.findRecentHistoryByUser(userId, 10))
+                .filteredOn(history -> "CREDIT_PURCHASE".equals(history.getEventCode()))
+                .hasSize(1);
+    }
+
+    @Test
     void coupon_issueAndRedeemCredit_grantsCreditAndMarksUsed() {
         Long userId = createUser("rt.reward.coupon@ct.test");
 

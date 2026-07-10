@@ -108,6 +108,10 @@ public class AdminApplicationCaseService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Application case not found.");
         }
         String nextStatus = normalizeStatus(request.status(), true);
+        if (nextStatus.equals(existing.getStatus())) {
+            // 상태 타임라인에는 실제 전이만 남긴다. 같은 상태 저장은 갱신/READY→READY 이력을 만들지 않는다.
+            return toDisplayRow(existing);
+        }
         int updated = mapper.updateStatus(id, nextStatus);
         if (updated == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Application case not found.");

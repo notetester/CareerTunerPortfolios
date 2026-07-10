@@ -1,9 +1,16 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router";
-import { useAuth } from "@/app/auth/AuthContext";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router";
+import { useAuth, type SocialProvider } from "@/app/auth/AuthContext";
 import { useConsent } from "@/app/auth/ConsentContext";
 import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
+import { enablePush } from "@/platform/push";
 import { Sparkles, FileText, MessageSquare, Mic, Video, UserRound, X, Bell, Check, ChevronRight, type LucideIcon } from "lucide-react";
+import {
+  clearOnboardingResume,
+  onboardingReturnTo,
+  readPendingOnboardingConsents,
+  saveOnboardingResume,
+} from "./onboardingSession";
 import "./onboarding.css";
 
 /**
@@ -79,10 +86,15 @@ const CONSENT_ITEMS: { id: ConsentKey; label: string; required: boolean; href?: 
 
 export function OnboardingFlow() {
   const nav = useNavigate();
-  const { login } = useAuth();
+  const { isAuthenticated, login, socialLogin } = useAuth();
   const { save: saveConsents } = useConsent();
-  // ?ob 미리보기·앱 첫 실행 모두 로그인 화면부터 보여준다(이미 로그인돼 있어도 온보딩은 처음부터).
-  const [step, setStep] = useState<Step>("login");
+  const hasPendingResume = readPendingOnboardingConsents() !== null;
+  const resumeStep = new URLSearchParams(window.location.search).get("obResume") === "billing"
+    && isAuthenticated
+    && hasPendingResume;
+  const [step, setStep] = useState<Step>(resumeStep ? "billing" : "login");
+  const [resuming, setResuming] = useState(resumeStep);
+  const [resumeError, setResumeError] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
@@ -106,25 +118,80 @@ export function OnboardingFlow() {
     nav("/?home", { replace: true });
   };
 
-  // mock 모드: 아무 값이나 통과(데모 계정). 소셜 버튼도 동일하게 demo 로그인으로 시연.
-  // TODO(실연동): 소셜은 useAuth().socialLogin(provider)로 OAuth 리다이렉트.
+  const consentRequest = () => ({
+    termsAgreed: consents.terms,
+    privacyAgreed: consents.privacy,
+    aiDataAgreed: consents.aiData,
+    resumeAnalysisAgreed: consents.resumeAnalysis,
+    marketingAgreed: consents.marketing,
+  });
+
+  const retryConsentSave = async () => {
+    const pending = readPendingOnboardingConsents();
+    if (!pending) {
+      setResumeError("저장할 약관 동의 정보가 없습니다. 로그인 단계부터 다시 진행해 주세요.");
+      return;
+    }
+    setResuming(true);
+    setResumeError("");
+    try {
+      await saveConsents(pending);
+      clearOnboardingResume();
+      setStep("billing");
+    } catch {
+      setResumeError("로그인은 완료했지만 약관 동의를 저장하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.");
+    } finally {
+      setResuming(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!resumeStep) return;
+    const pending = readPendingOnboardingConsents();
+    if (!pending) return;
+    let cancelled = false;
+    setResuming(true);
+    setResumeError("");
+    void saveConsents(pending)
+      .then(() => {
+        if (cancelled) return;
+        clearOnboardingResume();
+        setResuming(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setResumeError("약관 동의를 저장하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.");
+        setResuming(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeStep, saveConsents]);
+
   const doLogin = async () => {
     if (!requiredOk || busy) return;
     setBusy(true);
     setErr("");
     try {
       if (!PREVIEW) {
-        await login(email.trim() || "demo@careertuner.dev", pw || "demo1234");
-        // 로그인 성공 직후 동의 서버 기록 — 실패해도 온보딩 흐름은 막지 않는다(스토어 심사 대응).
-        saveConsents({
-          termsAgreed: consents.terms,
-          privacyAgreed: consents.privacy,
-          aiDataAgreed: consents.aiData,
-          resumeAnalysisAgreed: consents.resumeAnalysis,
-          marketingAgreed: consents.marketing,
-        }).catch(() => {
-          /* 동의 저장 실패는 무시 — 흐름 우선 */
-        });
+        const result = await login(email.trim() || "demo@careertuner.dev", pw || "demo1234");
+        if (result.mfaRequired && result.challengeToken) {
+          saveOnboardingResume(consentRequest());
+          nav(
+            `/auth/mfa?challengeToken=${encodeURIComponent(result.challengeToken)}&returnTo=${encodeURIComponent(onboardingReturnTo())}`,
+            { replace: true },
+          );
+          return;
+        }
+        if (!result.token) throw new Error("로그인 토큰이 없습니다.");
+        saveOnboardingResume(consentRequest());
+        try {
+          await saveConsents(consentRequest());
+          clearOnboardingResume();
+        } catch {
+          setResumeError("로그인은 완료했지만 약관 동의를 저장하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.");
+          return;
+        }
       }
       setStep("billing");
     } catch {
@@ -134,9 +201,28 @@ export function OnboardingFlow() {
     }
   };
 
-  const askPush = () => {
-    // 포트폴리오/시연용 — 실제 OS 권한 요청(enablePush)은 시연 중 막힐 수 있어 mock 처리. 바로 다음으로.
-    finish();
+  const doSocialLogin = (provider: SocialProvider) => {
+    if (!requiredOk || busy) return;
+    if (USE_MOCK || PREVIEW) {
+      void doLogin();
+      return;
+    }
+    saveOnboardingResume(consentRequest());
+    socialLogin(provider);
+  };
+
+  const askPush = async () => {
+    if (busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await enablePush();
+    } catch {
+      // 권한 API가 없는 기기에서도 온보딩은 막지 않고 설정 화면에서 다시 시도할 수 있게 한다.
+    } finally {
+      setBusy(false);
+      finish();
+    }
   };
 
   const stepIndex = ORDER.indexOf(step);
@@ -150,9 +236,21 @@ export function OnboardingFlow() {
           ))}
         </div>
 
-        {step === "login" && (
+        {resuming ? (
+          <section className="ob-card ob-fade ob-center" aria-live="polite">
+            <div className="ob-spark"><Sparkles size={30} strokeWidth={1.6} /></div>
+            <h1 className="ob-welcome ob-welcome-sm">로그인 정보를 연결하고 있어요</h1>
+            <p className="ob-sub">선택한 약관 동의를 안전하게 저장한 뒤 다음 단계로 이동합니다.</p>
+          </section>
+        ) : resumeError ? (
+          <section className="ob-card ob-fade ob-center" role="alert">
+            <h1 className="ob-welcome ob-welcome-sm">연결을 완료하지 못했어요</h1>
+            <p className="ob-sub">{resumeError}</p>
+            <button className="ob-primary" onClick={() => void retryConsentSave()}>동의 저장 다시 시도</button>
+          </section>
+        ) : step === "login" && (
           <section className="ob-card ob-login ob-fade">
-            <img className="ob-logo" src="/icons/icon.svg" alt="CareerTuner" width={72} height={72} />
+            <img className="ob-logo" src={`${import.meta.env.BASE_URL}icons/icon.svg`} alt="CareerTuner" width={72} height={72} />
             <h1 className="ob-welcome">
               <span className="ob-brand">CareerTuner</span>에<br />오신 것을 환영합니다
             </h1>
@@ -178,10 +276,10 @@ export function OnboardingFlow() {
                     </span>
                   </label>
                   {it.href && (
-                    <a className="ob-ck-view" href={it.href}>
+                    <Link className="ob-ck-view" to={it.href}>
                       보기
                       <ChevronRight size={12} aria-hidden />
-                    </a>
+                    </Link>
                   )}
                 </div>
               ))}
@@ -189,7 +287,7 @@ export function OnboardingFlow() {
 
             <div className="ob-social">
               {PROVIDERS.map((p) => (
-                <button key={p.id} className={`ob-soc s-${p.cls}`} onClick={doLogin} disabled={busy || !requiredOk}>
+                <button key={p.id} className={`ob-soc s-${p.cls}`} onClick={() => doSocialLogin(p.id)} disabled={busy || !requiredOk}>
                   <span className="ob-soc-ic">{p.icon}</span>
                   <span className="ob-soc-tx">{p.label}로 계속하기</span>
                 </button>
@@ -234,9 +332,11 @@ export function OnboardingFlow() {
           </section>
         )}
 
-        {step === "billing" && <BillingStep onFree={() => setStep("permission")} onSkip={() => setStep("permission")} />}
+        {!resuming && !resumeError && step === "billing" && (
+          <BillingStep onFree={() => setStep("permission")} onSkip={() => setStep("permission")} />
+        )}
 
-        {step === "permission" && (
+        {!resuming && !resumeError && step === "permission" && (
           <section className="ob-card ob-fade ob-center">
             <div className="ob-bell"><Bell size={30} strokeWidth={1.6} /></div>
             <h1 className="ob-welcome ob-welcome-sm">알림 권한 요청</h1>

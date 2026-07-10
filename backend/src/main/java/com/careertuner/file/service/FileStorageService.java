@@ -55,6 +55,39 @@ public class FileStorageService {
         }
     }
 
+    /** 저장된 파일을 제거한다. 이미 사라진 파일은 메타데이터 정리를 막지 않도록 성공으로 본다. */
+    public void delete(String storageKey) {
+        try {
+            Files.deleteIfExists(resolve(storageKey));
+        } catch (IOException ex) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "파일을 삭제하지 못했습니다.");
+        }
+    }
+
+    /** 트랜잭션 롤백 보상용 스냅샷. 이미 없는 파일이면 null을 반환한다. */
+    public byte[] snapshotIfExists(String storageKey) {
+        try {
+            Path path = resolve(storageKey);
+            return Files.exists(path) ? Files.readAllBytes(path) : null;
+        } catch (IOException ex) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "파일 삭제를 준비하지 못했습니다.");
+        }
+    }
+
+    /** DB 삭제가 롤백될 때 삭제 전 바이트를 같은 storageKey에 복원한다. */
+    public void restore(String storageKey, byte[] bytes) {
+        if (bytes == null) {
+            return;
+        }
+        try {
+            Path target = resolve(storageKey);
+            Files.createDirectories(target.getParent());
+            Files.write(target, bytes);
+        } catch (IOException ex) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "파일을 복원하지 못했습니다.");
+        }
+    }
+
     /** storageKey 가 baseDir 밖을 가리키지 못하도록 정규화 후 검증한다. */
     private Path resolve(String storageKey) {
         Path base = Path.of(properties.getMediaDir()).toAbsolutePath().normalize();

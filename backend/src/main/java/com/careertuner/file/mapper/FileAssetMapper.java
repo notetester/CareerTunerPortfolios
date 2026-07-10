@@ -19,4 +19,19 @@ public interface FileAssetMapper {
     void updateRef(@Param("id") Long id,
                    @Param("refType") String refType,
                    @Param("refId") Long refId);
+
+    int updateRefIfOwnedAndUnlinked(@Param("id") Long id,
+                                    @Param("ownerUserId") Long ownerUserId,
+                                    @Param("expectedKind") String expectedKind,
+                                    @Param("refType") String refType,
+                                    @Param("refId") Long refId);
+
+    int deleteByIdAndOwnerIfUnlinked(@Param("id") Long id,
+                                     @Param("ownerUserId") Long ownerUserId);
+
+    int deleteByIdAndOwnerAndRef(@Param("id") Long id,
+                                 @Param("ownerUserId") Long ownerUserId,
+                                 @Param("expectedKind") String expectedKind,
+                                 @Param("refType") String refType,
+                                 @Param("refId") Long refId);
 }

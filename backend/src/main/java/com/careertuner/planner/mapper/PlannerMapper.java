@@ -57,7 +57,10 @@ public interface PlannerMapper {
 
     int countApplicationCase(@Param("userId") Long userId, @Param("applicationCaseId") Long applicationCaseId);
 
-    int countFitAnalysis(@Param("userId") Long userId, @Param("fitAnalysisId") Long fitAnalysisId);
+    int countFitAnalysis(
+            @Param("userId") Long userId,
+            @Param("fitAnalysisId") Long fitAnalysisId,
+            @Param("applicationCaseId") Long applicationCaseId);
 
     PlannerStrategyAnalysis findStrategyAnalysis(
             @Param("userId") Long userId,

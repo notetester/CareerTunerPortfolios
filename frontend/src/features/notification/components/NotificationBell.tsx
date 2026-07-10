@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { useNotificationStore } from "../hooks/useNotificationStore";
 import { typeMeta, relTime } from "../types/notification";
 import { toast } from "./toast";
+import { safeInternalAppPath } from "../lib/navigationLink";
 import { ICON_MAP } from "./iconMap";
 import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import type { Notification } from "../types/notification";
@@ -105,7 +106,8 @@ export function NotificationBell() {
   const handleItem = (n: Notification) => {
     markAsRead(n.id);
     setOpen(false);
-    if (n.link) navigate(n.link);
+    const navigationTarget = safeInternalAppPath(n.link);
+    if (navigationTarget) navigate(navigationTarget);
   };
 
   const handleSeeAll = () => {

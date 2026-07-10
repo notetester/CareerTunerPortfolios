@@ -14,6 +14,7 @@ import com.careertuner.admin.notification.mapper.AdminCampaignRecipientMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.common.web.NavigationLinkPolicy;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
 
@@ -49,7 +50,7 @@ public class AdminCampaignServiceImpl implements AdminCampaignService {
         if (isBlank(request.title()) || isBlank(request.message())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "캠페인 제목과 내용은 필수입니다.");
         }
-        String link = isBlank(request.link()) ? null : request.link().trim();
+        String link = NavigationLinkPolicy.optionalInternalPath(request.link(), "캠페인 링크");
 
         List<Long> userIds = recipientMapper.findActiveUserIds();
         int sent = 0;

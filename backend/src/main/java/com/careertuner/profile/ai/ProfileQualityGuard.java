@@ -59,12 +59,13 @@ public class ProfileQualityGuard {
         String experienceText = join(
                 value(profile == null ? null : profile.getCareer()),
                 value(profile == null ? null : profile.getProjects()),
+                value(profile == null ? null : profile.getPortfolioEvidence()),
                 value(profile == null ? null : profile.getResumeText()),
                 value(profile == null ? null : profile.getSelfIntro()));
         if (!isMeaningful(experienceText, 30, 4000)) {
             add(penalties, ScoreCriterion.EXPERIENCE_SPECIFICITY, 30);
             add(penalties, ScoreCriterion.DOCUMENT_CONSISTENCY, 20);
-            warnings.add("경력, 활동, 이력서 본문에서 의미 있는 경험 설명이 부족합니다.");
+            warnings.add("경력, 활동, 이력서 또는 포트폴리오에서 의미 있는 경험 설명이 부족합니다.");
             recommendations.add("경험에는 문제 상황, 맡은 역할, 사용한 역량, 결과를 함께 작성해 주세요.");
         }
 
@@ -148,6 +149,7 @@ public class ProfileQualityGuard {
                 value(profile == null ? null : profile.getSkills()),
                 value(profile == null ? null : profile.getCareer()),
                 value(profile == null ? null : profile.getProjects()),
+                value(profile == null ? null : profile.getPortfolioEvidence()),
                 value(profile == null ? null : profile.getResumeText()),
                 value(profile == null ? null : profile.getSelfIntro()));
         int desiredMatches = keywordMatches(jobFamily, desiredText);
@@ -172,6 +174,7 @@ public class ProfileQualityGuard {
         if (hasText(profile == null ? null : profile.getSkills())) count++;
         if (hasText(profile == null ? null : profile.getCareer())) count++;
         if (hasText(profile == null ? null : profile.getProjects())) count++;
+        if (hasText(profile == null ? null : profile.getPortfolioEvidence())) count++;
         if (hasText(profile == null ? null : profile.getResumeText())) count++;
         if (hasText(profile == null ? null : profile.getSelfIntro())) count++;
         return count;
@@ -183,6 +186,7 @@ public class ProfileQualityGuard {
                         value(profile == null ? null : profile.getDesiredIndustry()),
                         value(profile == null ? null : profile.getCareer()),
                         value(profile == null ? null : profile.getProjects()),
+                        value(profile == null ? null : profile.getPortfolioEvidence()),
                         value(profile == null ? null : profile.getSkills()),
                         value(profile == null ? null : profile.getResumeText()),
                         value(profile == null ? null : profile.getSelfIntro()))

@@ -12,6 +12,10 @@ public interface ProfileMapper {
 
     UserProfile findByUserId(Long userId);
 
+    UserProfile findByUserIdForUpdate(Long userId);
+
+    void insertEmptyIfAbsent(Long userId);
+
     void upsert(UserProfile profile);
 
     List<UserProfile> findAdminProfiles(@Param("keyword") String keyword,

@@ -21,10 +21,71 @@ import type {
   UserProfile,
   ProfileAiResponse,
   ProfileCompleteness,
+  ProfilePortfolioFile,
 } from "@/app/profile/profileApi";
 import type { ConsentStatus, ConsentView } from "@/app/auth/consentApi";
 
 const USER_ID = 9001;
+let portfolioFileSeq = 7900;
+const portfolioContents = new Map<number, Blob>();
+const demoPortfolioFiles: ProfilePortfolioFile[] = [
+  {
+    id: 7899,
+    kind: "PORTFOLIO",
+    refType: "USER_PROFILE_PORTFOLIO",
+    refId: 5001,
+    originalName: "kimdemo-portfolio.pdf",
+    contentType: "application/pdf",
+    sizeBytes: 482_100,
+    contentUrl: "/api/file/7899/content",
+    createdAt: iso(3),
+  },
+];
+portfolioContents.set(
+  7899,
+  new Blob(["CareerTuner demo portfolio\nReact and TypeScript project evidence"], {
+    type: "application/pdf",
+  }),
+);
+
+function uploadMockPortfolio(body: unknown): ProfilePortfolioFile {
+  const form = body instanceof FormData ? body : null;
+  const file = form?.get("file");
+  const id = ++portfolioFileSeq;
+  const uploaded: ProfilePortfolioFile = {
+    id,
+    kind: "PORTFOLIO",
+    refType: "USER_PROFILE_PORTFOLIO",
+    refId: demoProfile.id ?? 5001,
+    originalName: file instanceof File ? file.name : `portfolio-${id}.pdf`,
+    contentType: file instanceof File ? file.type : "application/pdf",
+    sizeBytes: file instanceof File ? file.size : 0,
+    contentUrl: `/api/file/${id}/content`,
+    createdAt: new Date().toISOString(),
+  };
+  demoPortfolioFiles.unshift(uploaded);
+  portfolioContents.set(
+    id,
+    file instanceof File
+      ? file.slice(0, file.size, file.type || "application/octet-stream")
+      : new Blob([`Demo portfolio ${id}`], { type: "application/pdf" }),
+  );
+  return uploaded;
+}
+
+function deleteMockPortfolio(rawId: string | undefined): null {
+  const id = Number(rawId);
+  const index = demoPortfolioFiles.findIndex((file) => file.id === id);
+  if (index >= 0) demoPortfolioFiles.splice(index, 1);
+  portfolioContents.delete(id);
+  return null;
+}
+
+function mockPortfolioContent(rawId: string | undefined): Blob {
+  const content = portfolioContents.get(Number(rawId));
+  if (!content) throw new Error("포트폴리오 파일을 찾을 수 없습니다.");
+  return content;
+}
 
 // ── 김데모 프로필(프론트엔드 개발자). education/career/projects 는 백엔드 JSON 배열, skills 류는 문자열 배열. ──
 const demoProfile: UserProfile = {
@@ -280,6 +341,11 @@ export const profileRoutes: MockRoute[] = [
   // 프로필 조회/저장
   { method: "GET", pattern: /^\/profile$/, handler: () => demoProfile },
   { method: "PUT", pattern: /^\/profile$/, handler: ({ body }) => applyProfileUpdate(body) },
+  { method: "GET", pattern: /^\/profile\/portfolio-files$/, handler: () => demoPortfolioFiles },
+  { method: "POST", pattern: /^\/profile\/portfolio-files\/upload$/, handler: ({ body }) => uploadMockPortfolio(body) },
+  { method: "POST", pattern: /^\/profile\/portfolio-files\/link$/, handler: () => demoPortfolioFiles },
+  { method: "DELETE", pattern: /^\/profile\/portfolio-files\/(\d+)$/, handler: ({ params }) => deleteMockPortfolio(params[0]) },
+  { method: "GET", pattern: /^\/file\/(\d+)\/content$/, handler: ({ params }) => mockPortfolioContent(params[0]) },
 
   // 프로필 AI 도구
   { method: "POST", pattern: /^\/profile\/ai\/summary$/, handler: () => demoAiSummary },

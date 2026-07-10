@@ -9,6 +9,18 @@
         WHERE user_id = #{userId}
     </select>
 
+    <select id="findByUserIdForUpdate" resultType="com.careertuner.profile.domain.UserProfile">
+        SELECT *
+        FROM user_profile
+        WHERE user_id = #{userId}
+        FOR UPDATE
+    </select>
+
+    <insert id="insertEmptyIfAbsent">
+        INSERT IGNORE INTO user_profile (user_id)
+        VALUES (#{userId})
+    </insert>
+
     <insert id="upsert">
         INSERT INTO user_profile (
             user_id, desired_job, desired_industry, education, career, projects, skills,

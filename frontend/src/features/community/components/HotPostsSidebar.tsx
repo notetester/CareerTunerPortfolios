@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router";
+import { Link } from "react-router";
 import { UserRound, ChevronRight } from "lucide-react";
 import { useCommunityStore } from "../hooks/useCommunityStore";
 
@@ -12,7 +12,6 @@ interface HotPostsSidebarProps {
 
 export function HotPostsSidebar({ onActivity, onGuidelines }: HotPostsSidebarProps) {
   const { hotPosts, fetchHotPosts } = useCommunityStore();
-  const navigate = useNavigate();
 
   useEffect(() => {
     fetchHotPosts();
@@ -32,10 +31,9 @@ export function HotPostsSidebar({ onActivity, onGuidelines }: HotPostsSidebarPro
         </div>
         <div className="av-list">
           {hotPosts.map((post, i) => (
-            <a
+            <Link
               key={post.id ?? i} // 구버전 백엔드 응답에는 id가 없어 undefined일 수 있다
-              href={`/community/posts/${post.id}`}
-              onClick={(e) => { e.preventDefault(); navigate(`/community/posts/${post.id}`); }}
+              to={`/community/posts/${post.id}`}
             >
               <span className="av-rank num">{i + 1}</span>
               <span style={{ minWidth: 0 }}>
@@ -46,7 +44,7 @@ export function HotPostsSidebar({ onActivity, onGuidelines }: HotPostsSidebarPro
                   조회 {post.views ?? 0} · 댓글 {post.comments}
                 </span>
               </span>
-            </a>
+            </Link>
           ))}
         </div>
       </section>

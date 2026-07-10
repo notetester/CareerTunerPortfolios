@@ -16,6 +16,7 @@ import com.careertuner.ads.dto.AdResponse;
 import com.careertuner.ads.mapper.AdvertisementMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.common.web.NavigationLinkPolicy;
 
 import lombok.RequiredArgsConstructor;
 
@@ -66,7 +67,7 @@ public class AdServiceImpl implements AdService {
         for (int i = 0; i < count && !pool.isEmpty(); i++) {
             Advertisement picked = pickWeighted(pool);
             pool.remove(picked);
-            selected.add(AdResponse.from(picked));
+            selected.add(toSafeResponse(picked));
         }
         return selected;
     }
@@ -86,7 +87,7 @@ public class AdServiceImpl implements AdService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "광고를 찾을 수 없습니다.");
         }
         adMapper.increaseClick(adId);
-        return new AdClickResponse(ad.getId(), ad.getLinkUrl());
+        return new AdClickResponse(ad.getId(), safeLegacyLink(ad.getLinkUrl()));
     }
 
     // ── 내부 ──
@@ -122,6 +123,29 @@ public class AdServiceImpl implements AdService {
 
     private long weightOf(Advertisement ad) {
         return ad.getWeight() != null && ad.getWeight() > 0 ? ad.getWeight() : 1;
+    }
+
+    /**
+     * 관리자 입력 검증이 도입되기 전에 저장된 광고도 공개 응답에서 위험한 링크를 흘리지 않는다.
+     * 신규 입력과 달리 레거시 데이터 조회는 전체 광고 노출을 실패시키지 않고 링크만 제거한다.
+     */
+    private AdResponse toSafeResponse(Advertisement ad) {
+        AdResponse response = AdResponse.from(ad);
+        return new AdResponse(
+                response.id(),
+                response.title(),
+                response.imageUrl(),
+                safeLegacyLink(response.linkUrl()),
+                response.placement(),
+                response.targetPlatform());
+    }
+
+    private String safeLegacyLink(String linkUrl) {
+        try {
+            return NavigationLinkPolicy.optionalWebOrInternal(linkUrl, "광고 링크");
+        } catch (BusinessException ignored) {
+            return null;
+        }
     }
 
     private String normalizePlacement(String placement) {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { Badge } from "@/app/components/ui/badge";
@@ -37,6 +37,12 @@ const INTERVIEW_TABS = [
 ] as const;
 type InterviewTab = (typeof INTERVIEW_TABS)[number];
 
+function parseCaseId(value: string | null): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export function InterviewPage() {
   const { isAuthenticated } = useAuth();
   const mode = useTutorialStore((s) => s.mode);
@@ -63,6 +69,7 @@ export function InterviewPage() {
   const [sendingToPhone, setSendingToPhone] = useState(false);
 
   const cases = useApplicationCases(isAuthenticated);
+  const requestedCaseId = parseCaseId(searchParams.get("caseId"));
 
   const requested = searchParams.get("tab") ?? "modes";
   const activeTab: InterviewTab = INTERVIEW_TABS.includes(requested as InterviewTab)
@@ -70,7 +77,21 @@ export function InterviewPage() {
     : "modes";
   const autoMode = searchParams.get("auto") === "1" && autoPrompt.length > 0;
 
-  const goTab = (tab: string) => setSearchParams(tab === "modes" ? {} : { tab });
+  // 지원 건 상세·챗봇·AutoPrep가 넘긴 ?caseId 를 실제 모드 선택에 반영한다.
+  // 목록이 도착한 뒤 소유한 지원 건인지 확인해 잘못된/오래된 딥링크가 선택값으로 남지 않게 한다.
+  useEffect(() => {
+    if (requestedCaseId == null || cases.loading) return;
+    if (cases.applicationCases.some((item) => item.id === requestedCaseId)) {
+      setSelectedCaseId(requestedCaseId);
+    }
+  }, [requestedCaseId, cases.loading, cases.applicationCases]);
+
+  const goTab = (tab: string) => {
+    const next = new URLSearchParams();
+    if (selectedCaseId != null) next.set("caseId", String(selectedCaseId));
+    if (tab !== "modes") next.set("tab", tab);
+    setSearchParams(next);
+  };
 
   /** 진행 중 세션을 폰으로 보내기 — INTERVIEW_DISPATCH 알림, 폰에서 탭하면 딥링크로 이어진다. */
   const sendToPhone = async () => {
@@ -178,9 +199,9 @@ export function InterviewPage() {
             >
               가이드와 둘러보기
             </button>
-            <a href="/login" className="mt-1 text-sm text-slate-500 transition-colors hover:text-slate-700">
+            <Link to="/login" className="mt-1 text-sm text-slate-500 transition-colors hover:text-slate-700">
               로그인하고 실제 면접 시작 →
-            </a>
+            </Link>
           </div>
         </div>
       </div>

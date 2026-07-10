@@ -39,6 +39,34 @@ class RuleBasedProfileAiServiceTest {
     }
 
     @Test
+    void usesPortfolioEvidenceForClassificationScoringAndQualityInspection() {
+        UserProfile profile = UserProfile.builder()
+                .desiredJob("소프트웨어 엔지니어")
+                .portfolioEvidence("Spring Boot와 REST API 기반 백엔드 서비스의 응답 시간을 40% 개선하고 Docker 배포를 구축했습니다.")
+                .build();
+
+        ProfileAiResult result = service.evaluate(profile, "PROFILE_COMPLETENESS");
+
+        assertThat(result.jobFamily()).isEqualTo(JobFamily.DEVELOPMENT_DATA);
+        assertThat(result.extractedSkills()).contains("Spring", "Spring Boot", "REST API", "Docker");
+        assertThat(result.strengths()).anyMatch(strength -> strength.contains("포트폴리오 파일"));
+        assertThat(result.criteria())
+                .filteredOn(row -> row.criterion() == ScoreCriterion.EXPERIENCE_SPECIFICITY)
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.rawScore()).isEqualTo(15);
+                    assertThat(row.evidence()).contains("포트폴리오 파일 근거");
+                });
+        assertThat(result.criteria())
+                .filteredOn(row -> row.criterion() == ScoreCriterion.ACHIEVEMENT_EVIDENCE)
+                .singleElement()
+                .satisfies(row -> assertThat(row.rawScore()).isEqualTo(100));
+        assertThat(result.qualityWarnings())
+                .noneMatch(warning -> warning.contains("의미 있는 경험 설명"))
+                .noneMatch(warning -> warning.contains("성과를 뒷받침할"));
+    }
+
+    @Test
     void penalizesMeaninglessFilledProfile() {
         UserProfile profile = UserProfile.builder()
                 .desiredJob("간호사")
