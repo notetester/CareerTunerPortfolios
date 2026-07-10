@@ -1,29 +1,48 @@
 package com.careertuner.profile.service;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.common.text.DocumentTextExtractor;
+import com.careertuner.common.text.DocumentTextExtractor.Extraction;
+import com.careertuner.common.text.DocumentTextExtractor.Failure;
 import com.careertuner.consent.service.ConsentService;
+import com.careertuner.file.domain.FileAsset;
+import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
 import com.careertuner.profile.ai.ProfileAiResult;
 import com.careertuner.profile.ai.ProfileAiService;
 import com.careertuner.profile.ai.ProfileCriterionScore;
+import com.careertuner.profile.ai.ProfileResumeStructurer;
 import com.careertuner.profile.domain.UserProfile;
 import com.careertuner.profile.dto.ProfileAiResponse;
+import com.careertuner.profile.dto.ProfileAnalyzeDraft;
+import com.careertuner.profile.dto.ProfileAnalyzeResponse;
 import com.careertuner.profile.dto.ProfileCompletenessResponse;
 import com.careertuner.profile.dto.ProfileCriterionScoreResponse;
+import com.careertuner.profile.dto.ProfileDocumentAnalyzeRequest;
+import com.careertuner.profile.dto.ProfileDocumentImportRequest;
+import com.careertuner.profile.dto.ProfileImportResponse;
 import com.careertuner.profile.dto.UserProfileRequest;
 import com.careertuner.profile.dto.UserProfileResponse;
 import com.careertuner.profile.mapper.ProfileMapper;
 
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -31,6 +50,9 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 @RequiredArgsConstructor
 public class ProfileServiceImpl implements ProfileService {
+
+    /** import 텍스트 상한 — 프로필 폼 resume 한도(20000)보다 낮게 잡아 파이프라인·AI 토큰 부담 완화. */
+    static final int MAX_IMPORT_CHARS = 12000;
 
     /** 프로필 AI 분석 기능별 알림 문구 라벨. */
     private static final java.util.Map<String, String> PROFILE_FEATURE_LABELS = java.util.Map.of(
@@ -44,6 +66,25 @@ public class ProfileServiceImpl implements ProfileService {
     private final ProfileAiService profileAiService;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
+    private final FileService fileService;
+    private final DocumentTextExtractor documentTextExtractor;
+    private final ProfileResumeStructurer profileResumeStructurer;
+    private final TransactionTemplate transactionTemplate;
+
+    /** 구조화 분석 비동기 작업 저장(인메모리·재시작 시 휘발). key=jobId. TTL 경과분은 접근 시 청소. */
+    private final Map<String, AnalyzeJob> analyzeJobs = new ConcurrentHashMap<>();
+    /** 초안에 이력서 전문(PII)이 들어가므로 폴링 종료 후 힙에 남지 않게 제한. 프론트 폴링은 최대 4분. */
+    private static final long ANALYZE_JOB_TTL_MILLIS = 30 * 60 * 1000L;
+    private final ExecutorService analyzeExecutor = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "profile-resume-analyze");
+        t.setDaemon(true);
+        return t;
+    });
+
+    @PreDestroy
+    void shutdownAnalyzeExecutor() {
+        analyzeExecutor.shutdownNow();
+    }
 
     @Override
     public UserProfileResponse me(AuthUser authUser) {
@@ -71,6 +112,128 @@ public class ProfileServiceImpl implements ProfileService {
                 .build();
         profileMapper.upsert(profile);
         return toResponse(profileMapper.findByUserId(userId));
+    }
+
+    @Override
+    public ProfileImportResponse importDocument(AuthUser authUser, ProfileDocumentImportRequest request) {
+        Long userId = requireUser(authUser);
+        if (request == null || request.fileId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "가져올 파일을 선택해 주세요.");
+        }
+        String target = request.target() == null ? "" : request.target().trim().toUpperCase(Locale.ROOT);
+        if (!"RESUME_TEXT".equals(target) && !"SELF_INTRO".equals(target)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "잘못된 요청입니다.");
+        }
+
+        // download + extract 는 트랜잭션 밖 (Cloudinary 네트워크 페치 가능)
+        FileService.Download download = fileService.download(userId, request.fileId());
+        FileAsset asset = download.asset();
+        Extraction extraction = documentTextExtractor.extract(
+                download.bytes(), asset.getContentType(), asset.getOriginalName());
+        if (!extraction.isSuccess()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, messageFor(extraction.reason()));
+        }
+
+        String text = extraction.text();
+        boolean truncated = text.length() > MAX_IMPORT_CHARS;
+        if (truncated) {
+            text = text.substring(0, MAX_IMPORT_CHARS);
+        }
+        final String finalText = text;
+
+        UserProfileResponse saved = transactionTemplate.execute(status -> {
+            UserProfile cur = findOrEmpty(userId);
+            String resumeText = "RESUME_TEXT".equals(target) ? finalText : blankToNull(cur.getResumeText());
+            String selfIntro = "SELF_INTRO".equals(target) ? finalText : blankToNull(cur.getSelfIntro());
+            UserProfile profile = UserProfile.builder()
+                    .userId(userId)
+                    .desiredJob(blankToNull(cur.getDesiredJob()))
+                    .desiredIndustry(blankToNull(cur.getDesiredIndustry()))
+                    .education(cur.getEducation())
+                    .career(cur.getCareer())
+                    .projects(cur.getProjects())
+                    .skills(cur.getSkills())
+                    .certificates(cur.getCertificates())
+                    .languages(cur.getLanguages())
+                    .portfolioLinks(cur.getPortfolioLinks())
+                    .resumeText(resumeText)
+                    .selfIntro(selfIntro)
+                    .preferences(cur.getPreferences())
+                    .build();
+            profileMapper.upsert(profile);
+            return toResponse(profileMapper.findByUserId(userId));
+        });
+        return new ProfileImportResponse(saved, truncated);
+    }
+
+    @Override
+    public ProfileAnalyzeResponse startAnalyze(AuthUser authUser, ProfileDocumentAnalyzeRequest request) {
+        Long userId = requireUser(authUser);
+        // 이력서 원문이 LLM으로 전송되는 경로 — 다른 프로필 AI 기능과 동일하게 AI_DATA 동의 필수.
+        requireAiConsent(userId);
+        if (request == null || request.fileId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "가져올 파일을 선택해 주세요.");
+        }
+
+        // download+extract 트랜잭션 밖
+        FileService.Download download = fileService.download(userId, request.fileId());
+        FileAsset asset = download.asset();
+        Extraction extraction = documentTextExtractor.extract(
+                download.bytes(), asset.getContentType(), asset.getOriginalName());
+        if (!extraction.isSuccess()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, messageFor(extraction.reason()));
+        }
+
+        evictExpiredAnalyzeJobs();
+        String jobId = UUID.randomUUID().toString();
+        AnalyzeJob job = new AnalyzeJob(userId, "PENDING", null, null, System.currentTimeMillis());
+        analyzeJobs.put(jobId, job);
+
+        final String sourceText = extraction.text();
+        analyzeExecutor.execute(() -> {
+            try {
+                ProfileAnalyzeDraft draft = profileResumeStructurer.structure(sourceText);
+                analyzeJobs.put(jobId, new AnalyzeJob(userId, "DONE", draft, null, System.currentTimeMillis()));
+            } catch (RuntimeException ex) {
+                analyzeJobs.put(jobId, new AnalyzeJob(userId, "FAILED", null,
+                        "구조화 분석은 실패했어요. 폼을 직접 채워주세요.", System.currentTimeMillis()));
+            }
+        });
+        return ProfileAnalyzeResponse.pending(jobId);
+    }
+
+    @Override
+    public ProfileAnalyzeResponse getAnalyze(AuthUser authUser, String jobId) {
+        Long userId = requireUser(authUser);
+        if (jobId == null || jobId.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "잘못된 요청입니다.");
+        }
+        evictExpiredAnalyzeJobs();
+        AnalyzeJob job = analyzeJobs.get(jobId);
+        if (job == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "분석 작업을 찾을 수 없습니다.");
+        }
+        if (!job.userId().equals(userId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "분석 작업에 접근할 권한이 없습니다.");
+        }
+        return switch (job.status()) {
+            case "DONE" -> ProfileAnalyzeResponse.done(jobId, job.draft());
+            case "FAILED" -> ProfileAnalyzeResponse.failed(jobId, job.errorMessage());
+            default -> ProfileAnalyzeResponse.pending(jobId);
+        };
+    }
+
+    /** 작업지시서 §6 예외 표 6~11. */
+    static String messageFor(Failure reason) {
+        if (reason == null) {
+            return "파일에서 글자를 찾지 못했습니다.";
+        }
+        return switch (reason) {
+            case NO_TEXT_LAYER -> "스캔한 PDF라서 글자를 읽지 못했습니다. 본문을 직접 붙여넣어 주세요.";
+            case CORRUPTED -> "파일이 손상되었거나 암호가 걸려 있습니다.";
+            case UNSUPPORTED_FORMAT -> "지원하지 않는 형식입니다. `.docx`, `.pdf`, `.txt` 로 올려주세요.";
+            case EMPTY -> "파일에서 글자를 찾지 못했습니다.";
+        };
     }
 
     @Override
@@ -263,5 +426,19 @@ public class ProfileServiceImpl implements ProfileService {
 
     private void requireAdmin(AuthUser authUser) {
         com.careertuner.admin.common.AdminAccess.requireAdmin(authUser);
+    }
+
+    private void evictExpiredAnalyzeJobs() {
+        long cutoff = System.currentTimeMillis() - ANALYZE_JOB_TTL_MILLIS;
+        analyzeJobs.values().removeIf(job -> job.createdAtMillis() < cutoff);
+    }
+
+    private record AnalyzeJob(
+            Long userId,
+            String status,
+            ProfileAnalyzeDraft draft,
+            String errorMessage,
+            long createdAtMillis
+    ) {
     }
 }

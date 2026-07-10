@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Brain, CheckCircle2, FileText, Plus, RefreshCw, Save, Sparkles, Trash2, User, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, Brain, CheckCircle2, FileText, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Upload, User, X } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -13,12 +13,21 @@ import {
   diagnoseProfileCompleteness,
   extractProfileSkills,
   getProfile,
+  draftHasStructuredFields,
+  importProfileDocument,
+  pollProfileAnalyze,
+  PROFILE_DOC_ACCEPT,
   saveProfile,
+  startProfileAnalyze,
   summarizeProfile,
+  uploadProfileFile,
   type ProfileAiResponse,
+  type ProfileAnalyzeDraft,
   type ProfileCompleteness,
+  type ProfileImportTarget,
   type UserProfile,
 } from "../profile/profileApi";
+import { draftPickFromCounts } from "../profile/profileDraftMerge";
 import { getMyConsents, type ConsentStatus } from "../auth/consentApi";
 
 interface EducationEntry {
@@ -222,6 +231,12 @@ export function ProfilePage() {
   const [completeness, setCompleteness] = useState<ProfileCompleteness | null>(null);
   const [consent, setConsent] = useState<ConsentStatus | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState(() => serializeProfileForm(emptyForm));
+  const [docImporting, setDocImporting] = useState(false);
+  const [analyzeDraft, setAnalyzeDraft] = useState<ProfileAnalyzeDraft | null>(null);
+  const [analyzeStatus, setAnalyzeStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const resumeFileRef = useRef<HTMLInputElement>(null);
+  const selfIntroFileRef = useRef<HTMLInputElement>(null);
 
   const skillItems = useMemo(() => linesToArray(form.skillsText), [form.skillsText]);
   const selectedSkillSet = useMemo(() => new Set(skillItems.map((item) => item.toLowerCase())), [skillItems]);
@@ -368,12 +383,164 @@ export function ProfilePage() {
     setMessage("AI 결과를 자기소개/강점 메모에 추가했습니다. 저장을 눌러 반영해 주세요.");
   };
 
+  /** draft → 폼 state 만 반영(DB 저장은 사용자가 저장 버튼). 빈 배열은 건너뜀. */
+  const mergeDraftIntoForm = (
+    draft: ProfileAnalyzeDraft,
+    opts: {
+      education: boolean;
+      career: boolean;
+      projects: boolean;
+      skills: boolean;
+      portfolioLinks: boolean;
+    },
+  ) => {
+    const nonEmptyArray = (v: unknown): v is unknown[] => Array.isArray(v) && v.length > 0;
+    setForm((prev) => {
+      const next = { ...prev };
+      if (opts.education && nonEmptyArray(draft.education)) {
+        next.education = parseEntries(draft.education, createEducation);
+      }
+      if (opts.career && nonEmptyArray(draft.career)) {
+        next.career = parseEntries(draft.career, createCareer);
+      }
+      if (opts.projects && nonEmptyArray(draft.projects)) {
+        next.experiences = parseEntries(draft.projects, createExperience);
+      }
+      if (opts.skills && Array.isArray(draft.skills) && draft.skills.length) {
+        next.skillsText = arrayToLines(mergeUniqueLines(prev.skillsText, draft.skills));
+      }
+      if (opts.portfolioLinks && Array.isArray(draft.portfolioLinks) && draft.portfolioLinks.length) {
+        next.portfolioLinksText = arrayToLines(
+          mergeUniqueLines(prev.portfolioLinksText, draft.portfolioLinks),
+        );
+      }
+      return next;
+    });
+  };
+
+  /**
+   * 문서 첨부: upload → import(텍스트 덤프) → analyze 폴링 → 폼 자동 반영 + 확인 카드.
+   * 이력서/자소서 탭 모두 구조화 분석을 돌린다(파일에 학력·경력이 있는 경우 대비).
+   */
+  const handleDocumentAttach = async (file: File, target: ProfileImportTarget) => {
+    const existing =
+      target === "RESUME_TEXT" ? form.resumeText.trim() : form.selfIntro.trim();
+    if (existing) {
+      const ok = window.confirm("기존 내용을 대체합니다. 계속할까요?");
+      if (!ok) return;
+    }
+    setDocImporting(true);
+    setError(null);
+    setMessage(null);
+    setAnalyzeError(null);
+    setAnalyzeDraft(null);
+    try {
+      const uploaded = await uploadProfileFile(file, "RESUME");
+      const imported = await importProfileDocument(uploaded.id, target);
+      // 서버는 대상 필드만 갱신했으므로 폼도 대상 필드만 교체 — 다른 탭의 미저장 편집을 지우지 않는다.
+      // 스냅샷은 서버 저장 상태 기준으로 갱신해, 남은 편집이 계속 '저장 안 됨'으로 표시되게 한다.
+      const serverForm = toForm(imported.profile);
+      setSavedSnapshot(serializeProfileForm(serverForm));
+      setForm((prev) =>
+        target === "RESUME_TEXT"
+          ? { ...prev, resumeText: serverForm.resumeText }
+          : { ...prev, selfIntro: serverForm.selfIntro },
+      );
+      const dumpMsg = imported.truncated
+        ? "일부만 저장했습니다. 긴 문서는 앞부분만 반영됩니다."
+        : target === "RESUME_TEXT"
+          ? "이력서 원문을 가져왔습니다."
+          : "자기소개서 원문을 가져왔습니다.";
+      setMessage(`${dumpMsg} 학력·경력 분석 중…`);
+
+      // 항상 구조화 분석 (이전: RESUME_TEXT 만 → 자소서 탭/경로에서 analyze 누락)
+      setAnalyzeStatus("running");
+      try {
+        const started = await startProfileAnalyze(uploaded.id);
+        if (!started?.jobId) {
+          throw new Error("분석 작업을 시작하지 못했습니다.");
+        }
+        const finished = await pollProfileAnalyze(started.jobId);
+        if (finished.status === "DONE" && finished.draft) {
+          setAnalyzeDraft(finished.draft);
+          setAnalyzeStatus("done");
+          if (draftHasStructuredFields(finished.draft)) {
+            // 자동 반영하지 않는다 — 확인 카드에서 항목을 골라 적용(온보딩 경로와 동일한 승인 방식).
+            // LLM 오추출이 기존 학력·경력을 승인 없이 덮어쓰는 사고 방지.
+            setMessage(
+              "원문을 저장하고 학력·경력·스킬을 추출했어요. 카드에서 적용할 항목을 골라 주세요.",
+            );
+          } else {
+            setMessage(`${dumpMsg} 구조 항목은 비어 있어요. 원문만 반영됐습니다.`);
+          }
+        } else {
+          setAnalyzeStatus("failed");
+          setAnalyzeError(finished.errorMessage || "구조화 분석은 실패했어요. 폼을 직접 채워주세요.");
+          setMessage(dumpMsg);
+        }
+      } catch (analyzeErr) {
+        setAnalyzeStatus("failed");
+        setAnalyzeError(
+          analyzeErr instanceof Error
+            ? analyzeErr.message
+            : "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
+        );
+        setMessage(dumpMsg);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "첨부에 실패했어요. 다시 시도해 주세요.");
+    } finally {
+      setDocImporting(false);
+    }
+  };
+
+  /** 확인 카드에서 선택 항목만 폼에 반영. DB 는 저장 버튼으로 확정. */
+  const applyAnalyzeDraft = (opts: {
+    education: boolean;
+    career: boolean;
+    projects: boolean;
+    skills: boolean;
+    portfolioLinks: boolean;
+  }) => {
+    if (!analyzeDraft) return;
+    mergeDraftIntoForm(analyzeDraft, opts);
+    setAnalyzeDraft(null);
+    setAnalyzeStatus("idle");
+    setMessage("추출 결과를 폼에 반영했습니다. 저장을 눌러 확정해 주세요.");
+  };
+
+  const dismissAnalyzeDraft = () => {
+    setAnalyzeDraft(null);
+    setAnalyzeStatus("idle");
+    setAnalyzeError(null);
+  };
+
   const insertResumeTemplate = () => {
-    update("resumeText", [form.resumeText.trim(), resumeTemplate].filter(Boolean).join("\n\n"));
+    const before = countTemplateCopies(form.resumeText, resumeTemplate);
+    const next = insertGuideTemplate(form.resumeText, resumeTemplate, {
+      alreadyHas: "이력서 입력 틀이 이미 있어요.",
+      appendConfirm: "작성 중인 내용 뒤에 입력 틀을 붙일까요?",
+    });
+    if (next == null) {
+      setMessage("이력서 입력 틀이 이미 있어요. 「파일에서 가져오기」와는 다른 버튼입니다.");
+      return;
+    }
+    update("resumeText", next);
+    if (before >= 2) setMessage("중복으로 붙어 있던 입력 틀을 하나로 정리했어요.");
   };
 
   const insertSelfIntroTemplate = () => {
-    update("selfIntro", [form.selfIntro.trim(), selfIntroTemplate].filter(Boolean).join("\n\n"));
+    const before = countTemplateCopies(form.selfIntro, selfIntroTemplate);
+    const next = insertGuideTemplate(form.selfIntro, selfIntroTemplate, {
+      alreadyHas: "자기소개 입력 틀이 이미 있어요.",
+      appendConfirm: "작성 중인 내용 뒤에 입력 틀을 붙일까요?",
+    });
+    if (next == null) {
+      setMessage("자기소개 입력 틀이 이미 있어요. 「파일에서 가져오기」와는 다른 버튼입니다.");
+      return;
+    }
+    update("selfIntro", next);
+    if (before >= 2) setMessage("중복으로 붙어 있던 입력 틀을 하나로 정리했어요.");
   };
 
   return (
@@ -518,6 +685,18 @@ export function ProfilePage() {
                 </TabsContent>
               )}
 
+              {(analyzeStatus === "running" || analyzeDraft || analyzeError) && (
+                <div className="mb-4">
+                  <AnalyzeConfirmCard
+                    status={analyzeStatus}
+                    draft={analyzeDraft}
+                    error={analyzeError}
+                    onApply={applyAnalyzeDraft}
+                    onDismiss={dismissAnalyzeDraft}
+                  />
+                </div>
+              )}
+
               {activeTab === "resume" && (
                 <TabsContent value="resume" className="mt-5">
                 <TabGuide tab="resume" status={tabStatuses.resume} />
@@ -533,9 +712,36 @@ export function ProfilePage() {
                       <Button variant="outline" size="sm" onClick={insertResumeTemplate}>
                         이력서 입력 틀 추가
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={docImporting}
+                        onClick={() => resumeFileRef.current?.click()}
+                      >
+                        {docImporting ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="size-3.5" />
+                        )}
+                        파일에서 가져오기
+                      </Button>
+                      <input
+                        ref={resumeFileRef}
+                        type="file"
+                        accept={PROFILE_DOC_ACCEPT}
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (file) void handleDocumentAttach(file, "RESUME_TEXT");
+                        }}
+                      />
                     </div>
+                    <p className="text-xs text-slate-500">
+                      .pdf / .docx / .txt / .md 지원 (.doc 미지원). 텍스트를 읽어 원문에 넣고, 학력·경력 등은 확인 후 반영합니다.
+                    </p>
                     <Field label="이력서 원문">
-                      <Textarea value={form.resumeText} onChange={(event) => update("resumeText", event.target.value)} rows={12} placeholder="PDF 업로드 전까지는 이력서 내용을 직접 붙여넣어 관리합니다." />
+                      <Textarea value={form.resumeText} onChange={(event) => update("resumeText", event.target.value)} rows={12} placeholder="파일 첨부 또는 이력서 내용을 직접 붙여넣어 관리합니다." />
                     </Field>
                   </CardContent>
                 </Card>
@@ -554,6 +760,30 @@ export function ProfilePage() {
                       <Button variant="outline" size="sm" onClick={insertSelfIntroTemplate}>
                         자기소개 입력 틀 추가
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={docImporting}
+                        onClick={() => selfIntroFileRef.current?.click()}
+                      >
+                        {docImporting ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="size-3.5" />
+                        )}
+                        파일에서 가져오기
+                      </Button>
+                      <input
+                        ref={selfIntroFileRef}
+                        type="file"
+                        accept={PROFILE_DOC_ACCEPT}
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = "";
+                          if (file) void handleDocumentAttach(file, "SELF_INTRO");
+                        }}
+                      />
                     </div>
                     <Field label="자기소개/강점">
                       <Textarea value={form.selfIntro} onChange={(event) => update("selfIntro", event.target.value)} rows={8} placeholder="지원 직무와 연결되는 경험, 강점, 협업 사례를 정리하세요." />
@@ -1062,6 +1292,137 @@ function TabGuide({ tab, status }: { tab: ProfileTab; status: ReturnType<typeof 
   );
 }
 
+/** 구조화 추출 결과 확인 카드 — 승인 필드만 폼에 반영(자동 커밋 금지). */
+function AnalyzeConfirmCard({
+  status,
+  draft,
+  error,
+  onApply,
+  onDismiss,
+}: {
+  status: "idle" | "running" | "done" | "failed";
+  draft: ProfileAnalyzeDraft | null;
+  error: string | null;
+  onApply: (opts: {
+    education: boolean;
+    career: boolean;
+    projects: boolean;
+    skills: boolean;
+    portfolioLinks: boolean;
+  }) => void;
+  onDismiss: () => void;
+}) {
+  const eduCount = Array.isArray(draft?.education) ? (draft.education as unknown[]).length : 0;
+  const careerCount = Array.isArray(draft?.career) ? (draft.career as unknown[]).length : 0;
+  const projectCount = Array.isArray(draft?.projects) ? (draft.projects as unknown[]).length : 0;
+  const skillCount = Array.isArray(draft?.skills) ? draft.skills.length : 0;
+  const linkCount = Array.isArray(draft?.portfolioLinks) ? draft.portfolioLinks.length : 0;
+  const hasAny = eduCount + careerCount + projectCount + skillCount + linkCount > 0;
+
+  const [pick, setPick] = useState(() =>
+    draftPickFromCounts({
+      education: eduCount,
+      career: careerCount,
+      projects: projectCount,
+      skills: skillCount,
+      portfolioLinks: linkCount,
+    }),
+  );
+
+  useEffect(() => {
+    setPick(
+      draftPickFromCounts({
+        education: eduCount,
+        career: careerCount,
+        projects: projectCount,
+        skills: skillCount,
+        portfolioLinks: linkCount,
+      }),
+    );
+  }, [eduCount, careerCount, projectCount, skillCount, linkCount, draft]);
+
+  return (
+    <Card className="mb-4 border-blue-200 bg-blue-50/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center justify-between gap-2 text-base text-slate-900">
+          <span className="flex items-center gap-2">
+            <Sparkles className="size-4 text-blue-600" />
+            이력서 추출 결과
+          </span>
+          <button type="button" className="rounded p-1 text-slate-500 hover:bg-white" onClick={onDismiss} aria-label="닫기">
+            <X className="size-4" />
+          </button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm text-slate-700">
+        {status === "running" && (
+          <div className="flex items-center gap-2 text-slate-600">
+            <Loader2 className="size-4 animate-spin" />
+            Ollama(qwen3)로 학력·경력 분석 중… 원문은 이미 저장됐습니다. 1~2분 걸릴 수 있어요.
+          </div>
+        )}
+        {status === "failed" && (
+          <p className="text-amber-800">{error || "구조화 분석은 실패했어요. 폼을 직접 채워주세요."}</p>
+        )}
+        {status === "done" && !hasAny && (
+          <p className="text-slate-600">추출된 구조 항목이 없습니다. 원문만 반영됐습니다. (표·스캔 PDF는 인식이 약합니다)</p>
+        )}
+        {status === "done" && hasAny && (
+          <>
+            <p className="text-slate-600">
+              적용할 항목만 고르세요. 적용 후 <b>저장</b>을 눌러야 DB에 확정됩니다.
+            </p>
+            <div className="flex flex-col gap-2">
+              {eduCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.education} onChange={(e) => setPick((p) => ({ ...p, education: e.target.checked }))} />
+                  학력 {eduCount}건
+                </label>
+              )}
+              {careerCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.career} onChange={(e) => setPick((p) => ({ ...p, career: e.target.checked }))} />
+                  경력 {careerCount}건
+                </label>
+              )}
+              {projectCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.projects} onChange={(e) => setPick((p) => ({ ...p, projects: e.target.checked }))} />
+                  프로젝트 {projectCount}건
+                </label>
+              )}
+              {skillCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.skills} onChange={(e) => setPick((p) => ({ ...p, skills: e.target.checked }))} />
+                  기술 {skillCount}개
+                </label>
+              )}
+              {linkCount > 0 && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={pick.portfolioLinks} onChange={(e) => setPick((p) => ({ ...p, portfolioLinks: e.target.checked }))} />
+                  포트폴리오 링크 {linkCount}개
+                </label>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => onApply(pick)}
+                disabled={!pick.education && !pick.career && !pick.projects && !pick.skills && !pick.portfolioLinks}
+              >
+                선택한 항목 적용
+              </Button>
+              <Button size="sm" variant="outline" onClick={onDismiss}>
+                무시
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function Field({ label, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
     <div className={`space-y-2 ${className}`}>
@@ -1150,6 +1511,68 @@ function TagBlock({ title, values, tone = "blue" }: { title: string; values: str
       </div>
     </div>
   );
+}
+
+/**
+ * 「입력 틀 추가」는 파일 추출이 아니다. 기존 구현은 클릭마다 template 을 append 해서
+ * 같은 안내 문단이 여러 번 쌓였다. 빈 칸이면 1회 삽입, 이미 틀이 있으면 중복 제거/유지.
+ */
+function countTemplateCopies(text: string, template: string): number {
+  const body = text ?? "";
+  const marker = template.trim().slice(0, 40);
+  if (!marker || !body.includes(marker)) return 0;
+  let count = 0;
+  let from = 0;
+  while (from < body.length) {
+    const idx = body.indexOf(marker, from);
+    if (idx < 0) break;
+    count += 1;
+    from = idx + marker.length;
+  }
+  return count;
+}
+
+function insertGuideTemplate(
+  current: string,
+  template: string,
+  copy: { alreadyHas: string; appendConfirm: string },
+): string | null {
+  const trimmed = (current ?? "").trim();
+  const tpl = template.trim();
+  const copies = countTemplateCopies(trimmed, tpl);
+
+  // 틀이 2번 이상 붙어 있으면 한 덩어리로 정리(사용자 작성 문장 앞에 틀이 여러 번인 경우)
+  if (copies >= 2) {
+    // 첫 틀 위치 이전 사용자 텍스트 + 틀 1개 + 마지막 틀 이후 텍스트는 보수적으로 틀만 1회로
+    const marker = tpl.slice(0, 40);
+    const first = trimmed.indexOf(marker);
+    const prefix = first > 0 ? trimmed.slice(0, first).trim() : "";
+    // 모든 틀 블록 제거 후 접두 + 틀 1회
+    let rest = trimmed;
+    while (rest.includes(marker)) {
+      const i = rest.indexOf(marker);
+      // template 전체 길이에 가깝게 잘라 냄
+      const end = i + tpl.length;
+      const before = rest.slice(0, i);
+      const after = rest.slice(Math.min(end, rest.length));
+      rest = (before + after).replace(/\n{3,}/g, "\n\n").trim();
+    }
+    const userOnly = [prefix, rest].filter(Boolean).join("\n\n").trim();
+    return userOnly ? `${userOnly}\n\n${tpl}` : tpl;
+  }
+
+  if (!trimmed) {
+    return tpl;
+  }
+  if (copies === 1) {
+    // 이미 한 번 있음 — 또 붙이지 않음
+    return null;
+  }
+  // 사용자 본문만 있을 때: 확인 후 뒤에 1회 append
+  if (typeof window !== "undefined" && !window.confirm(copy.appendConfirm)) {
+    return null;
+  }
+  return `${trimmed}\n\n${tpl}`;
 }
 
 function ListBlock({ title, values }: { title: string; values: string[] }) {

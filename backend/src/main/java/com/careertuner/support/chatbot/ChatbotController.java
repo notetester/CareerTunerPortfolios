@@ -68,6 +68,8 @@ import com.careertuner.profile.service.ProfileService;
 import java.util.ArrayList;
 import java.util.Arrays;
 
+import tools.jackson.databind.ObjectMapper;
+
 @RestController
 @RequestMapping("/api")
 public class ChatbotController {
@@ -159,8 +161,9 @@ public class ChatbotController {
     // (a) 깡통계정 온보딩 게이트용 read 의존(호출만, A·B 도메인 무수정).
     private final ProfileMapper profileMapper;
     private final ApplicationCaseService applicationCaseService;
-    // (e) 모은 직무·기술 저장용 A 도메인 write 의존(기존 save 호출만, A 코드 무수정).
+    // (e) 모은 직무·기술 저장용 A 도메인 write 의존(기존 save 호출 + RMW 병합).
     private final ProfileService profileService;
+    private final ObjectMapper objectMapper;
     // (f) mode 칩 제시·ready 판정 재활용(intake() 직접 호출 — agent.chat·라우터 우회). D 코드 무수정.
     private final AutoPrepIntakeService autoPrepIntakeService;
     // (b) 온보딩 수집 슬롯(인메모리·대화키). 직무·기술을 모았다가 (e)에서 저장.
@@ -193,6 +196,7 @@ public class ChatbotController {
                             ProfileMapper profileMapper,
                             ApplicationCaseService applicationCaseService,
                             ProfileService profileService,
+                            ObjectMapper objectMapper,
                             AutoPrepIntakeService autoPrepIntakeService,
                             IntakeSlotTrace intakeSlotTrace,
                             JobPostingService jobPostingService,
@@ -218,6 +222,7 @@ public class ChatbotController {
         this.profileMapper = profileMapper;
         this.applicationCaseService = applicationCaseService;
         this.profileService = profileService;
+        this.objectMapper = objectMapper;
         this.autoPrepIntakeService = autoPrepIntakeService;
         this.intakeSlotTrace = intakeSlotTrace;
         this.jobPostingService = jobPostingService;
@@ -909,13 +914,13 @@ public class ChatbotController {
     }
 
     /**
-     * (e) 슬롯에 모은 직무·기술을 A.ProfileService.save 로 *한 번* 저장(전체 덮어쓰기 upsert). A 코드 무수정 — 호출만.
+     * (e) 슬롯에 모은 직무·기술을 A.ProfileService.save 로 *한 번* 저장.
+     * ★read-modify-write: 온보딩 전 docs 등에서 채워 둔 컬럼(self_intro/resume_text/education …)을 null 로
+     *   덮어쓰지 않는다. skills 는 교체가 아니라 기존∪온보딩 합집합(대소문자 무시).
      * ★skills 변환: 슬롯은 자유텍스트("Java, Spring") → 토큰화해 List 로 넘겨야 JSON *배열*로 저장돼 FIT 가 읽는
-     *   배열과 일치한다(그대로 String 으로 주면 JSON 문자열로 저장돼 FIT 매칭 깨짐 — 측정). FIT 매칭은 스킬 *완전일치*
-     *   집합이라(Mock 엔진) 한 원소에 여러 스킬이 뭉치면 매칭 0 → 콤마 외 줄바꿈·/·중점·;·"및"·"그리고"도 구분자로 보고,
-     *   대소문자 무시 중복은 제거한다(공백 분리는 "Spring Boot" 같은 복합어를 깨므로 제외). 직무·기술 외 필드는
-     *   null(전 필드 nullable). 저장 실패해도 case 는 이미 만들어졌으므로 CASE_READY 는 진행(로그만) — 프로필은
-     *   이후 /profile 에서 보완 가능. 게이트(누가 온보딩 타나)와는 분리된 로직이다.
+     *   배열과 일치한다. JSON 문자열 컬럼은 파싱 후 넘겨 이중 인코딩을 막는다.
+     * 저장 실패해도 case 는 이미 만들어졌으므로 CASE_READY 는 진행(로그만).
+     * 경합(다른 탭 PUT)은 last-write-wins — @Transactional 이 lost update 를 막지 않는다.
      */
     private void saveOnboardingProfile(Long conversationId, AuthUser authUser) {
         IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
@@ -931,9 +936,9 @@ public class ChatbotController {
                                 java.util.LinkedHashMap::new))
                         .values().stream().toList();
         try {
-            profileService.save(authUser, new UserProfileRequest(
-                    desiredJob, null, null, null, null, skills,
-                    null, null, null, null, null, null));
+            UserProfile cur = profileMapper.findByUserId(authUser.id());
+            UserProfileRequest request = OnboardingProfileMerge.merge(cur, desiredJob, skills, objectMapper);
+            profileService.save(authUser, request);
         } catch (RuntimeException ex) {
             log.warn("온보딩 프로필 저장 실패(case 는 생성됨, CASE_READY 진행): {}", ex.getMessage());
         }

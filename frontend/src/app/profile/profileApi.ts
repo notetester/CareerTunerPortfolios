@@ -1,5 +1,13 @@
 import { api } from "../lib/api";
 
+/** 프로필 문서 업로드 — 기존 POST /file/upload 재사용. */
+export function uploadProfileFile(file: File, kind: "RESUME" | "ATTACHMENT" = "RESUME") {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("kind", kind);
+  return api<{ id: number; originalName?: string }>("/file/upload", { method: "POST", body: fd });
+}
+
 export interface UserProfile {
   id?: number;
   userId?: number;
@@ -82,3 +90,90 @@ export function extractProfileSkills(): Promise<ProfileAiResponse> {
 export function diagnoseProfileCompleteness(): Promise<ProfileCompleteness> {
   return api<ProfileCompleteness>("/profile/ai/completeness", { method: "POST" });
 }
+
+/** 문서 import 대상 필드. */
+export type ProfileImportTarget = "RESUME_TEXT" | "SELF_INTRO";
+
+export interface ProfileImportResponse {
+  profile: UserProfile;
+  truncated: boolean;
+}
+
+/** 구조화 분석 초안 — DB 미커밋. Profile.tsx 폼 키와 일치. */
+export interface ProfileAnalyzeDraft {
+  education?: unknown;
+  career?: unknown;
+  projects?: unknown;
+  skills?: string[] | null;
+  portfolioLinks?: string[] | null;
+}
+
+export interface ProfileAnalyzeResponse {
+  jobId: string;
+  status: "PENDING" | "DONE" | "FAILED" | string;
+  draft?: ProfileAnalyzeDraft | null;
+  errorMessage?: string | null;
+}
+
+/** 업로드된 fileId 텍스트를 resume_text / self_intro 에 덤프. */
+export function importProfileDocument(
+  fileId: number,
+  target: ProfileImportTarget,
+): Promise<ProfileImportResponse> {
+  return api<ProfileImportResponse>("/profile/import", {
+    method: "POST",
+    body: JSON.stringify({ fileId, target }),
+  });
+}
+
+/** 이력서 구조화 분석 비동기 발사 (202). */
+export function startProfileAnalyze(fileId: number): Promise<ProfileAnalyzeResponse> {
+  return api<ProfileAnalyzeResponse>("/profile/import/analyze", {
+    method: "POST",
+    body: JSON.stringify({ fileId }),
+  });
+}
+
+/** 구조화 분석 작업 조회. */
+export function getProfileAnalyze(jobId: string): Promise<ProfileAnalyzeResponse> {
+  return api<ProfileAnalyzeResponse>(`/profile/import/analyze/${encodeURIComponent(jobId)}`, {
+    method: "GET",
+  });
+}
+
+/** PENDING 이 끝날 때까지 폴링. 원격 Ollama 콜드스타트 대비 기본 ~4분. */
+export async function pollProfileAnalyze(
+  jobId: string,
+  options: { intervalMs?: number; maxAttempts?: number } = {},
+): Promise<ProfileAnalyzeResponse> {
+  const intervalMs = options.intervalMs ?? 2000;
+  const maxAttempts = options.maxAttempts ?? 120;
+  for (let i = 0; i < maxAttempts; i++) {
+    const res = await getProfileAnalyze(jobId);
+    if (res.status !== "PENDING") return res;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return {
+    jobId,
+    status: "FAILED",
+    errorMessage: "구조화 분석 시간이 초과됐어요. 원문은 저장됐고, 폼은 직접 채워 주세요.",
+  };
+}
+
+/** draft 에 반영할 비어 있지 않은 구조 필드가 있는지. */
+export function draftHasStructuredFields(draft: ProfileAnalyzeDraft | null | undefined): boolean {
+  if (!draft) return false;
+  const n = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+  return (
+    n(draft.education) +
+      n(draft.career) +
+      n(draft.projects) +
+      n(draft.skills) +
+      n(draft.portfolioLinks) >
+    0
+  );
+}
+
+/** 프로필 문서 첨부 허용 확장자/MIME (.doc 제외). */
+export const PROFILE_DOC_ACCEPT =
+  ".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
