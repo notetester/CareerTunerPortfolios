@@ -21,7 +21,7 @@ class FrontendReturnUrlResolverTest {
     @BeforeEach
     void setUp() {
         props.getApp().setFrontendUrl("https://careertuner.kro.kr/");
-        props.getApp().setSitesFrontendUrl("https://careertuner-backup.career-tuner-4654.chatgpt.site/");
+        props.getApp().setSitesFrontendUrl("https://careertuner.career-tuner-4654.chatgpt.site/");
         resolver = new FrontendReturnUrlResolver(props);
     }
 
@@ -42,7 +42,7 @@ class FrontendReturnUrlResolverTest {
 
         assertThat(target.client()).isEqualTo("sites");
         assertThat(target.absoluteUrl("/auth/callback"))
-                .isEqualTo("https://careertuner-backup.career-tuner-4654.chatgpt.site/auth/callback");
+                .isEqualTo("https://careertuner.career-tuner-4654.chatgpt.site/auth/callback");
     }
 
     @Test
