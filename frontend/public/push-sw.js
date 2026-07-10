@@ -12,19 +12,20 @@ const OBSIDIAN_PATH_PATTERN = /\/Obsidian(?:\/|$)/;
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) =>
-      Promise.all(
-        clientList
-          .filter((client) => {
-            try {
-              return OBSIDIAN_PATH_PATTERN.test(new URL(client.url).pathname);
-            } catch (_e) {
-              return false;
-            }
-          })
-          .map((client) => client.navigate(client.url).catch(() => undefined)),
-      ),
-    ),
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      clientList
+        .filter((client) => {
+          try {
+            return OBSIDIAN_PATH_PATTERN.test(new URL(client.url).pathname);
+          } catch (_e) {
+            return false;
+          }
+        })
+        .forEach((client) => {
+          // activate 완료를 navigation 완료에 묶으면 양쪽이 서로 기다릴 수 있다.
+          client.navigate(client.url).catch(() => {});
+        });
+    }),
   );
 });
 
