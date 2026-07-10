@@ -32,6 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseFromJobPostingResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
@@ -42,6 +43,7 @@ import com.careertuner.applicationcase.dto.ConfirmJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
@@ -2030,6 +2032,84 @@ class ApplicationCaseServiceImplTest {
                 mock(ApplicationCaseAutoPipelineService.class));
     }
 
+    @Test
+    void createFromJobPostingCreatesPendingInitialRunProfileWithNormalizedProviders() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        NotificationMapper notificationMapper = mock(NotificationMapper.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), notificationMapper, autoPipelineService, initialRunMapper);
+
+        doAnswer(invocation -> {
+            ((ApplicationCase) invocation.getArgument(0)).setId(10L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ((ApplicationCaseExtraction) invocation.getArgument(0)).setId(30L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(
+                ApplicationCase.builder().id(10L).userId(1L).sourceType("TEXT").status("DRAFT").build());
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(new JobPostingResponse(20L, 10L, 1, "Acme backend role", null, null, "TEXT",
+                        LocalDateTime.now()));
+
+        // 선택값을 대/소문자 섞어 전달 → 정규화(대문자) + 알려진 값만 유지되는지 검증.
+        service.createFromJobPosting(1L, new CreateApplicationCaseFromJobPostingRequest(
+                "Acme backend role", null, null, "TEXT", true, "local", "OpenAI"));
+
+        ArgumentCaptor<ApplicationCaseInitialRun> captor = ArgumentCaptor.forClass(ApplicationCaseInitialRun.class);
+        verify(initialRunMapper).insertPending(captor.capture());
+        assertThat(captor.getValue().getApplicationCaseId()).isEqualTo(10L);
+        assertThat(captor.getValue().getJobAnalysisProvider()).isEqualTo("LOCAL");
+        assertThat(captor.getValue().getCompanyAnalysisProvider()).isEqualTo("OPENAI");
+    }
+
+    @Test
+    void createFromJobPostingDropsUnknownProviderSelectionToNull() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
+
+        doAnswer(invocation -> {
+            ((ApplicationCase) invocation.getArgument(0)).setId(11L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ((ApplicationCaseExtraction) invocation.getArgument(0)).setId(31L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(11L, 1L)).thenReturn(
+                ApplicationCase.builder().id(11L).userId(1L).sourceType("TEXT").status("DRAFT").build());
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(11L), any(JobPostingRequest.class)))
+                .thenReturn(new JobPostingResponse(21L, 11L, 1, "role", null, null, "TEXT", LocalDateTime.now()));
+
+        service.createFromJobPosting(1L, new CreateApplicationCaseFromJobPostingRequest(
+                "role", null, null, "TEXT", false, "gpt-9", ""));
+
+        ArgumentCaptor<ApplicationCaseInitialRun> captor = ArgumentCaptor.forClass(ApplicationCaseInitialRun.class);
+        verify(initialRunMapper).insertPending(captor.capture());
+        assertThat(captor.getValue().getJobAnalysisProvider()).isNull();   // 알 수 없는 값 → null
+        assertThat(captor.getValue().getCompanyAnalysisProvider()).isNull(); // 공백 → null
+    }
+
     private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
                                                                      ApplicationCaseExtractionMapper extractionMapper,
                                                                      ApplicationCaseAccessService accessService,
@@ -2047,7 +2127,8 @@ class ApplicationCaseServiceImplTest {
                 mock(JobAnalysisMapper.class),
                 openAiClient,
                 notificationMapper,
-                autoPipelineService);
+                autoPipelineService,
+                mock(ApplicationCaseInitialRunMapper.class));
     }
 
     private static ApplicationCaseExtraction extraction(Long id,

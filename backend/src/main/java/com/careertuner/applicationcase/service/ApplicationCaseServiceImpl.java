@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
+import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.domain.FitAnalysis;
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
@@ -28,6 +29,7 @@ import com.careertuner.applicationcase.dto.ConfirmJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -65,6 +67,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final Set<String> SOURCE_TYPES = Set.of("TEXT", "PDF", "IMAGE", "URL", "MANUAL");
     private static final Set<String> JOB_POSTING_JSON_SOURCE_TYPES = Set.of("TEXT", "MANUAL", "URL");
     private static final Set<String> JOB_POSTING_UPLOAD_SOURCE_TYPES = Set.of("PDF", "IMAGE");
+    private static final Set<String> ANALYSIS_PROVIDERS = Set.of("LOCAL", "CLAUDE", "OPENAI");
     private static final Set<String> STATUSES = Set.of("DRAFT", "ANALYZING", "READY", "APPLIED", "CLOSED");
     private static final int MAX_EXTRACTION_LOOKUP_CASE_IDS = 200;
     private static final Set<String> LIST_VIEWS = Set.of("ACTIVE", "ARCHIVED", "DELETED");
@@ -79,6 +82,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private final OpenAiResponsesClient openAiClient;
     private final NotificationMapper notificationMapper;
     private final ApplicationCaseAutoPipelineService autoPipelineService;
+    private final ApplicationCaseInitialRunMapper initialRunMapper;
 
     @Override
     @Transactional
@@ -113,6 +117,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCase.getId(),
                 jobPosting.id(),
                 prepared.sourceType());
+        // 초기 실행 프로필(PENDING) — 등록 시 고른 공고/기업 분석 provider 를 저장한다(async 파이프라인이 읽음).
+        createInitialRunProfile(applicationCase.getId(), request.jobAnalysisProvider(), request.companyAnalysisProvider());
 
         return new ApplicationCaseFromJobPostingResponse(
                 toResponse(accessService.requireOwned(userId, applicationCase.getId())),
@@ -144,6 +150,8 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
                 applicationCase.getId(),
                 jobPosting.id(),
                 normalizedSourceType);
+        // 초기 실행 프로필(PENDING). 업로드 경로의 OCR·분석 provider 선택값 배선은 OCR 라우터 슬라이스에서 추가한다.
+        createInitialRunProfile(applicationCase.getId(), null, null);
 
         return new ApplicationCaseFromJobPostingResponse(
                 toResponse(accessService.requireOwned(userId, applicationCase.getId())),
@@ -209,6 +217,24 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         if (deleted == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
         }
+    }
+
+    /** 등록 시 초기 실행 프로필(PENDING)을 만든다. provider 는 정규화 후 알 수 없는 값이면 null(현행 기본 체인). */
+    private void createInitialRunProfile(Long applicationCaseId, String jobAnalysisProvider, String companyAnalysisProvider) {
+        initialRunMapper.insertPending(ApplicationCaseInitialRun.builder()
+                .applicationCaseId(applicationCaseId)
+                .jobAnalysisProvider(normalizeProvider(jobAnalysisProvider))
+                .companyAnalysisProvider(normalizeProvider(companyAnalysisProvider))
+                .build());
+    }
+
+    /** 분석 provider 선택값 정규화: 대문자 트림 후 알려진 값(LOCAL/CLAUDE/OPENAI)만 유지, 그 외·공백은 null. */
+    private static String normalizeProvider(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        return ANALYSIS_PROVIDERS.contains(normalized) ? normalized : null;
     }
 
     @Override
