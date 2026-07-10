@@ -243,7 +243,7 @@ export function MfaSettingsCard() {
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 shadow-sm">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-sm font-bold text-blue-950">CareerTuner 앱에서 생성된 코드</div>
+                      <div className="text-sm font-bold text-foreground">CareerTuner 앱에서 생성된 코드</div>
                       <div className="text-xs text-blue-800">이 코드를 아래 검증 입력칸에 넣으면 2단계 인증이 활성화됩니다.</div>
                     </div>
                     <Badge className="bg-card text-blue-700 ring-1 ring-blue-100">{secondsLeft}초</Badge>
@@ -279,7 +279,7 @@ export function MfaSettingsCard() {
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-bold text-blue-950">CareerTuner 앱 인증 코드</div>
+                    <div className="text-sm font-bold text-foreground">CareerTuner 앱 인증 코드</div>
                     <div className="mt-1 text-xs text-blue-800">
                       {storedSecret ? `${storedSecret.label}에 저장된 키로 생성 중` : "이 기기에 저장된 인증 키가 없습니다."}
                     </div>

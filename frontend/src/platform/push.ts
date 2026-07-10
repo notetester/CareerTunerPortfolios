@@ -5,6 +5,7 @@
  * - 키/플러그인 미설정: 브라우저/OS 권한 요청까지는 동작하고, 구독 생성은 건너뛴다(무해).
  */
 import { api } from "@/app/lib/api";
+import type { PluginListenerHandle } from "@capacitor/core";
 import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
 import { isNativeApp, nativePlugin, platformName } from "./capacitor";
 import { toAppPath } from "./deepLink";
@@ -48,7 +49,10 @@ async function registerNative(): Promise<PushRegisterResult> {
   interface CapPush {
     requestPermissions: () => Promise<{ receive: string }>;
     register: () => Promise<void>;
-    addListener: (event: string, cb: (data: { value?: string }) => void) => void;
+    addListener: {
+      (event: "registration", cb: (data: { value?: string }) => void): Promise<PluginListenerHandle>;
+      (event: "registrationError", cb: () => void): Promise<PluginListenerHandle>;
+    };
   }
   const plugin = nativePlugin<CapPush>("PushNotifications");
   if (!plugin) return "permission-only";
@@ -58,25 +62,49 @@ async function registerNative(): Promise<PushRegisterResult> {
     // FCM 미설정(google-services 부재) 기기에서는 registration 이벤트가 영원히 오지 않아 호출부 버튼이
     // 영구 busy 로 잠긴다 — registrationError 와 타임아웃으로 반드시 결착시킨다.
     let settled = false;
+    let registrationHandled = false;
+    const listenerHandles: PluginListenerHandle[] = [];
+    const removeListeners = async () => {
+      const handles = listenerHandles.splice(0);
+      await Promise.allSettled(handles.map((handle) => handle.remove()));
+    };
     const settle = (result: PushRegisterResult) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      resolve(result);
+      void removeListeners().finally(() => resolve(result));
     };
     const timer = window.setTimeout(() => settle("permission-only"), 15_000);
-    plugin.addListener("registrationError", () => settle("permission-only"));
-    plugin.addListener("registration", (data) => {
-      const token = data.value;
-      if (!token) { settle("permission-only"); return; }
-      // disablePush 에서 서버 등록을 지울 수 있게 토큰을 보관한다.
-      try { localStorage.setItem(FCM_TOKEN_KEY, token); } catch { /* no-op */ }
-      void api<void>("/notifications/push", {
-        method: "POST",
-        body: JSON.stringify({ kind: "FCM", token }),
-      }).then(() => settle("subscribed")).catch(() => settle("permission-only"));
-    });
-    void plugin.register();
+    const listenAndRegister = async () => {
+      try {
+        const errorHandle = await plugin.addListener("registrationError", () => {
+          if (settled || registrationHandled) return;
+          settle("permission-only");
+        });
+        listenerHandles.push(errorHandle);
+        if (settled) { await removeListeners(); return; }
+
+        const registrationHandle = await plugin.addListener("registration", (data) => {
+          if (settled || registrationHandled) return;
+          registrationHandled = true;
+          const token = data.value;
+          if (!token) { settle("permission-only"); return; }
+          // disablePush 에서 서버 등록을 지울 수 있게 토큰을 보관한다.
+          try { localStorage.setItem(FCM_TOKEN_KEY, token); } catch { /* no-op */ }
+          void api<void>("/notifications/push", {
+            method: "POST",
+            body: JSON.stringify({ kind: "FCM", token }),
+          }).then(() => settle("subscribed")).catch(() => settle("permission-only"));
+        });
+        listenerHandles.push(registrationHandle);
+        if (settled) { await removeListeners(); return; }
+
+        await plugin.register();
+      } catch {
+        settle("permission-only");
+      }
+    };
+    void listenAndRegister();
   });
 }
 
