@@ -101,9 +101,35 @@ class NationalQualificationCatalogProviderTest {
     @Test
     void blankKeyDoesNotCallApiAndDegrades() {
         NationalQualificationCatalogProvider provider = new NationalQualificationCatalogProvider(
-                "", "http://unused.invalid", Duration.ofSeconds(1), HttpClient.newHttpClient());
+                "", "http://unused.invalid", Duration.ofSeconds(1), HttpClient.newHttpClient(), null);
 
         assertThat(provider.enabled()).isFalse();
+        assertThat(provider.lookup("정보처리기사").status())
+                .isEqualTo(NationalQualificationCatalogStatus.UPSTREAM_UNAVAILABLE);
+    }
+
+    @Test
+    void loadedSnapshotAnswersWithoutNetworkOrServiceKey() {
+        // 스냅샷 우선 — 키가 없고 네트워크가 죽어 있어도(Q-Net 장애 등) 종류 판별·라우팅이 동작한다.
+        NationalQualificationOfflineCatalog snapshot = new NationalQualificationOfflineCatalog(
+                "cert/national-qualification-catalog-20251231.csv", "20251231", true);
+        NationalQualificationCatalogProvider provider = new NationalQualificationCatalogProvider(
+                "", "http://unused.invalid", Duration.ofSeconds(1), HttpClient.newHttpClient(), snapshot);
+
+        assertThat(provider.lookup("정보처리기사").status()).isEqualTo(NationalQualificationCatalogStatus.FOUND);
+        assertThat(provider.lookup("정보처리기사").entry().technical()).isTrue();
+        assertThat(provider.lookup("공인노무사").entry().technical()).isFalse();
+        assertThat(provider.lookup("SQLD").status()).isEqualTo(NationalQualificationCatalogStatus.NOT_FOUND);
+    }
+
+    @Test
+    void unloadableSnapshotFallsBackToLegacyKeyGate() {
+        // 스냅샷 로드 실패는 새로운 단일 장애점이 아니다 — 기존 네트워크 경로 규칙(키 없음=degrade)로 복귀.
+        NationalQualificationOfflineCatalog broken = new NationalQualificationOfflineCatalog(
+                "cert/does-not-exist.csv", "x", true);
+        NationalQualificationCatalogProvider provider = new NationalQualificationCatalogProvider(
+                "", "http://unused.invalid", Duration.ofSeconds(1), HttpClient.newHttpClient(), broken);
+
         assertThat(provider.lookup("정보처리기사").status())
                 .isEqualTo(NationalQualificationCatalogStatus.UPSTREAM_UNAVAILABLE);
     }
