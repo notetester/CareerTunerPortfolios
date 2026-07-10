@@ -36,11 +36,14 @@ npm run dev
 # http://localhost:5173  (/api 요청은 8080으로 프록시)
 ```
 
-**데이터베이스** — MySQL 8에 스키마 적용
+**데이터베이스** — MySQL 8 개발/demo DB에 스키마 적용
 ```bash
 mysql -u <user> -p <database> < backend/src/main/resources/db/schema.sql
 mysql -u <user> -p <database> < backend/src/main/resources/db/data.sql
 ```
+
+`data.sql`에는 공통 비밀번호를 사용하는 개발용 `SUPER_ADMIN`이 포함된다. 운영 DB에는 적용하지 말고,
+운영 관리자는 별도 one-time bootstrap 절차와 운영 비밀값으로 생성·승격한다.
 
 ## 데모 / 릴리즈
 
