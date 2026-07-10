@@ -277,6 +277,47 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
     }
 
+    @Test
+    void doesNotAutoReanalyzeOnEditConfirmWhenInitialRunDone() {
+        assertEditConfirmDoesNotAutoReanalyze("DONE");
+    }
+
+    @Test
+    void doesNotAutoReanalyzeOnEditConfirmWhenInitialRunFailed() {
+        assertEditConfirmDoesNotAutoReanalyze("FAILED");
+    }
+
+    @Test
+    void doesNotAutoReanalyzeOnEditConfirmWhenInitialRunRunning() {
+        assertEditConfirmDoesNotAutoReanalyze("RUNNING");
+    }
+
+    /**
+     * 확정 정책: 초기 실행이 이미 종료(DONE/FAILED)됐거나 진행 중(RUNNING)이면, 공고 수정 확정(applyConfirmedPosting)은
+     * 새 revision 만 저장하고 자동 재분석을 돌리지 않는다. claim 은 PENDING 만 성공하므로 이 세 상태는 모두 즉시 중단된다.
+     * 갱신된 revision 으로 기존 분석이 stale 로 표시되고, 사용자가 분석 탭에서 모델을 골라 수동 재분석한다.
+     * (초기 실행 DONE 을 사용자 확정으로 자동 재분석하도록 우회하면 안 된다 — userInitiated 재도입 방지 잠금.)
+     */
+    private void assertEditConfirmDoesNotAutoReanalyze(String initialRunState) {
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L).userId(1L).companyName("Acme").jobTitle("Backend Engineer")
+                .sourceType("PDF").status("READY").build());
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(profile(initialRunState));
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(0);
+
+        // 수정 확정이 넘기는 새 revision(61,4)으로 호출 — claim 실패로 어떤 분석도 생성되지 않아야 한다.
+        service.runAfterExtractionPass(1L, 10L, 61L, 4, POSTING_TEXT);
+
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+        verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any());
+        verify(fitAnalysisMapper, never()).insertFitAnalysis(any());
+        verify(interviewMapper, never()).insertSession(any());
+        verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), anyString());
+        verify(applicationCaseMapper, never()).markReadyAfterAnalysis(anyLong(), anyLong(), anyString());
+        verify(initialRunMapper, never()).markDone(anyLong(), anyString());
+        verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
+    }
+
     private void stubRunnableDraftCase() {
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
                 .id(10L)
@@ -303,9 +344,13 @@ class ApplicationCaseAutoPipelineServiceTest {
     }
 
     private static ApplicationCaseInitialRun pendingProfile() {
+        return profile("PENDING");
+    }
+
+    private static ApplicationCaseInitialRun profile(String state) {
         return ApplicationCaseInitialRun.builder()
                 .applicationCaseId(10L)
-                .state("PENDING")
+                .state(state)
                 .build();
     }
 
