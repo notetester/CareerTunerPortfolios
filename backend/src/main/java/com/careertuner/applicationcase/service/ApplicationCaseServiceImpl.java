@@ -408,13 +408,15 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
         // 추출 실패 종결 시 FAILED 로 닫힌 초기 실행 프로필을 PENDING 으로 되살려,
         // 재추출 성공 시 초기 파이프라인이 다시 claim 해 1회 실행되게 한다(프로필 없거나 FAILED 아니면 0행).
         initialRunMapper.reopenForRetry(applicationCaseId);
-        // 최초 등록 때 고른 OCR provider 를 재시도에도 이어받는다(사용자가 다시 고르지 않아도 같은 primary 로 라우팅).
+        // 수동 재추출은 strict 정책 대상이다(선택 provider 단일 실행·교차 provider 폴백 금지). 여기서 이전 OCR
+        // 선택값을 이어받으면 non-strict 라우터(선택 primary→기본 체인 폴백)를 타서, 선택 provider 실패 시 다른
+        // provider 로 폴백돼 정책을 위반한다. 그래서 strict 재추출 API 가 준비되기 전까지는 이 경로에서 OCR
+        // 선택값을 재사용하지 않는다(선택값 미전달 → 기본 자동 체인, 특정 primary 강제 없음).
         return queueExtraction(
                 userId,
                 applicationCaseId,
                 failedJobPostingId,
-                latestExtraction.getSourceType(),
-                latestExtraction.getOcrRequestedProvider());
+                latestExtraction.getSourceType());
     }
 
     @Override

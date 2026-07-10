@@ -1966,7 +1966,7 @@ class ApplicationCaseServiceImplTest {
                 mock(ApplicationCaseAutoPipelineService.class),
                 initialRunMapper);
         ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "PDF", "FAILED");
-        failed.setOcrRequestedProvider("CLAUDE"); // 최초 등록 때 고른 OCR provider
+        failed.setOcrRequestedProvider("CLAUDE"); // 최초 선택값 — 수동 재추출에서는 재사용하지 않아야 한다(strict 정책)
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
                 .id(10L)
@@ -1986,10 +1986,11 @@ class ApplicationCaseServiceImplTest {
         // 추출 실패로 FAILED 처리된 초기 실행 프로필을 PENDING 으로 되살려,
         // 재추출 성공 시 파이프라인이 다시 claim 해 초기 실행 1회가 보장되는지 잠근다.
         verify(initialRunMapper).reopenForRetry(10L);
-        // 재추출도 최초에 고른 OCR provider 를 이어받는다(사용자가 다시 고르지 않아도 같은 primary).
+        // 수동 재추출은 strict 정책 대상 — 이전 OCR 선택값을 재사용하면 non-strict 라우터로 교차 provider 폴백이
+        // 일어나므로, strict 재추출 API 준비 전까지 선택값을 이어받지 않는다(재큐 provider=NULL → 기본 자동 체인).
         ArgumentCaptor<ApplicationCaseExtraction> requeued = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
         verify(extractionMapper).insertApplicationCaseExtraction(requeued.capture());
-        assertThat(requeued.getValue().getOcrRequestedProvider()).isEqualTo("CLAUDE");
+        assertThat(requeued.getValue().getOcrRequestedProvider()).isNull();
     }
 
     @Test
