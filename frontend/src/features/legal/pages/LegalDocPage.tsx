@@ -16,6 +16,7 @@ const DOC_LABELS: Record<LegalDocType, string> = {
   privacy: "개인정보처리방침",
   marketing: "마케팅 수신 동의",
   "ai-data-consent": "AI 데이터 이용 동의",
+  "resume-analysis-consent": "이력서 분석 개인정보 수집·이용 동의",
   copyright: "저작권 정책",
 };
 
@@ -26,7 +27,9 @@ const DOC_LABELS: Record<LegalDocType, string> = {
 const ROUTED_DOC_TYPES: ReadonlySet<LegalDocType> = new Set<LegalDocType>([
   "terms",
   "privacy",
+  "marketing",
   "ai-data-consent",
+  "resume-analysis-consent",
   "copyright",
 ]);
 

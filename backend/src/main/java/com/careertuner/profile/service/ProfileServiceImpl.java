@@ -117,6 +117,7 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public ProfileImportResponse importDocument(AuthUser authUser, ProfileDocumentImportRequest request) {
         Long userId = requireUser(authUser);
+        requireResumeAnalysisConsent(userId);
         if (request == null || request.fileId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "가져올 파일을 선택해 주세요.");
         }
@@ -171,6 +172,7 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = requireUser(authUser);
         // 이력서 원문이 LLM으로 전송되는 경로 — 다른 프로필 AI 기능과 동일하게 AI_DATA 동의 필수.
         requireAiConsent(userId);
+        requireResumeAnalysisConsent(userId);
         if (request == null || request.fileId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "가져올 파일을 선택해 주세요.");
         }
@@ -275,6 +277,7 @@ public class ProfileServiceImpl implements ProfileService {
     private ProfileAiResult evaluateWithConsent(AuthUser authUser, String featureType) {
         Long userId = requireUser(authUser);
         requireAiConsent(userId);
+        requireResumeAnalysisConsent(userId);
         ProfileAiResult result = profileAiService.evaluate(findOrEmpty(userId), featureType);
         recordAi(userId, result);
         // 스펙(프로필) 분석이 성공하면 사용자에게 완료 알림을 남긴다.
@@ -374,6 +377,12 @@ public class ProfileServiceImpl implements ProfileService {
     private void requireAiConsent(Long userId) {
         if (!consentService.hasCurrentConsent(userId, "AI_DATA")) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "AI 데이터 사용 동의가 필요합니다.");
+        }
+    }
+
+    private void requireResumeAnalysisConsent(Long userId) {
+        if (!consentService.hasCurrentConsent(userId, "RESUME_ANALYSIS")) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "이력서 분석 개인정보 수집·이용 동의가 필요합니다.");
         }
     }
 

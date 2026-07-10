@@ -3,6 +3,7 @@ export interface AdminConsentView {
   userId: number;
   userEmail?: string | null;
   consentType: string;
+  consentVersion?: string | null;
   agreed: boolean;
   agreedAt?: string | null;
   revokedAt?: string | null;

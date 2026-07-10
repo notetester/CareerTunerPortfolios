@@ -64,6 +64,7 @@ class ProfileServiceImplTest {
                 .desiredJob("마케팅 AE")
                 .build();
         when(consentService.hasCurrentConsent(7L, "AI_DATA")).thenReturn(true);
+        when(consentService.hasCurrentConsent(7L, "RESUME_ANALYSIS")).thenReturn(true);
         when(profileMapper.findByUserId(7L)).thenReturn(profile);
         when(aiService.evaluate(eq(profile), eq("PROFILE_SUMMARY"))).thenReturn(result("FALLBACK"));
         ProfileServiceImpl service = newService(
@@ -83,6 +84,22 @@ class ProfileServiceImplTest {
         assertThat(log.getInputTokens()).isEqualTo(11);
         assertThat(log.getOutputTokens()).isEqualTo(13);
         assertThat(log.getTokenUsage()).isEqualTo(24);
+    }
+
+    @Test
+    void blocksProfileAiWhenResumeAnalysisConsentIsMissing() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        ApplicationCaseMapper usageMapper = mock(ApplicationCaseMapper.class);
+        ConsentService consentService = mock(ConsentService.class);
+        ProfileAiService aiService = mock(ProfileAiService.class);
+        when(consentService.hasCurrentConsent(7L, "AI_DATA")).thenReturn(true);
+        when(consentService.hasCurrentConsent(7L, "RESUME_ANALYSIS")).thenReturn(false);
+        ProfileServiceImpl service = newService(profileMapper, usageMapper, consentService, aiService);
+
+        assertThatThrownBy(() -> service.summarize(USER))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이력서 분석 개인정보");
+        verify(aiService, never()).evaluate(any(), any());
     }
 
     private ProfileAiResult result(String status) {

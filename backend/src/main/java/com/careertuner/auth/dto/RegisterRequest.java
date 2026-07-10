@@ -14,5 +14,6 @@ public record RegisterRequest(
         Boolean termsAgreed,
         Boolean privacyAgreed,
         Boolean aiDataAgreed,
+        Boolean resumeAnalysisAgreed,
         Boolean marketingAgreed) {
 }

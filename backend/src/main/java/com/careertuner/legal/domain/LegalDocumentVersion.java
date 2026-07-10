@@ -18,7 +18,7 @@ import lombok.NoArgsConstructor;
 public class LegalDocumentVersion {
 
     private Long id;
-    private String docType;        // TERMS | PRIVACY | MARKETING
+    private String docType;        // LegalDocType enum name
     private String versionLabel;   // 표시용 버전 (예: v2.4)
     private String status;         // DRAFT | PUBLISHED
     private String summary;        // 개정 요약 (AI 자동생성 가능)

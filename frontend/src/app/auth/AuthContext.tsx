@@ -39,6 +39,7 @@ export interface RegisterConsents {
   termsAgreed: boolean;
   privacyAgreed: boolean;
   aiDataAgreed?: boolean;
+  resumeAnalysisAgreed?: boolean;
   marketingAgreed?: boolean;
 }
 

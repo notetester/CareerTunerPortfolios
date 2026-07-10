@@ -23,11 +23,14 @@ import com.careertuner.analysis.dto.LearningPlanTaskUpdateRequest;
 import com.careertuner.analysis.service.CareerPlanService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/analysis/plan")
 @RequiredArgsConstructor
+@RequiresConsent(ConsentType.AI_DATA)
 public class CareerPlanController {
 
     private final CareerPlanService service;

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
-import { saveMyConsents } from "@/app/auth/consentApi";
+import { useConsent } from "@/app/auth/ConsentContext";
 import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
 import { Sparkles, FileText, MessageSquare, Mic, Video, UserRound, X, Bell, Check, ChevronRight, type LucideIcon } from "lucide-react";
 import "./onboarding.css";
@@ -10,8 +10,7 @@ import "./onboarding.css";
  * 앱 온보딩 퍼널 (마누스 레퍼런스): 로그인(약관 동의) → 구독 제안(무료 스킵) → 알림 권한 → 검색창 메인(/home).
  * 네이티브 앱 + 미완료일 때만 Root 에서 진입한다. mock 모드(VITE_USE_MOCK)에서도 전부 동작한다.
  * docs/AI_ORCHESTRATOR.md 11.5 참조. 포트폴리오/시연용이라 결제는 토스 외부결제 그대로(스토어 정책 무관).
- * 약관 동의: 스토어 심사 대응 — 필수 3종(이용약관·개인정보·AI 데이터)이 체크돼야 로그인 가능,
- * 로그인 성공 직후 saveMyConsents 로 서버 기록(실패해도 흐름 진행).
+ * 약관 동의: 이용약관·개인정보는 필수, AI·이력서 분석·마케팅은 선택으로 분리해 서버 이력에 기록한다.
  */
 
 const KEY = "careertuner.onboarding";
@@ -68,18 +67,20 @@ const PROVIDERS = [
   { id: "naver", label: "네이버", icon: NaverIcon, cls: "n" },
 ] as const;
 
-/** 약관 동의 항목 — 필수 3종은 체크돼야 로그인 버튼이 활성화된다. 마케팅(선택)은 링크 없음. */
-type ConsentKey = "terms" | "privacy" | "aiData" | "marketing";
+/** 약관 동의 항목 — 서비스 필수와 기능별 선택 동의를 분리한다. */
+type ConsentKey = "terms" | "privacy" | "aiData" | "resumeAnalysis" | "marketing";
 const CONSENT_ITEMS: { id: ConsentKey; label: string; required: boolean; href?: string }[] = [
   { id: "terms", label: "이용약관 동의", required: true, href: "/legal/terms" },
   { id: "privacy", label: "개인정보처리방침 동의", required: true, href: "/legal/privacy" },
-  { id: "aiData", label: "AI 데이터 이용 동의", required: true, href: "/legal/ai-data-consent" },
-  { id: "marketing", label: "마케팅 정보 수신 동의", required: false },
+  { id: "aiData", label: "AI 데이터 이용 동의", required: false, href: "/legal/ai-data-consent" },
+  { id: "resumeAnalysis", label: "이력서 분석 개인정보 동의", required: false, href: "/legal/resume-analysis-consent" },
+  { id: "marketing", label: "마케팅 정보 수신 동의", required: false, href: "/legal/marketing" },
 ];
 
 export function OnboardingFlow() {
   const nav = useNavigate();
   const { login } = useAuth();
+  const { save: saveConsents } = useConsent();
   // ?ob 미리보기·앱 첫 실행 모두 로그인 화면부터 보여준다(이미 로그인돼 있어도 온보딩은 처음부터).
   const [step, setStep] = useState<Step>("login");
   const [email, setEmail] = useState("");
@@ -91,13 +92,14 @@ export function OnboardingFlow() {
     terms: false,
     privacy: false,
     aiData: false,
+    resumeAnalysis: false,
     marketing: false,
   });
 
-  const requiredOk = consents.terms && consents.privacy && consents.aiData;
-  const allOk = requiredOk && consents.marketing;
+  const requiredOk = consents.terms && consents.privacy;
+  const allOk = Object.values(consents).every(Boolean);
   const toggleConsent = (k: ConsentKey) => setConsents((c) => ({ ...c, [k]: !c[k] }));
-  const toggleAll = () => setConsents({ terms: !allOk, privacy: !allOk, aiData: !allOk, marketing: !allOk });
+  const toggleAll = () => setConsents({ terms: !allOk, privacy: !allOk, aiData: !allOk, resumeAnalysis: !allOk, marketing: !allOk });
 
   const finish = () => {
     markOnboarded();
@@ -114,10 +116,11 @@ export function OnboardingFlow() {
       if (!PREVIEW) {
         await login(email.trim() || "demo@careertuner.dev", pw || "demo1234");
         // 로그인 성공 직후 동의 서버 기록 — 실패해도 온보딩 흐름은 막지 않는다(스토어 심사 대응).
-        saveMyConsents({
+        saveConsents({
           termsAgreed: consents.terms,
           privacyAgreed: consents.privacy,
           aiDataAgreed: consents.aiData,
+          resumeAnalysisAgreed: consents.resumeAnalysis,
           marketingAgreed: consents.marketing,
         }).catch(() => {
           /* 동의 저장 실패는 무시 — 흐름 우선 */

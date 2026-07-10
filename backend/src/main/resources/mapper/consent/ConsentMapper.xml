@@ -22,8 +22,8 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO user_consent (user_id, consent_type, agreed, agreed_at, revoked_at, source)
-        VALUES (#{userId}, #{consentType}, #{agreed}, #{agreedAt}, #{revokedAt}, #{source})
+        INSERT INTO user_consent (user_id, consent_type, consent_version, agreed, agreed_at, revoked_at, source)
+        VALUES (#{userId}, #{consentType}, #{consentVersion}, #{agreed}, #{agreedAt}, #{revokedAt}, #{source})
     </insert>
 
     <select id="findAdminConsents" resultType="com.careertuner.consent.dto.ConsentView">

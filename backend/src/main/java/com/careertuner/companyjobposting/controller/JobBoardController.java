@@ -14,6 +14,8 @@ import com.careertuner.companyjobposting.dto.CompanyJobPostingResponse;
 import com.careertuner.companyjobposting.dto.JobBoardAnalyzeResponse;
 import com.careertuner.companyjobposting.dto.JobPostingPageResponse;
 import com.careertuner.companyjobposting.service.CompanyJobPostingService;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 
 import lombok.RequiredArgsConstructor;
 
@@ -50,6 +52,7 @@ public class JobBoardController {
 
     /** "이 공고로 분석하기" — 공고 본문 텍스트로 지원 건을 만들고 caseId 를 반환한다. */
     @PostMapping("/{id}/analyze")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<JobBoardAnalyzeResponse> analyze(@AuthenticationPrincipal AuthUser authUser,
                                                         @PathVariable Long id) {
         return ApiResponse.ok(jobPostingService.analyze(authUser.id(), id));

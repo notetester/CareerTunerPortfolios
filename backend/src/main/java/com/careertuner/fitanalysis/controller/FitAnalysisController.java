@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.fitanalysis.dto.CareerCertificateStrategyResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisHistoryEntryResponse;
@@ -26,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/fit-analyses")
 @RequiredArgsConstructor
+@RequiresConsent(ConsentType.AI_DATA)
 public class FitAnalysisController {
 
     private final FitAnalysisService fitAnalysisService;
