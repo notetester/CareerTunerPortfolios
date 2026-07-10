@@ -14,9 +14,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * 국가자격 종목 목록 provider — 공공데이터 15003024 {@code InquiryListNationalQualifcationSVC/getList}
- * (요청변수 serviceKey; 국가 시행종목 전체 목록 반환). 자격명이 국가자격인지 판별하고 canonical key(jmCd)·기술/전문
- * 구분·직무분야를 얻는다. <b>일정 조회가 아니라 catalog/정규화/라우팅 용도</b>다.
+ * 국가자격 종목 목록 provider — 자격명이 국가자격인지 판별하고 기술/전문 구분·직무분야를 얻는다.
+ * <b>일정 조회가 아니라 catalog/정규화/라우팅 용도</b>다.
+ *
+ * <p>조회는 {@link NationalQualificationOfflineCatalog 오프라인 스냅샷} 우선(네트워크 불요, Q-Net 장애 무관),
+ * 스냅샷 미로드 시에만 공공데이터 15003024 {@code InquiryListNationalQualifcationSVC/getList}
+ * (요청변수 serviceKey; 국가 시행종목 전체 목록 반환) 네트워크 경로를 쓴다.
  *
  * <p>getList 는 numOfRows/pageNo 페이지네이션이 있어 기본값이 작으면 대부분 종목을 놓치므로 큰 numOfRows 로 전체를
  * 한 번에 받는다. 그래도 totalCount 가 수신량보다 크면(잘림) 무매칭을 부재로 단정하지 않고 UPSTREAM_UNAVAILABLE 로 낸다.
@@ -37,32 +40,50 @@ public class NationalQualificationCatalogProvider {
     private final String qnetBaseUrl;
     private final Duration timeout;
     private final HttpClient httpClient;
+    private final NationalQualificationOfflineCatalog offlineCatalog;
 
     @Autowired
     public NationalQualificationCatalogProvider(
             @Value("${careertuner.certificate.data-go-kr.service-key:}") String serviceKey,
             @Value("${careertuner.certificate.data-go-kr.qnet-base-url:http://openapi.q-net.or.kr/api/service/rest}")
             String qnetBaseUrl,
-            @Value("${careertuner.certificate.data-go-kr.timeout-seconds:15}") long timeoutSeconds) {
+            @Value("${careertuner.certificate.data-go-kr.timeout-seconds:15}") long timeoutSeconds,
+            NationalQualificationOfflineCatalog offlineCatalog) {
         this(serviceKey, qnetBaseUrl, Duration.ofSeconds(timeoutSeconds <= 0 ? 15 : timeoutSeconds),
-                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(), offlineCatalog);
     }
 
-    /** 테스트/구성용 생성자. */
-    NationalQualificationCatalogProvider(String serviceKey, String qnetBaseUrl, Duration timeout, HttpClient httpClient) {
+    /** 테스트/구성용 생성자. offlineCatalog 는 null 허용(네트워크 경로 단독 테스트). */
+    NationalQualificationCatalogProvider(String serviceKey, String qnetBaseUrl, Duration timeout,
+                                         HttpClient httpClient, NationalQualificationOfflineCatalog offlineCatalog) {
         this.serviceKey = serviceKey;
         this.qnetBaseUrl = qnetBaseUrl;
         this.timeout = timeout;
         this.httpClient = httpClient;
+        this.offlineCatalog = offlineCatalog;
     }
 
     public boolean enabled() {
         return serviceKey != null && !serviceKey.isBlank();
     }
 
-    /** 자격명으로 국가자격 목록을 조회한다. 실패 시 예외 없이 degrade. */
+    /**
+     * 자격명으로 국가자격 목록을 조회한다. <b>오프라인 스냅샷 우선</b> — 목록은 연 단위 스냅샷 성격이라(API 도
+     * 동일 시점 데이터 반환) 스냅샷이 로드돼 있으면 네트워크 없이 즉시 판별하고, Q-Net 장애의 영향을 받지 않는다.
+     * 스냅샷 미로드 시에만 기존 네트워크 경로로 동작한다. 실패 시 예외 없이 degrade.
+     *
+     * <p>단 서비스 레벨 근거 수집({@code CertificateEvidenceService.anyEnabled()})은 여전히 serviceKey 존재로
+     * 게이트된다 — 키 없는 배포(mock 데모 등)에서 스냅샷만으로 근거 카드가 켜지는 동작 변화를 만들지 않기 위한
+     * 의도적 보존이다. 스냅샷의 효용은 '키 있음 + Q-Net 장애' 시나리오에서 라우팅이 살아있는 것.
+     */
     public NationalQualificationCatalogEvidence lookup(String certName) {
-        if (!enabled() || certName == null || certName.isBlank()) {
+        if (certName == null || certName.isBlank()) {
+            return degraded(NationalQualificationCatalogStatus.UPSTREAM_UNAVAILABLE, certName);
+        }
+        if (offlineCatalog != null && offlineCatalog.available()) {
+            return offlineCatalog.lookup(certName);
+        }
+        if (!enabled()) {
             return degraded(NationalQualificationCatalogStatus.UPSTREAM_UNAVAILABLE, certName);
         }
         try {
