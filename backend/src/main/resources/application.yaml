@@ -130,6 +130,9 @@ careertuner:
     # skills 는 KNOWN_SKILLS 스캔(LLM 아님). 끄기: PROFILE_RESUME_STRUCTURER_ENABLED=false
     resume-structurer:
       enabled: ${PROFILE_RESUME_STRUCTURER_ENABLED:true}
+      # 로컬 Ollama 전멸 시 챗봇과 같은 호스티드 폴백(Claude→OpenAI, 키 없으면 스킵).
+      # ⚠️이력서 원문(개인정보)이 외부 API 로 전송되는 경로 — 필요 시 false 로 차단.
+      hosted-fallback: ${PROFILE_RESUME_HOSTED_FALLBACK_ENABLED:true}
       base-url: ${PROFILE_RESUME_OLLAMA_BASE_URL:${AI_OLLAMA_BASE_URL:http://localhost:11434}}
       model: ${PROFILE_RESUME_OLLAMA_MODEL:${AI_AGENT_MODEL:qwen3:8b}}
       num-ctx: ${PROFILE_RESUME_OLLAMA_NUM_CTX:8192}

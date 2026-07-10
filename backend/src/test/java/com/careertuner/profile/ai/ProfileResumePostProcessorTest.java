@@ -88,6 +88,10 @@ class ProfileResumePostProcessorTest {
     void structurerDeterministicPath() {
         ProfileResumeStructurer structurer = new ProfileResumeStructurer(
                 new tools.jackson.databind.ObjectMapper(),
+                null,
+                null,
+                null,
+                false,
                 false,
                 "http://localhost:11434",
                 "qwen3:8b",
@@ -115,6 +119,10 @@ class ProfileResumePostProcessorTest {
     void jsonSchemaBuildsWithoutNullPointer() {
         ProfileResumeStructurer structurer = new ProfileResumeStructurer(
                 new tools.jackson.databind.ObjectMapper(),
+                null,
+                null,
+                null,
+                false,
                 false,
                 "http://localhost:11434",
                 "qwen3:8b",

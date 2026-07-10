@@ -437,9 +437,15 @@ export function ProfilePage() {
     try {
       const uploaded = await uploadProfileFile(file, "RESUME");
       const imported = await importProfileDocument(uploaded.id, target);
-      const nextForm = toForm(imported.profile);
-      setForm(nextForm);
-      setSavedSnapshot(serializeProfileForm(nextForm));
+      // 서버는 대상 필드만 갱신했으므로 폼도 대상 필드만 교체 — 다른 탭의 미저장 편집을 지우지 않는다.
+      // 스냅샷은 서버 저장 상태 기준으로 갱신해, 남은 편집이 계속 '저장 안 됨'으로 표시되게 한다.
+      const serverForm = toForm(imported.profile);
+      setSavedSnapshot(serializeProfileForm(serverForm));
+      setForm((prev) =>
+        target === "RESUME_TEXT"
+          ? { ...prev, resumeText: serverForm.resumeText }
+          : { ...prev, selfIntro: serverForm.selfIntro },
+      );
       const dumpMsg = imported.truncated
         ? "일부만 저장했습니다. 긴 문서는 앞부분만 반영됩니다."
         : target === "RESUME_TEXT"
@@ -459,27 +465,11 @@ export function ProfilePage() {
           setAnalyzeDraft(finished.draft);
           setAnalyzeStatus("done");
           if (draftHasStructuredFields(finished.draft)) {
-            // 폼에 바로 채움(저장 전 미리보기). DB 는 저장 버튼으로.
-            mergeDraftIntoForm(finished.draft, {
-              education: true,
-              career: true,
-              projects: true,
-              skills: true,
-              portfolioLinks: true,
-            });
+            // 자동 반영하지 않는다 — 확인 카드에서 항목을 골라 적용(온보딩 경로와 동일한 승인 방식).
+            // LLM 오추출이 기존 학력·경력을 승인 없이 덮어쓰는 사고 방지.
             setMessage(
-              "원문 저장 + 학력·경력·스킬을 폼에 채웠어요. 경력/스킬 탭을 확인한 뒤 저장을 눌러 주세요.",
+              "원문을 저장하고 학력·경력·스킬을 추출했어요. 카드에서 적용할 항목을 골라 주세요.",
             );
-            // 구조 필드가 있으면 경험 탭으로 안내
-            if (
-              (Array.isArray(finished.draft.education) && finished.draft.education.length) ||
-              (Array.isArray(finished.draft.career) && finished.draft.career.length) ||
-              (Array.isArray(finished.draft.projects) && finished.draft.projects.length)
-            ) {
-              changeProfileTab("experience");
-            } else if (Array.isArray(finished.draft.skills) && finished.draft.skills.length) {
-              changeProfileTab("skills");
-            }
           } else {
             setMessage(`${dumpMsg} 구조 항목은 비어 있어요. 원문만 반영됐습니다.`);
           }
@@ -504,7 +494,7 @@ export function ProfilePage() {
     }
   };
 
-  /** 확인 카드에서 다시 적용(자동 반영 후 수정했을 때). DB 미커밋. */
+  /** 확인 카드에서 선택 항목만 폼에 반영. DB 는 저장 버튼으로 확정. */
   const applyAnalyzeDraft = (opts: {
     education: boolean;
     career: boolean;
@@ -1380,7 +1370,7 @@ function AnalyzeConfirmCard({
         {status === "done" && hasAny && (
           <>
             <p className="text-slate-600">
-              폼에 미리 채워 두었습니다. 다시 적용할 항목만 고르세요. <b>저장</b>을 눌러야 DB에 확정됩니다.
+              적용할 항목만 고르세요. 적용 후 <b>저장</b>을 눌러야 DB에 확정됩니다.
             </p>
             <div className="flex flex-col gap-2">
               {eduCount > 0 && (
