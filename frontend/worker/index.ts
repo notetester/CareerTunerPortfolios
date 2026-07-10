@@ -226,7 +226,9 @@ const worker = {
     const acceptsHtml = request.headers.get("accept")?.includes("text/html") ?? false;
 
     if (assetResponse.status === 404 && request.method === "GET" && acceptsHtml) {
-      const indexUrl = new URL("/index.html", request.url);
+      // Assets는 /index.html을 /로 307 정규화한다. 그 응답을 그대로 돌려주면 브라우저의
+      // /login 같은 SPA 딥링크가 /로 바뀌므로, 루트 문서를 내부에서 직접 가져온다.
+      const indexUrl = new URL("/", request.url);
       return env.ASSETS.fetch(new Request(indexUrl, request));
     }
 
