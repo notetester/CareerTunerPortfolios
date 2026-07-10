@@ -298,6 +298,36 @@ class ApplicationCaseAutoPipelineServiceTest {
     }
 
     @Test
+    void truncatesPipelineFailureReasonToInitialRunColumnLength() {
+        // failure_reason 컬럼은 VARCHAR(255) — markFailed 에 넘기는 실패 사유가 255자를 넘으면 Data truncation 으로
+        // markFailed 자체가 throw 되어 프로필이 FAILED 로 못 닫히고 RUNNING 에 고착된다(예: fit 스키마 갭의 긴 SQL 에러).
+        // 따라서 실패 사유는 반드시 255자 이하로 잘라 넘겨야 한다.
+        stubRunnableDraftCase();
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        doThrow(new RuntimeException("x".repeat(2000)))
+                .when(companyAnalysisService).collectWebEvidence(any(ApplicationCase.class));
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).markFailed(eq(10L), anyString(), reason.capture());
+        assertThat(reason.getValue().length()).isLessThanOrEqualTo(255);
+    }
+
+    @Test
+    void abandonTruncatesFailureReasonToInitialRunColumnLength() {
+        // abandonInitialRunIfPending 도 동일 컬럼에 쓰므로 255자 이하로 잘라야 한다(markFailed truncation 고착 방지).
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+
+        service.abandonInitialRunIfPending(10L, "y".repeat(2000));
+
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).markFailed(eq(10L), anyString(), reason.capture());
+        assertThat(reason.getValue().length()).isLessThanOrEqualTo(255);
+    }
+
+    @Test
     void runsWithoutProfileForLegacyCasesGatedOnlyByAnalyzingCas() {
         stubRunnableDraftCase();
         stubAnalysisInsertCallbacks();

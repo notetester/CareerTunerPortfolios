@@ -62,6 +62,9 @@ public class ApplicationCaseAutoPipelineService {
     private static final String MODEL = "self-rules-v1";
     // 초기 자동 파이프라인이 채우는 run_mode(수동 strict 재분석은 MANUAL). preferred 경로에서만 provenance 기록.
     private static final String RUN_MODE_INITIAL = "INITIAL";
+    // application_case_initial_run.failure_reason 컬럼 길이(VARCHAR 255)와 맞춘다. 초과 시 markFailed 가
+    // Data truncation 으로 throw 되면 프로필이 FAILED 로 못 닫혀 RUNNING 에 고착되므로 반드시 컬럼 길이 이하로 자른다.
+    private static final int FAILURE_REASON_MAX_LENGTH = 255;
     private static final String FEATURE_PIPELINE = "APPLICATION_CASE_PIPELINE";
     private static final String FEATURE_JOB_ANALYSIS = "JOB_ANALYSIS";
     private static final String FEATURE_COMPANY_RESEARCH = "COMPANY_RESEARCH";
@@ -195,7 +198,7 @@ public class ApplicationCaseAutoPipelineService {
     public void abandonInitialRunIfPending(Long applicationCaseId, String reason) {
         String executionToken = UUID.randomUUID().toString();
         if (initialRunMapper.claimForRun(applicationCaseId, executionToken) == 1) {
-            initialRunMapper.markFailed(applicationCaseId, executionToken, truncate(reason, 1000));
+            initialRunMapper.markFailed(applicationCaseId, executionToken, truncate(reason, FAILURE_REASON_MAX_LENGTH));
         }
     }
 
@@ -209,7 +212,7 @@ public class ApplicationCaseAutoPipelineService {
     /** 프로필을 claim 한 실행만(executionToken != null) 자신의 토큰으로 FAILED 처리한다(fencing). */
     private void markInitialRunFailed(Long applicationCaseId, String executionToken, String reason) {
         if (executionToken != null) {
-            initialRunMapper.markFailed(applicationCaseId, executionToken, truncate(reason, 1000));
+            initialRunMapper.markFailed(applicationCaseId, executionToken, truncate(reason, FAILURE_REASON_MAX_LENGTH));
         }
     }
 
