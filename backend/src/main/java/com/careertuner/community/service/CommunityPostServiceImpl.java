@@ -118,6 +118,25 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     }
 
     /**
+     * id 목록 조회(챗봇 추천 모아보기). SQL 이 입력 순서(FIELD)와 status·뷰어 차단 조건을 처리하고,
+     * 목록과 동일하게 자바 2차 차단 필터 + 표시명 벌크 해석을 얹는다. 상한 20건(URL 조작 방어).
+     */
+    @Override
+    public PostPageResponse getPostsByIds(List<Long> ids, Long viewerId) {
+        List<Long> distinct = ids == null ? List.of()
+                : ids.stream().filter(java.util.Objects::nonNull).distinct().limit(20).toList();
+        if (distinct.isEmpty()) {
+            return new PostPageResponse(List.of(), 0, 0, 0);
+        }
+        List<CommunityPost> posts = filterBlockedAuthors(
+                postMapper.findByIds(distinct, PostStatus.PUBLISHED.name(), viewerId), viewerId);
+        Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
+        List<PostListResponse> items = posts.stream()
+                .map(post -> toListResponse(post, resolved, viewerId)).toList();
+        return new PostPageResponse(items, items.size(), 0, items.size());
+    }
+
+    /**
      * 개인화 7:3 혼합 피드. PersonalizedFeedService 가 만든 블렌디드 순서를 그대로 유지한 채
      * (재정렬하지 않음) 차단 작성자 필터 → 표시명 벌크 해석만 얹어 응답한다.
      * 카테고리 필터는 서비스 계층 정규화(null/blank → null)를 따른다.
