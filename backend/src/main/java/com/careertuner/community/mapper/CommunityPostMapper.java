@@ -21,6 +21,11 @@ public interface CommunityPostMapper {
                                 @Param("limit") int limit,
                                 @Param("viewerId") Long viewerId);
 
+    /** id 목록 조회(챗봇 추천 모아보기). status·뷰어 차단 조건은 findAll 과 동일, 입력 id 순서 보존. */
+    List<CommunityPost> findByIds(@Param("ids") List<Long> ids,
+                                  @Param("status") String status,
+                                  @Param("viewerId") Long viewerId);
+
     /**
      * 개인화 피드 후보 — 뷰어의 희망 직무/스킬 토큰(제목·태그·회사·직무 부분일치)이나
      * 최근 반응 카테고리에 매칭되는 PUBLISHED 글을 최신순으로 넉넉히 뽑는다.

@@ -101,12 +101,30 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Initialize MySQL test database
+        env:
+          MYSQL_PWD: root
+        run: |
+          sudo systemctl start mysql.service
+          mysqladmin --user=root ping --silent
+          mysql --user=root --execute="DROP DATABASE IF EXISTS team1_db; CREATE DATABASE team1_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+          mysql --user=root --default-character-set=utf8mb4 team1_db < src/main/resources/db/schema.sql
+          mysql --user=root --default-character-set=utf8mb4 team1_db < src/main/resources/db/data.sql
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
       - name: Test
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_NAME: team1_db
+          DB_USERNAME: root
+          DB_PASSWORD: root
         run: ./gradlew test
 
   worker-test:

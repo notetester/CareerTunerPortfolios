@@ -5,7 +5,7 @@ import {
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
   ArrowUpRight, Shield, SearchX, Headset, PenLine, WifiOff,
   RotateCw, Check, Keyboard, ArrowRight, Play, LogOut, History, Plus,
-  Minimize2, Maximize2, Loader2,
+  Minimize2, Maximize2, Loader2, SquarePen,
 } from "lucide-react";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { useChatbot } from "../hooks/useChatbot";
@@ -183,7 +183,6 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [showSessions, setShowSessions] = useState(false);
-  const [showGuide, setShowGuide] = useState(false);
   // ③→가이드 매핑: 인테이크 CASE 되묻기를 텍스트 대신 가이드 스텝 UI 로. msgId = 어느 되묻기 턴에 붙은 가이드인지.
   const [intakeGuide, setIntakeGuide] = useState<{ msgId: string; steps: GuideStep[] } | null>(null);
   // 닫은(=텍스트 폴백 선택) 되묻기 턴은 다시 자동 오픈하지 않는다.
@@ -194,6 +193,18 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleOpenSessions = () => { loadSessions(); setShowSessions(true); };
+
+  // 새 대화/세션 전환 시 위젯 로컬 오버레이 상태 일괄 정리 — intakeGuide 는 지난 대화의 msgId 를
+  // 참조하므로 남기면 빈 채팅 위에 죽은 가이드가 뜬다. ④ dismissed/asking 래치도 새 대화 기준으로 리셋
+  // (안 하면 이전 대화에서 가이드를 닫았던 유저의 새 온보딩이 자동 오픈되지 않는다).
+  const resetGuideOverlays = () => {
+    setIntakeGuide(null);
+    intakeAskingRef.current = false;
+    onbDismissedRef.current = false;
+    onbAskingRef.current = false;
+    setOnbGuideOpen(false);
+    setOnbNotice(null);
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -423,6 +434,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         isVoiceListening={voiceState === "listening"}
         floating={floating}
         canExpand={orchestrator}
+        onNewChat={() => { resetGuideOverlays(); newSession(); }}
         onSessions={handleOpenSessions}
         onCollapse={collapseToCorner}
         onExpand={expandToFloating}
@@ -457,13 +469,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
               ...(floating ? { width: "100%", paddingInline: 24 } : {}),
             }}>
             {messages.length === 0 && botStatus === "idle" ? (
-              <EmptyState onSelect={sendMessage}
-                onStartGuide={() => {
-                  // 비로그인은 가이드 끝 공고 스텝에서 지원 건 생성(로그인 필요)에 막힌다 →
-                  // 직무입력창을 띄우지 않고 로그인 화면으로 바로 보낸다(챗봇은 닫는다).
-                  if (!getAccessToken()) { close(); navigate("/login"); return; }
-                  setShowGuide(true); expandToFloating();
-                }} />
+              // FAQ 추천 칩은 faqChip 신호를 실어 깡통 온보딩 게이트를 그 턴만 우회한다(칩=결정적 FAQ 의도).
+              <EmptyState onSelect={(text) => sendMessage(text, { faqChip: true })} />
             ) : (
               <>
                 {/* stage(오케 실행)에선 말풍선을 좁은 중앙 컬럼으로 — 넓은 무대에서 늘어지지 않게. */}
@@ -491,7 +498,13 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                       {m.interviewReport && (
                         <InterviewResultCard
                           data={m.interviewReport}
-                          onContinueCorrection={() => sendMessage("이 면접 결과로 자소서 첨삭 이어서 해줘")}
+                          onContinueCorrection={() => {
+                            // caseId 가 있으면 E 첨삭 페이지로 결정적 딥링크(자소서 탭+지원건 프리셀렉트).
+                            // 없을 때만 기존 자연어 재진입 폴백(LLM 재해석 의존).
+                            const cid = m.interviewReport?.caseId;
+                            if (cid != null) navigateFromWork(`/correction?tab=cover&caseId=${cid}`);
+                            else sendMessage("이 면접 결과로 자소서 첨삭 이어서 해줘");
+                          }}
                           onOpenCase={(cid) => navigateFromWork(`/applications/${cid}`)}
                         />
                       )}
@@ -556,8 +569,10 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         <SessionPanel
           sessions={sessions}
           activeSessionId={activeSessionId}
-          onOpen={(id) => { openSession(id); setShowSessions(false); }}
-          onNew={() => { newSession(); setShowSessions(false); }}
+          loggedIn={!!getAccessToken()}
+          onOpen={(id) => { resetGuideOverlays(); openSession(id); setShowSessions(false); }}
+          onNew={() => { resetGuideOverlays(); newSession(); setShowSessions(false); }}
+          onLogin={() => { setShowSessions(false); close(); navigate("/login"); }}
           onClose={() => setShowSessions(false)}
         />
       )}
@@ -609,23 +624,8 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         />
       )}
 
-      {/* ── 온보딩 가이드(대화로 준비 시작 → 서류·공고 첨부 → 실제 오케 SSE(WorkView) → 면접 권유) ── */}
-      {showGuide && (
-        <OnboardingGuide
-          wide={floating}
-          onCollapse={collapseToCorner}
-          onExpand={expandToFloating}
-          onClose={() => { setShowGuide(false); collapseToCorner(); }}
-          onGotoInterview={(caseId) => {
-            // 가이드에서 수집한 caseId 를 실어 D 면접 페이지로 인계(표식 남기고 복귀 시 결과 재조회).
-            // ⚠️ D 확인 대상: InterviewPage 가 ?caseId 를 읽어 지원 건을 자동 선택해야 완결(현재 미소비).
-            setShowGuide(false);
-            collapseToCorner();
-            goInterview(caseId);
-          }}
-          onNavigate={navigateFromWork}
-        />
-      )}
+      {/* 수동 진입 온보딩 가이드(EmptyState 버튼)는 제거 — 채팅 온보딩(③인테이크·④깡통 매핑,
+          위 두 인스턴스)이 같은 가이드 UI 를 자동으로 열어주므로 병렬 경로를 하나로 유지한다. */}
     </div>
     </>
   );
@@ -844,7 +844,8 @@ function SessionRow({ session, active, onClick }: {
   // 세션 제목은 백엔드가 "{회사} {직무}"로 조합 — placeholder 원문이 섞여 있으면 표시만 치환(F-02).
   const title = displayCaseText(session.title);
   const initial = title.trim().charAt(0) || "?";
-  const badge = session.mode ? MODE_BADGE[session.mode] : null;
+  // 인테이크는 모드 배지, 일반 상담은 구분 배지 — 목록에 섞여도 어떤 대화인지 한눈에 갈리게.
+  const badge = session.mode ? MODE_BADGE[session.mode] : session.kind === "GENERAL" ? "일반 상담" : null;
   const when = relativeTime(session.updatedAt);
   // 호버 배경/보더가 토큰·rgba라 Tailwind hover 유틸로 못 빼고, active 행은 호버를 막아야 해
   // JS 핸들러로 처리. 기본/호버 값을 한 곳에서 관리(테마 토큰 재사용).
@@ -881,11 +882,13 @@ function SessionRow({ session, active, onClick }: {
 }
 
 /** 세션 사이드바(오버레이): 인테이크 세션 목록 + 전환 + 새 세션. */
-function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
+function SessionPanel({ sessions, activeSessionId, loggedIn, onOpen, onNew, onLogin, onClose }: {
   sessions: ChatSession[];
   activeSessionId: string;
+  loggedIn: boolean;
   onOpen: (id: string) => void;
   onNew: () => void;
+  onLogin: () => void;
   onClose: () => void;
 }) {
   return (
@@ -895,7 +898,7 @@ function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
         style={{ boxShadow: "0 20px 50px rgba(20,16,40,0.4)" }}
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div className="text-[13.5px] font-extrabold">면접 준비 세션</div>
+          <div className="text-[13.5px] font-extrabold">대화 목록</div>
           <button onClick={onClose} aria-label="닫기"
             className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-accent transition-colors">
             <X size={15} />
@@ -906,14 +909,23 @@ function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
             className="flex items-center justify-center gap-1.5 w-full h-[40px] rounded-lg text-white text-[13px] font-bold hover:opacity-90 transition-opacity"
             style={{ background: "var(--gradient-orchestrator)" }}>
             <Plus size={15} />
-            새 면접 준비
+            새 대화
           </button>
         </div>
         <div className="px-3 pb-3 overflow-y-auto flex flex-col gap-1.5">
-          {sessions.length === 0 ? (
+          {!loggedIn ? (
+            // 비로그인: 익명 대화는 서버에 소유자가 없어 저장·복원이 불가 — 정직하게 안내하고 로그인 유도.
+            <div className="text-[12px] leading-[1.6] text-muted-foreground text-center py-5">
+              로그인하면 대화가 저장되고,<br />지난 대화를 여기서 다시 불러올 수 있어요.
+              <button onClick={onLogin}
+                className="block mx-auto mt-3 px-4 h-[32px] rounded-lg text-white text-[12px] font-bold hover:opacity-90 transition-opacity"
+                style={{ background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}>
+                로그인
+              </button>
+            </div>
+          ) : sessions.length === 0 ? (
             <div className="text-[12px] leading-[1.6] text-muted-foreground text-center py-6">
-              {/* 이 목록은 지난 "대화(세션)" 이력이다 — 지원 건 존재 여부와 다르므로 문구를 구분한다. */}
-              아직 진행한 준비 세션이 없어요.<br />“카카오 백엔드 면접 준비해줘”처럼 시작하면 여기에 세션이 쌓여요.
+              아직 대화 내역이 없어요.<br />궁금한 걸 묻거나 “면접 준비해줘”라고 시작하면 여기에 쌓여요.
             </div>
           ) : (
             sessions.map((s) => (
@@ -929,10 +941,10 @@ function SessionPanel({ sessions, activeSessionId, onOpen, onNew, onClose }: {
 
 /* ════════════════ Sub-components ════════════════ */
 
-function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, floating, canExpand, onSessions, onCollapse, onExpand, onClose }: {
+function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, floating, canExpand, onNewChat, onSessions, onCollapse, onExpand, onClose }: {
   orchestrator?: boolean; isDisconnected: boolean; isVoiceListening: boolean;
   floating?: boolean; canExpand?: boolean;
-  onSessions: () => void; onCollapse: () => void; onExpand: () => void; onClose: () => void;
+  onNewChat: () => void; onSessions: () => void; onCollapse: () => void; onExpand: () => void; onClose: () => void;
 }) {
   return (
     <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-border transition-colors"
@@ -964,7 +976,12 @@ function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, floating
         )}
       </div>
       <div className="ml-auto flex gap-1 text-muted-foreground">
-        <button onClick={onSessions} aria-label="면접 준비 세션"
+        {/* 새 대화 — 비로그인 포함 상시 노출(클라이언트 컨텍스트 리셋 → 다음 전송에 서버가 새 id 발급). */}
+        <button onClick={onNewChat} aria-label="새 대화" title="새 대화"
+          className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
+          <SquarePen size={15} />
+        </button>
+        <button onClick={onSessions} aria-label="대화 목록" title="대화 목록"
           className="w-[30px] h-[30px] rounded-lg flex items-center justify-center hover:bg-secondary transition-colors">
           <History size={16} />
         </button>
@@ -992,7 +1009,7 @@ function WidgetHeader({ orchestrator, isDisconnected, isVoiceListening, floating
   );
 }
 
-function EmptyState({ onSelect, onStartGuide }: { onSelect: (text: string) => void; onStartGuide: () => void }) {
+function EmptyState({ onSelect }: { onSelect: (text: string) => void }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex flex-col items-center text-center mt-[18px] mb-5">
@@ -1006,21 +1023,8 @@ function EmptyState({ onSelect, onStartGuide }: { onSelect: (text: string) => vo
         </div>
       </div>
 
-      {/* 온보딩 가이드 진입 — 처음 오거나 준비를 시작하고 싶은 사람용(대화 한 번으로 서류→공고→적합도→면접). */}
-      <button onClick={onStartGuide}
-        className="flex items-center gap-3 w-full px-3.5 py-3 rounded-xl mb-4 text-left transition-transform hover:brightness-[1.03]"
-        style={{ background: "var(--orch-surface)", border: "1px solid var(--orch-point)" }}>
-        <span className="w-9 h-9 rounded-[10px] flex items-center justify-center text-white shrink-0"
-          style={{ background: "var(--gradient-orchestrator)" }}>
-          <Sparkles size={18} />
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="block text-[13px] font-extrabold" style={{ color: "var(--orch-violet)" }}>대화로 준비 시작하기</span>
-          <span className="block text-[11.5px] leading-[1.5] text-muted-foreground">서류·공고만 올리면 적합도부터 면접까지 이끌어드려요</span>
-        </span>
-        <ArrowRight size={16} className="shrink-0" style={{ color: "var(--orch-violet)" }} />
-      </button>
-
+      {/* "대화로 준비 시작하기" 수동 버튼 제거 — 온보딩은 채팅 입력만으로 시작된다
+          (깡통 계정은 아무 메시지나, 기존 계정은 "면접 준비" 류 인테이크 → 가이드 자동 오픈). */}
       <div className="text-[11.5px] font-bold text-muted-foreground mb-2 ml-0.5">자주 묻는 질문</div>
       <div className="flex flex-col gap-2">
         {SUGGESTED_QUESTIONS.map(({ icon, text }) => {
@@ -1228,8 +1232,24 @@ function SiteLinkButtons({ links }: { links: SiteLink[] }) {
     }
   }, [navigate]);
 
+  // 추천 커뮤니티 글이 2개 이상이면 개별 링크 위에 "모아보기" 버튼 — 목록 화면(?ids=)에서 그 글들만 필터.
+  // postId 묶음은 링크 URL(/community/posts/{id})에서 파생(summaryChip 은 최대 3개 캡이라 링크가 전수).
+  const communityIds = links
+    .map((l) => /^\/community\/posts\/(\d+)$/.exec(l.url)?.[1])
+    .filter((id): id is string => id != null);
+
   return (
     <div className="flex flex-col gap-1.5">
+      {communityIds.length >= 2 && (
+        <button
+          onClick={() => navigate(`/community?ids=${communityIds.join(",")}`)}
+          className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg text-white text-[13px] font-bold hover:opacity-90 transition-opacity"
+          style={{ background: "linear-gradient(135deg, #2563eb, #4f46e5)" }}
+        >
+          <ArrowRight size={14} />
+          추천 글 {communityIds.length}개 모아보기
+        </button>
+      )}
       {links.map((link) => (
         <button
           key={link.url}
