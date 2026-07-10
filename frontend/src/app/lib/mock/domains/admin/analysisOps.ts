@@ -1165,6 +1165,11 @@ function buildAppCaseDetail(id: number): AdminApplicationCaseDetail {
     jobAnalyses,
     companyAnalyses,
     usageLogs,
+    // 상태 변경 타임라인(관리자 상태 변경 기록) — 실 응답과 동일 형태의 데모 시드
+    statusHistory: [
+      { id: row.id * 10 + 2, applicationCaseId: row.id, previousStatus: "READY", newStatus: row.status ?? "APPLIED", memo: "서류 접수 확인 후 상태 갱신", changedByName: "한관리", createdAt: new Date(Date.now() - 86_400_000).toISOString() },
+      { id: row.id * 10 + 1, applicationCaseId: row.id, previousStatus: null, newStatus: "READY", memo: null, changedByName: "한관리", createdAt: new Date(Date.now() - 3 * 86_400_000).toISOString() },
+    ],
   };
 }
 

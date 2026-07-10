@@ -35,9 +35,16 @@ export function canPromptInstall(): boolean {
   return deferred !== null && !isStandalone();
 }
 
-/** iOS Safari 처럼 수동 안내가 필요한 환경인지. */
+/** iOS Safari 처럼 수동 안내가 필요한 환경인지.
+ * platformName() 은 네이티브 래퍼가 아닌 브라우저에선 항상 'web' 이라, 웹 iOS Safari 는 UA 로 판별한다
+ * (기존 구현은 절대 참이 될 수 없는 데드 브랜치였음). */
 export function needsManualInstall(): boolean {
-  return platformName() === "ios" && !isStandalone() && deferred === null;
+  if (isStandalone() || deferred !== null) return false;
+  if (platformName() === "ios") return true;
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  const isIosBrowser = /iPhone|iPad|iPod/i.test(ua)
+    || (/Macintosh/i.test(ua) && typeof navigator !== "undefined" && navigator.maxTouchPoints > 1); // iPadOS 데스크톱 UA
+  return isIosBrowser;
 }
 
 export async function promptInstall(): Promise<"accepted" | "dismissed" | "unavailable"> {
