@@ -26,9 +26,11 @@ npm run dev      # http://localhost:5173
 | `npm run dev` | 개발 서버 (HMR) — 로컬 백엔드(:8080) 프록시 |
 | `npm run dev:mock` | **백엔드 없이** mock 데모 모드로 개발 서버 실행 |
 | `npm run dev:tailscale` / `dev:aws` | 환경 모드로 개발 서버 실행 (`.env.<모드>` 로드) |
+| `npm run dev:sites` | Codex Sites Worker와 AWS API 프록시를 포함한 개발 서버 실행 |
 | `npm run build` | 프로덕션 빌드 (`dist/`) — API 는 상대경로 `/api` |
 | `npm run build:mock` | mock 데모 모드 프로덕션 빌드 (웹 데모/APK 용) |
 | `npm run build:tailscale` / `build:aws` / `build:domain` | 환경 모드 빌드 — `VITE_API_BASE_URL` 이 빌드에 박힌다 |
+| `npm run build:sites` | Codex Sites 배포 산출물(`dist/client`, `dist/server`) 생성 |
 | `npm run app:tailscale` | tailscale 모드 빌드 + `cap sync android` (실백엔드 APK 준비) |
 | `npm run preview` | 빌드 결과 미리보기 |
 | `npm run typecheck` | 타입 검사 (`tsc --noEmit`) |
@@ -50,6 +52,21 @@ npm run dev      # http://localhost:5173
 API 베이스는 `src/app/lib/apiBase.ts` 의 `apiBase()` 가 단일 소스다 —
 **런타임 오버라이드(네이티브 앱/dev 전용) → `VITE_API_BASE_URL` → 상대경로 `/api`** 순.
 네이티브 앱은 설정 → 계정 설정 → "서버 주소" 카드에서 재빌드 없이 백엔드 환경을 전환할 수 있다.
+
+### Codex Sites 백업 프런트
+
+`sites` 모드는 AWS 웹 프런트 장애 시 사용할 보조 SPA다. 브라우저는 같은 출처의 `/api`를 호출하고
+`worker/index.ts`가 요청을 고정된 AWS 운영 주소로 전달하므로 별도 CORS 허용 목록을 열지 않는다.
+`/__backup/health`에서 Sites 프런트와 AWS API 연결 상태를 함께 확인할 수 있다.
+
+이 구성은 **프런트엔드 배포 백업**이며 Spring Boot, MySQL, OCR/AI 작업자를 복제하지 않는다.
+AWS API나 DB가 중단되면 데이터 기능도 중단된다. 또한 소셜 로그인과 이메일 인증·비밀번호 재설정 링크는
+현재 백엔드의 단일 `APP_FRONTEND_URL`을 사용하므로 AWS 프런트 주소로 돌아가며, 결제 성공·실패 반환 주소도
+운영 설정에 따라 AWS로 복귀한다. 완전한 장애 전환에는
+별도 백엔드/DB 복제와 요청별로 검증된 콜백 origin을 복원하는 인증 설계가 추가로 필요하다.
+
+Sites 주소는 운영 도메인과 별개이며 자동 DNS 전환을 제공하지 않는다. 기본 배포는 소유자 전용이므로
+팀·사용자에게 비상 링크를 공개할 때는 접근 범위를 별도로 승인하고 변경한다.
 
 ## 구조
 
