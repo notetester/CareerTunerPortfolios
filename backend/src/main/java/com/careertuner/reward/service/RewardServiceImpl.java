@@ -3,7 +3,9 @@ package com.careertuner.reward.service;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.common.exception.BusinessException;
@@ -31,18 +33,19 @@ public class RewardServiceImpl implements RewardService {
     private final CouponService couponService;
 
     @Override
-    @Transactional
+    // 결제/글/댓글/로그인 트랜잭션의 부가 작업이다. 실패 시 savepoint까지만 롤백해 본 작업을 지킨다.
+    @Transactional(propagation = Propagation.NESTED)
     public RewardGrantResult grant(Long userId, String eventCode, String refType, Long refId) {
+        // 규칙/일일 집계의 일관된 스냅샷을 만들기 전에 사용자 행부터 잠근다. 잠금 대기 뒤 시작하는
+        // 첫 일반 조회가 직전 적립 커밋까지 보게 해 동시 DAILY_LOGIN도 일일 캡을 넘지 않게 한다.
+        UserRewardAccount account = rewardMapper.findAccountForUpdate(userId);
+        if (account == null) {
+            return RewardGrantResult.skipped(eventCode, "NO_USER");
+        }
         RewardRule rule = rewardMapper.findEnabledRuleByEvent(eventCode);
         if (rule == null) {
             // 규칙이 없거나 관리자가 off 로 둔 상태 — 미적립(집행 경로 무변경).
             return RewardGrantResult.skipped(eventCode, "NO_RULE");
-        }
-        if (rule.getDailyCap() != null) {
-            int today = rewardMapper.countTodayGrantsByEvent(userId, eventCode);
-            if (today >= rule.getDailyCap()) {
-                return RewardGrantResult.skipped(eventCode, "DAILY_CAP");
-            }
         }
         int point = Math.max(0, rule.getPointAmount());
         int credit = Math.max(0, rule.getCreditAmount());
@@ -50,11 +53,39 @@ public class RewardServiceImpl implements RewardService {
             return RewardGrantResult.skipped(eventCode, "NOTHING_TO_GRANT");
         }
 
-        UserRewardAccount account = rewardMapper.findAccount(userId);
-        if (account == null) {
-            return RewardGrantResult.skipped(eventCode, "NO_USER");
+        if (rule.getDailyCap() != null) {
+            int today = rewardMapper.countTodayGrantsByEvent(userId, eventCode);
+            if (today >= rule.getDailyCap()) {
+                return RewardGrantResult.skipped(eventCode, "DAILY_CAP");
+            }
         }
         int levelBefore = account.getUserLevel();
+        int newPoint = account.getActivityPoint() + point;
+        List<UserLevelPolicy> levels = rewardMapper.findActiveLevelsOrdered();
+        int newLevel = resolveLevel(levels, newPoint, levelBefore);
+        boolean leveledUp = newLevel > levelBefore;
+
+        String idempotencyKey = idempotencyKey(eventCode, refType, refId);
+        try {
+            // 참조가 있는 이벤트는 이력 행을 먼저 선점한다. 중복이면 어떤 잔액/포인트도 바꾸기 전에 종료한다.
+            rewardMapper.insertHistory(UserRewardHistory.builder()
+                    .userId(userId)
+                    .eventCode(eventCode)
+                    .idempotencyKey(idempotencyKey)
+                    .pointDelta(point)
+                    .creditDelta(credit)
+                    .levelBefore(levelBefore)
+                    .levelAfter(newLevel)
+                    .refType(refType)
+                    .refId(refId)
+                    .reason(rule.getName())
+                    .build());
+        } catch (DuplicateKeyException duplicate) {
+            if (idempotencyKey != null) {
+                return RewardGrantResult.skipped(eventCode, "ALREADY_GRANTED");
+            }
+            throw duplicate;
+        }
 
         if (point > 0) {
             rewardMapper.addActivityPoint(userId, point);
@@ -63,26 +94,18 @@ public class RewardServiceImpl implements RewardService {
             creditService.grantCredit(userId, credit, "REWARD", eventCode, rule.getName());
         }
 
-        rewardMapper.insertHistory(UserRewardHistory.builder()
-                .userId(userId)
-                .eventCode(eventCode)
-                .pointDelta(point)
-                .creditDelta(credit)
-                .levelBefore(levelBefore)
-                .levelAfter(levelBefore)
-                .refType(refType)
-                .refId(refId)
-                .reason(rule.getName())
-                .build());
-
-        int newPoint = account.getActivityPoint() + point;
-        List<UserLevelPolicy> levels = rewardMapper.findActiveLevelsOrdered();
-        int newLevel = resolveLevel(levels, newPoint, levelBefore);
-        boolean leveledUp = newLevel > levelBefore;
         if (leveledUp) {
             applyLevelUps(userId, levels, levelBefore, newLevel);
         }
         return new RewardGrantResult(eventCode, true, point, credit, leveledUp, levelBefore, newLevel, null);
+    }
+
+    /** 참조 엔티티가 있는 이벤트만 영구 멱등 처리한다. DAILY_LOGIN은 사용자 행 잠금 + 일일 캡으로 직렬화한다. */
+    private String idempotencyKey(String eventCode, String refType, Long refId) {
+        if (eventCode == null || eventCode.isBlank() || refType == null || refType.isBlank() || refId == null) {
+            return null;
+        }
+        return eventCode.trim() + ":" + refType.trim() + ":" + refId;
     }
 
     /** 누적 포인트에 해당하는 최고 레벨을 구한다. 절대 강등하지 않는다(>= 현재 레벨). */
