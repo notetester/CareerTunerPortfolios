@@ -1,7 +1,12 @@
 package com.careertuner.community.moderation.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import org.jsoup.Jsoup;
+
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.community.domain.CommentStatus;
 import com.careertuner.community.domain.CommunityComment;
 import com.careertuner.community.domain.CommunityPost;
@@ -11,12 +16,16 @@ import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
 import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.ModerationView;
+import com.careertuner.community.moderation.domain.ModerationReviewAction;
+import com.careertuner.community.moderation.domain.ModerationReviewQueueView;
 import com.careertuner.community.moderation.domain.PostAiResult;
 import com.careertuner.community.moderation.dto.ModerationDetailResponse;
 import com.careertuner.community.moderation.dto.ModerationItemResponse;
 import com.careertuner.community.moderation.dto.ModerationListRequest;
 import com.careertuner.community.moderation.dto.ModerationPageResponse;
 import com.careertuner.community.moderation.dto.ModerationResult;
+import com.careertuner.community.moderation.dto.ModerationReviewQueueItemResponse;
+import com.careertuner.community.moderation.dto.ModerationReviewQueuePageResponse;
 import com.careertuner.community.moderation.dto.ModerationStatsResponse;
 import com.careertuner.community.moderation.mapper.CommentAiResultMapper;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
@@ -26,6 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -36,6 +46,7 @@ public class AdminModerationService {
     private final CommunityPostMapper postMapper;
     private final CommunityCommentMapper commentMapper;
     private final PostModerationService moderationService;
+    private final ModerationSettingService settingService;
     private final ObjectMapper objectMapper;
 
     public AdminModerationService(PostAiResultMapper aiResultMapper,
@@ -43,12 +54,14 @@ public class AdminModerationService {
                                   CommunityPostMapper postMapper,
                                   CommunityCommentMapper commentMapper,
                                   PostModerationService moderationService,
+                                  ModerationSettingService settingService,
                                   ObjectMapper objectMapper) {
         this.aiResultMapper = aiResultMapper;
         this.commentAiResultMapper = commentAiResultMapper;
         this.postMapper = postMapper;
         this.commentMapper = commentMapper;
         this.moderationService = moderationService;
+        this.settingService = settingService;
         this.objectMapper = objectMapper;
     }
 
@@ -73,6 +86,53 @@ public class AdminModerationService {
             throw new IllegalArgumentException("검열 결과를 찾을 수 없습니다: postId=" + postId);
         }
         return toDetailResponse(view);
+    }
+
+    @Transactional(readOnly = true)
+    public ModerationReviewQueuePageResponse getReviewQueue(int page, int size) {
+        ModerationListRequest paging = new ModerationListRequest(null, null, page, size);
+        double hideThreshold = settingService.getHideThreshold();
+        List<ModerationReviewQueueItemResponse> items = aiResultMapper.findReviewQueue(
+                        hideThreshold, paging.offset(), paging.size()).stream()
+                .map(this::toReviewQueueItem)
+                .toList();
+        int total = aiResultMapper.countReviewQueue(hideThreshold);
+        return new ModerationReviewQueuePageResponse(
+                items, total, paging.page(), paging.size(), paging.offset() + paging.size() < total);
+    }
+
+    /**
+     * 경계 검열 결과를 한 번만 결정한다. 같은 action 재시도는 성공으로 끝내고,
+     * 다른 action 재시도나 더 이상 큐 조건을 만족하지 않는 요청은 충돌로 거절한다.
+     */
+    @Transactional
+    public void decideReviewQueue(Long reviewerId, Long postId, String rawAction) {
+        ModerationReviewAction action = parseReviewAction(rawAction);
+        double hideThreshold = settingService.getHideThreshold();
+        int acquired = aiResultMapper.recordReviewAction(postId, action.name(), reviewerId, hideThreshold);
+        if (acquired == 0) {
+            String existing = aiResultMapper.findReviewAction(postId);
+            if (action.name().equals(existing)) {
+                return;
+            }
+            if (existing != null) {
+                throw new BusinessException(ErrorCode.CONFLICT,
+                        "이미 " + existing + " 결정이 완료된 검토 항목입니다.");
+            }
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "더 이상 검토 대기 조건을 만족하지 않는 게시글입니다.");
+        }
+
+        if (action == ModerationReviewAction.HIDE) {
+            CommunityPost post = postMapper.findById(postId);
+            if (post == null) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "게시글을 찾을 수 없습니다.");
+            }
+            if (postMapper.hideIfPublished(postId) == 0) {
+                throw new BusinessException(ErrorCode.CONFLICT, "이미 게시 상태가 변경된 게시글입니다.");
+            }
+            moderationService.sendReviewHiddenNotification(post);
+        }
     }
 
     public void restore(Long postId) {
@@ -213,6 +273,33 @@ public class AdminModerationService {
                 view.getCompletedAt(),
                 loadImageResults(view.getPostId())
         );
+    }
+
+    private ModerationReviewQueueItemResponse toReviewQueueItem(ModerationReviewQueueView view) {
+        String content = view.getContent() == null ? "" : Jsoup.parse(view.getContent()).text();
+        String preview = content.length() > 240 ? content.substring(0, 240) + "…" : content;
+        return new ModerationReviewQueueItemResponse(
+                view.getPostId(),
+                view.getTitle(),
+                preview,
+                view.isAnonymous() ? "익명" : view.getAuthorName(),
+                categoryLabel(view.getPostCategory()),
+                view.getAiCategory(),
+                view.getConfidence(),
+                view.getCreatedAt(),
+                view.getCompletedAt()
+        );
+    }
+
+    private static ModerationReviewAction parseReviewAction(String rawAction) {
+        if (rawAction == null || rawAction.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "action은 HIDE 또는 KEEP이어야 합니다.");
+        }
+        try {
+            return ModerationReviewAction.valueOf(rawAction.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "action은 HIDE 또는 KEEP이어야 합니다.");
+        }
     }
 
     /** 본문 이미지 검열(IMAGE_MODERATION) 결과를 관리자 상세용 목록으로 파싱. 없으면 빈 목록(best-effort). */

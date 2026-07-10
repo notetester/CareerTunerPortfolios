@@ -116,12 +116,39 @@
 .md-toast.ok svg { color: #4ade80; }
 .md-toast.err { background: var(--av-red); color: #fff; }
 
-/* 검토 대기 placeholder */
+/* 임계 미만 toxic 결과 수동 검토 큐 */
+.md-settings .av-mod__h { align-items: center; gap: 12px; padding-bottom: 13px; border-bottom: 1px solid var(--av-line-soft); }
+.md-queue__count { display: inline-flex; margin-left: 7px; border-radius: 99px; padding: 2px 8px;
+  background: var(--av-track); color: var(--av-ink-2); font-size: 10.5px; font-weight: 700; }
+.md-settings .av-mod__s { margin-top: 3px; white-space: normal; }
+.md-queue__refresh { flex: none; }
+.md-queue__spin { animation: md-rot .7s linear infinite; }
+.md-queue__loading { padding: 30px 20px; color: var(--av-ink-3); text-align: center; font-size: 12px; }
+.md-queue__error { display: flex; align-items: center; gap: 8px; padding: 18px 16px; color: var(--av-red); font-size: 12px; }
+.md-queue__error svg { width: 15px; height: 15px; flex: none; }
+.md-queue__error .av-btn { margin-left: auto; }
 .md-queue__empty { padding: 30px 20px; text-align: center; }
 .md-queue__empty p { margin: 8px 0 0; font-size: 12px; color: var(--av-ink-3); line-height: 1.6; }
 .md-queue__empty svg { width: 18px; height: 18px; stroke-width: 1.8; color: var(--av-ink-3); }
-.md-v2 { font-size: 10.5px; font-weight: 650; color: var(--av-ink-3); background: var(--av-track);
-  border-radius: 99px; padding: 2px 8px; }
+.md-queue__item { padding: 15px 16px; border-bottom: 1px solid var(--av-line-soft); }
+.md-queue__item-head { display: flex; align-items: flex-start; gap: 12px; }
+.md-queue__title-wrap { min-width: 0; flex: 1; }
+.md-queue__title-wrap h3 { margin: 0; color: var(--av-ink); font-size: 13px; font-weight: 700;
+  overflow-wrap: anywhere; }
+.md-queue__meta { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 4px; color: var(--av-ink-3); font-size: 10.5px; }
+.md-queue__score { display: flex; align-items: center; gap: 7px; flex: none; border-radius: 8px;
+  background: var(--av-track); padding: 6px 9px; color: var(--av-ink-2); font-size: 10.5px; }
+.md-queue__score b { color: var(--av-amber); font-size: 15px; }
+.md-queue__preview { margin: 10px 0 0; color: var(--av-ink-2); font-size: 12px; line-height: 1.6;
+  overflow-wrap: anywhere; }
+.md-queue__actions { display: flex; align-items: center; gap: 7px; margin-top: 12px; }
+.md-queue__actions .av-hint { margin: 0 auto 0 0; }
+.md-queue__hide { background: var(--av-red); border-color: var(--av-red); color: #fff; }
+.md-queue__hide:hover { color: #fff; opacity: .9; }
+.md-queue__pager { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px 16px; }
+.md-queue__pager > span { color: var(--av-ink-3); font-size: 11px; }
+.md-queue__pager button:disabled, .md-queue__actions button:disabled, .md-queue__refresh:disabled,
+.md-dlg button:disabled { cursor: wait; opacity: .5; }
 
 /* 섹션 */
 .md-sec { margin-top: 16px; }
@@ -148,4 +175,15 @@
   .md-console { grid-template-columns: 1fr; }
   .md-console__in { border-right: none; border-bottom: 1px solid var(--av-line-soft); }
   .md-now > div + div { border-left: none; border-top: 1px solid var(--av-line-soft); }
+  .md-queue__actions { align-items: stretch; flex-wrap: wrap; }
+  .md-queue__actions .av-hint { width: 100%; margin-bottom: 2px; }
+  .md-queue__actions .av-btn { flex: 1; justify-content: center; }
+}
+
+@media (max-width: 520px) {
+  .md-settings .av-mod__h { align-items: flex-start; }
+  .md-queue__refresh { width: 30px; padding: 0; justify-content: center; font-size: 0; }
+  .md-queue__item-head { flex-direction: column; }
+  .md-queue__score { align-self: flex-start; }
+  .md-dlg { width: calc(100vw - 32px); }
 }

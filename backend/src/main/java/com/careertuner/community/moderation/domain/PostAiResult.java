@@ -25,6 +25,9 @@ public class PostAiResult {
     private String model;
     private String errorMessage;
     private int attemptCount;
+    private ModerationReviewAction reviewAction;
+    private Long reviewedBy;
+    private LocalDateTime reviewedAt;
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;
 }
