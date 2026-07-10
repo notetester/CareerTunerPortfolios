@@ -524,7 +524,9 @@ export function AnalysisPage() {
             <CardContent>
               {scoreHistory.length > 0 ? (
                 <>
-                  <div className="flex items-end gap-3 h-32 pt-2">
+                  {/* 포인트 수 무제한 + nowrap 라벨이라 좁은 화면에서 카드 밖으로 넘침 → 차트만 내부 가로 스크롤 */}
+                  <div className="overflow-x-auto">
+                  <div className="flex items-end gap-3 h-32 pt-2 min-w-fit">
                     {scoreHistory.map((s, i) => (
                       <div key={`${s.label}-${i}`} className="flex-1 flex flex-col items-center gap-1">
                         <div className="text-xs font-black text-slate-700">{s.score}</div>
@@ -535,6 +537,7 @@ export function AnalysisPage() {
                         <div className="text-[9px] text-slate-400 text-center whitespace-nowrap">{s.label}</div>
                       </div>
                     ))}
+                  </div>
                   </div>
                   {scoreHistory.length >= 2 && (
                     <div className={`mt-3 flex items-center gap-2 text-xs ${scoreDelta >= 0 ? "text-green-600" : "text-red-500"}`}>
@@ -773,7 +776,8 @@ export function AnalysisPage() {
             </CardHeader>
             <CardContent>
               {monthlyFitTrend.length > 0 ? (
-                <div className="flex items-end gap-3 h-36 pt-2">
+                <div className="overflow-x-auto">
+                <div className="flex items-end gap-3 h-36 pt-2 min-w-fit">
                   {monthlyFitTrend.map((point, index) => (
                     <div key={point.month} className="flex-1 flex flex-col items-center gap-1">
                       <div className="text-xs font-black text-slate-700">{point.averageScore}</div>
@@ -785,6 +789,7 @@ export function AnalysisPage() {
                       <div className="text-[9px] text-slate-300">{point.analysisCount}건</div>
                     </div>
                   ))}
+                </div>
                 </div>
               ) : (
                 <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">

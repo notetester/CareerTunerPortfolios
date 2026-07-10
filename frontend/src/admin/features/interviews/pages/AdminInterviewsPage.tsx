@@ -422,7 +422,7 @@ export function AdminInterviewsPage() {
                                       href={answer.audioUrl}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-card px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
                                     >
                                       <Mic className="size-3" /> 음성 답변
                                     </a>
@@ -432,7 +432,7 @@ export function AdminInterviewsPage() {
                                       href={answer.videoUrl}
                                       target="_blank"
                                       rel="noreferrer"
-                                      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                      className="inline-flex items-center gap-1 rounded border border-slate-200 bg-card px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
                                     >
                                       <Video className="size-3" /> 영상 답변
                                     </a>

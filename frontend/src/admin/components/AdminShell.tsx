@@ -334,7 +334,7 @@ export default function AdminShell({
           {canUseCurrentPage ? (
             children
           ) : (
-            <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+            <section className="rounded-lg border border-slate-200 bg-card p-6 text-sm text-slate-600 shadow-sm">
               {canUseAdmin
                 ? "현재 계정에 이 관리자 메뉴를 볼 수 있는 세부 권한이 없습니다."
                 : "관리자 권한이 필요합니다. 관리자 계정으로 로그인한 뒤 다시 접근해 주세요."}

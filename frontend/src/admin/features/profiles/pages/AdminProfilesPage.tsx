@@ -279,7 +279,7 @@ function ProfileCard({ title, meta, period, detail }: { title: string; meta?: st
           <div className="break-words text-sm font-bold text-slate-900">{title}</div>
           {meta && <div className="mt-1 break-words text-xs text-slate-500">{meta}</div>}
         </div>
-        {period && <Badge className="bg-white text-slate-600">{period}</Badge>}
+        {period && <Badge className="bg-card text-slate-600">{period}</Badge>}
       </div>
       {detail && <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{detail}</div>}
     </div>
@@ -288,7 +288,7 @@ function ProfileCard({ title, meta, period, detail }: { title: string; meta?: st
 
 function RawJsonDetails({ value }: { value: unknown }) {
   return (
-    <details className="mt-2 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2">
+    <details className="mt-2 rounded-lg border border-dashed border-slate-200 bg-card px-3 py-2">
       <summary className="cursor-pointer text-xs font-semibold text-slate-500">원본 JSON 보기</summary>
       <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md bg-slate-950 p-3 text-xs leading-5 text-slate-100">
         {pretty(value)}

@@ -35,14 +35,15 @@
 }
 .adm__nav-item svg { width: 18px; height: 18px; stroke-width: 1.8; flex-shrink: 0; }
 .adm__nav-item:hover { background: var(--muted); color: var(--foreground); }
-.adm__nav-item.is-active { background: var(--accent-subtle); color: var(--accent); font-weight: 600; }
+/* --accent 는 표면 토큰(다크 #1f2024)이라 텍스트로 쓰면 다크에서 불가시 — 브랜드 텍스트 토큰(--primary) 사용 */
+.adm__nav-item.is-active { background: var(--accent-subtle); color: var(--primary); font-weight: 600; }
 .adm__nav-label { flex: 1; white-space: nowrap; }
 .adm__nav-ct {
   font-size: 11px; font-weight: 600; line-height: 1;
   padding: 3px 7px; border-radius: 9999px;
   background: var(--muted); color: var(--muted-foreground);
 }
-.adm__nav-item.is-active .adm__nav-ct { background: rgba(37,99,235,0.12); color: var(--accent); }
+.adm__nav-item.is-active .adm__nav-ct { background: rgba(37,99,235,0.12); color: var(--primary); }
 
 /* 미처리 큐 뱃지: RED(급함)/YELLOW(주의). 색은 테마 토큰이라 다크모드 자동 대응 */
 .adm__nav-ct.sev-red,

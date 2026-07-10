@@ -402,7 +402,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   // 앵커(우하단↔중앙)가 달라 CSS 크기 보간은 깨지므로 즉시 전환(부드러운 shared-element 은 2차).
   const panelClass = floating
     ? "ct-float-in fixed z-50 flex flex-col bg-card overflow-hidden"
-    : "fixed right-5 bottom-5 z-50 w-[360px] h-[560px] flex flex-col bg-card border border-border rounded-2xl overflow-hidden";
+    : "fixed right-5 bottom-5 z-50 w-[min(360px,calc(100vw-2.5rem))] h-[min(560px,calc(100dvh-2.5rem))] flex flex-col bg-card border border-border rounded-2xl overflow-hidden";
   const panelStyle: React.CSSProperties = floating
     ? {
         left: "50%", top: "50%", transform: "translate(-50%,-50%)",

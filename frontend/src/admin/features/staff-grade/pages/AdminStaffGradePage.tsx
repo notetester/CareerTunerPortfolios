@@ -164,9 +164,9 @@ export function AdminStaffGradePage() {
       </div>
 
       {/* 목록 */}
-      <div className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200 bg-white">
+      <div className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200 bg-card">
         <table className="w-full min-w-[1000px] text-sm">
-          <thead className="sticky top-0 z-10 bg-white">
+          <thead className="sticky top-0 z-10 bg-card">
             <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
               <th className="px-3 py-2">사용자</th>
               <th className="px-3 py-2">부서</th>
@@ -221,7 +221,7 @@ export function AdminStaffGradePage() {
 
       {/* Excel 업로드 미리보기 */}
       {preview && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+        <section className="mt-5 rounded-xl border border-slate-200 bg-card p-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">
               업로드 미리보기 — 총 {preview.totalRows} · <span className="text-emerald-600">정상 {preview.okCount}</span> · <span className="text-rose-600">오류 {preview.errorCount}</span>
@@ -235,7 +235,7 @@ export function AdminStaffGradePage() {
           </div>
           <div className="max-h-[40vh] overflow-auto rounded-lg border border-slate-100">
             <table className="w-full min-w-[820px] text-sm">
-              <thead className="sticky top-0 bg-white">
+              <thead className="sticky top-0 bg-card">
                 <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                   <th className="px-3 py-2">#</th><th className="px-3 py-2">email</th><th className="px-3 py-2">부서</th>
                   <th className="px-3 py-2">기본급</th><th className="px-3 py-2">상태</th><th className="px-3 py-2">메시지</th>
@@ -263,7 +263,7 @@ export function AdminStaffGradePage() {
 
       {/* 변경 이력 */}
       {history && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+        <section className="mt-5 rounded-xl border border-slate-200 bg-card p-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">변경 이력 — 사용자 {history.userId}</h3>
             <button type="button" className="av-btn text-xs" onClick={() => setHistory(null)}>닫기</button>
@@ -297,7 +297,7 @@ export function AdminStaffGradePage() {
       {/* 편집 모달 */}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditing(null)}>
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg rounded-xl bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-slate-800">등급/급여 편집</h3>
             <p className="mt-0.5 text-xs text-slate-400">{editing.row.userName} ({editing.row.userEmail}) · {editing.row.userRole}</p>
             <div className="mt-4 grid grid-cols-2 gap-3">

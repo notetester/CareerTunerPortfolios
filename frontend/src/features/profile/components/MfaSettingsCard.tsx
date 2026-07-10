@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { QRCodeSVG } from "qrcode.react";
 import { Copy, KeyRound, Loader2, RefreshCw, ShieldCheck, ShieldOff, Smartphone } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ interface StoredTotpSecret {
 }
 
 export function MfaSettingsCard() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<MfaStatusResponse | null>(null);
   const [setup, setSetup] = useState<MfaSetupStartResponse | null>(null);
   const [storedSecret, setStoredSecret] = useState<StoredTotpSecret | null>(() => readStoredSecret());
@@ -311,7 +313,7 @@ export function MfaSettingsCard() {
                     <Smartphone className="size-4" />
                     이 기기에서 푸시 승인 받기
                   </Button>
-                  <Button variant="outline" className="gap-2" onClick={() => { window.location.href = "/m/mfa-approvals"; }}>
+                  <Button variant="outline" className="gap-2" onClick={() => navigate("/m/mfa-approvals")}>
                     승인 요청 보기
                   </Button>
                 </div>
