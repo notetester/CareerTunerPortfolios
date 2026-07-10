@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { api } from "@/app/lib/api";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { uploadAttachment } from "@/features/autoprep/api/autoPrepApi";
@@ -73,6 +73,7 @@ interface SessionSummaryDto {
   title: string | null;
   mode: string | null;
   updatedAt: number | null;
+  kind: "INTAKE" | "GENERAL" | null;
 }
 
 export function useChatbot() {
@@ -82,6 +83,9 @@ export function useChatbot() {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  // openSession 이 클릭 시점의 목록에서 kind 를 조회한다 — 상태를 deps 로 끌면 콜백이 목록 갱신마다 재생성돼 ref 로 고정.
+  const sessionsRef = useRef<ChatSession[]>([]);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
 
   // ── 오케스트레이터 모드 상태 ──
@@ -174,29 +178,35 @@ export function useChatbot() {
       });
   }, []);
 
-  /* ── 세션 목록(사이드바) 로드 — 로그인 유저의 인테이크(지원건) 세션 최대 5건. ── */
+  /* ── 대화 목록(사이드바) 로드 — 로그인 유저의 최근 대화 최대 20건(인테이크+일반 상담). ── */
   const loadSessions = useCallback(() => {
     if (!getAccessToken()) { setSessions([]); return; }
     api<SessionSummaryDto[] | null>("/chatbot/conversations")
       .then((data) => {
         setSessions(
-          (data ?? []).map((s) => ({
-            id: String(s.conversationId),
-            title: s.title || "면접 준비 세션",
-            lastMessage: "면접 준비",
-            meta: "",
-            updatedAt: s.updatedAt ?? 0,
-            mode: s.mode,
-          })),
+          (data ?? []).map((s) => {
+            const kind = s.kind === "GENERAL" ? "GENERAL" as const : "INTAKE" as const;
+            return {
+              id: String(s.conversationId),
+              title: s.title || (kind === "INTAKE" ? "면접 준비 세션" : "일반 상담"),
+              lastMessage: kind === "INTAKE" ? "면접 준비" : "일반 상담",
+              meta: "",
+              updatedAt: s.updatedAt ?? 0,
+              mode: s.mode,
+              kind,
+            };
+          }),
         );
       })
-      .catch((err) => console.error("세션 목록 로드 실패:", err));
+      .catch((err) => console.error("대화 목록 로드 실패:", err));
   }, []);
 
   /* ── 세션 클릭 → 그 conversationId 로 전환 + 메시지 로드. 다음 요청부터 백엔드가 슬롯 복원(Phase D). ── */
   const openSession = useCallback((id: string) => {
     const conversationId = Number(id);
     if (!Number.isFinite(conversationId)) return;
+    // 인테이크(지원건) 세션만 오케 모드+플로팅으로. 일반 상담 대화는 일반 챗 표면 그대로 이어본다.
+    const isIntake = (sessionsRef.current.find((s) => s.id === id)?.kind ?? "INTAKE") === "INTAKE";
     conversationIdRef.current = conversationId;
     setActiveSessionId(id);
     run.reset();
@@ -204,9 +214,13 @@ export function useChatbot() {
     runStartedRef.current = false;
     setRunStarted(false);
     setRunCaseId(null);
-    setOrchestrator(true); // 인테이크(지원건) 세션 — 모드 배너 유지
-    orchRef.current = true;
-    expandToFloating(); // 세션 열기 = 오케 진입 → 플로팅
+    setOrchestrator(isIntake); // 인테이크 세션 — 모드 배너 유지
+    orchRef.current = isIntake;
+    if (isIntake) {
+      expandToFloating(); // 인테이크 세션 열기 = 오케 진입 → 플로팅
+    } else {
+      collapseToCorner(); // 일반 대화 = 일반 챗 표면(코너). 오케 무대(플로팅)에서 열어도 표면을 정리한다.
+    }
     setShowExitSheet(false);
     api<ChatHistoryResponse | null>(`/chatbot/conversations/${conversationId}/messages`)
       .then((data) => {
@@ -291,7 +305,7 @@ export function useChatbot() {
   const close = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
   const minimize = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
 
-  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string; silent?: boolean }) => {
+  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string; silent?: boolean; faqChip?: boolean }) => {
     // silent: 유저 말풍선을 남기지 않는다(가이드 X/여기서-물어보기의 서버 이탈 — UI 제스처지 사용자 발화가 아님).
     //   응답 처리(봇 말풍선·orchestrator·onbPhase 파생)는 그대로 재사용한다.
     if (!opts?.silent) {
@@ -316,6 +330,8 @@ export function useChatbot() {
         // ③ 칩/버튼 직접 선택 시 caseId·modeCode 를 실어 보낸다 → 백엔드가 qwen3 거치지 않고 결정적 confirm.
         ...(opts?.selectedCaseId != null ? { selectedCaseId: opts.selectedCaseId } : {}),
         ...(opts?.selectedModeCode ? { selectedModeCode: opts.selectedModeCode } : {}),
+        // 빈 화면 FAQ 추천 칩 클릭 — 깡통 온보딩 게이트를 그 턴만 우회(자유 입력은 플래그 없이 게이트 유지).
+        ...(opts?.faqChip ? { faqChip: true } : {}),
       }),
       signal: controller.signal,
     })

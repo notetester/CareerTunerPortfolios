@@ -76,6 +76,8 @@ export interface ChatSession {
   updatedAt: number;
   /** 면접 모드 코드(BASIC/JOB/…). 슬롯 미설정 세션은 null — 모드 배지 생략. */
   mode?: string | null;
+  /** INTAKE=지원건(면접 준비) 세션 → 열 때 오케 모드, GENERAL=일반 상담 → 일반 챗. */
+  kind?: "INTAKE" | "GENERAL";
 }
 
 export const SUGGESTED_QUESTIONS = [
