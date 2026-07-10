@@ -497,11 +497,11 @@ export function ApplicationDetailPage() {
                       <button
                         type="button"
                         className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-sm text-slate-700 transition-colors hover:border-indigo-200 hover:bg-indigo-50"
-                        onClick={() => navigate("/interview")}
+                        onClick={() => navigate(`/interview?caseId=${applicationCase.id}&tab=modes`)}
                       >
                         <MessageSquare className="mb-2 size-4 text-indigo-600" />
                         <div className="font-semibold text-slate-900">예상 질문 / 모의 면접</div>
-                        <div className="mt-1 text-xs text-slate-500">면접 화면에서 이 지원 건을 선택해 시작</div>
+                        <div className="mt-1 text-xs text-slate-500">이 지원 건이 선택된 면접 화면에서 바로 시작</div>
                       </button>
                       {applicationCase.archived ? (
                         <div

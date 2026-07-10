@@ -354,7 +354,7 @@ export function AppHome() {
                 {m.id === lastBot?.id && m.intake && !m.intake.ready && !chat.runStarted && (
                   <div className="ah-b-links">
                     {m.intake.nextAsk === "CASE" && m.intake.candidates.length === 0 && (
-                      <button className="ah-b-link" onClick={() => navigate("/applications")}>
+                      <button className="ah-b-link" onClick={() => navigate("/applications/new")}>
                         지원 건 먼저 만들기
                       </button>
                     )}

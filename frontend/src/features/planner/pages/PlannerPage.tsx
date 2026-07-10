@@ -119,8 +119,15 @@ function emptySchedule(): ScheduleForm {
   };
 }
 
+function parsePlannerItemId(value: string | null): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export function PlannerPage() {
   const [searchParams] = useSearchParams();
+  const requestedItemId = parsePlannerItemId(searchParams.get("item"));
   const [tab, setTab] = useState<PlannerTab>("schedule");
   const [data, setData] = useState<PlannerDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,10 +159,25 @@ export function PlannerPage() {
 
   useEffect(() => {
     const requested = searchParams.get("tab");
-    if (requested === "memo" || requested === "overlay" || requested === "schedule") {
+    if (requestedItemId != null) {
+      setTab("schedule");
+    } else if (requested === "memo" || requested === "overlay" || requested === "schedule") {
       setTab(requested);
     }
-  }, [searchParams]);
+  }, [searchParams, requestedItemId]);
+
+  // 알림의 /planner?item={id} 딥링크가 해당 일정을 실제로 보여주도록 렌더 후 스크롤한다.
+  useEffect(() => {
+    if (loading || tab !== "schedule" || requestedItemId == null) return;
+    if (!data?.scheduleItems.some((item) => item.id === requestedItemId)) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`planner-schedule-item-${requestedItemId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loading, tab, requestedItemId, data?.scheduleItems]);
 
   const grouped = useMemo(() => groupByDay(data?.scheduleItems ?? []), [data?.scheduleItems]);
   const overlayCount = (data?.memos.filter((memo) => memo.overlayVisible).length ?? 0)
@@ -302,6 +324,7 @@ export function PlannerPage() {
             />
             <ScheduleTimeline
               grouped={grouped}
+              focusItemId={requestedItemId}
               onEdit={editSchedule}
               onDelete={(id) => void removeSchedule(id)}
               onToggleDone={(item) => void toggleScheduleStatus(item)}
@@ -498,11 +521,13 @@ function ReminderEditor({
 
 function ScheduleTimeline({
   grouped,
+  focusItemId,
   onEdit,
   onDelete,
   onToggleDone,
 }: {
   grouped: { day: string; items: PlannerScheduleItem[] }[];
+  focusItemId: number | null;
   onEdit: (item: PlannerScheduleItem) => void;
   onDelete: (id: number) => void;
   onToggleDone: (item: PlannerScheduleItem) => void;
@@ -514,7 +539,13 @@ function ScheduleTimeline({
           <div className="border-b border-slate-100 px-4 py-3 text-sm font-bold text-slate-800">{group.day}</div>
           <div className="divide-y divide-slate-100">
             {group.items.map((item) => (
-              <div key={item.id} className="grid gap-3 p-4 md:grid-cols-[100px_minmax(0,1fr)_auto]">
+              <div
+                id={`planner-schedule-item-${item.id}`}
+                key={item.id}
+                className={`scroll-mt-24 grid gap-3 p-4 transition-colors md:grid-cols-[100px_minmax(0,1fr)_auto] ${
+                  item.id === focusItemId ? "bg-blue-50/80 outline outline-2 -outline-offset-2 outline-blue-400 dark:bg-blue-500/10" : ""
+                }`}
+              >
                 <div className="text-xs font-semibold text-slate-500">{timeLabel(item)}</div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

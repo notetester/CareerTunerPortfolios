@@ -218,7 +218,7 @@ export function DashboardPage() {
             <GuideButton steps={DASHBOARD_TOUR_STEPS} />
             <Button
               className="bg-primary gap-2"
-              onClick={() => navigate("/applications")}
+              onClick={() => navigate("/applications/new")}
             >
               <Plus className="size-4" />
               새 지원 건 만들기
@@ -474,7 +474,7 @@ export function DashboardPage() {
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-2">
                     {[
-                      { label: "새 지원 건", icon: Plus, href: "/applications", color: "text-blue-600" },
+                      { label: "새 지원 건", icon: Plus, href: "/applications/new", color: "text-blue-600" },
                       { label: "가상 면접", icon: MessageSquare, href: "/interview", color: "text-purple-600" },
                       { label: "취업 분석", icon: BarChart3, href: "/analysis", color: "text-green-600" },
                       { label: "커뮤니티", icon: BookOpen, href: "/community", color: "text-orange-600" },
@@ -552,7 +552,7 @@ export function DashboardPage() {
       >
         <Button
           className="h-12 w-full bg-primary gap-2 shadow-lg"
-          onClick={() => navigate("/applications")}
+          onClick={() => navigate("/applications/new")}
         >
           <Plus className="size-4" />
           새 지원 건 만들기
