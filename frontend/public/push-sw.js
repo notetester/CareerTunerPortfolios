@@ -3,10 +3,31 @@
  * (vite.config.ts workbox.importScripts: ['push-sw.js'])
  *
  * 백엔드(DefaultPushSender#buildPayload)는 JSON {title, body, url} 페이로드를 보낸다.
+ * - activate      : 이전 SW가 /Obsidian/*를 SPA로 잘못 연 탭을 정적 페이지로 다시 연다.
  * - push          : 알림 배너 표시
  * - notificationclick : 이미 열린 탭이 있으면 포커스, 없으면 url 로 새 창
  * 페이로드 파싱 실패에도 무해하게 기본 문구로 표시한다.
  */
+const OBSIDIAN_PATH_PATTERN = /\/Obsidian(?:\/|$)/;
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) =>
+      Promise.all(
+        clientList
+          .filter((client) => {
+            try {
+              return OBSIDIAN_PATH_PATTERN.test(new URL(client.url).pathname);
+            } catch (_e) {
+              return false;
+            }
+          })
+          .map((client) => client.navigate(client.url).catch(() => undefined)),
+      ),
+    ),
+  );
+});
+
 self.addEventListener('push', (event) => {
   let payload = {};
   try {
