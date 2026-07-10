@@ -10,6 +10,11 @@ const BIO_KEY = "careertuner.applock.bio";
 const AUTOLOCK_GRACE_MS = 30_000; // 30초 이내 복귀는 재잠금하지 않음(편의)
 
 async function sha256(text: string): Promise<string> {
+  // http LAN 주소 등 비보안 컨텍스트에서는 crypto.subtle 이 undefined 라 PIN 설정이 조용히 무반응이 된다
+  // — 원인을 알 수 있는 에러로 바꿔 호출부(설정 화면)의 에러 표시에 태운다.
+  if (!globalThis.crypto?.subtle) {
+    throw new Error("보안 연결(https 또는 localhost)에서만 앱 잠금을 설정할 수 있습니다.");
+  }
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }

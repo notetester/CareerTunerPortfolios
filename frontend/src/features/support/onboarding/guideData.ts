@@ -51,19 +51,19 @@ export const LINK_FIELDS: Record<LinkKey, LinkField> = {
     label: "GitHub",
     placeholder: "github.com/username 또는 레포 주소",
     mode: "analyze",
-    hint: "레포 README를 읽어 프로젝트 경험으로 반영해요.",
+    hint: "레포 URL은 프로필에 저장하고, 공개 README를 불러올 수 있는지도 확인해요.",
   },
   blog: {
     label: "블로그·노션",
-    placeholder: "글 내용을 여기에 붙여넣어 주세요",
-    mode: "paste",
-    hint: "링크 크롤링 대신 붙여넣기로 받아 분석에 넣어요.",
+    placeholder: "https://…",
+    mode: "store",
+    hint: "프로필 포트폴리오 링크로 저장해요.",
   },
   sns: {
     label: "인스타·SNS·포트폴리오 URL",
     placeholder: "https://…",
     mode: "store",
-    hint: "링크만 저장해 둬요(내용 분석은 하지 않아요).",
+    hint: "프로필 포트폴리오 링크로 저장해요(내용을 자동 수집하지는 않아요).",
   },
 };
 
@@ -155,7 +155,7 @@ export const COPY = {
   roleHint: "자주 찾는 분야를 먼저 뒀어요. 없으면 직접 입력하셔도 돼요.",
   skills: (role: string) =>
     `**${role}** 준비시는군요. ${getField(role).skillLead} 고르신 역량이 **면접 질문과 자소서 방향**을 정해요. (여러 개 가능)`,
-  docs: "가진 서류가 있으면 올려주세요. **한 번 올리면 분석·면접·첨삭에 그대로 재활용**돼요. 없으면 건너뛰고 나중에 올려도 괜찮아요.",
+  docs: "가진 서류가 있으면 올려주세요. **이력서는 프로필 분석, 자기소개서는 첨삭, 포트폴리오는 프로필 근거**로 각각 연결해요. 없으면 건너뛰고 나중에 올려도 괜찮아요.",
   jd: "지원하실 **공고**를 올려주세요. 링크만 붙여도 제가 읽어서 **자격요건을 뽑아** 드려요. 파일·붙여넣기도 돼요.",
   // 진행 중 — "지금 뭘 하는지" 사람 말로. 파트별 다른 문구(실제 SSE 연결 시 재사용).
   analyzing: [

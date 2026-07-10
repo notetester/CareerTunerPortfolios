@@ -46,7 +46,7 @@ const navItems = [
     children: [
       { label: "기본 정보", href: "/profile?tab=basic" },
       { label: "이력서 관리", href: "/profile?tab=resume" },
-      { label: "자기소개서 관리", href: "/profile?tab=cover" },
+      { label: "자기소개서 관리", href: "/profile?tab=selfIntro" },
       { label: "경력/프로젝트 관리", href: "/profile?tab=career" },
       { label: "기술스택 관리", href: "/profile?tab=skills" },
       { label: "자격증/학력 관리", href: "/profile?tab=certificates" },

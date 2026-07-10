@@ -1,18 +1,26 @@
 import { type FormEvent, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { ShieldCheck } from "lucide-react";
 import { consentTerms, type ConsentTerm } from "../auth/consentTerms";
-import { saveMyConsents } from "../auth/consentApi";
+import { useConsent } from "../auth/ConsentContext";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
+import {
+  clearOnboardingResume,
+  onboardingReturnTo,
+  readPendingOnboardingConsents,
+} from "@/features/onboarding/onboardingSession";
 
 export function SocialConsentPage() {
   const navigate = useNavigate();
-  const [terms, setTerms] = useState(true);
-  const [privacy, setPrivacy] = useState(true);
-  const [aiData, setAiData] = useState(true);
-  const [marketing, setMarketing] = useState(false);
+  const { save } = useConsent();
+  const pending = readPendingOnboardingConsents();
+  const [terms, setTerms] = useState(pending?.termsAgreed ?? true);
+  const [privacy, setPrivacy] = useState(pending?.privacyAgreed ?? true);
+  const [aiData, setAiData] = useState(pending?.aiDataAgreed ?? true);
+  const [resumeAnalysis, setResumeAnalysis] = useState(pending?.resumeAnalysisAgreed ?? true);
+  const [marketing, setMarketing] = useState(pending?.marketingAgreed ?? false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -26,13 +34,16 @@ export function SocialConsentPage() {
 
     try {
       setSaving(true);
-      await saveMyConsents({
+      await save({
         termsAgreed: terms,
         privacyAgreed: privacy,
         aiDataAgreed: aiData,
+        resumeAnalysisAgreed: resumeAnalysis,
         marketingAgreed: marketing,
       });
-      navigate("/dashboard", { replace: true });
+      const returnTo = pending ? onboardingReturnTo() : "/dashboard";
+      clearOnboardingResume();
+      navigate(returnTo, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "동의 저장에 실패했습니다.");
     } finally {
@@ -58,7 +69,8 @@ export function SocialConsentPage() {
             <ConsentRow term={consentTerms[0]} checked={terms} onChange={setTerms} />
             <ConsentRow term={consentTerms[1]} checked={privacy} onChange={setPrivacy} />
             <ConsentRow term={consentTerms[2]} checked={aiData} onChange={setAiData} />
-            <ConsentRow term={consentTerms[3]} checked={marketing} onChange={setMarketing} />
+            <ConsentRow term={consentTerms[3]} checked={resumeAnalysis} onChange={setResumeAnalysis} />
+            <ConsentRow term={consentTerms[4]} checked={marketing} onChange={setMarketing} />
 
             {error && <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
             <Button type="submit" disabled={saving} className="h-11 w-full bg-blue-600 text-white hover:bg-blue-700">
@@ -94,6 +106,7 @@ function ConsentRow({
       <button type="button" className="mt-2 text-xs font-semibold text-blue-600 hover:underline" onClick={() => setOpen((value) => !value)}>
         {open ? "약관 접기" : "약관 보기"} · 시행일 {term.effectiveDate}
       </button>
+      <Link className="ml-3 text-xs font-semibold text-slate-500 hover:text-blue-700 hover:underline" to={term.documentHref}>전문 열기</Link>
       {open && (
         <ul className="mt-2 space-y-1 rounded-md bg-slate-50 p-3 text-xs leading-5 text-slate-600">
           {term.body.map((line) => <li key={line}>- {line}</li>)}

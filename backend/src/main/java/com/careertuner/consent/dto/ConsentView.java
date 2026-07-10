@@ -20,6 +20,7 @@ public class ConsentView {
     private Long userId;
     private String userEmail;
     private String consentType;
+    private String consentVersion;
     private boolean agreed;
     private LocalDateTime agreedAt;
     private LocalDateTime revokedAt;

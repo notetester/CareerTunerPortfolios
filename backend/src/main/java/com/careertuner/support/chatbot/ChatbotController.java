@@ -1175,7 +1175,11 @@ public class ChatbotController {
         //   에서 처리 — 여기는 첫 진입 판정만 남는다. (f) 면접 인계로 DONE 되면 sticky 가 풀린다.
         //  ★ 거부 영속 차단: "그만"으로 온보딩을 거부한 대화는 깡통계정이어도(게이트 true) 재진입하지 않는다.
         //    declined 조회(DB)는 온보딩 후보일 때만 타도록 AND 뒤(단축평가)에 둔다 — 일반 유저는 조회 0.
+        //  ★ FAQ 칩 우회: 빈 화면 추천 칩 클릭(faqChip=true)은 그 턴만 게이트를 건너뛰어 FAQ 로 흘린다.
+        //    다음 일반 발화부터는 다시 게이트 — 우회는 1턴짜리 결정적 신호(프론트 칩 전용)라 상태를 남기지 않는다.
+        //    진행 중(sticky) 온보딩은 위에서 이미 잡혀 이 우회의 영향을 받지 않는다(첫 진입 한정).
         if (authUser != null
+                && !Boolean.TRUE.equals(req.faqChip())
                 && isBlankAccountForOnboarding(userId)
                 && !isOnboardingDeclined(conversationId)) {
             return ApiResponse.ok(onboardingTurn(conversationId, authUser, question,
@@ -1484,8 +1488,9 @@ public class ChatbotController {
     }
 
     /**
-     * 세션 목록(사이드바): 로그인 유저의 인테이크(지원건) 세션 최대 5건(application_case_id 있는 것만, 최근순).
-     * 잡담/FAQ 대화는 application_case_id NULL 이라 자연 제외된다.
+     * 대화 목록(사이드바): 로그인 유저의 최근 대화 최대 20건 — 인테이크(지원건) 세션 + 일반 상담 대화.
+     * kind 로 구분해 프론트가 열 때 오케 모드 진입 여부를 가른다. 비로그인은 소유 대화가 없어 빈 목록
+     * (익명 대화는 user_id NULL — 불러오기 불가, 프론트가 로그인 유도 안내).
      * GET /api/chatbot/conversations
      */
     @GetMapping("/chatbot/conversations")
@@ -1493,14 +1498,23 @@ public class ChatbotController {
         if (authUser == null) {
             return ApiResponse.ok(List.of());
         }
-        List<ChatSessionSummary> sessions = memoryStore.listIntakeSessions(authUser.id()).stream()
+        List<ChatSessionSummary> sessions = memoryStore.listRecentConversations(authUser.id()).stream()
                 .map(r -> new ChatSessionSummary(
                         ((Number) r.get("conversationId")).longValue(),
                         (String) r.get("title"),
                         (String) r.get("mode"),
-                        toEpochMillis(r.get("updatedAt"))))
+                        toEpochMillis(r.get("updatedAt")),
+                        isTruthy(r.get("intake")) ? "INTAKE" : "GENERAL"))
                 .collect(Collectors.toList());
         return ApiResponse.ok(sessions);
+    }
+
+    /** MySQL boolean 표현식 결과(드라이버별 Long 1/0 또는 Boolean)를 정규화한다. */
+    private static boolean isTruthy(Object v) {
+        if (v instanceof Number n) {
+            return n.longValue() != 0;
+        }
+        return Boolean.TRUE.equals(v);
     }
 
     /**

@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.interview.media.dto.AvatarScoreRequest;
 import com.careertuner.interview.media.dto.AvatarScoreResponse;
 import com.careertuner.interview.media.dto.AvatarSessionResponse;
@@ -33,6 +35,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/interview")
 @RequiredArgsConstructor
+@RequiresConsent(ConsentType.AI_DATA)
 public class InterviewMediaController {
 
     private final InterviewMediaService mediaService;

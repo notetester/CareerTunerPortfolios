@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Brain, CheckCircle2, FileText, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Upload, User, X } from "lucide-react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -11,24 +11,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Textarea } from "../components/ui/textarea";
 import {
   diagnoseProfileCompleteness,
+  deleteProfilePortfolioFile,
+  downloadProfilePortfolioFile,
   extractProfileSkills,
   getProfile,
   draftHasStructuredFields,
   importProfileDocument,
+  listProfilePortfolioFiles,
   pollProfileAnalyze,
   PROFILE_DOC_ACCEPT,
   saveProfile,
   startProfileAnalyze,
   summarizeProfile,
   uploadProfileFile,
+  uploadProfilePortfolioFile,
   type ProfileAiResponse,
   type ProfileAnalyzeDraft,
   type ProfileCompleteness,
   type ProfileImportTarget,
+  type ProfilePortfolioFile,
   type UserProfile,
 } from "../profile/profileApi";
 import { draftPickFromCounts } from "../profile/profileDraftMerge";
-import { getMyConsents, type ConsentStatus } from "../auth/consentApi";
+import type { ConsentStatus } from "../auth/consentApi";
+import { useConsent } from "../auth/ConsentContext";
 
 interface EducationEntry {
   school: string;
@@ -217,6 +223,7 @@ const selfIntroTemplate = `지원동기:
 - 입사 후 어떤 방식으로 기여하고 성장할지 적습니다.`;
 
 export function ProfilePage() {
+  const { status: consent } = useConsent();
   const [searchParams, setSearchParams] = useSearchParams();
   const [form, setForm] = useState<ProfileForm>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -229,31 +236,39 @@ export function ProfilePage() {
   const [summaryResult, setSummaryResult] = useState<ProfileAiResponse | null>(null);
   const [skillsResult, setSkillsResult] = useState<ProfileAiResponse | null>(null);
   const [completeness, setCompleteness] = useState<ProfileCompleteness | null>(null);
-  const [consent, setConsent] = useState<ConsentStatus | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState(() => serializeProfileForm(emptyForm));
   const [docImporting, setDocImporting] = useState(false);
   const [analyzeDraft, setAnalyzeDraft] = useState<ProfileAnalyzeDraft | null>(null);
   const [analyzeStatus, setAnalyzeStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [portfolioFiles, setPortfolioFiles] = useState<ProfilePortfolioFile[]>([]);
+  const [portfolioUploading, setPortfolioUploading] = useState(false);
+  const [portfolioDeletingId, setPortfolioDeletingId] = useState<number | null>(null);
   const resumeFileRef = useRef<HTMLInputElement>(null);
   const selfIntroFileRef = useRef<HTMLInputElement>(null);
+  const portfolioFileRef = useRef<HTMLInputElement>(null);
+  const initialCompletenessRequested = useRef(false);
 
   const skillItems = useMemo(() => linesToArray(form.skillsText), [form.skillsText]);
   const selectedSkillSet = useMemo(() => new Set(skillItems.map((item) => item.toLowerCase())), [skillItems]);
   const isDirty = useMemo(() => serializeProfileForm(form) !== savedSnapshot, [form, savedSnapshot]);
   const tabStatuses = useMemo(() => getProfileTabStatuses(form, summaryResult, skillsResult, completeness), [form, summaryResult, skillsResult, completeness]);
   const aiConsentAgreed = consent?.aiDataAgreed === true;
+  const resumeAnalysisAgreed = consent?.resumeAnalysisAgreed === true;
+  const profileAiAllowed = aiConsentAgreed && resumeAnalysisAgreed;
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [profile, consentStatus] = await Promise.all([getProfile(), getMyConsents().catch(() => null)]);
+      const [profile, linkedPortfolioFiles] = await Promise.all([
+        getProfile(),
+        listProfilePortfolioFiles(),
+      ]);
       const nextForm = toForm(profile);
       setForm(nextForm);
+      setPortfolioFiles(linkedPortfolioFiles);
       setSavedSnapshot(serializeProfileForm(nextForm));
-      setConsent(consentStatus);
-      setCompleteness(await diagnoseProfileCompleteness().catch(() => null));
     } catch (err) {
       setError(err instanceof Error ? err.message : "프로필을 불러오지 못했습니다.");
     } finally {
@@ -264,6 +279,12 @@ export function ProfilePage() {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (loading || !profileAiAllowed || initialCompletenessRequested.current) return;
+    initialCompletenessRequested.current = true;
+    void diagnoseProfileCompleteness().then(setCompleteness).catch(() => setCompleteness(null));
+  }, [loading, profileAiAllowed]);
 
   useEffect(() => {
     setActiveTab(normalizeProfileTab(searchParams.get("tab")));
@@ -309,7 +330,7 @@ export function ProfilePage() {
       }
       await saveProfile(toRequest(form));
       setSavedSnapshot(serializeProfileForm(form));
-      const nextCompleteness = await diagnoseProfileCompleteness().catch(() => null);
+      const nextCompleteness = profileAiAllowed ? await diagnoseProfileCompleteness().catch(() => null) : null;
       setCompleteness(nextCompleteness);
       if (showSuccess) setMessage("프로필이 저장되었습니다.");
       return true;
@@ -321,9 +342,45 @@ export function ProfilePage() {
     }
   };
 
+  const uploadPortfolio = async (file: File) => {
+    setPortfolioUploading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const uploaded = await uploadProfilePortfolioFile(file);
+      setPortfolioFiles((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
+      setMessage("포트폴리오 파일을 프로필에 연결했습니다. 텍스트를 추출할 수 있는 문서는 다음 AI 분석의 근거로 참고합니다.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "포트폴리오 업로드에 실패했습니다.");
+    } finally {
+      setPortfolioUploading(false);
+    }
+  };
+
+  const deletePortfolio = async (file: ProfilePortfolioFile) => {
+    if (!window.confirm(`'${file.originalName}' 파일을 영구 삭제할까요? 다음 AI 분석의 근거에서도 제거됩니다.`)) {
+      return;
+    }
+    setPortfolioDeletingId(file.id);
+    setError(null);
+    setMessage(null);
+    try {
+      await deleteProfilePortfolioFile(file.id);
+      setPortfolioFiles((current) => current.filter((item) => item.id !== file.id));
+      setMessage("포트폴리오 파일을 삭제했습니다. 다음 AI 분석부터 이 파일은 근거로 사용되지 않습니다.");
+    } catch (err) {
+      // 서버 삭제가 실패한 경우 목록에서 먼저 빼지 않는다.
+      setError(err instanceof Error ? err.message : "포트폴리오 파일 삭제에 실패했습니다.");
+    } finally {
+      setPortfolioDeletingId(null);
+    }
+  };
+
   const runAi = async (type: AiToolType, options: { saveBeforeRun?: boolean } = {}) => {
-    if (!aiConsentAgreed) {
-      setError("AI 데이터 동의가 꺼져 있어 AI 분석을 실행할 수 없습니다. 설정에서 AI 데이터 활용 동의를 켜 주세요.");
+    if (!profileAiAllowed) {
+      setError(!aiConsentAgreed
+        ? "AI 데이터 동의가 꺼져 있어 분석을 실행할 수 없습니다. 설정에서 다시 동의해 주세요."
+        : "이력서 분석 개인정보 동의가 꺼져 있어 프로필 분석을 실행할 수 없습니다. 설정에서 다시 동의해 주세요.");
       return;
     }
     if (isDirty && !options.saveBeforeRun) {
@@ -423,6 +480,10 @@ export function ProfilePage() {
    * 이력서/자소서 탭 모두 구조화 분석을 돌린다(파일에 학력·경력이 있는 경우 대비).
    */
   const handleDocumentAttach = async (file: File, target: ProfileImportTarget) => {
+    if (!resumeAnalysisAgreed) {
+      setError("이력서 분석 개인정보 수집·이용 동의가 필요합니다. 설정에서 동의한 뒤 파일을 가져와 주세요.");
+      return;
+    }
     const existing =
       target === "RESUME_TEXT" ? form.resumeText.trim() : form.selfIntro.trim();
     if (existing) {
@@ -616,7 +677,7 @@ export function ProfilePage() {
                   type="summary"
                   active={activeAiView === "summary"}
                   loading={aiLoading === "summary"}
-                  disabled={!!aiLoading || !aiConsentAgreed}
+                  disabled={!!aiLoading || !profileAiAllowed}
                   icon={<Sparkles className="size-4" />}
                   onClick={() => void runAi("summary", { saveBeforeRun: isDirty })}
                 />
@@ -624,7 +685,7 @@ export function ProfilePage() {
                   type="skills"
                   active={activeAiView === "skills"}
                   loading={aiLoading === "skills"}
-                  disabled={!!aiLoading || !aiConsentAgreed}
+                  disabled={!!aiLoading || !profileAiAllowed}
                   icon={<Brain className="size-4" />}
                   onClick={() => void runAi("skills", { saveBeforeRun: isDirty })}
                 />
@@ -632,7 +693,7 @@ export function ProfilePage() {
                   type="completeness"
                   active={activeAiView === "completeness"}
                   loading={aiLoading === "completeness"}
-                  disabled={!!aiLoading || !aiConsentAgreed}
+                  disabled={!!aiLoading || !profileAiAllowed}
                   icon={<CheckCircle2 className="size-4" />}
                   onClick={() => void runAi("completeness", { saveBeforeRun: isDirty })}
                 />
@@ -640,7 +701,8 @@ export function ProfilePage() {
             </Card>
           </aside>
 
-          <section className="space-y-5">
+          {/* min-w-0: 그리드/플렉스 자식이 내용(탭 목록) 최소폭으로 부풀어 페이지 가로 오버플로를 만드는 것 방지 */}
+          <section className="min-w-0 space-y-5">
             <Tabs value={activeTab} onValueChange={changeProfileTab}>
               <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
                 {profileTabValues.map((tab) => (
@@ -715,7 +777,7 @@ export function ProfilePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={docImporting}
+                        disabled={docImporting || !resumeAnalysisAgreed}
                         onClick={() => resumeFileRef.current?.click()}
                       >
                         {docImporting ? (
@@ -763,7 +825,7 @@ export function ProfilePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={docImporting}
+                        disabled={docImporting || !resumeAnalysisAgreed}
                         onClick={() => selfIntroFileRef.current?.click()}
                       >
                         {docImporting ? (
@@ -831,12 +893,76 @@ export function ProfilePage() {
                 <TabGuide tab="experience" status={tabStatuses.experience} />
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
-                    <CardTitle className="text-base">포트폴리오/활동 링크</CardTitle>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <CardTitle className="text-base">포트폴리오/활동 링크와 파일</CardTitle>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={portfolioUploading}
+                        onClick={() => portfolioFileRef.current?.click()}
+                      >
+                        {portfolioUploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                        파일 추가
+                      </Button>
+                      <input
+                        ref={portfolioFileRef}
+                        type="file"
+                        className="hidden"
+                        accept=".txt,.md,.pdf,.docx,image/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadPortfolio(file);
+                          event.target.value = "";
+                        }}
+                      />
+                    </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-4">
                     <Field label="링크 목록">
                       <Textarea value={form.portfolioLinksText} onChange={(event) => update("portfolioLinksText", event.target.value)} placeholder="노션, 블로그, 작업물, 활동 기록 링크를 한 줄에 하나씩 입력" rows={4} />
                     </Field>
+                    <div>
+                      <div className="mb-2 text-sm font-semibold text-slate-700">연결된 파일</div>
+                      {portfolioFiles.length > 0 ? (
+                        <div className="space-y-2">
+                          {portfolioFiles.map((file) => (
+                            <div
+                              key={file.id}
+                              className="flex w-full items-center gap-1 rounded-lg border border-slate-200 p-1 transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => void downloadProfilePortfolioFile(file).catch((err) => {
+                                  setError(err instanceof Error ? err.message : "파일을 내려받지 못했습니다.");
+                                })}
+                                className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-1 text-left"
+                              >
+                                <FileText className="size-4 shrink-0 text-blue-600" />
+                                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{file.originalName}</span>
+                                <span className="shrink-0 text-xs text-slate-500">{formatFileSize(file.sizeBytes)}</span>
+                              </button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                aria-label={`${file.originalName} 삭제`}
+                                disabled={portfolioDeletingId != null}
+                                onClick={() => void deletePortfolio(file)}
+                                className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              >
+                                {portfolioDeletingId === file.id
+                                  ? <Loader2 className="size-4 animate-spin" />
+                                  : <Trash2 className="size-4" />}
+                                <span className="sr-only">삭제</span>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-500">연결된 포트폴리오 파일이 없습니다.</p>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -1179,21 +1305,23 @@ function CompletenessResultPanel({ result, onApply }: { result: ProfileCompleten
 }
 
 function ConsentStatusBox({ consent }: { consent: ConsentStatus | null }) {
-  const agreed = consent?.aiDataAgreed === true;
+  const aiAgreed = consent?.aiDataAgreed === true;
+  const resumeAgreed = consent?.resumeAnalysisAgreed === true;
+  const agreed = aiAgreed && resumeAgreed;
   return (
     <div className={`rounded-lg border px-3 py-3 text-sm ${agreed ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
       <div className={`font-bold ${agreed ? "text-green-700" : "text-amber-800"}`}>
-        AI 데이터 동의 상태: {agreed ? "동의함" : "동의 필요"}
+        프로필 AI 처리 동의: {agreed ? "사용 가능" : "동의 필요"}
       </div>
       <p className={`mt-1 text-xs leading-5 ${agreed ? "text-green-700" : "text-amber-700"}`}>
         {agreed
-          ? "프로필 요약, 역량 추출, 완성도 진단을 실행할 수 있습니다."
-          : "동의가 꺼져 있으면 프로필 저장은 가능하지만 AI 분석은 제한됩니다."}
+          ? "AI 데이터 이용 동의와 이력서 분석 동의가 모두 활성화되어 있습니다."
+          : `${!aiAgreed ? "AI 데이터 이용 동의" : ""}${!aiAgreed && !resumeAgreed ? "와 " : ""}${!resumeAgreed ? "이력서 분석 동의" : ""}가 필요합니다. 수동 프로필 편집은 계속 사용할 수 있습니다.`}
       </p>
       {!agreed && (
-        <a className="mt-2 inline-flex text-xs font-bold text-blue-600 hover:underline" href="/settings">
+        <Link className="mt-2 inline-flex text-xs font-bold text-blue-600 hover:underline" to={aiAgreed ? "/settings?tab=privacy" : "/settings?tab=ai-consent"}>
           동의 설정으로 이동
-        </a>
+        </Link>
       )}
     </div>
   );
@@ -1280,7 +1408,7 @@ function TabStatusBadge({ status }: { status: ReturnType<typeof getProfileTabSta
 function TabGuide({ tab, status }: { tab: ProfileTab; status: ReturnType<typeof getProfileTabStatuses>[ProfileTab] }) {
   const meta = profileTabMeta[tab];
   return (
-    <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+    <div className="mb-4 rounded-lg border border-slate-200 bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="text-sm font-black text-slate-900">{meta.label}</div>
         <RequirementBadge requirement={meta.requirement} />
@@ -1796,6 +1924,12 @@ function isOngoing(startDate: string, endDate: string): boolean {
 function currentMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatFileSize(size: number | null | undefined): string {
+  if (size == null || size <= 0) return "크기 정보 없음";
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
 }
 
 function toForm(profile: UserProfile): ProfileForm {

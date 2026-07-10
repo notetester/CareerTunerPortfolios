@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { Sun, Moon } from "lucide-react";
+import { syncStatusBarTheme } from "@/platform/nativeShell";
 
 /** 라이트/다크 토글. 기본은 다크(App.tsx ThemeProvider). 선택은 localStorage에 저장됨(next-themes). */
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!mounted) return;
+    const frame = window.requestAnimationFrame(syncStatusBarTheme);
+    return () => window.cancelAnimationFrame(frame);
+  }, [mounted, resolvedTheme]);
 
   const isDark = mounted ? resolvedTheme === "dark" : true;
 

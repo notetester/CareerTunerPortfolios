@@ -473,6 +473,8 @@ const consentsByUser: Record<number, AdminUserConsentRow[]> = {
   9001: [
     { id: 90001, userId: 9001, consentType: "TERMS", agreed: true, agreedAt: iso(120), revokedAt: null, source: "SIGNUP", createdAt: iso(120) },
     { id: 90002, userId: 9001, consentType: "PRIVACY", agreed: true, agreedAt: iso(120), revokedAt: null, source: "SIGNUP", createdAt: iso(120) },
+    { id: 90004, userId: 9001, consentType: "AI_DATA", agreed: true, agreedAt: iso(120), revokedAt: null, source: "SIGNUP", createdAt: iso(120) },
+    { id: 90005, userId: 9001, consentType: "RESUME_ANALYSIS", agreed: true, agreedAt: iso(120), revokedAt: null, source: "SIGNUP", createdAt: iso(120) },
     { id: 90003, userId: 9001, consentType: "MARKETING", agreed: true, agreedAt: iso(40), revokedAt: null, source: "SETTINGS", createdAt: iso(120) },
   ],
   1: [
@@ -588,6 +590,7 @@ function buildConsentViews(): AdminConsentView[] {
         userId: consent.userId,
         userEmail: emailOf.get(consent.userId) ?? null,
         consentType: consent.consentType,
+        consentVersion: "v2026.07",
         agreed: consent.agreed,
         agreedAt: consent.agreedAt,
         revokedAt: consent.revokedAt,

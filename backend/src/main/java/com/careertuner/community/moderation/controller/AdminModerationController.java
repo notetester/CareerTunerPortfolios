@@ -1,6 +1,7 @@
 package com.careertuner.community.moderation.controller;
 
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -12,12 +13,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.security.AuthUser;
 import com.careertuner.community.moderation.domain.ModerationSetting;
 import com.careertuner.community.moderation.domain.Strictness;
 import com.careertuner.community.moderation.dto.ModerationDetailResponse;
 import com.careertuner.community.moderation.dto.ModerationListRequest;
 import com.careertuner.community.moderation.dto.ModerationPageResponse;
 import com.careertuner.community.moderation.dto.ModerationResult;
+import com.careertuner.community.moderation.dto.ModerationReviewDecisionRequest;
+import com.careertuner.community.moderation.dto.ModerationReviewQueuePageResponse;
 import com.careertuner.community.moderation.dto.ModerationSettingResponse;
 import com.careertuner.community.moderation.dto.ModerationSettingUpdateRequest;
 import com.careertuner.community.moderation.dto.ModerationStatsResponse;
@@ -148,6 +152,26 @@ public class AdminModerationController {
     @GetMapping("/moderation/{postId}")
     public ApiResponse<ModerationDetailResponse> detail(@PathVariable Long postId) {
         return ApiResponse.ok(adminModerationService.getDetail(postId));
+    }
+
+    /** toxic이지만 현재 자동 숨김 임계 미만인 게시 중 글의 수동 검토 큐 */
+    @GetMapping("/moderation/review-queue")
+    public ApiResponse<ModerationReviewQueuePageResponse> reviewQueue(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return ApiResponse.ok(adminModerationService.getReviewQueue(page, size));
+    }
+
+    /** 수동 검토 결정. HIDE는 PUBLISHED→HIDDEN, KEEP은 게시 상태를 유지한다. */
+    @PatchMapping("/moderation/review-queue/{postId}")
+    public ApiResponse<Void> decideReviewQueue(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long postId,
+            @RequestBody ModerationReviewDecisionRequest request
+    ) {
+        adminModerationService.decideReviewQueue(authUser.id(), postId, request.action());
+        return ApiResponse.ok(null);
     }
 
     /** HIDDEN → PUBLISHED 복원 */

@@ -43,6 +43,7 @@ class ProfileDocumentImportServiceTest {
 
     private ProfileMapper profileMapper;
     private FileService fileService;
+    private ConsentService consentService;
     private TransactionTemplate transactionTemplate;
     private ProfileServiceImpl service;
 
@@ -50,6 +51,8 @@ class ProfileDocumentImportServiceTest {
     void setUp() {
         profileMapper = mock(ProfileMapper.class);
         fileService = mock(FileService.class);
+        consentService = mock(ConsentService.class);
+        when(consentService.hasCurrentConsent(7L, "RESUME_ANALYSIS")).thenReturn(true);
         transactionTemplate = mock(TransactionTemplate.class);
         // execute 콜백을 즉시 실행
         when(transactionTemplate.execute(any())).thenAnswer(inv -> {
@@ -59,11 +62,12 @@ class ProfileDocumentImportServiceTest {
         service = new ProfileServiceImpl(
                 profileMapper,
                 mock(ApplicationCaseMapper.class),
-                mock(ConsentService.class),
+                consentService,
                 mock(ProfileAiService.class),
                 mock(NotificationService.class),
                 new ObjectMapper(),
                 fileService,
+                mock(ProfilePortfolioService.class),
                 new DocumentTextExtractor(),
                 mock(ProfileResumeStructurer.class),
                 transactionTemplate);

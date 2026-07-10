@@ -26,6 +26,9 @@ public interface RewardMapper {
     /** users 리워드 컬럼 스냅샷(activity_point/user_level/credit). */
     UserRewardAccount findAccount(@Param("userId") Long userId);
 
+    /** 리워드 적립 직렬화를 위해 사용자 계정 행을 잠근 뒤 현재 상태를 조회한다. */
+    UserRewardAccount findAccountForUpdate(@Param("userId") Long userId);
+
     /** 누적 활동 포인트를 delta 만큼 가산한다. 성공 시 1. */
     int addActivityPoint(@Param("userId") Long userId, @Param("delta") int delta);
 

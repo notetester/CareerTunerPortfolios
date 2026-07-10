@@ -11,6 +11,8 @@ import com.careertuner.ai.intake.dto.IntakeAskRequest;
 import com.careertuner.ai.intake.dto.IntakeAskResponse;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 
 /**
  * 인테이크 챗봇 진입점. F 네임스페이스 {@code POST /api/chatbot/intake/ask}.
@@ -20,6 +22,7 @@ import com.careertuner.common.web.ApiResponse;
  */
 @RestController
 @RequestMapping("/api/chatbot/intake")
+@RequiresConsent(ConsentType.AI_DATA)
 public class IntakeController {
 
     private final IntakeAskService intakeAskService;

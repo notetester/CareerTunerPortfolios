@@ -119,8 +119,9 @@ public class RuleBasedProfileAiService implements ProfileAiService {
         evidence.put(ScoreCriterion.GOAL_CLARITY, hasText(profile.getDesiredJob())
                 ? "희망 직무가 입력되어 있습니다."
                 : "희망 직무가 비어 있습니다.");
-        evidence.put(ScoreCriterion.EXPERIENCE_SPECIFICITY, hasText(profile.getCareer()) || hasText(profile.getProjects())
-                ? "경력 또는 활동 기록이 입력되어 있습니다."
+        evidence.put(ScoreCriterion.EXPERIENCE_SPECIFICITY,
+                hasText(profile.getCareer()) || hasText(profile.getProjects()) || hasText(profile.getPortfolioEvidence())
+                ? "경력, 활동 또는 포트폴리오 파일 근거가 입력되어 있습니다."
                 : "경력/활동 기록이 부족합니다.");
         evidence.put(ScoreCriterion.ACHIEVEMENT_EVIDENCE, NUMBER_EVIDENCE.matcher(profileText(profile)).find()
                 ? "수치 또는 기간처럼 확인 가능한 근거가 포함되어 있습니다."
@@ -128,9 +129,12 @@ public class RuleBasedProfileAiService implements ProfileAiService {
         evidence.put(ScoreCriterion.JOB_SKILL_ALIGNMENT, skills.isEmpty()
                 ? "추출 가능한 직무 역량 키워드가 부족합니다."
                 : "추출된 직무 역량: " + String.join(", ", skills.subList(0, Math.min(5, skills.size()))));
-        evidence.put(ScoreCriterion.DOCUMENT_CONSISTENCY, hasText(profile.getResumeText()) && hasText(profile.getSelfIntro())
-                ? "이력서 본문과 자기소개가 함께 입력되어 있습니다."
-                : "이력서 본문 또는 자기소개가 부족합니다.");
+        int documentSources = (hasText(profile.getResumeText()) ? 1 : 0)
+                + (hasText(profile.getSelfIntro()) ? 1 : 0)
+                + (hasText(profile.getPortfolioLinks()) || hasText(profile.getPortfolioEvidence()) ? 1 : 0);
+        evidence.put(ScoreCriterion.DOCUMENT_CONSISTENCY, documentSources >= 2
+                ? "이력서, 자기소개, 포트폴리오 중 둘 이상의 자료가 입력되어 있습니다."
+                : "서로 비교할 이력서, 자기소개 또는 포트폴리오 자료가 부족합니다.");
         evidence.put(ScoreCriterion.IMPROVEMENT_READINESS, "입력된 항목을 기준으로 보완 우선순위를 계산했습니다.");
         return evidence;
     }
@@ -141,7 +145,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
         improvements.put(ScoreCriterion.EXPERIENCE_SPECIFICITY, "경험마다 역할, 수행 업무, 사용 역량을 분리해서 작성하세요.");
         improvements.put(ScoreCriterion.ACHIEVEMENT_EVIDENCE, "성과에는 숫자, 기간, 개선 전후 상태를 함께 남기세요.");
         improvements.put(ScoreCriterion.JOB_SKILL_ALIGNMENT, "희망 직무에서 자주 요구되는 역량을 스킬 목록과 경험 문장에 반복해서 연결하세요.");
-        improvements.put(ScoreCriterion.DOCUMENT_CONSISTENCY, "이력서, 자기소개, 포트폴리오 링크의 핵심 경험이 같은 방향을 가리키게 정리하세요.");
+        improvements.put(ScoreCriterion.DOCUMENT_CONSISTENCY, "이력서, 자기소개, 포트폴리오 자료의 핵심 경험이 같은 방향을 가리키게 정리하세요.");
         improvements.put(ScoreCriterion.IMPROVEMENT_READINESS, "부족한 항목을 먼저 채우고 다시 AI 진단을 실행하세요.");
         return improvements;
     }
@@ -160,14 +164,15 @@ public class RuleBasedProfileAiService implements ProfileAiService {
         if (hasText(profile.getProjects())) score += 35;
         if (hasText(profile.getEducation())) score += 15;
         if (hasText(profile.getResumeText())) score += 15;
-        return score;
+        if (hasText(profile.getPortfolioEvidence())) score += 15;
+        return Math.min(score, 100);
     }
 
     private int achievementScore(UserProfile profile) {
         String text = profileText(profile);
         int score = NUMBER_EVIDENCE.matcher(text).find() ? 50 : 15;
         if (containsAny(text, "개선", "증가", "감소", "달성", "성과", "수상", "합격", "매출", "만족도")) score += 35;
-        if (hasText(profile.getPortfolioLinks())) score += 15;
+        if (hasText(profile.getPortfolioLinks()) || hasText(profile.getPortfolioEvidence())) score += 15;
         return Math.min(score, 100);
     }
 
@@ -175,7 +180,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
         int score = Math.min(70, skills.size() * 12);
         if (hasText(profile.getCertificates())) score += 15;
         if (hasText(profile.getLanguages())) score += 10;
-        if (hasText(profile.getProjects()) || hasText(profile.getCareer())) score += 5;
+        if (hasText(profile.getProjects()) || hasText(profile.getCareer()) || hasText(profile.getPortfolioEvidence())) score += 5;
         return Math.min(score, 100);
     }
 
@@ -183,7 +188,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
         int score = 0;
         if (hasText(profile.getResumeText())) score += 30;
         if (hasText(profile.getSelfIntro())) score += 30;
-        if (hasText(profile.getPortfolioLinks())) score += 20;
+        if (hasText(profile.getPortfolioLinks()) || hasText(profile.getPortfolioEvidence())) score += 20;
         if (hasText(profile.getCertificates()) || hasText(profile.getLanguages())) score += 20;
         return score;
     }
@@ -192,7 +197,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
         int score = 40;
         if (hasText(profile.getDesiredJob())) score += 15;
         if (hasText(profile.getSkills())) score += 15;
-        if (hasText(profile.getCareer()) || hasText(profile.getProjects())) score += 15;
+        if (hasText(profile.getCareer()) || hasText(profile.getProjects()) || hasText(profile.getPortfolioEvidence())) score += 15;
         if (hasText(profile.getSelfIntro())) score += 15;
         return Math.min(score, 100);
     }
@@ -211,6 +216,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
         if (hasText(profile.getProjects())) strengths.add("경험/프로젝트/활동 기록이 입력되어 있습니다.");
         if (hasText(profile.getSelfIntro())) strengths.add("자기소개 문장이 있어 지원 방향을 해석할 수 있습니다.");
         if (hasText(profile.getPortfolioLinks())) strengths.add("포트폴리오 또는 활동 링크가 연결되어 있습니다.");
+        if (hasText(profile.getPortfolioEvidence())) strengths.add("포트폴리오 파일에서 경험 근거를 확인할 수 있습니다.");
         return strengths;
     }
 
@@ -249,6 +255,7 @@ public class RuleBasedProfileAiService implements ProfileAiService {
                 value(profile.getCertificates()),
                 value(profile.getLanguages()),
                 value(profile.getPortfolioLinks()),
+                value(profile.getPortfolioEvidence()),
                 value(profile.getResumeText()),
                 value(profile.getSelfIntro()),
                 value(profile.getPreferences()));

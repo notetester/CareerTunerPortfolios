@@ -34,6 +34,7 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.JwtTokenProvider;
 import com.careertuner.common.security.JwtTokenProvider.OauthState;
+import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.reward.service.RewardService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
@@ -809,16 +810,18 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void recordSignupConsents(Long userId, RegisterRequest request) {
-        insertConsent(userId, "TERMS", true, "REGISTER");
-        insertConsent(userId, "PRIVACY", true, "REGISTER");
-        insertConsent(userId, "AI_DATA", Boolean.TRUE.equals(request.aiDataAgreed()), "REGISTER");
-        insertConsent(userId, "MARKETING", Boolean.TRUE.equals(request.marketingAgreed()), "REGISTER");
+        insertConsent(userId, ConsentType.TERMS, true, "REGISTER");
+        insertConsent(userId, ConsentType.PRIVACY, true, "REGISTER");
+        insertConsent(userId, ConsentType.AI_DATA, Boolean.TRUE.equals(request.aiDataAgreed()), "REGISTER");
+        insertConsent(userId, ConsentType.RESUME_ANALYSIS, Boolean.TRUE.equals(request.resumeAnalysisAgreed()), "REGISTER");
+        insertConsent(userId, ConsentType.MARKETING, Boolean.TRUE.equals(request.marketingAgreed()), "REGISTER");
     }
 
-    private void insertConsent(Long userId, String consentType, boolean agreed, String source) {
+    private void insertConsent(Long userId, ConsentType consentType, boolean agreed, String source) {
         authMapper.insertUserConsent(UserConsent.builder()
                 .userId(userId)
-                .consentType(consentType)
+                .consentType(consentType.name())
+                .consentVersion(consentType.currentVersion())
                 .agreed(agreed)
                 .agreedAt(agreed ? LocalDateTime.now() : null)
                 .revokedAt(agreed ? null : LocalDateTime.now())

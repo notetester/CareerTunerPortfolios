@@ -80,7 +80,7 @@ class AuthServiceImplTest {
         when(jwtTokenProvider.getAccessValiditySeconds()).thenReturn(1800L);
 
         TokenResponse response = service.register(new RegisterRequest(
-                null, "career_user", "password123", "테스터", true, true, false, false), null);
+                null, "career_user", "password123", "테스터", true, true, false, false, false), null);
 
         assertThat(response.accessToken()).isEqualTo("access-token");
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);

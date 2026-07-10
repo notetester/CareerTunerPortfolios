@@ -66,7 +66,7 @@ export function AdminLoginRiskPolicyPage() {
         </div>
       )}
 
-      <section className="max-w-xl rounded-xl border border-slate-200 bg-white p-5">
+      <section className="max-w-xl rounded-xl border border-slate-200 bg-card p-5">
         {/* 토글 */}
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div>

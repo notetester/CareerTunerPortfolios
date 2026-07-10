@@ -76,7 +76,8 @@ export interface AdminAnalysisFailure {
   status: "FAILED" | "FALLBACK" | string;
   errorMessage: string | null;
   model: string | null;
-  promptVersion: string | null;
+  /** 백엔드 실패 응답엔 아직 없는 필드(직렬화 시 undefined) — optional 로 계약을 실제와 일치시킨다. */
+  promptVersion?: string | null;
   retryable: boolean;
   createdAt: string;
 }

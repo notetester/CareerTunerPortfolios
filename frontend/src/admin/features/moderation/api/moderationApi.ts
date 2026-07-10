@@ -1,5 +1,11 @@
 import { api } from "@/app/lib/api";
-import type { ModerationPage, ModerationDetail, ModerationStats } from "../types/moderation";
+import type {
+  ModerationPage,
+  ModerationDetail,
+  ModerationStats,
+  ModerationReviewAction,
+  ModerationReviewQueuePage,
+} from "../types/moderation";
 
 export function getModerationList(params: {
   status?: string;
@@ -29,6 +35,17 @@ export function deletePost(postId: number): Promise<void> {
 
 export function getModerationStats(): Promise<ModerationStats> {
   return api<ModerationStats>(`/admin/ai/moderation/stats`);
+}
+
+export function getModerationReviewQueue(page = 1, size = 5): Promise<ModerationReviewQueuePage> {
+  return api<ModerationReviewQueuePage>(`/admin/ai/moderation/review-queue?page=${page}&size=${size}`);
+}
+
+export function decideModerationReview(postId: number, action: ModerationReviewAction): Promise<void> {
+  return api<void>(`/admin/ai/moderation/review-queue/${postId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ action }),
+  });
 }
 
 /* ── 댓글 검열 (게시글 함수 복제, 경로만 /comments. postId 자리 = commentId) ── */

@@ -22,6 +22,7 @@ export function LoginPage() {
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState(false);
   const [aiDataAgreed, setAiDataAgreed] = useState(false);
+  const [resumeAnalysisAgreed, setResumeAnalysisAgreed] = useState(false);
   const [marketingAgreed, setMarketingAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +135,7 @@ export function LoginPage() {
           termsAgreed,
           privacyAgreed,
           aiDataAgreed,
+          resumeAnalysisAgreed,
           marketingAgreed,
         });
       }
@@ -357,23 +359,33 @@ export function LoginPage() {
                       checked={termsAgreed}
                       onCheckedChange={setTermsAgreed}
                       label="이용약관 동의"
+                      href="/legal/terms"
                       required
                     />
                     <ConsentCheckbox
                       checked={privacyAgreed}
                       onCheckedChange={setPrivacyAgreed}
                       label="개인정보 처리방침 동의"
+                      href="/legal/privacy"
                       required
                     />
                     <ConsentCheckbox
                       checked={aiDataAgreed}
                       onCheckedChange={setAiDataAgreed}
                       label="AI 분석 데이터 활용 동의"
+                      href="/legal/ai-data-consent"
+                    />
+                    <ConsentCheckbox
+                      checked={resumeAnalysisAgreed}
+                      onCheckedChange={setResumeAnalysisAgreed}
+                      label="이력서 분석 개인정보 수집·이용 동의"
+                      href="/legal/resume-analysis-consent"
                     />
                     <ConsentCheckbox
                       checked={marketingAgreed}
                       onCheckedChange={setMarketingAgreed}
                       label="마케팅 정보 수신 동의"
+                      href="/legal/marketing"
                     />
                   </div>
                 </>
@@ -416,8 +428,7 @@ export function LoginPage() {
 
             {mode === "signup" && (
               <p className="text-xs text-slate-400 text-center">
-                가입하면 <Link to="/legal/terms" className="text-blue-600 hover:underline">이용약관</Link>과{" "}
-                <Link to="/legal/privacy" className="text-blue-600 hover:underline">개인정보처리방침</Link>에 동의하게 됩니다.
+                필수 동의와 선택 동의는 각각 전문을 확인할 수 있으며, 가입 후 설정에서 언제든지 철회하거나 다시 동의할 수 있습니다.
               </p>
             )}
           </CardContent>
@@ -431,23 +442,25 @@ function ConsentCheckbox({
   checked,
   onCheckedChange,
   label,
+  href,
   required = false,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: string;
+  href: string;
   required?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-      <Checkbox
-        checked={checked}
-        onCheckedChange={(nextChecked) => onCheckedChange(nextChecked === true)}
-      />
-      <span>
-        {required && <span className="text-red-500">[필수] </span>}
-        {label}
-      </span>
-    </label>
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <label className="flex min-w-0 items-center gap-2 font-medium text-slate-700">
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(nextChecked) => onCheckedChange(nextChecked === true)}
+        />
+        <span>{required ? <span className="text-red-500">[필수] </span> : <span className="text-slate-400">[선택] </span>}{label}</span>
+      </label>
+      <Link className="shrink-0 font-semibold text-blue-700 hover:underline" to={href}>전문</Link>
+    </div>
   );
 }

@@ -73,4 +73,16 @@ export interface AdminApplicationCaseDetail {
   jobAnalyses: AdminApplicationJobAnalysis[];
   companyAnalyses: AdminApplicationCompanyAnalysis[];
   usageLogs: AdminAiUsageLogRow[];
+  statusHistory: AdminStatusHistoryEntry[];
+}
+
+/** 상태 변경 타임라인 항목(관리자 상태 변경 시 기록). */
+export interface AdminStatusHistoryEntry {
+  id: number;
+  applicationCaseId: number;
+  previousStatus: string | null;
+  newStatus: string;
+  memo: string | null;
+  changedByName: string | null;
+  createdAt: string;
 }

@@ -101,7 +101,7 @@ export function AdminChatbotGovernancePage() {
       )}
 
       {/* 쿼터 정책 */}
-      <section className="mb-5 max-w-xl rounded-xl border border-slate-200 bg-white p-5">
+      <section className="mb-5 max-w-xl rounded-xl border border-slate-200 bg-card p-5">
         <div className="flex items-center justify-between border-b border-slate-100 pb-4">
           <div>
             <div className="text-sm font-semibold text-slate-800">일일 사용 쿼터</div>
@@ -134,7 +134,7 @@ export function AdminChatbotGovernancePage() {
       </section>
 
       {/* 대화 세션 */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-card p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-semibold text-slate-800">대화 세션</h3>
           <input className="av-input" style={{ width: 160 }} placeholder="사용자 ID 필터" value={userFilter}
@@ -143,7 +143,7 @@ export function AdminChatbotGovernancePage() {
         </div>
         <div className="max-h-[60vh] overflow-auto">
           <table className="w-full min-w-[640px] text-sm">
-            <thead className="sticky top-0 z-10 bg-white">
+            <thead className="sticky top-0 z-10 bg-card">
               <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                 <th className="px-3 py-2">세션 ID</th>
                 <th className="px-3 py-2">사용자</th>

@@ -260,7 +260,7 @@ export function AdminJobPostingReviewPage() {
       {/* 검토 상세 모달 */}
       {selectedId != null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+          <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-card p-6 shadow-xl">
             {detailLoading || !detail ? (
               <p className="py-10 text-center text-sm text-slate-500">검토 상세를 불러오는 중...</p>
             ) : (
@@ -334,7 +334,7 @@ export function AdminJobPostingReviewPage() {
                   <div className="rounded-lg border border-red-200 bg-red-50/50 p-4">
                     <p className="text-sm font-medium text-slate-800">반려 사유 (기업에 알림으로 전달)</p>
                     <Textarea
-                      className="mt-2 min-h-24 bg-white"
+                      className="mt-2 min-h-24 bg-background"
                       value={rejectReason}
                       onChange={(event) => setRejectReason(event.target.value)}
                       placeholder="예) 급여 정보가 실제 조건과 다르게 기재되어 있습니다. 수정 후 다시 제출해 주세요."

@@ -3,11 +3,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAutoPrepRun, type PartState } from "@/features/autoprep/hooks/useAutoPrepRun";
 import type { AutoPrepRequest, PrepStepResult } from "@/features/autoprep/types/autoPrep";
 import {
+  deleteProfilePortfolioFile,
+  deleteUnlinkedProfileFile,
   getProfile,
   importProfileDocument,
+  linkProfilePortfolioFiles,
   pollProfileAnalyze,
   saveProfile,
   startProfileAnalyze,
+  uploadProfilePortfolioFile,
   type ProfileAnalyzeDraft,
 } from "@/app/profile/profileApi";
 import { mergeApprovedProfileDraft, type DraftApplyOpts } from "@/app/profile/profileDraftMerge";
@@ -28,12 +32,15 @@ export interface PortfolioReadme {
 
 /** 업로드 진행 중인 서류 항목(낙관적 칩 — AutoPrepLauncher 패턴 차용). */
 export interface DocItem {
+  clientId: number;
   slot: "cover" | "resume" | "portfolio";
   kind: "RESUME" | "PORTFOLIO" | "ATTACHMENT";
   file: File;
   id?: number;
   uploading: boolean;
+  deleting?: boolean;
   error?: boolean;
+  deleteError?: string;
 }
 
 /** 공고 입력(URL/붙여넣기/파일 중 하나). 파일은 즉시 업로드하지 않고 실행 시 "지원 건"으로 만든다. */
@@ -67,11 +74,23 @@ function splitSkills(s?: string | null): string[] {
   return t.split(/[,\n·|/]/).map((x) => x.trim()).filter(Boolean).slice(0, 6);
 }
 
+function profileLinkList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.map(String).map((item) => item.trim()).filter(Boolean);
+  } catch {
+    // 구형 일반 문자열은 줄 단위로 복구한다.
+  }
+  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+}
+
 /**
  * 온보딩 가이드 상태 + 실제 오케스트레이터 배선.
  * - 자소서(ATTACHMENT) → attachmentFileIds 로 오케에 실음(WRITE 가 소비).
- * - 이력서(RESUME)·포폴(PORTFOLIO) → 업로드해 fileId 는 보관하되 오케로 보내지 않음(소비 핸들러 없음).
- *   프로필/케이스 반영은 향후 별도 작업(아래 collect()/TODO).
+ * - 이력서(RESUME) → 프로필 원문/구조화 초안으로 연결.
+ * - 포폴(PORTFOLIO) → 업로드 시 USER_PROFILE_PORTFOLIO ref 로 영속 연결하고 AutoPrep PROFILE 근거로 사용.
  * - 공고 → from-job-posting 로 "지원 건" 생성(applicationCaseId) → FIT/JOB 이 이 케이스를 분석.
  */
 /**
@@ -111,7 +130,25 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   // 실제 오케 SSE 실행 — useChatbot 이 쓰는 것과 동일한 공용 훅(파싱/누적 로직 단일 소스, 여긴 재사용만).
   const run = useAutoPrepRun();
   const hasCaseRef = useRef(false);
+  const nextDocClientIdRef = useRef(0);
+  const docGenerationRef = useRef(0);
+  const activeDocIdsRef = useRef(new Set<number>());
+  const removingDocIdsRef = useRef(new Set<number>());
+  const handedOffFileIdsRef = useRef(new Set<number>());
+  const pendingResumeAnalysisIdsRef = useRef(new Set<number>());
   const field = getField(role);
+
+  const isDocCurrent = useCallback((clientId: number, generation: number) =>
+    generation === docGenerationRef.current
+      && activeDocIdsRef.current.has(clientId)
+      && !removingDocIdsRef.current.has(clientId), []);
+
+  const deleteDocFile = useCallback((doc: Pick<DocItem, "kind" | "id">): Promise<void> => {
+    if (doc.id == null) return Promise.resolve();
+    return doc.kind === "PORTFOLIO"
+      ? deleteProfilePortfolioFile(doc.id)
+      : deleteUnlinkedProfileFile(doc.id);
+  }, []);
 
   const setRole = useCallback((r: string) => {
     setRoleState(r);
@@ -178,21 +215,35 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     setPortfolioReadmeError(null);
   }, []);
 
-  // ── 서류 업로드: 자소서/이력서/포폴 → /file/upload → fileId 보관 ──
+  // ── 서류 업로드: 자소서/이력서는 /file/upload, 포폴은 프로필 연결 전용 API → fileId 보관 ──
   // 이력서: import(RESUME_TEXT) + analyze(구조화 초안). 자소서: import(SELF_INTRO).
   // 구조화 필드는 자동 커밋하지 않음 — profileDraft 확인 후 applyProfileDraft.
   const addDoc = useCallback(
     async (slot: DocItem["slot"], kind: DocItem["kind"], file: File) => {
-      const item: DocItem = { slot, kind, file, uploading: true };
+      const generation = docGenerationRef.current;
+      const clientId = ++nextDocClientIdRef.current;
+      const item: DocItem = { clientId, slot, kind, file, uploading: true };
+      activeDocIdsRef.current.add(clientId);
       setDocs((prev) => [...prev, item]);
       setProfileImportNotice(null);
       try {
-        const res: UploadedFile = await uploadDocument(file, kind);
+        const res: UploadedFile = slot === "portfolio"
+          ? await uploadProfilePortfolioFile(file)
+          : await uploadDocument(file, kind);
+        if (!isDocCurrent(clientId, generation)) {
+          // 닫기/reset 중 완료된 업로드는 UI에 되살리지 않고 즉시 정리한다.
+          await deleteDocFile({ kind, id: res.id }).catch(() => undefined);
+          return;
+        }
         setDocs((prev) => prev.map((d) => (d === item ? { ...d, id: res.id, uploading: false } : d)));
 
         if (slot === "resume" && res.id != null) {
           try {
             const imported = await importProfileDocument(res.id, "RESUME_TEXT");
+            if (!isDocCurrent(clientId, generation)) {
+              await deleteUnlinkedProfileFile(res.id).catch(() => undefined);
+              return;
+            }
             setProfileImportNotice(
               imported.truncated
                 ? "이력서 일부만 프로필에 저장했어요."
@@ -201,20 +252,55 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
             setProfileDraftStatus("running");
             setProfileDraft(null);
             setProfileDraftError(null);
-            const started = await startProfileAnalyze(res.id);
-            const finished = await pollProfileAnalyze(started.jobId);
-            if (finished.status === "DONE" && finished.draft) {
-              setProfileDraft(finished.draft);
-              setProfileDraftStatus("done");
-              setProfileImportNotice("이력서에서 학력·경력 등을 뽑았어요. 아래 확인 후 반영해 주세요.");
-            } else {
-              setProfileDraftStatus("failed");
-              setProfileDraftError(
-                finished.errorMessage || "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
-              );
-              setProfileImportNotice(null);
+            pendingResumeAnalysisIdsRef.current.add(res.id);
+            try {
+              const started = await startProfileAnalyze(res.id);
+              const finished = await pollProfileAnalyze(started.jobId);
+              if (isDocCurrent(clientId, generation)) {
+                if (finished.status === "DONE" && finished.draft) {
+                  setProfileDraft(finished.draft);
+                  setProfileDraftStatus("done");
+                  setProfileImportNotice("이력서에서 학력·경력 등을 뽑았어요. 원본 파일은 정리했으며 아래 확인 후 반영해 주세요.");
+                } else {
+                  setProfileDraftStatus("failed");
+                  setProfileDraftError(
+                    finished.errorMessage || "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
+                  );
+                  setProfileImportNotice(null);
+                }
+              }
+            } catch (analysisError) {
+              if (isDocCurrent(clientId, generation)) {
+                setProfileDraftStatus("failed");
+                setProfileDraftError(
+                  analysisError instanceof Error
+                    ? analysisError.message
+                    : "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
+                );
+                setProfileImportNotice(null);
+              }
+            } finally {
+              pendingResumeAnalysisIdsRef.current.delete(res.id);
+              try {
+                await deleteUnlinkedProfileFile(res.id);
+                activeDocIdsRef.current.delete(clientId);
+                setDocs((prev) => prev.filter((d) => d.clientId !== clientId));
+              } catch (cleanupError) {
+                setDocs((prev) => prev.map((d) => d.clientId === clientId
+                  ? {
+                      ...d,
+                      deleting: false,
+                      deleteError: cleanupError instanceof Error
+                        ? cleanupError.message
+                        : "분석을 마친 이력서 원본을 정리하지 못했어요.",
+                    }
+                  : d));
+              } finally {
+                removingDocIdsRef.current.delete(clientId);
+              }
             }
           } catch (e) {
+            if (!isDocCurrent(clientId, generation)) return;
             setProfileDraftStatus("failed");
             setProfileDraftError(e instanceof Error ? e.message : "첨부에 실패했어요. 다시 시도해 주세요.");
             setProfileImportNotice(null);
@@ -222,22 +308,26 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
         } else if (slot === "cover" && res.id != null) {
           try {
             const imported = await importProfileDocument(res.id, "SELF_INTRO");
+            if (!isDocCurrent(clientId, generation)) return;
             setProfileImportNotice(
               imported.truncated
                 ? "자소서 일부만 프로필에 저장했어요."
                 : "자기소개서 원문을 프로필에 넣었어요.",
             );
           } catch (e) {
+            if (!isDocCurrent(clientId, generation)) return;
             setProfileImportNotice(
               e instanceof Error ? e.message : "자소서 프로필 반영에 실패했어요.",
             );
           }
         }
       } catch {
-        setDocs((prev) => prev.map((d) => (d === item ? { ...d, uploading: false, error: true } : d)));
+        if (isDocCurrent(clientId, generation)) {
+          setDocs((prev) => prev.map((d) => (d.clientId === clientId ? { ...d, uploading: false, error: true } : d)));
+        }
       }
     },
-    [],
+    [deleteDocFile, isDocCurrent],
   );
 
   /**
@@ -264,9 +354,87 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     setProfileDraftError(null);
   }, []);
 
-  const removeDoc = useCallback((target: DocItem) => {
-    setDocs((prev) => prev.filter((d) => d !== target));
-  }, []);
+  const removeDoc = useCallback(async (target: DocItem) => {
+    if (target.uploading || target.deleting) return;
+    if (target.id == null) {
+      activeDocIdsRef.current.delete(target.clientId);
+      setDocs((prev) => prev.filter((d) => d.clientId !== target.clientId));
+      return;
+    }
+    if (target.kind === "ATTACHMENT" && handedOffFileIdsRef.current.has(target.id)) {
+      setDocs((prev) => prev.map((d) => d.clientId === target.clientId
+        ? { ...d, deleteError: "이미 자동 준비 실행에 인계된 자소서 파일은 여기서 삭제할 수 없어요." }
+        : d));
+      return;
+    }
+    const consequence = target.kind === "PORTFOLIO"
+      ? "이 포트폴리오 파일을 삭제할까요? 다음 AI 분석의 근거에서도 제거됩니다."
+      : "업로드 파일을 삭제할까요? 이미 프로필로 가져온 내용은 유지되며 내 프로필에서 따로 수정하거나 삭제할 수 있어요.";
+    if (!window.confirm(consequence)) return;
+
+    if (target.kind === "RESUME" && pendingResumeAnalysisIdsRef.current.has(target.id)) {
+      // 분석 worker가 원본을 읽는 동안은 물리 삭제를 미루고, 완료 finally에서 정리한다.
+      removingDocIdsRef.current.add(target.clientId);
+      setDocs((prev) => prev.map((d) => d.clientId === target.clientId
+        ? {
+            ...d,
+            deleting: true,
+            deleteError: "이력서 분석이 끝나면 원본 파일을 자동으로 삭제할게요.",
+          }
+        : d));
+      return;
+    }
+
+    removingDocIdsRef.current.add(target.clientId);
+    setDocs((prev) => prev.map((d) => d.clientId === target.clientId
+      ? { ...d, deleting: true, deleteError: undefined }
+      : d));
+    try {
+      await deleteDocFile(target);
+      activeDocIdsRef.current.delete(target.clientId);
+      setDocs((prev) => prev.filter((d) => d.clientId !== target.clientId));
+    } catch (error) {
+      setDocs((prev) => prev.map((d) => d.clientId === target.clientId
+        ? {
+            ...d,
+            deleting: false,
+            deleteError: error instanceof Error ? error.message : "업로드 파일을 삭제하지 못했어요.",
+          }
+        : d));
+    } finally {
+      removingDocIdsRef.current.delete(target.clientId);
+    }
+  }, [deleteDocFile]);
+
+  /** collect()가 가진 포트폴리오 id를 서버 프로필 참조와 재동기화(중단 재시도·구형 업로드 입양). */
+  const syncPortfolioFiles = useCallback(async (fileIds?: number[]) => {
+    const ids = fileIds ?? docs
+      .filter((d) => d.kind === "PORTFOLIO" && d.id != null)
+      .map((d) => d.id as number);
+    if (ids.length > 0) {
+      await linkProfilePortfolioFiles(Array.from(new Set(ids)));
+    }
+  }, [docs]);
+
+  /** 가이드에서 받은 URL을 기존 프로필 링크와 합집합으로 저장한다(RMW, 다른 프로필 필드 보존). */
+  const syncPortfolioLinks = useCallback(async (collectedLinks?: Partial<Record<LinkKey, string>>) => {
+    const values = Object.values(collectedLinks ?? links)
+      .map((value) => value?.trim() ?? "")
+      .filter(Boolean);
+    if (values.length === 0) return;
+    const current = await getProfile();
+    const existing = profileLinkList(current.portfolioLinks);
+    const seen = new Set(existing.map((value) => value.toLowerCase()));
+    const merged = [...existing];
+    for (const value of values) {
+      const key = value.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(value);
+      }
+    }
+    await saveProfile({ ...current, portfolioLinks: merged });
+  }, [links]);
 
   const setJdUrl = useCallback((url: string) => setJd((p) => ({ ...p, url })), []);
   const setJdText = useCallback((text: string) => setJd((p) => ({ ...p, text })), []);
@@ -379,6 +547,14 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     setStep("analyzing");
     setRunError(null);
 
+    // collect 대상 PORTFOLIO 파일은 자소서 attachment와 분리해 프로필 ref만 재확인한다.
+    try {
+      await Promise.all([syncPortfolioFiles(), syncPortfolioLinks()]);
+    } catch (e) {
+      // 전용 업로드가 이미 profile ref 를 기록한다. 재동기화 실패만으로 전체 준비를 막지는 않고 안내한다.
+      setProfileImportNotice(e instanceof Error ? e.message : "포트폴리오 연결 상태를 다시 확인해 주세요.");
+    }
+
     // 1) 공고 → 지원 건(case). 생성 로직은 ensureCase 공유(인테이크 매핑과 단일 경로).
     let effectiveCaseId = caseId;
     try {
@@ -406,19 +582,35 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
       // coverLetterText 는 자소서를 attachment 로 실으므로 비움. mode/query 는 가이드에서 미지정.
     };
 
+    attachmentFileIds.forEach((id) => handedOffFileIdsRef.current.add(id));
+
     // 3) 오케 SSE 실행 — run.parts 누적은 useAutoPrepRun 내부, 완료는 아래 effect 가 감지해 finalize.
     void run.start(req);
-  }, [caseId, ensureCase, docs, run]);
+  }, [caseId, ensureCase, docs, run, syncPortfolioFiles, syncPortfolioLinks]);
 
   /**
    * SKIPPED 된 WRITE 카드에서 자소서를 뒤늦게 첨부 → 그 자리에서 재실행.
    * docs 스텝을 건너뛴 사용자가 앞 단계로 되돌아가지 않고도 교정을 이어받게 한다.
    */
   const attachCoverLetter = useCallback(async (file: File) => {
+    const generation = docGenerationRef.current;
+    const clientId = ++nextDocClientIdRef.current;
+    activeDocIdsRef.current.add(clientId);
     const uploaded: UploadedFile = await uploadDocument(file, "ATTACHMENT");
-    setDocs((prev) => [...prev, { slot: "cover", kind: "ATTACHMENT", file, id: uploaded.id, uploading: false }]);
+    if (!isDocCurrent(clientId, generation)) {
+      await deleteUnlinkedProfileFile(uploaded.id).catch(() => undefined);
+      return;
+    }
+    setDocs((prev) => [...prev, {
+      clientId,
+      slot: "cover",
+      kind: "ATTACHMENT",
+      file,
+      id: uploaded.id,
+      uploading: false,
+    }]);
     await runReal([uploaded.id]);
-  }, [runReal]);
+  }, [isDocCurrent, runReal]);
 
   // ★ 실행 완료 감지: analyzing 단계에서 run 이 멈추고(running=false) 전 파트가 settle 되면 결과 조립.
   //   run.parts 는 useAutoPrepRun 이 SSE 로 채우는 살아있는 상태라 클로저 문제 없이 항상 최신값을 본다.
@@ -434,7 +626,23 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     finalize(run.parts, hasCaseRef.current);
   }, [step, run.running, run.parts, run.error, finalize]);
 
+  const markDocsHandedOff = useCallback((fileIds?: number[]) => {
+    const ids = fileIds ?? docs.flatMap((doc) =>
+      doc.kind === "ATTACHMENT" && doc.id != null ? [doc.id] : []);
+    ids.forEach((id) => handedOffFileIdsRef.current.add(id));
+  }, [docs]);
+
   const reset = useCallback(() => {
+    const abandoned = docs.filter((doc) =>
+      doc.id != null
+      && doc.kind !== "PORTFOLIO"
+      && !handedOffFileIdsRef.current.has(doc.id)
+      && !(doc.kind === "RESUME" && pendingResumeAnalysisIdsRef.current.has(doc.id)));
+    docGenerationRef.current += 1;
+    activeDocIdsRef.current.clear();
+    removingDocIdsRef.current.clear();
+    // 닫기는 즉시 진행하되, 이미 서버에 생긴 미인계 파일은 소유권 검증 DELETE로 best-effort 정리한다.
+    void Promise.allSettled(abandoned.map((doc) => deleteDocFile(doc)));
     run.reset();
     setStep("role");
     setRoleState(null);
@@ -449,21 +657,23 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     setCaseId(null);
     setFit(null);
     setRunError(null);
-  }, [run]);
+    setProfileDraft(null);
+    setProfileDraftStatus("idle");
+    setProfileDraftError(null);
+    setProfileImportNotice(null);
+  }, [deleteDocFile, docs, run]);
 
   /**
    * ★ 수집 스냅샷 — 받은 fileId·링크·케이스를 한 곳에.
-   * 이력서/포폴은 여기 fileId 로만 남긴다(오케 미전송). 프로필 반영은 향후 별도 작업.
+   * 포폴 fileId 는 syncPortfolioFiles 가 USER_PROFILE_PORTFOLIO 참조로 영속 연결한다.
    */
   const collect = useCallback(() => {
     return {
       role: role === "__custom__" ? customRole.trim() : role,
       skills,
       coverLetterFileIds: docs.filter((d) => d.kind === "ATTACHMENT" && d.id != null).map((d) => d.id as number),
-      // TODO(A파트 배선): resume/portfolio fileId 를 프로필/케이스에 참조로 연결(적합도엔 미투입).
       resumeFileIds: docs.filter((d) => d.kind === "RESUME" && d.id != null).map((d) => d.id as number),
       portfolioFileIds: docs.filter((d) => d.kind === "PORTFOLIO" && d.id != null).map((d) => d.id as number),
-      // TODO(A파트 배선): 프로필/분석 반영은 향후 배선.
       portfolioReadmeText: portfolioReadme?.text ?? null,
       applicationCaseId: caseId,
       jdHasFile: !!jd.file,
@@ -505,6 +715,8 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     removePortfolioReadme,
     addDoc,
     removeDoc,
+    syncPortfolioFiles,
+    syncPortfolioLinks,
     applyProfileDraft,
     dismissProfileDraft,
     setJdUrl,
@@ -515,6 +727,7 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     ensureCase,
     runReal,
     attachCoverLetter,
+    markDocsHandedOff,
     reset,
     collect,
   };

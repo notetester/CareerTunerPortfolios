@@ -19,9 +19,9 @@
       "ollamaFallback": ["http://localhost:11434"]
     },
     "aws": {
-      "description": "AWS 서버 배포 — 공인 주소 미확정(CHANGEME 플레이스홀더)",
-      "backendApi": "http://CHANGEME-aws-api:8080",
-      "frontendWeb": "http://CHANGEME-aws-frontend:5173",
+      "description": "AWS 통합 배포 — nginx가 웹과 /api를 같은 HTTPS 도메인에서 제공",
+      "backendApi": "https://careertuner.kro.kr/api",
+      "frontendWeb": "https://careertuner.kro.kr",
       "db": "mysql://localhost:3306/team1_db",
       "ollama": "http://localhost:11434",
       "ollamaFallback": ["http://localhost:11434"],

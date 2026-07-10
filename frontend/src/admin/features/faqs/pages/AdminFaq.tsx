@@ -100,10 +100,11 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
             {showDup && (
               <div className="fc-dup">
                 <div className="fc-dup__h">비슷한 FAQ가 이미 있어요 — 중복이면 기존 항목을 수정하세요</div>
+                {/* 링크처럼 보이던 no-op 앵커 제거 — 클릭 동작이 없으므로 정보성 텍스트로 표기 */}
                 {SIMILAR_SAMPLES.map((s) => (
-                  <a key={s.q} href="#" onClick={(e) => e.preventDefault()}>
+                  <span key={s.q} className="fc-dup__item">
                     <CornerDownRight />{s.q}<span className="v num">{s.v}</span>
-                  </a>
+                  </span>
                 ))}
               </div>
             )}

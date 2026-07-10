@@ -203,6 +203,8 @@ function fireDueReminders(items: PlannerScheduleItem[]) {
 
 function showBrowserNotification(item: PlannerScheduleItem, reminder: PlannerScheduleReminder) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
+  // 권한 요청은 설정/온보딩에서 사용자가 명시적으로 푸시를 켤 때만 수행한다.
+  if (window.Notification.permission !== "granted") return;
   const show = () => {
     try {
       new window.Notification(`일정 알림: ${item.title}`, {
@@ -213,12 +215,7 @@ function showBrowserNotification(item: PlannerScheduleItem, reminder: PlannerSch
       // 브라우저 알림은 보조 수단이다.
     }
   };
-  if (window.Notification.permission === "granted") show();
-  else if (window.Notification.permission === "default") {
-    void window.Notification.requestPermission().then((permission) => {
-      if (permission === "granted") show();
-    });
-  }
+  show();
 }
 
 function playBeep() {
@@ -242,9 +239,9 @@ function playBeep() {
 
 function readOverlayEnabled() {
   try {
-    return localStorage.getItem(OVERLAY_ENABLED_KEY) !== "false";
+    return localStorage.getItem(OVERLAY_ENABLED_KEY) === "true";
   } catch {
-    return true;
+    return false;
   }
 }
 

@@ -1,24 +1,20 @@
 /**
  * 딥링크 어댑터 (docs/planning/모바일 고려.md §5/§8).
  * Capacitor App 플러그인의 appUrlOpen(실행 중 수신) + getLaunchUrl(콜드 스타트)로
- * careertuner:// 커스텀 스킴과 https://careertuner.kr App Link 를 앱 내 경로로 변환해 navigate 한다.
+ * careertuner:// 커스텀 스킴과 https://careertuner.kro.kr App Link 를 앱 내 경로로 변환해 navigate 한다.
  * 웹/PWA 에서는 isNativeApp()=false 라 전부 건너뛰어 무해하다.
- * 플러그인은 하드 import 하지 않고 런타임 window.Capacitor.Plugins 로 접근한다(nativeShell 과 동일 패턴).
+ * 공식 App 플러그인을 직접 import해 번들 등록과 네이티브 브리지 호출을 보장한다.
  */
-import { isNativeApp, nativePlugin } from "./capacitor";
-
-interface CapAppPlugin {
-  addListener: (event: string, cb: (data: { url?: string }) => void) => void;
-  getLaunchUrl?: () => Promise<{ url?: string } | null | undefined>;
-}
+import { App } from "@capacitor/app";
+import { isNativeApp } from "./capacitor";
 
 /** 앱이 처리하는 App Link 호스트 — AndroidManifest 의 intent-filter 와 동일해야 한다. */
-const APP_LINK_HOSTS = ["careertuner.kr", "www.careertuner.kr"];
+const APP_LINK_HOSTS = ["careertuner.kro.kr", "careertuner.kr", "www.careertuner.kr"];
 
 /**
  * 딥링크 URL → 앱 내 경로 변환.
  * - careertuner://applications/3 → /applications/3
- * - https://careertuner.kr/community?tab=hot#top → /community?tab=hot#top
+ * - https://careertuner.kro.kr/community?tab=hot#top → /community?tab=hot#top
  * 변환할 수 없는 URL(다른 호스트/스킴)은 null — 호출부가 무시한다.
  */
 export function toAppPath(rawUrl: string): string | null {
@@ -49,24 +45,21 @@ export function initDeepLinks(navigate: (path: string) => void): void {
   if (initialized || !isNativeApp()) return;
   initialized = true;
 
-  const app = nativePlugin<CapAppPlugin>("App");
-  if (!app) return;
-
   // 실행 중 딥링크 수신(백그라운드 → 포그라운드 포함).
   try {
-    app.addListener("appUrlOpen", ({ url }) => {
+    void App.addListener("appUrlOpen", ({ url }) => {
       const path = toAppPath(url ?? "");
       if (path) navigate(path);
-    });
+    }).catch(() => {});
   } catch {
     /* 딥링크는 보조라 실패해도 무시 */
   }
 
   // 콜드 스타트 — 딥링크로 앱이 처음 실행된 경우 시작 URL 을 한 번 처리한다.
   try {
-    void app
-      .getLaunchUrl?.()
-      ?.then((data) => {
+    void App
+      .getLaunchUrl()
+      .then((data) => {
         const path = toAppPath(data?.url ?? "");
         if (path) navigate(path);
       })

@@ -83,7 +83,7 @@ git tag demo-apk-<설명> && git push origin demo-apk-<설명>
 
 ```bash
 adb shell am start -a android.intent.action.VIEW -d "careertuner://applications"
-adb shell am start -a android.intent.action.VIEW -d "https://careertuner.kr/community"
+adb shell am start -a android.intent.action.VIEW -d "https://careertuner.kro.kr/community"
 ```
 
 ## 3. iOS — **macOS + Xcode 필수** (Windows 빌드 불가)

@@ -16,12 +16,17 @@ const DOC_TABS: { key: LegalDocType; label: string }[] = [
   { key: "privacy", label: "개인정보처리방침" },
   { key: "marketing", label: "마케팅 수신 동의" },
   { key: "ai-data-consent", label: "AI 데이터 이용 동의" },
+  { key: "resume-analysis-consent", label: "이력서 분석 동의" },
   { key: "copyright", label: "저작권 정책" },
 ];
 
 const BADGE_LABEL: Record<string, string> = {
   live: "게시중", next: "예정", old: "종료", draft: "작성 중",
 };
+
+function publicAppPath(path: string): string {
+  return `${import.meta.env.BASE_URL.replace(/\/$/, "")}${path}`;
+}
 
 interface ClauseRow { title: string; body: string; }
 
@@ -430,7 +435,9 @@ export default function AdminTerms() {
                   href="#"
                   onClick={(e) => {
                     e.preventDefault();
+                    // DRAFT=편집 폼 로드, 그 외(시행중/종료)=클릭해도 무반응이던 것을 공개 미리보기로 연결
                     if (ver.status === "DRAFT") fillFromDraft(ver.id);
+                    else window.open(publicAppPath(`/legal/${docType}`), "_blank", "noopener,noreferrer");
                   }}
                 >
                   <span style={{ minWidth: 0, flex: 1 }}>
@@ -476,7 +483,7 @@ export default function AdminTerms() {
             {lastSaved && <><Check /> 임시저장됨 · {lastSaved}</>}
           </span>
           <div className="av-composefoot__r">
-            <a className="av-btn" href={`/legal/${docType}`} target="_blank" rel="noopener noreferrer">
+            <a className="av-btn" href={publicAppPath(`/legal/${docType}`)} target="_blank" rel="noopener noreferrer">
               <Eye /> 미리보기
             </a>
             <button className="av-btn" onClick={handleSave} disabled={saving || loading}>

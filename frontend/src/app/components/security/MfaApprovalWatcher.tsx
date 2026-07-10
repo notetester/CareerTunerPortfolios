@@ -105,7 +105,7 @@ export function MfaApprovalWatcher() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="mfa-approval-title"
-        className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl"
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-2xl"
       >
         <div className="border-b border-slate-200 bg-blue-50 px-5 py-4">
           <div className="flex items-center gap-3">
@@ -138,7 +138,7 @@ export function MfaApprovalWatcher() {
           <Button
             type="button"
             variant="outline"
-            className="gap-2 border-red-200 bg-white text-red-600 hover:bg-red-50"
+            className="gap-2 border-red-200 bg-card text-red-600 hover:bg-red-50"
             disabled={processing}
             onClick={() => void decide(false)}
           >
@@ -162,7 +162,7 @@ export function MfaApprovalWatcher() {
 
 function InfoRow({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-card px-3 py-2">
       <span className="text-xs font-semibold text-slate-500">{label}</span>
       <span className={`text-right text-sm ${strong ? "font-bold text-blue-700" : "font-medium text-slate-800"}`}>{value}</span>
     </div>

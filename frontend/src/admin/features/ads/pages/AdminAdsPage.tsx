@@ -31,7 +31,7 @@ import {
 
 const PLACEMENTS = Object.keys(PLACEMENT_LABELS) as AdPlacement[];
 const PLATFORMS = Object.keys(PLATFORM_LABELS) as AdTargetPlatform[];
-const selectClass = "h-10 rounded-md border border-slate-200 bg-white px-3 text-sm";
+const selectClass = "h-10 rounded-md border border-slate-200 bg-background px-3 text-sm";
 
 const EMPTY_FORM: AdminAdPayload = {
   title: "",
