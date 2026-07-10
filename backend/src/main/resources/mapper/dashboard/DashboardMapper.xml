@@ -265,7 +265,8 @@
     <select id="findWeeklyMetricsByUserId" resultMap="DashboardWeeklyMetricResultMap">
         SELECT
             (SELECT ROUND(AVG(fa.fit_score)) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
-             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
+             WHERE ac.user_id = #{userId} AND ac.archived_at IS NULL AND ac.deleted_at IS NULL
+               AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
                AND fa.id = (
                    SELECT MAX(current_latest.id)
                    FROM fit_analysis current_latest
@@ -273,7 +274,8 @@
                      AND current_latest.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
                )) AS current_fit_average,
             (SELECT ROUND(AVG(fa.fit_score)) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
-             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+             WHERE ac.user_id = #{userId} AND ac.archived_at IS NULL AND ac.deleted_at IS NULL
+               AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
                AND fa.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)
                AND fa.id = (
                    SELECT MAX(previous_latest.id)
@@ -283,7 +285,8 @@
                      AND previous_latest.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)
                )) AS previous_fit_average,
             (SELECT COALESCE(SUM(JSON_LENGTH(fa.missing_skills)), 0) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
-             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
+             WHERE ac.user_id = #{userId} AND ac.archived_at IS NULL AND ac.deleted_at IS NULL
+               AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
                AND fa.id = (
                    SELECT MAX(current_latest.id)
                    FROM fit_analysis current_latest
@@ -291,7 +294,8 @@
                      AND current_latest.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)
                )) AS current_gap_count,
             (SELECT COALESCE(SUM(JSON_LENGTH(fa.missing_skills)), 0) FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
-             WHERE ac.user_id = #{userId} AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
+             WHERE ac.user_id = #{userId} AND ac.archived_at IS NULL AND ac.deleted_at IS NULL
+               AND fa.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
                AND fa.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)
                AND fa.id = (
                    SELECT MAX(previous_latest.id)
@@ -301,10 +305,14 @@
                      AND previous_latest.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)
                )) AS previous_gap_count,
             (SELECT ROUND(AVG(session.total_score)) FROM interview_session session INNER JOIN application_case ac ON ac.id = session.application_case_id
-             WHERE ac.user_id = #{userId} AND session.total_score IS NOT NULL
+             WHERE ac.user_id = #{userId} AND ac.archived_at IS NULL AND ac.deleted_at IS NULL
+               AND session.total_score IS NOT NULL
+               AND session.deleted_at IS NULL
                AND session.created_at &gt;= DATE_SUB(NOW(), INTERVAL 7 DAY)) AS current_interview_average,
             (SELECT ROUND(AVG(session.total_score)) FROM interview_session session INNER JOIN application_case ac ON ac.id = session.application_case_id
-             WHERE ac.user_id = #{userId} AND session.total_score IS NOT NULL
+             WHERE ac.user_id = #{userId} AND ac.archived_at IS NULL AND ac.deleted_at IS NULL
+               AND session.total_score IS NOT NULL
+               AND session.deleted_at IS NULL
                AND session.created_at &gt;= DATE_SUB(NOW(), INTERVAL 14 DAY)
                AND session.created_at &lt; DATE_SUB(NOW(), INTERVAL 7 DAY)) AS previous_interview_average
     </select>

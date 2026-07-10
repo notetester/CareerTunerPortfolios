@@ -224,7 +224,7 @@ function ApplicationCard({
             )}
           </div>
           {!isTrash && (
-            <Link className="font-semibold text-blue-600 hover:text-blue-700" to={`/applications/${applicationCase.id}/overview`}>
+            <Link className="font-semibold text-blue-600 hover:text-blue-700" to={`/applications/${applicationCase.id}/${detailSection}`}>
               상세 보기
             </Link>
           )}
