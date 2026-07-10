@@ -27,6 +27,12 @@ export function sites(): Plugin {
     async closeBundle() {
       const outputDirectory = resolve(root, "dist", ".openai");
       const hostingConfig = resolve(root, ".openai", "hosting.json");
+      const serverOutput = resolve(root, "dist", "server");
+
+      // 다중 환경 빌드에서 PWA 플러그인이 서버 폴더에도 클라이언트 파일을 만든다.
+      // 호스팅 런타임이 이를 Worker 모듈로 읽지 않도록 서버 산출물에서는 제거한다.
+      await rm(resolve(serverOutput, "registerSW.js"), { force: true });
+      await rm(resolve(serverOutput, "manifest.webmanifest"), { force: true });
 
       await rm(outputDirectory, { recursive: true, force: true });
       await mkdir(outputDirectory, { recursive: true });
