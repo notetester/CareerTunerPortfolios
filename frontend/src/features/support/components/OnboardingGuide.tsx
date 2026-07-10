@@ -767,12 +767,24 @@ function FitStep({ g }: { g: G }) {
         <GuideBubble text={COPY.fitEmpty} />
         <div className="rounded-xl border border-border px-4 py-3 flex flex-col gap-2.5">
           <div className="text-[12px] leading-[1.55] text-muted-foreground">{g.runError}</div>
-          <button type="button" onClick={() => void g.runReal()}
-            className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold text-white transition-transform hover:brightness-110"
-            style={{ background: "var(--gradient-orchestrator)" }}>
-            <RotateCcw size={13} />
-            다시 분석하기
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 공고 추출 실패로 분석이 차단된 경우 '다시 분석하기'는 같은 실패만 반복하므로 숨기고,
+                상세에서 OCR 모델을 골라 재추출하도록 이동 경로만 남긴다. */}
+            {g.extractionFailedCaseId == null && (
+              <button type="button" onClick={() => void g.runReal()}
+                className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold text-white transition-transform hover:brightness-110"
+                style={{ background: "var(--gradient-orchestrator)" }}>
+                <RotateCcw size={13} />
+                다시 분석하기
+              </button>
+            )}
+            {g.extractionFailedCaseId != null && (
+              <a href={`/applications/${g.extractionFailedCaseId}/overview`}
+                className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full border border-border px-3 text-[11.5px] font-bold text-muted-foreground transition-colors hover:bg-muted">
+                지원 건 상세로 이동
+              </a>
+            )}
+          </div>
         </div>
       </>
     );
@@ -1036,8 +1048,17 @@ function GuideFooter({ g, onClose, order, intakeMode, serverMode, serverSubmitti
     <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
       {/* intake/온보딩 제출 오류 — 지어내지 않고 이유를 그대로. */}
       {submitError && (
-        <div className="text-[11px] leading-[1.5]" style={{ color: "var(--destructive)" }}>
-          {submitError}
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[11px] leading-[1.5]" style={{ color: "var(--destructive)" }}>
+            {submitError}
+          </div>
+          {/* 실패한 기존 지원 건을 이어 쓰는 경우 — 상세에서 OCR 모델을 골라 재추출하도록 이동 경로 제공. */}
+          {g.extractionFailedCaseId != null && (
+            <a href={`/applications/${g.extractionFailedCaseId}/overview`}
+              className="inline-flex w-fit items-center gap-1 text-[11px] font-semibold text-muted-foreground underline underline-offset-2 hover:text-foreground">
+              지원 건 상세로 이동
+            </a>
+          )}
         </div>
       )}
       <div className="flex items-center gap-2">

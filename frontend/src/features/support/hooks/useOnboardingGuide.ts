@@ -13,7 +13,7 @@ import {
 import { mergeApprovedProfileDraft, type DraftApplyOpts } from "@/app/profile/profileDraftMerge";
 import {
   createCaseFromFile, createCaseFromText, createCaseFromUrl, fetchGithubReadme, getLatestExtractionStatus,
-  retryExtraction, uploadDocument, type UploadedFile,
+  uploadDocument, type UploadedFile,
 } from "../api/onboardingApi";
 import {
   getField, githubRepoLabel, GITHUB_README_ERROR_COPY, GITHUB_README_ERROR_FALLBACK, ROLES,
@@ -74,6 +74,17 @@ function splitSkills(s?: string | null): string[] {
  *   프로필/케이스 반영은 향후 별도 작업(아래 collect()/TODO).
  * - 공고 → from-job-posting 로 "지원 건" 생성(applicationCaseId) → FIT/JOB 이 이 케이스를 분석.
  */
+/**
+ * 재제출 시 공고 추출이 FAILED 인 경우 — 온보딩에서 자동 재추출(무인자)은 strict 정책상 금지다.
+ * 사용자가 지원 건 상세에서 OCR 모델을 골라 재추출해야 하므로, 분석 진행을 막고 caseId 를 실어 안내한다.
+ */
+export class OnboardingPostingExtractionFailedError extends Error {
+  constructor(public readonly caseId: number) {
+    super("공고문 추출에 실패했어요. 지원 건 상세에서 OCR 모델을 골라 다시 추출한 뒤 이어가 주세요.");
+    this.name = "OnboardingPostingExtractionFailedError";
+  }
+}
+
 export function useOnboardingGuide(initialStep: GuideStep = "role") {
   const [step, setStep] = useState<GuideStep>(initialStep);
   const [role, setRoleState] = useState<string | null>(null);
@@ -88,6 +99,9 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   const [caseId, setCaseId] = useState<number | null>(null);
   const [fit, setFit] = useState<GuideResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  // 재제출 시 공고 추출이 FAILED 라 분석을 차단한 지원 건 id — UI 가 '다시 분석하기'(반복 차단) 대신
+  // '지원 건 상세로 이동'만 노출하도록 신호한다. 성공 경로/새 시도마다 ensureCase 가 초기화한다.
+  const [extractionFailedCaseId, setExtractionFailedCaseId] = useState<number | null>(null);
   /** 이력서 구조화 초안 — React state 보관(D-1). 새로고침 시 소실. 자동 DB 커밋 금지. */
   const [profileDraft, setProfileDraft] = useState<ProfileAnalyzeDraft | null>(null);
   const [profileDraftStatus, setProfileDraftStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
@@ -272,14 +286,21 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
    * 진행 중)·SUCCEEDED 는 건드리지 않고 그대로 caseId 를 돌려준다 — 재시도는 FAILED 에서만 유효하다.
    */
   const ensureCase = useCallback(async (): Promise<number | null> => {
+    setExtractionFailedCaseId(null); // 매 시도마다 초기화 — 이전 실패 신호가 남지 않게.
     if (caseId != null) {
+      // 재제출: 추출이 FAILED 면 자동 재추출하지 않는다(strict 정책 — 사용자 OCR 모델 선택 필수).
+      // 온보딩에서 무인자 재추출을 호출하면 백엔드가 400 을 주므로, 분석을 진행하지 않고 사용자를
+      // 지원 건 상세로 보내 OCR 모델을 골라 재추출하도록 막고 안내한다.
+      let failed = false;
       try {
         const extraction = await getLatestExtractionStatus(caseId);
-        if (extraction?.status === "FAILED") {
-          await retryExtraction(caseId);
-        }
+        failed = extraction?.status === "FAILED";
       } catch {
-        // 상태 조회·재큐잉 실패해도 케이스 자체는 유효 — 기존 caseId 로 계속 진행(폴링이 최신 상태를 다시 봄).
+        // 상태 조회 실패는 무시 — 케이스 자체는 유효(폴링이 최신 상태를 다시 봄).
+      }
+      if (failed) {
+        setExtractionFailedCaseId(caseId);
+        throw new OnboardingPostingExtractionFailedError(caseId);
       }
       return caseId;
     }
@@ -363,6 +384,11 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     try {
       effectiveCaseId = await ensureCase();
     } catch (e) {
+      if (e instanceof OnboardingPostingExtractionFailedError) {
+        // 공고 추출 실패 → 분석을 진행하지 않고 사용자를 상세로 유도(무인자 자동 재추출 금지).
+        setRunError(e.message);
+        return;
+      }
       // 케이스 생성 실패해도 자소서(WRITE)만으로 진행 — 오케는 caseId 없이도 돈다.
       setRunError(e instanceof Error ? e.message : "공고 지원 건 생성에 실패했어요.");
     }
@@ -461,6 +487,7 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     portfolioReadmeLoading,
     portfolioReadmeError,
     caseId,
+    extractionFailedCaseId,
     fit,
     runError: runError ?? run.error,
     runParts: run.parts,

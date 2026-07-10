@@ -28,6 +28,7 @@ import { FitAnalysisPanel } from "../components/FitAnalysisPanel";
 import { JobAnalysisPanel } from "../components/JobAnalysisPanel";
 import { JobPostingPanel } from "../components/JobPostingPanel";
 import { LearningRecommendationPanel } from "../components/LearningRecommendationPanel";
+import { OcrRetryButton } from "../components/OcrRetryButton";
 import { LoginRequiredState } from "../components/LoginRequiredState";
 import { StrategyPanel } from "../components/StrategyPanel";
 import { useApplicationCase } from "../hooks/useApplicationCase";
@@ -411,17 +412,12 @@ export function ApplicationDetailPage() {
                   <ApplicationStatusBadge status={applicationCase.status} />
                   <ApplicationExtractionBadge extraction={extraction} />
                   {extraction?.status === "FAILED" && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
+                    <OcrRetryButton
+                      sourceType={extraction.sourceType}
+                      retrying={retryingExtraction}
+                      onRetry={(provider) => void retryExtraction(provider)}
                       className="h-7 border-red-200 px-2 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
-                      disabled={retryingExtraction}
-                      onClick={() => void retryExtraction()}
-                    >
-                      <RefreshCw className={`size-3.5 ${retryingExtraction ? "animate-spin" : ""}`} />
-                      다시 추출
-                    </Button>
+                    />
                   )}
                 </div>
               )}
