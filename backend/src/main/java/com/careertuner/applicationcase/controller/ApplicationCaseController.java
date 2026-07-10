@@ -65,9 +65,10 @@ public class ApplicationCaseController {
             @RequestParam("sourceType") String sourceType,
             @RequestParam(defaultValue = "false") boolean favorite,
             @RequestParam(required = false) String jobAnalysisProvider,
-            @RequestParam(required = false) String companyAnalysisProvider) {
+            @RequestParam(required = false) String companyAnalysisProvider,
+            @RequestParam(required = false) String ocrProvider) {
         return ApiResponse.ok(applicationCaseService.createFromJobPostingUpload(
-                authUser.id(), file, sourceType, favorite, jobAnalysisProvider, companyAnalysisProvider));
+                authUser.id(), file, sourceType, favorite, jobAnalysisProvider, companyAnalysisProvider, ocrProvider));
     }
 
     @GetMapping

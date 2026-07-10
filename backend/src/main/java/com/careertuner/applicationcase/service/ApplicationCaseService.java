@@ -32,7 +32,8 @@ public interface ApplicationCaseService {
                                                                      String sourceType,
                                                                      Boolean favorite,
                                                                      String jobAnalysisProvider,
-                                                                     String companyAnalysisProvider);
+                                                                     String companyAnalysisProvider,
+                                                                     String ocrProvider);
 
     List<ApplicationCaseResponse> list(Long userId, String view, boolean includeArchived);
 

@@ -595,7 +595,7 @@ class ApplicationCaseServiceImplTest {
                 .thenReturn(postingResponse);
 
         ApplicationCaseFromJobPostingResponse response =
-                service.createFromJobPostingUpload(1L, file, "PDF", true, null, null);
+                service.createFromJobPostingUpload(1L, file, "PDF", true, null, null, null);
 
         ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
         ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
@@ -608,6 +608,8 @@ class ApplicationCaseServiceImplTest {
         assertThat(caseCaptor.getValue().isFavorite()).isTrue();
         assertThat(extractionCaptor.getValue().getSourceType()).isEqualTo("PDF");
         assertThat(extractionCaptor.getValue().getStatus()).isEqualTo("QUEUED");
+        // OCR provider 미선택 → 추출 큐에 NULL(기본 자동 체인).
+        assertThat(extractionCaptor.getValue().getOcrRequestedProvider()).isNull();
         assertThat(response.jobPosting()).isSameAs(postingResponse);
         assertThat(response.metadata().companyName()).isEqualTo("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694");
         assertThat(response.metadata().deadlineDate()).isNull();
@@ -644,13 +646,17 @@ class ApplicationCaseServiceImplTest {
                 new JobPostingResponse(22L, 12L, 1, null, "local:p.pdf", null, "PDF", LocalDateTime.now()));
 
         // 업로드(PDF) 등록도 분석 모델 선택값을 보존해야 한다(기본 체인으로 조용히 바뀌면 안 됨).
-        service.createFromJobPostingUpload(1L, file, "PDF", true, "claude", "openai");
+        service.createFromJobPostingUpload(1L, file, "PDF", true, "claude", "openai", "self_ocr");
 
         ArgumentCaptor<ApplicationCaseInitialRun> captor = ArgumentCaptor.forClass(ApplicationCaseInitialRun.class);
         verify(initialRunMapper).insertPending(captor.capture());
         assertThat(captor.getValue().getApplicationCaseId()).isEqualTo(12L);
         assertThat(captor.getValue().getJobAnalysisProvider()).isEqualTo("CLAUDE");
         assertThat(captor.getValue().getCompanyAnalysisProvider()).isEqualTo("OPENAI");
+        // OCR 선택값도 추출 큐에 정규화되어 스냅샷된다(self_ocr → SELF_OCR).
+        ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        assertThat(extractionCaptor.getValue().getOcrRequestedProvider()).isEqualTo("SELF_OCR");
     }
 
     @Test
@@ -1960,6 +1966,7 @@ class ApplicationCaseServiceImplTest {
                 mock(ApplicationCaseAutoPipelineService.class),
                 initialRunMapper);
         ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "PDF", "FAILED");
+        failed.setOcrRequestedProvider("CLAUDE"); // 최초 등록 때 고른 OCR provider
 
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
                 .id(10L)
@@ -1979,6 +1986,10 @@ class ApplicationCaseServiceImplTest {
         // 추출 실패로 FAILED 처리된 초기 실행 프로필을 PENDING 으로 되살려,
         // 재추출 성공 시 파이프라인이 다시 claim 해 초기 실행 1회가 보장되는지 잠근다.
         verify(initialRunMapper).reopenForRetry(10L);
+        // 재추출도 최초에 고른 OCR provider 를 이어받는다(사용자가 다시 고르지 않아도 같은 primary).
+        ArgumentCaptor<ApplicationCaseExtraction> requeued = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(extractionMapper).insertApplicationCaseExtraction(requeued.capture());
+        assertThat(requeued.getValue().getOcrRequestedProvider()).isEqualTo("CLAUDE");
     }
 
     @Test
@@ -2319,10 +2330,36 @@ class ApplicationCaseServiceImplTest {
                 mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
         MultipartFile file = mock(MultipartFile.class);
 
-        assertThatThrownBy(() -> service.createFromJobPostingUpload(1L, file, "PDF", true, "gpt-9", null))
+        assertThatThrownBy(() -> service.createFromJobPostingUpload(1L, file, "PDF", true, "gpt-9", null, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         // 파일 저장(saveUploadedJobPostingReferenceForNewCase) 이전에 거절 → orphan 파일·행 없음.
+        verify(applicationCaseMapper, never()).insertApplicationCase(any());
+        verify(jobPostingService, never()).saveUploadedJobPostingReferenceForNewCase(any(), any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        verify(initialRunMapper, never()).insertPending(any());
+    }
+
+    @Test
+    void createFromJobPostingUploadRejectsUnknownOcrProviderBeforeStoringFile() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
+        MultipartFile file = mock(MultipartFile.class);
+
+        // LOCAL 은 OCR 대상이 아니므로 OCR provider 로는 거절돼야 한다(분석 provider 집합과 다름).
+        assertThatThrownBy(() -> service.createFromJobPostingUpload(1L, file, "PDF", true, null, null, "local"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
         verify(applicationCaseMapper, never()).insertApplicationCase(any());
         verify(jobPostingService, never()).saveUploadedJobPostingReferenceForNewCase(any(), any(), any(), any());
         verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
