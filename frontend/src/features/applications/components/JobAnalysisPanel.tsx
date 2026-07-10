@@ -27,6 +27,7 @@ import type { ApplicationSourceType } from "../types/applicationCase";
 import { formatKoreaDateTime } from "../utils/dateFormat";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisReanalyzeButton } from "./AnalysisReanalyzeButton";
+import { AnalysisProvenanceBadge } from "./AnalysisProvenanceBadge";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
 
@@ -229,11 +230,14 @@ export function JobAnalysisPanel({
               )}
             </CardTitle>
             {analysis ? (
-              <p className="mt-1 text-xs text-slate-500">
-                최근 분석: {formatKoreaDateTime(analysis.createdAt)}
-                {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
-                {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
-              </p>
+              <>
+                <p className="mt-1 text-xs text-slate-500">
+                  최근 분석: {formatKoreaDateTime(analysis.createdAt)}
+                  {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
+                  {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
+                </p>
+                <AnalysisProvenanceBadge source={analysis} className="mt-1.5" />
+              </>
             ) : (
               <p className="mt-1 text-xs text-slate-500">분석 결과 없음</p>
             )}

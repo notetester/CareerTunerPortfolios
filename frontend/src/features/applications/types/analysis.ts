@@ -15,6 +15,13 @@ export interface JobAnalysis {
   ambiguousConditions: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
+  // 모델 선택·실행 provenance. 자동 초기 실행·strict 재분석만 채우고 레거시·mock 행은 없거나 NULL(표시 안 함).
+  requestedProvider?: string | null;
+  actualProvider?: string | null;
+  actualModel?: string | null;
+  fallbackUsed?: boolean | null;
+  attemptPath?: string | null;
+  runMode?: string | null;
   createdAt: string;
 }
 
@@ -41,6 +48,13 @@ export interface CompanyAnalysis {
   refreshRecommendedAt: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
+  // 모델 선택·실행 provenance. 자동 초기 실행·strict 재분석만 채우고 레거시·mock 행은 없거나 NULL(표시 안 함).
+  requestedProvider?: string | null;
+  actualProvider?: string | null;
+  actualModel?: string | null;
+  fallbackUsed?: boolean | null;
+  attemptPath?: string | null;
+  runMode?: string | null;
   createdAt: string;
 }
 
@@ -524,4 +538,91 @@ export function getDifficultyLabel(value: string | null | undefined): string {
     default:
       return value ?? "미정";
   }
+}
+
+// ── 분석 provenance(생성 모델·실행 이력) 표시 헬퍼 (지원건별 모델 선택·재실행) ──
+
+const ANALYSIS_PROVIDER_LABELS: Record<string, string> = {
+  LOCAL: "자체 모델",
+  CLAUDE: "Claude",
+  OPENAI: "OpenAI",
+  SELF_RULES: "규칙 기반",
+};
+
+const ANALYSIS_RUN_MODE_LABELS: Record<string, string> = {
+  INITIAL: "초기 자동 분석",
+  MANUAL: "수동 재분석",
+};
+
+/** provider 식별자(LOCAL/CLAUDE/OPENAI/SELF_RULES)를 사람이 읽는 라벨로. 미지의 값은 원본을 그대로 쓴다. */
+export function getAnalysisProviderLabel(provider: string | null | undefined): string | null {
+  if (!provider) return null;
+  return ANALYSIS_PROVIDER_LABELS[provider] ?? provider;
+}
+
+/** run_mode(INITIAL/MANUAL)를 라벨로. */
+export function getAnalysisRunModeLabel(runMode: string | null | undefined): string | null {
+  if (!runMode) return null;
+  return ANALYSIS_RUN_MODE_LABELS[runMode] ?? runMode;
+}
+
+export interface AnalysisProvenanceSource {
+  requestedProvider?: string | null;
+  actualProvider?: string | null;
+  actualModel?: string | null;
+  fallbackUsed?: boolean | null;
+  attemptPath?: string | null;
+  runMode?: string | null;
+}
+
+export interface AnalysisProvenanceView {
+  /** 실제 생성 provider 라벨(예: "Claude"). */
+  actualProviderLabel: string;
+  /** 실제 모델명(예: "claude-haiku-4-5"). 없으면 null. */
+  actualModel: string | null;
+  /** 사용자가 등록/재분석 시 고른 provider 라벨. 없으면 null(자동 체인). */
+  requestedProviderLabel: string | null;
+  /** 고른 provider 로 실패해 다른 모델로 폴백했는지. */
+  fallbackUsed: boolean;
+  /** 실행 모드 라벨("초기 자동 분석"/"수동 재분석"). 없으면 null. */
+  runModeLabel: string | null;
+}
+
+/**
+ * 분석 행의 provenance 표시 뷰. <b>실제 생성 provider(actualProvider)가 기록된 행만</b> 표시 대상이다
+ * (초기 등록 preferred·strict 재분석). provider 미기록(레거시·자동 무선택·mock)이면 null → 뱃지 미표시.
+ */
+export function parseAnalysisProvenance(
+  source: AnalysisProvenanceSource | null | undefined,
+): AnalysisProvenanceView | null {
+  const actualLabel = getAnalysisProviderLabel(source?.actualProvider);
+  if (!source || !actualLabel) {
+    return null;
+  }
+  const requestedLabel = getAnalysisProviderLabel(source.requestedProvider);
+  const fallbackUsed = source.fallbackUsed === true;
+  return {
+    actualProviderLabel: actualLabel,
+    actualModel: source.actualModel ?? null,
+    // 요청=실제면 중복이라 숨긴다. 폴백이 일어난 경우에만 "요청: X" 를 따로 보여준다.
+    requestedProviderLabel: fallbackUsed ? requestedLabel : null,
+    fallbackUsed,
+    runModeLabel: getAnalysisRunModeLabel(source.runMode),
+  };
+}
+
+/**
+ * provenance 를 한 줄 요약 문자열로. 기록이 없으면(레거시·자동 무선택) {@code "미기록"}.
+ * 관리자 상세의 단문 표시(MetaBlock)처럼 컴포넌트 대신 문자열이 필요한 곳에서 쓴다.
+ */
+export function formatAnalysisProvenanceSummary(source: AnalysisProvenanceSource | null | undefined): string {
+  const prov = parseAnalysisProvenance(source);
+  if (!prov) {
+    return "미기록";
+  }
+  const parts = [prov.actualProviderLabel];
+  if (prov.actualModel) parts.push(prov.actualModel);
+  if (prov.fallbackUsed && prov.requestedProviderLabel) parts.push(`폴백(요청 ${prov.requestedProviderLabel})`);
+  if (prov.runModeLabel) parts.push(prov.runModeLabel);
+  return parts.join(" · ");
 }

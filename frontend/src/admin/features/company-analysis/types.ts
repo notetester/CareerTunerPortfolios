@@ -51,6 +51,13 @@ export interface AdminCompanyAnalysisRow {
   refreshRecommendedAt: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
+  // 모델 선택·실행 provenance. 자동 초기 실행·strict 재분석만 채우고 레거시·mock 행은 없거나 NULL.
+  requestedProvider?: string | null;
+  actualProvider?: string | null;
+  actualModel?: string | null;
+  fallbackUsed?: boolean | null;
+  attemptPath?: string | null;
+  runMode?: string | null;
   createdAt: string;
 }
 
