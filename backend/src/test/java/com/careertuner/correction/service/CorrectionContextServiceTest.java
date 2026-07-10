@@ -95,6 +95,8 @@ class CorrectionContextServiceTest {
                 null,
                 null,
                 null,
+                // provenance 6 (requested/actual provider·model·fallbackUsed·attemptPath·runMode)
+                null, null, null, null, null, null,
                 LocalDateTime.now());
     }
 }

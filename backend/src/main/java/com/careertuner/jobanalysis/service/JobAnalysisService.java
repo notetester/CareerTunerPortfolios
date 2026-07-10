@@ -14,6 +14,8 @@ import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService.StrictJobResult;
+import com.careertuner.applicationcase.service.BAnalysisProvider;
 import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
 import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.common.exception.BusinessException;
@@ -82,6 +84,67 @@ public class JobAnalysisService {
                 }
                 aiUsageLogService.recordLocalSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
                 // 공고 분석이 성공하면 사용자에게 완료 알림을 남긴다.
+                notificationService.notify(Notification.builder()
+                        .userId(userId)
+                        .type("JOB_ANALYSIS_COMPLETE")
+                        .targetType("APPLICATION_CASE")
+                        .targetId(applicationCaseId)
+                        .title("공고 분석이 완료되었습니다")
+                        .message("%s · %s 공고 분석 결과가 준비되었습니다.".formatted(
+                                applicationCase.getCompanyName(), applicationCase.getJobTitle()))
+                        .link("/applications/" + applicationCaseId + "/job-analysis")
+                        .build());
+                return response;
+            });
+        } catch (RuntimeException ex) {
+            restorePreviousStatus(userId, applicationCaseId, previousStatus, ex);
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, userFacingFailureMessage(ex, "공고 분석 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."));
+            throw ex;
+        }
+    }
+
+    /**
+     * strict 수동 재분석 — 고른 provider 하나로만 공고 분석을 다시 실행한다(자동 체인·self-rules 미사용).
+     * 성공 시 provenance(선택=실제 provider·모델·attempt_path·run_mode=MANUAL·fallback_used=false)를 함께 저장하고,
+     * 실패 시 <b>기존 분석을 보존</b>한 채 상태만 되돌리고 예외를 던진다(안전망 없음 = 실패는 실패).
+     * 자동 {@link #createJobAnalysis(Long, Long)} 와 구조는 같지만 생성 경로·provenance 만 다르다(자동 경로 무수정).
+     */
+    public JobAnalysisResponse createJobAnalysisStrict(Long userId, Long applicationCaseId, BAnalysisProvider provider) {
+        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
+        ensureAnalysisRunnable(applicationCase.getStatus());
+        JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
+        String sourceText = accessService.sourceText(jobPosting);
+        String previousStatus = applicationCase.getStatus();
+        statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
+        try {
+            StrictJobResult strict = bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, sourceText, provider);
+            var payload = strict.payload();
+            return transactionTemplate.execute(status -> {
+                JobAnalysis jobAnalysis = JobAnalysis.builder()
+                        .applicationCaseId(applicationCaseId)
+                        .jobPostingId(jobPosting.getId())
+                        .jobPostingRevision(jobPosting.getRevision())
+                        .employmentType(blankToNull(payload.employmentType()))
+                        .experienceLevel(blankToNull(payload.experienceLevel()))
+                        .requiredSkills(payload.requiredSkills())
+                        .preferredSkills(payload.preferredSkills())
+                        .duties(blankToNull(payload.duties()))
+                        .qualifications(blankToNull(payload.qualifications()))
+                        .difficulty(payload.difficulty())
+                        .summary(blankToNull(payload.summary()))
+                        .evidence(payload.evidence())
+                        .ambiguousConditions(payload.ambiguousConditions())
+                        .requestedProvider(provider.name())
+                        .actualProvider(provider.name())
+                        .actualModel(payload.usage() == null ? null : payload.usage().model())
+                        .fallbackUsed(false)
+                        .attemptPath(BAnalysisProvider.toAttemptPathJson(strict.attempts()))
+                        .runMode("MANUAL")
+                        .build();
+                jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
+                JobAnalysisResponse response = toResponse(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+                statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
+                aiUsageLogService.recordLocalSuccess(userId, applicationCaseId, FEATURE_JOB_ANALYSIS, payload.usage());
                 notificationService.notify(Notification.builder()
                         .userId(userId)
                         .type("JOB_ANALYSIS_COMPLETE")
