@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   typecheck-build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-ci]
     defaults:
       run:
         working-directory: frontend

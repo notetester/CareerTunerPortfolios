@@ -30,7 +30,7 @@ permissions:
   packages: write   # GHCR push
 
 concurrency:
-  group: deploy-backend
+  group: careertuner-ec2-deploy
   cancel-in-progress: false   # 배포는 중간에 끊지 않는다
 
 env:
@@ -44,7 +44,7 @@ env:
 jobs:
   correction-ollama-preflight:
     if: github.event_name == 'workflow_dispatch' && inputs.correction_preflight_only == true
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     steps:
       - name: Verify deploy secrets are configured
         env:
@@ -114,7 +114,7 @@ jobs:
 
   detect-changes:
     if: github.event_name != 'workflow_dispatch' || inputs.correction_preflight_only != true
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     outputs:
       backend: ${{ steps.changes.outputs.backend }}
       worker: ${{ steps.changes.outputs.worker }}
@@ -165,7 +165,7 @@ jobs:
   build-backend:
     needs: detect-changes
     if: needs.detect-changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -194,7 +194,7 @@ jobs:
   build-worker:
     needs: detect-changes
     if: needs.detect-changes.outputs.worker == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -232,7 +232,7 @@ jobs:
         && (needs.build-backend.result == 'success' || needs.build-backend.result == 'skipped')
         && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped')
       }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
