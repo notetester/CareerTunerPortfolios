@@ -1,4 +1,4 @@
-import { api } from "../lib/api";
+import { api, apiBlob } from "../lib/api";
 
 /** 프로필 문서 업로드 — 기존 POST /file/upload 재사용. */
 export function uploadProfileFile(file: File, kind: "RESUME" | "ATTACHMENT" = "RESUME") {
@@ -24,6 +24,56 @@ export interface UserProfile {
   selfIntro?: string | null;
   preferences?: unknown;
   updatedAt?: string;
+}
+
+export interface ProfilePortfolioFile {
+  id: number;
+  kind: "PORTFOLIO";
+  refType: string;
+  refId: number;
+  originalName: string;
+  contentType?: string | null;
+  sizeBytes?: number | null;
+  contentUrl: string;
+  createdAt?: string | null;
+}
+
+/** 포트폴리오를 업로드와 동시에 현재 사용자 프로필에 연결한다. */
+export function uploadProfilePortfolioFile(file: File): Promise<ProfilePortfolioFile> {
+  const fd = new FormData();
+  fd.append("file", file);
+  return api<ProfilePortfolioFile>("/profile/portfolio-files/upload", { method: "POST", body: fd });
+}
+
+/** 기존 업로드 파일을 프로필 PORTFOLIO 자산으로 재확인/입양한다. */
+export function linkProfilePortfolioFiles(fileIds: number[]): Promise<ProfilePortfolioFile[]> {
+  return api<ProfilePortfolioFile[]>("/profile/portfolio-files/link", {
+    method: "POST",
+    body: JSON.stringify({ fileIds }),
+  });
+}
+
+export function listProfilePortfolioFiles(): Promise<ProfilePortfolioFile[]> {
+  return api<ProfilePortfolioFile[]>("/profile/portfolio-files", { method: "GET" });
+}
+
+/** 현재 프로필에 연결된 포트폴리오 파일을 메타데이터와 저장소에서 함께 삭제한다. */
+export function deleteProfilePortfolioFile(fileId: number): Promise<void> {
+  return api<void>(`/profile/portfolio-files/${fileId}`, { method: "DELETE" });
+}
+
+/** 아직 어느 도메인에도 연결되지 않은 본인 업로드를 정리한다. */
+export function deleteUnlinkedProfileFile(fileId: number): Promise<void> {
+  return api<void>(`/file/${fileId}`, { method: "DELETE" });
+}
+
+export async function downloadProfilePortfolioFile(file: ProfilePortfolioFile): Promise<void> {
+  const objectUrl = URL.createObjectURL(await apiBlob(`/file/${file.id}/content`, { method: "GET" }));
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = file.originalName;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
 }
 
 export interface ProfileAiResponse {

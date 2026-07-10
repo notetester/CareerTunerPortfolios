@@ -5,6 +5,8 @@
 //  - GET  /notifications/unread-count   -> number
 //  - PATCH /notifications/:id/read      -> void(null)
 //  - POST /notifications/read-all       -> void(null)
+//  - DELETE /notifications/:id          -> void(null)
+//  - DELETE /notifications              -> void(null)
 //  - GET  /notifications/preferences    -> NotificationPreference
 //  - PUT  /notifications/preferences    -> NotificationPreference(echo)
 // 데모 사용자 김데모의 활동(적합도 분석·모의면접·커뮤니티·공지)과 일관된 알림을 제공한다.
@@ -183,6 +185,27 @@ export const notificationRoutes: MockRoute[] = [
       demoNotifications.forEach((n) => {
         n.read = true;
       });
+      return null;
+    },
+  },
+
+  // 개별 삭제 -> void
+  {
+    method: "DELETE",
+    pattern: /^\/notifications\/(\d+)$/,
+    handler: ({ params }) => {
+      const index = demoNotifications.findIndex((notification) => notification.id === Number(params[0]));
+      if (index >= 0) demoNotifications.splice(index, 1);
+      return null;
+    },
+  },
+
+  // 전체 삭제 -> void
+  {
+    method: "DELETE",
+    pattern: /^\/notifications$/,
+    handler: () => {
+      demoNotifications.splice(0, demoNotifications.length);
       return null;
     },
   },

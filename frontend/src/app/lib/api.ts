@@ -105,3 +105,34 @@ export async function api<T = unknown>(
   }
   return env.data as T;
 }
+
+/** JSON envelope가 아닌 파일 바이트를 받는 API. mock 모드에서도 같은 route registry를 사용한다. */
+export async function apiBlob(
+  path: string,
+  options: RequestInit = {},
+  config: { auth?: boolean } = {},
+): Promise<Blob> {
+  const withAuth = config.auth ?? true;
+
+  if (USE_MOCK) {
+    const mocked = await resolveMock(path, options);
+    if (mocked === MOCK_UNHANDLED) {
+      throw new ApiError("데모 모드에서는 제공되지 않는 파일입니다.", "DEMO_UNAVAILABLE", 501);
+    }
+    if (mocked instanceof Blob) return mocked;
+    throw new ApiError("데모 파일 응답 형식이 올바르지 않습니다.", "DEMO_INVALID_RESPONSE", 500);
+  }
+
+  let res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
+  if (res.status === 401 && withAuth && getRefreshToken()) {
+    const refreshed = await tryRefresh();
+    if (refreshed) {
+      res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, true) });
+    }
+  }
+  if (!res.ok) {
+    const env = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(env?.message ?? `파일 요청에 실패했습니다 (${res.status})`, env?.code ?? "ERROR", res.status);
+  }
+  return res.blob();
+}

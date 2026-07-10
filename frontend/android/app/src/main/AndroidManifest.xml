@@ -31,12 +31,13 @@
                 <data android:scheme="@string/custom_url_scheme" />
             </intent-filter>
 
-            <intent-filter android:autoVerify="true">
+            <!-- 현재 공개 배포 호스트. 정식 release 서명 fingerprint를 assetlinks.json에 게시하기 전까지
+                 OS 선택창을 통한 App Link로 동작하며, 커스텀 careertuner:// 스킴은 항상 직접 처리한다. -->
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="careertuner.kr" />
-                <data android:scheme="https" android:host="www.careertuner.kr" />
+                <data android:scheme="https" android:host="careertuner.kro.kr" />
             </intent-filter>
 
         </activity>

@@ -104,31 +104,34 @@ Item {
 
             SettingCard {
                 title: "서버 주소"
-                desc: "프리셋(로컬/Tailscale)은 선택 즉시 저장 — AWS·도메인/커스텀은 직접 입력 후 적용"
+                desc: "프리셋(로컬/AWS/Tailscale)은 선택 즉시 저장 — 커스텀은 직접 입력 후 적용"
                 ColumnLayout {
                     spacing: 6
 
-                    // 프리셋 콤보박스 — 로컬 / Tailscale(팀 공용) / AWS·도메인(직접 입력) / 커스텀
+                    // 프리셋 콤보박스 — 로컬 / AWS 공개 서버 / Tailscale(팀 개발용) / 커스텀
                     ComboBox {
                         id: serverPreset
                         implicitWidth: 296
                         implicitHeight: 30
                         model: [
                             "로컬 (http://localhost:8080)",
-                            "Tailscale (팀 공용)",
-                            "AWS·도메인 (직접 입력)",
+                            "AWS 공개 서버",
+                            "Tailscale (팀 개발용)",
                             "커스텀"
                         ]
 
                         // 저장된 주소가 프리셋과 일치하면 해당 항목, 아니면 커스텀으로 시작
                         Component.onCompleted: {
                             if (appSettings.baseUrl === appSettings.localServerUrl) currentIndex = 0
-                            else if (appSettings.baseUrl === appSettings.tailscaleServerUrl) currentIndex = 1
+                            else if (appSettings.baseUrl === appSettings.awsServerUrl) currentIndex = 1
+                            else if (appSettings.baseUrl === appSettings.tailscaleServerUrl) currentIndex = 2
                             else currentIndex = 3
                         }
                         onActivated: (index) => {
-                            if (index === 0 || index === 1) {
-                                const url = index === 0 ? appSettings.localServerUrl : appSettings.tailscaleServerUrl
+                            if (index <= 2) {
+                                const url = index === 0 ? appSettings.localServerUrl
+                                    : index === 1 ? appSettings.awsServerUrl
+                                    : appSettings.tailscaleServerUrl
                                 appSettings.baseUrl = url
                                 urlField.text = url
                                 win.showToast("서버 주소 변경됨", url)
@@ -191,8 +194,8 @@ Item {
                             color: Theme.text
                             font.pixelSize: 11
                             implicitWidth: 230
-                            // 직접 입력은 AWS·도메인/커스텀 프리셋에서만 활성
-                            enabled: serverPreset.currentIndex >= 2
+                            // 직접 입력은 커스텀 프리셋에서만 활성
+                            enabled: serverPreset.currentIndex === 3
                             opacity: enabled ? 1 : 0.5
                             background: Rectangle {
                                 color: Theme.bg; radius: 7
@@ -202,11 +205,11 @@ Item {
                         Rectangle {
                             width: applyLbl.implicitWidth + 18; height: 30; radius: 8
                             color: Theme.raised; border.color: Theme.border
-                            opacity: serverPreset.currentIndex >= 2 ? 1 : 0.5
+                            opacity: serverPreset.currentIndex === 3 ? 1 : 0.5
                             Text { id: applyLbl; anchors.centerIn: parent; text: "적용"; color: Theme.text; font.pixelSize: 12 }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                enabled: serverPreset.currentIndex >= 2
+                                enabled: serverPreset.currentIndex === 3
                                 onClicked: {
                                     appSettings.baseUrl = urlField.text.trim()
                                     win.showToast("서버 주소 변경됨", appSettings.baseUrl)

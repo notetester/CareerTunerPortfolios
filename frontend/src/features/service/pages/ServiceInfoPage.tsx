@@ -30,7 +30,7 @@ export function ServiceInfoPage() {
           </p>
           <div className="flex flex-wrap gap-2">
             <Button asChild className="bg-primary">
-              <Link to="/applications?tab=new">지원 건 만들기</Link>
+              <Link to="/applications/new">지원 건 만들기</Link>
             </Button>
             <Button asChild variant="outline">
               <Link to="/support/guide">사용 가이드 보기</Link>

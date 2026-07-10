@@ -242,15 +242,14 @@ function AttachmentButton({
 export function MessengerPage() {
   // 헤더 하위메뉴 의도(?tab=friends|discover) 배선 — 단일 뷰라 해당 패널로 스크롤해 초점을 준다.
   const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
   useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab !== "friends" && tab !== "discover") return;
-    const anchor = document.getElementById(tab === "friends" ? "messenger-friends" : "messenger-discover");
+    if (requestedTab !== "friends" && requestedTab !== "discover") return;
+    const anchor = document.getElementById(requestedTab === "friends" ? "messenger-friends" : "messenger-discover");
     // 데이터 로드로 레이아웃이 잡힌 뒤 스크롤되도록 다음 프레임에 실행.
     const timer = window.setTimeout(() => anchor?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
     return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [requestedTab]);
   const [conversations, setConversations] = useState<ConversationSummaryResponse[]>([]);
   const [discoverRooms, setDiscoverRooms] = useState<ConversationSummaryResponse[]>([]);
   const [friends, setFriends] = useState<FriendResponse[]>([]);

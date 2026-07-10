@@ -40,6 +40,7 @@ public class AutoPrepController {
 
     /** 실행: 두뇌가 세운 계획대로 6파트를 순차 실행한다. */
     @PostMapping("/run")
+    @RequiresConsent(ConsentType.RESUME_ANALYSIS)
     public ApiResponse<AutoPrepResponse> run(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AutoPrepRequest request) {
@@ -48,6 +49,7 @@ public class AutoPrepController {
 
     /** 실행(SSE): 진행 과정을 실시간 스트리밍. 이벤트 = plan / part-start / substep / part-done / done. */
     @PostMapping(value = "/run/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RequiresConsent(ConsentType.RESUME_ANALYSIS)
     public SseEmitter runStream(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AutoPrepRequest request) {

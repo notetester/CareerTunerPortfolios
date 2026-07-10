@@ -32,4 +32,34 @@
                ref_id = #{refId}
          WHERE id = #{id}
     </update>
+
+    <!-- 소유자·종류·미연결 상태를 한 UPDATE 에서 검증해 동시 요청의 재부모화를 막는다. -->
+    <update id="updateRefIfOwnedAndUnlinked">
+        UPDATE file_asset
+           SET ref_type = #{refType},
+               ref_id = #{refId}
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND ref_id IS NULL
+        <if test="expectedKind != null and expectedKind != ''">
+           AND kind = #{expectedKind}
+        </if>
+    </update>
+
+    <delete id="deleteByIdAndOwnerIfUnlinked">
+        DELETE FROM file_asset
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND ref_type IS NULL
+           AND ref_id IS NULL
+    </delete>
+
+    <delete id="deleteByIdAndOwnerAndRef">
+        DELETE FROM file_asset
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND kind = #{expectedKind}
+           AND ref_type = #{refType}
+           AND ref_id = #{refId}
+    </delete>
 </mapper>

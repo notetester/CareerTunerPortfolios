@@ -34,6 +34,13 @@
          WHERE id = #{userId}
     </select>
 
+    <select id="findAccountForUpdate" resultType="com.careertuner.reward.domain.UserRewardAccount">
+        SELECT id AS user_id, activity_point, user_level, credit
+          FROM users
+         WHERE id = #{userId}
+         FOR UPDATE
+    </select>
+
     <update id="addActivityPoint">
         UPDATE users
            SET activity_point = activity_point + #{delta}
@@ -48,15 +55,15 @@
 
     <insert id="insertHistory" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_reward_history
-            (user_id, event_code, point_delta, credit_delta, level_before, level_after,
+            (user_id, event_code, idempotency_key, point_delta, credit_delta, level_before, level_after,
              ref_type, ref_id, reason)
         VALUES
-            (#{userId}, #{eventCode}, #{pointDelta}, #{creditDelta}, #{levelBefore}, #{levelAfter},
+            (#{userId}, #{eventCode}, #{idempotencyKey}, #{pointDelta}, #{creditDelta}, #{levelBefore}, #{levelAfter},
              #{refType}, #{refId}, #{reason})
     </insert>
 
     <select id="findRecentHistoryByUser" resultType="com.careertuner.reward.domain.UserRewardHistory">
-        SELECT id, user_id, event_code, point_delta, credit_delta, level_before, level_after,
+        SELECT id, user_id, event_code, idempotency_key, point_delta, credit_delta, level_before, level_after,
                ref_type, ref_id, reason, created_at
           FROM user_reward_history
          WHERE user_id = #{userId}

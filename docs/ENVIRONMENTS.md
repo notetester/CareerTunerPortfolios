@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- |
 | `local` | 전부 내 PC | `localhost:3306/team1` | `localhost:11434` | `http://localhost:8080` |
 | `tailscale` | **팀 표준 개발** — 팀 DB + 공유 4090 | `localhost/team1_db` | `localhost:11434` | `https://careertuner-dev.example.invalid/api` |
-| `aws` | AWS 배포(주소 미확정) | `localhost/team1_db` | `localhost:11434` | `CHANGEME` 플레이스홀더 |
+| `aws` | AWS 통합 배포 | `localhost/team1_db` | `localhost:11434` | `https://careertuner.kro.kr/api` |
 | `domain` | 도메인 운영(미확정) | `localhost/team1_db` | `localhost:11434` | `https://api.careertuner.kr` (예시) |
 
 프로파일은 **호스트 기본값 묶음**일 뿐이다 — 기존 환경변수 override(`DB_HOST`, `AI_OLLAMA_BASE_URL` 등)는
@@ -29,7 +29,7 @@
 - 프런트 코드의 API 베이스는 `frontend/src/app/lib/apiBase.ts` 의 `apiBase()` 단일 소스를 쓴다.
   우선순위: **런타임 오버라이드(앱/dev 전용) → `VITE_API_BASE_URL` → 상대경로 `/api`**.
   런타임 오버라이드는 설정 화면 "서버 주소" 카드가 기록하며, APK 재빌드 없이 환경을 바꾼다.
-- `aws`/`domain` 의 CHANGEME/예시 주소는 확정 시 `config/environments.json` → 프로파일 yaml → `.env.*` 순으로 교체한다.
+- `domain` 의 예시 주소는 정식 도메인이 확정되면 `config/environments.json` → 프로파일 yaml → `.env.*` 순으로 교체한다.
 
 ## 4090(공유 Ollama) 꺼짐 시 자동 폴백
 

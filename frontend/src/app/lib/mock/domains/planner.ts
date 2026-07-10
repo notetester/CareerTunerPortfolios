@@ -84,7 +84,7 @@ export const plannerRoutes: MockRoute[] = [
       return memo;
     },
   },
-  { method: "PATCH", pattern: /^\/planner\/memos\/(\d+)$/, handler: ({ params, body }) => applyMemo(Number(params[0]), (body ?? {}) as Record<string, unknown>) },
+  { method: "PUT", pattern: /^\/planner\/memos\/(\d+)$/, handler: ({ params, body }) => applyMemo(Number(params[0]), (body ?? {}) as Record<string, unknown>) },
   { method: "DELETE", pattern: /^\/planner\/memos\/(\d+)$/, handler: ({ params }) => { const i = memos.findIndex((m) => m.id === Number(params[0])); if (i >= 0) memos.splice(i, 1); return null; } },
   {
     method: "POST", pattern: /^\/planner\/schedule$/, handler: ({ body }) => {
@@ -105,7 +105,7 @@ export const plannerRoutes: MockRoute[] = [
       return item;
     },
   },
-  { method: "PATCH", pattern: /^\/planner\/schedule\/(\d+)$/, handler: ({ params, body }) => applySchedule(Number(params[0]), (body ?? {}) as Record<string, unknown>) },
+  { method: "PUT", pattern: /^\/planner\/schedule\/(\d+)$/, handler: ({ params, body }) => applySchedule(Number(params[0]), (body ?? {}) as Record<string, unknown>) },
   { method: "DELETE", pattern: /^\/planner\/schedule\/(\d+)$/, handler: ({ params }) => { const i = scheduleItems.findIndex((m) => m.id === Number(params[0])); if (i >= 0) scheduleItems.splice(i, 1); return null; } },
   {
     // 전략 → 일정 초안(적합도 기반). 데모에선 대표 지원건의 마감 역산 초안 2건을 돌려준다.

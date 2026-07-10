@@ -32,6 +32,7 @@ import type {
   AdminApplicationCaseRow,
   AdminApplicationCaseSummaryResponse,
   AdminApplicationCaseDetail,
+  AdminStatusHistoryEntry,
   AdminApplicationJobAnalysis,
   AdminApplicationCompanyAnalysis,
 } from "@/admin/features/application-cases/types";
@@ -1076,6 +1077,50 @@ const applicationCaseRows: AdminApplicationCaseRow[] = [
   },
 ];
 
+let nextStatusHistoryId = 20_000;
+
+function seedStatusHistory(row: AdminApplicationCaseRow): AdminStatusHistoryEntry[] {
+  const history: AdminStatusHistoryEntry[] = [
+    {
+      id: nextStatusHistoryId++,
+      applicationCaseId: row.id,
+      previousStatus: null,
+      newStatus: "DRAFT",
+      memo: null,
+      changedByName: row.userEmail,
+      createdAt: row.createdAt,
+    },
+  ];
+  if (row.status === "DRAFT") return history;
+
+  const firstOperationalStatus = row.status === "APPLIED" || row.status === "CLOSED" ? "READY" : row.status;
+  history.unshift({
+    id: nextStatusHistoryId++,
+    applicationCaseId: row.id,
+    previousStatus: "DRAFT",
+    newStatus: firstOperationalStatus,
+    memo: "공고 등록 후 준비 상태 갱신",
+    changedByName: "한관리",
+    createdAt: iso(3),
+  });
+  if (row.status === "APPLIED" || row.status === "CLOSED") {
+    history.unshift({
+      id: nextStatusHistoryId++,
+      applicationCaseId: row.id,
+      previousStatus: "READY",
+      newStatus: row.status,
+      memo: row.status === "APPLIED" ? "서류 접수 확인" : "채용 절차 종료 확인",
+      changedByName: "한관리",
+      createdAt: iso(1),
+    });
+  }
+  return history;
+}
+
+const statusHistoryByCase = new Map<number, AdminStatusHistoryEntry[]>(
+  applicationCaseRows.map((row) => [row.id, seedStatusHistory(row)]),
+);
+
 const applicationCaseSummary: AdminApplicationCaseSummaryResponse = {
   totalCount: 4,
   draftCount: 1,
@@ -1165,11 +1210,7 @@ function buildAppCaseDetail(id: number): AdminApplicationCaseDetail {
     jobAnalyses,
     companyAnalyses,
     usageLogs,
-    // 상태 변경 타임라인(관리자 상태 변경 기록) — 실 응답과 동일 형태의 데모 시드
-    statusHistory: [
-      { id: row.id * 10 + 2, applicationCaseId: row.id, previousStatus: "READY", newStatus: row.status ?? "APPLIED", memo: "서류 접수 확인 후 상태 갱신", changedByName: "한관리", createdAt: new Date(Date.now() - 86_400_000).toISOString() },
-      { id: row.id * 10 + 1, applicationCaseId: row.id, previousStatus: null, newStatus: "READY", memo: null, changedByName: "한관리", createdAt: new Date(Date.now() - 3 * 86_400_000).toISOString() },
-    ],
+    statusHistory: (statusHistoryByCase.get(row.id) ?? []).map((entry) => ({ ...entry })),
   };
 }
 
@@ -1449,7 +1490,21 @@ export const adminAnalysisOpsRoutes: MockRoute[] = [
     handler: ({ params, body }: MockContext) => {
       const row = applicationCaseRows.find((r) => r.id === Number(params[0])) ?? applicationCaseRows[0];
       const req = (body ?? {}) as { status?: AdminApplicationCaseRow["status"]; memo?: string };
-      if (req.status) row.status = req.status;
+      const previousStatus = row.status;
+      if (req.status && req.status !== previousStatus) {
+        const history = statusHistoryByCase.get(row.id) ?? [];
+        history.unshift({
+          id: nextStatusHistoryId++,
+          applicationCaseId: row.id,
+          previousStatus,
+          newStatus: req.status,
+          memo: req.memo?.trim() || null,
+          changedByName: "한관리",
+          createdAt: new Date().toISOString(),
+        });
+        statusHistoryByCase.set(row.id, history);
+        row.status = req.status;
+      }
       row.updatedAt = new Date().toISOString();
       return { ...row };
     },

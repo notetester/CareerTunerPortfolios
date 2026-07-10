@@ -137,6 +137,7 @@ class ProfileServiceImplTest {
                 mock(NotificationService.class),
                 new ObjectMapper(),
                 mock(com.careertuner.file.service.FileService.class),
+                mock(ProfilePortfolioService.class),
                 new com.careertuner.common.text.DocumentTextExtractor(),
                 mock(com.careertuner.profile.ai.ProfileResumeStructurer.class),
                 mock(org.springframework.transaction.support.TransactionTemplate.class));

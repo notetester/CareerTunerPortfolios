@@ -36,6 +36,8 @@ public class CreditServiceImpl implements CreditService {
     }
 
     private CreditDeductionResult deduct(Long aiUsageLogId, Integer requestedCreditUsed) {
+        // 사용 로그 행을 먼저 잠가 동일 AI 결과의 동시 정산을 직렬화한다. 두 요청이 모두 잔액을
+        // 차감한 뒤 원장 unique key에서 한쪽이 500으로 끝나는 창을 없앤다.
         CreditAiUsageLog usageLog = creditMapper.findAiUsageLogById(aiUsageLogId);
         if (usageLog == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "AI 사용량 로그를 찾을 수 없습니다.");

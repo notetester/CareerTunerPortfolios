@@ -6,15 +6,21 @@ import { useConsent } from "../auth/ConsentContext";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
+import {
+  clearOnboardingResume,
+  onboardingReturnTo,
+  readPendingOnboardingConsents,
+} from "@/features/onboarding/onboardingSession";
 
 export function SocialConsentPage() {
   const navigate = useNavigate();
   const { save } = useConsent();
-  const [terms, setTerms] = useState(true);
-  const [privacy, setPrivacy] = useState(true);
-  const [aiData, setAiData] = useState(true);
-  const [resumeAnalysis, setResumeAnalysis] = useState(true);
-  const [marketing, setMarketing] = useState(false);
+  const pending = readPendingOnboardingConsents();
+  const [terms, setTerms] = useState(pending?.termsAgreed ?? true);
+  const [privacy, setPrivacy] = useState(pending?.privacyAgreed ?? true);
+  const [aiData, setAiData] = useState(pending?.aiDataAgreed ?? true);
+  const [resumeAnalysis, setResumeAnalysis] = useState(pending?.resumeAnalysisAgreed ?? true);
+  const [marketing, setMarketing] = useState(pending?.marketingAgreed ?? false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -35,7 +41,9 @@ export function SocialConsentPage() {
         resumeAnalysisAgreed: resumeAnalysis,
         marketingAgreed: marketing,
       });
-      navigate("/dashboard", { replace: true });
+      const returnTo = pending ? onboardingReturnTo() : "/dashboard";
+      clearOnboardingResume();
+      navigate(returnTo, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "동의 저장에 실패했습니다.");
     } finally {

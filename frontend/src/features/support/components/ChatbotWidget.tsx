@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import {
   Sparkles, MessageCircle, Mic, MicOff, ArrowUp, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
@@ -1353,11 +1353,11 @@ function NotFoundView() {
           <Headset size={16} />
           상담사 연결하기
         </button>
-        <a href="/support/contact"
+        <Link to="/support/contact"
           className="flex items-center justify-center gap-1.5 w-full h-10 rounded-lg border border-border bg-card text-foreground text-[13px] font-semibold hover:bg-secondary transition-colors">
           <PenLine size={15} />
           1:1 문의 남기기
-        </a>
+        </Link>
         <div className="text-[11px] text-muted-foreground text-center">
           상담 가능 시간 평일 09:00–18:00 · 보통 5분 내 응답
         </div>
@@ -1381,11 +1381,11 @@ function DisconnectedView({ onRetry }: { onRetry: () => void }) {
         </div>
       </div>
       <div className="px-3 py-2.5 border-t border-border flex flex-col gap-2.5">
-        <a href="/support/contact"
+        <Link to="/support/contact"
           className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-primary text-white text-[13.5px] font-bold hover:brightness-110 transition-colors">
           <PenLine size={16} />
           1:1 문의 남기기
-        </a>
+        </Link>
         <button onClick={onRetry}
           className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg bg-transparent text-muted-foreground text-[12.5px] font-semibold hover:bg-secondary transition-colors">
           <RotateCw size={14} />

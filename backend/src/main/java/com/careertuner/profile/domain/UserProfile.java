@@ -24,6 +24,8 @@ public class UserProfile {
     private String certificates;
     private String languages;
     private String portfolioLinks;
+    /** DB 컬럼이 아닌 요청 단위 보조 컨텍스트. AutoPrep가 연결된 PORTFOLIO 파일을 별도 의미로 AI에 전달한다. */
+    private String portfolioEvidence;
     private String resumeText;
     private String selfIntro;
     private String preferences;

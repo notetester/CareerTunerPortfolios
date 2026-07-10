@@ -11,20 +11,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Textarea } from "../components/ui/textarea";
 import {
   diagnoseProfileCompleteness,
+  deleteProfilePortfolioFile,
+  downloadProfilePortfolioFile,
   extractProfileSkills,
   getProfile,
   draftHasStructuredFields,
   importProfileDocument,
+  listProfilePortfolioFiles,
   pollProfileAnalyze,
   PROFILE_DOC_ACCEPT,
   saveProfile,
   startProfileAnalyze,
   summarizeProfile,
   uploadProfileFile,
+  uploadProfilePortfolioFile,
   type ProfileAiResponse,
   type ProfileAnalyzeDraft,
   type ProfileCompleteness,
   type ProfileImportTarget,
+  type ProfilePortfolioFile,
   type UserProfile,
 } from "../profile/profileApi";
 import { draftPickFromCounts } from "../profile/profileDraftMerge";
@@ -236,8 +241,12 @@ export function ProfilePage() {
   const [analyzeDraft, setAnalyzeDraft] = useState<ProfileAnalyzeDraft | null>(null);
   const [analyzeStatus, setAnalyzeStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [portfolioFiles, setPortfolioFiles] = useState<ProfilePortfolioFile[]>([]);
+  const [portfolioUploading, setPortfolioUploading] = useState(false);
+  const [portfolioDeletingId, setPortfolioDeletingId] = useState<number | null>(null);
   const resumeFileRef = useRef<HTMLInputElement>(null);
   const selfIntroFileRef = useRef<HTMLInputElement>(null);
+  const portfolioFileRef = useRef<HTMLInputElement>(null);
   const initialCompletenessRequested = useRef(false);
 
   const skillItems = useMemo(() => linesToArray(form.skillsText), [form.skillsText]);
@@ -252,9 +261,13 @@ export function ProfilePage() {
     setLoading(true);
     setError(null);
     try {
-      const profile = await getProfile();
+      const [profile, linkedPortfolioFiles] = await Promise.all([
+        getProfile(),
+        listProfilePortfolioFiles(),
+      ]);
       const nextForm = toForm(profile);
       setForm(nextForm);
+      setPortfolioFiles(linkedPortfolioFiles);
       setSavedSnapshot(serializeProfileForm(nextForm));
     } catch (err) {
       setError(err instanceof Error ? err.message : "프로필을 불러오지 못했습니다.");
@@ -326,6 +339,40 @@ export function ProfilePage() {
       return false;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const uploadPortfolio = async (file: File) => {
+    setPortfolioUploading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const uploaded = await uploadProfilePortfolioFile(file);
+      setPortfolioFiles((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
+      setMessage("포트폴리오 파일을 프로필에 연결했습니다. 텍스트를 추출할 수 있는 문서는 다음 AI 분석의 근거로 참고합니다.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "포트폴리오 업로드에 실패했습니다.");
+    } finally {
+      setPortfolioUploading(false);
+    }
+  };
+
+  const deletePortfolio = async (file: ProfilePortfolioFile) => {
+    if (!window.confirm(`'${file.originalName}' 파일을 영구 삭제할까요? 다음 AI 분석의 근거에서도 제거됩니다.`)) {
+      return;
+    }
+    setPortfolioDeletingId(file.id);
+    setError(null);
+    setMessage(null);
+    try {
+      await deleteProfilePortfolioFile(file.id);
+      setPortfolioFiles((current) => current.filter((item) => item.id !== file.id));
+      setMessage("포트폴리오 파일을 삭제했습니다. 다음 AI 분석부터 이 파일은 근거로 사용되지 않습니다.");
+    } catch (err) {
+      // 서버 삭제가 실패한 경우 목록에서 먼저 빼지 않는다.
+      setError(err instanceof Error ? err.message : "포트폴리오 파일 삭제에 실패했습니다.");
+    } finally {
+      setPortfolioDeletingId(null);
     }
   };
 
@@ -846,12 +893,76 @@ export function ProfilePage() {
                 <TabGuide tab="experience" status={tabStatuses.experience} />
                 <Card className="border-slate-200 bg-card">
                   <CardHeader>
-                    <CardTitle className="text-base">포트폴리오/활동 링크</CardTitle>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <CardTitle className="text-base">포트폴리오/활동 링크와 파일</CardTitle>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={portfolioUploading}
+                        onClick={() => portfolioFileRef.current?.click()}
+                      >
+                        {portfolioUploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                        파일 추가
+                      </Button>
+                      <input
+                        ref={portfolioFileRef}
+                        type="file"
+                        className="hidden"
+                        accept=".txt,.md,.pdf,.docx,image/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadPortfolio(file);
+                          event.target.value = "";
+                        }}
+                      />
+                    </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-4">
                     <Field label="링크 목록">
                       <Textarea value={form.portfolioLinksText} onChange={(event) => update("portfolioLinksText", event.target.value)} placeholder="노션, 블로그, 작업물, 활동 기록 링크를 한 줄에 하나씩 입력" rows={4} />
                     </Field>
+                    <div>
+                      <div className="mb-2 text-sm font-semibold text-slate-700">연결된 파일</div>
+                      {portfolioFiles.length > 0 ? (
+                        <div className="space-y-2">
+                          {portfolioFiles.map((file) => (
+                            <div
+                              key={file.id}
+                              className="flex w-full items-center gap-1 rounded-lg border border-slate-200 p-1 transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => void downloadProfilePortfolioFile(file).catch((err) => {
+                                  setError(err instanceof Error ? err.message : "파일을 내려받지 못했습니다.");
+                                })}
+                                className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-1 text-left"
+                              >
+                                <FileText className="size-4 shrink-0 text-blue-600" />
+                                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{file.originalName}</span>
+                                <span className="shrink-0 text-xs text-slate-500">{formatFileSize(file.sizeBytes)}</span>
+                              </button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                aria-label={`${file.originalName} 삭제`}
+                                disabled={portfolioDeletingId != null}
+                                onClick={() => void deletePortfolio(file)}
+                                className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              >
+                                {portfolioDeletingId === file.id
+                                  ? <Loader2 className="size-4 animate-spin" />
+                                  : <Trash2 className="size-4" />}
+                                <span className="sr-only">삭제</span>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-500">연결된 포트폴리오 파일이 없습니다.</p>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
 
@@ -1813,6 +1924,12 @@ function isOngoing(startDate: string, endDate: string): boolean {
 function currentMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatFileSize(size: number | null | undefined): string {
+  if (size == null || size <= 0) return "크기 정보 없음";
+  if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(size / 1024))} KB`;
 }
 
 function toForm(profile: UserProfile): ProfileForm {

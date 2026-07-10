@@ -998,6 +998,27 @@ public class PostModerationService {
         notificationService.notify(noti);
     }
 
+    /** 관리자 경계 검토에서 숨김을 확정했을 때 알림과 누적 제재 평가를 한 번 수행한다. */
+    void sendReviewHiddenNotification(CommunityPost post) {
+        String postTitle = truncate(post.getTitle(), 30);
+        Notification noti = Notification.builder()
+                .userId(post.getUserId())
+                .type("POST_HIDDEN")
+                .targetType("POST")
+                .targetId(post.getId())
+                .title("게시글이 커뮤니티 가이드라인에 따라 숨김 처리되었습니다")
+                .message("'" + postTitle + "' 게시글이 관리자 검토 결과 숨김 처리되었습니다. "
+                        + "운영 정책에 관한 내용은 커뮤니티 가이드라인에서 확인할 수 있습니다.")
+                .link("/community?view=guidelines")
+                .build();
+        notificationService.notify(noti);
+        try {
+            userSanctionService.sanctionIfNeeded(post.getUserId());
+        } catch (Exception e) {
+            log.error("수동 검토 후 자동 제재 처리 실패: userId={}", post.getUserId(), e);
+        }
+    }
+
     /**
      * 댓글 검열 숨김 시 작성자에게 알림 발송. sendHiddenNotification(게시글) 동형 복제.
      * 링크는 댓글이 속한 게시글로 이동.

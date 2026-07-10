@@ -125,6 +125,48 @@ class AdServiceImplTest {
     }
 
     @Test
+    void safeInternalAndHttpLinksArePreservedWhenServingLegacyRows() {
+        Advertisement internal = ad(6L, 0, 1);
+        internal.setLinkUrl("/community/posts/10?from=ad");
+        Advertisement http = ad(7L, 0, 1);
+        http.setLinkUrl("http://example.com/campaign");
+        when(mapper.findServable(eq("HOME_BANNER"), eq("WEB"), any(LocalDateTime.class)))
+                .thenReturn(List.of(internal, http));
+
+        List<AdResponse> result = service.serve(null, "HOME_BANNER", "WEB", 2);
+
+        assertThat(result)
+                .extracting(AdResponse::linkUrl)
+                .containsExactlyInAnyOrder("/community/posts/10?from=ad", "http://example.com/campaign");
+    }
+
+    @Test
+    void unsafeLegacyLinkIsRemovedFromServeResponse() {
+        Advertisement unsafe = ad(8L, 0, 1);
+        unsafe.setLinkUrl("javascript:alert(document.domain)");
+        when(mapper.findServable(eq("HOME_BANNER"), eq("WEB"), any(LocalDateTime.class)))
+                .thenReturn(List.of(unsafe));
+
+        List<AdResponse> result = service.serve(null, "HOME_BANNER", "WEB", 1);
+
+        assertThat(result).singleElement()
+                .extracting(AdResponse::linkUrl)
+                .isNull();
+    }
+
+    @Test
+    void unsafeLegacyLinkIsRemovedFromClickResponse() {
+        Advertisement unsafe = ad(9L, 0, 1);
+        unsafe.setLinkUrl("//evil.example/phishing");
+        when(mapper.findById(9L)).thenReturn(unsafe);
+
+        AdClickResponse response = service.recordClick(9L);
+
+        assertThat(response.linkUrl()).isNull();
+        verify(mapper).increaseClick(9L);
+    }
+
+    @Test
     void clickOnMissingAdThrows() {
         when(mapper.findById(99L)).thenReturn(null);
 

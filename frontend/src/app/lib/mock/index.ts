@@ -28,7 +28,7 @@ import {
 import {
   communityPostPage, demoHotPosts, findCommunityPost, communityCommentsFor, demoPublishedGuideline,
   demoFaqs, demoNotices,
-  demoAdminReports, moderationPage, demoModerationStats, demoModerationSetting,
+  demoAdminReports,
   demoAdminNotices, demoAdminFaqs, demoAdminGuidelines, demoAdminTickets, adminTicketDetail,
   demoAdminNotifications,
 } from "./domains/f-area";
@@ -49,6 +49,7 @@ import { applicationsExtraRoutes } from "./domains/applicationsExtra";
 import { interviewExtraRoutes } from "./domains/interviewExtra";
 import { collaborationRoutes } from "./domains/collaboration";
 import { privacyRoutes } from "./domains/privacy";
+import { mfaRoutes } from "./domains/mfa";
 import { companyRoutes } from "./domains/company";
 import { legalRoutes } from "./domains/legal";
 import { adsRoutes } from "./domains/ads";
@@ -344,6 +345,7 @@ const coreRoutes: MockRoute[] = [
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/answers$/, handler: ({ params, body }) => submitInterviewAnswer(Number(params[0]), body as { answerText: string }) },
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/follow-ups$/, handler: ({ params }) => followUps(Number(params[0])) },
   { method: "POST", pattern: /^\/file\/upload$/, handler: () => fileAsset() },
+  { method: "DELETE", pattern: /^\/file\/(\d+)$/, handler: () => null },
 
   // ── C: 적합도 분석 ──
   { method: "GET", pattern: /^\/fit-analyses$/, handler: () => [...demoFitAnalyses, ...generatedFitAnalyses.values()] },
@@ -428,10 +430,6 @@ const coreRoutes: MockRoute[] = [
   // ── F(관리자): 신고 / AI 검열 ──
   { method: "GET", pattern: /^\/admin\/community\/reports$/, handler: ok(demoAdminReports) },
   { method: "GET", pattern: /^\/admin\/community\/reports\/(\d+)$/, handler: ({ params }) => ({ ...(demoAdminReports.find((r) => r.id === Number(params[0])) ?? demoAdminReports[0]), reasons: ["욕설/비방", "허위사실"], aiOpinion: { label: "ABUSE", confidence: 0.91 } }) },
-  { method: "GET", pattern: /^\/admin\/ai\/moderation$/, handler: () => moderationPage() },
-  { method: "GET", pattern: /^\/admin\/ai\/moderation\/stats$/, handler: ok(demoModerationStats) },
-  { method: "GET", pattern: /^\/admin\/ai\/moderation\/settings$/, handler: ok(demoModerationSetting) },
-
   // ── F(관리자): 공지 / FAQ / 가이드라인 ──
   { method: "GET", pattern: /^\/admin\/notices$/, handler: ok(demoAdminNotices) },
   { method: "GET", pattern: /^\/admin\/faq$/, handler: ok(demoAdminFaqs) },
@@ -458,6 +456,7 @@ const routes: MockRoute[] = [
   ...correctionRoutes,
   ...collaborationRoutes,
   ...privacyRoutes,
+  ...mfaRoutes,
   ...companyRoutes,
   ...legalRoutes,
   ...adsRoutes,
@@ -483,7 +482,7 @@ export async function resolveMock(
 
   const match = route.pattern.exec(path);
   const params = match ? match.slice(1) : [];
-  let body: unknown;
+  let body: unknown = options.body;
   if (typeof options.body === "string") {
     try {
       body = JSON.parse(options.body);

@@ -284,12 +284,8 @@ export function AdminApplicationCasesPage() {
     try {
       const updated = await updateAdminApplicationCaseStatus(selected.id, nextStatus, memo);
       setRows((items) => items.map((item) => (item.id === updated.id ? updated : item)));
-      setDetail((current) =>
-        current?.applicationCase.id === updated.id
-          ? { ...current, applicationCase: updated }
-          : current,
-      );
       setMemo("");
+      await loadDetail(updated.id);
     } catch (err) {
       setStatusError(err instanceof Error ? err.message : "상태를 변경하지 못했습니다.");
     } finally {
@@ -903,9 +899,11 @@ function OverviewTab({
         {(detail.statusHistory ?? []).map((entry) => (
           <div key={entry.id} className="rounded-lg border border-slate-200 bg-card p-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{entry.previousStatus ?? "생성"}</Badge>
+              <Badge variant="secondary">
+                {entry.previousStatus ? getApplicationStatusLabel(entry.previousStatus as ApplicationStatus) : "생성"}
+              </Badge>
               <span className="text-slate-400">→</span>
-              <Badge className="bg-blue-100 text-blue-700">{entry.newStatus}</Badge>
+              <Badge>{getApplicationStatusLabel(entry.newStatus as ApplicationStatus)}</Badge>
               <span className="ml-auto text-xs text-slate-400">{new Date(entry.createdAt).toLocaleString()}</span>
             </div>
             <div className="mt-1.5 text-xs text-slate-500">
