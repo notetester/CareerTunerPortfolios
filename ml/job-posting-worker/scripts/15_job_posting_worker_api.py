@@ -12,6 +12,7 @@ import importlib.util
 import json
 import sys
 import tempfile
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -36,6 +37,56 @@ def load_document_module():
 
 
 DOCUMENT = load_document_module()
+
+# OCR 엔진 준비 상태는 프로세스 단위로 캐시한다(첫 조회만 엔진 초기화 비용, 이후 즉시 응답).
+_CAPABILITIES_CACHE: dict[str, Any] | None = None
+_CAPABILITIES_LOCK = threading.Lock()
+# 엔진 초기화(모델 가중치 로딩) probe·warm-up 에 쓰는 언어(추출 기본 paddle_ocr_lang 과 동일).
+_PROBE_LANG = "korean"
+
+
+def _probe_engine(factory) -> dict[str, Any]:
+    """엔진 팩토리를 실제 호출해 constructor·모델 초기화까지 성공하는지 판정한다.
+
+    클래스 import 만이 아니라 create_* 로 실제 엔진을 생성한다(모델 가중치 로딩 포함) —
+    "실제 준비된 엔진" 계약 충족. 성공한 엔진은 팩토리 내부 캐시에 남아 이후 추출의 warm-up 으로 재사용된다.
+    """
+    try:
+        factory(_PROBE_LANG)
+        return {"ready": True}
+    except Exception as exc:  # noqa: BLE001 - 준비 안 됨을 진단 메시지로 변환
+        return {"ready": False, "reason": type(exc).__name__}
+
+
+def probe_capabilities() -> dict[str, Any]:
+    """실제 초기화 가능한 OCR 엔진(PaddleOCR 라인 OCR / PPStructureV3 레이아웃 OCR)을 조사한다.
+
+    paddle·paddleocr 미설치면 즉시 not_installed(무거운 초기화 회피). 설치돼 있으면
+    create_paddle_ocr/create_ppstructure 로 엔진을 실제 생성해 준비 여부를 확정한다.
+    결과는 캐시하고, 동시 첫 요청의 중복 초기화는 락으로 막는다.
+    """
+    global _CAPABILITIES_CACHE
+    if _CAPABILITIES_CACHE is not None:
+        return _CAPABILITIES_CACHE
+    with _CAPABILITIES_LOCK:
+        if _CAPABILITIES_CACHE is not None:
+            return _CAPABILITIES_CACHE
+        if importlib.util.find_spec("paddle") is None or importlib.util.find_spec("paddleocr") is None:
+            engines = {
+                "paddleocr": {"ready": False, "reason": "not_installed"},
+                "ppstructure": {"ready": False, "reason": "not_installed"},
+            }
+        else:
+            engines = {
+                "paddleocr": _probe_engine(DOCUMENT.create_paddle_ocr),
+                "ppstructure": _probe_engine(DOCUMENT.create_ppstructure),
+            }
+        _CAPABILITIES_CACHE = {
+            "status": "ok",
+            "engines": engines,
+            "readyEngines": [name for name, info in engines.items() if info.get("ready")],
+        }
+        return _CAPABILITIES_CACHE
 
 
 def normalize_source_type(value: Any) -> str:
@@ -191,6 +242,9 @@ class WorkerHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self.path == "/health":
             self.write_json({"status": "ok"})
+            return
+        if self.path == "/capabilities":
+            self.write_json(probe_capabilities())
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
