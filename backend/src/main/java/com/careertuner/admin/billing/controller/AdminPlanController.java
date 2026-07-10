@@ -20,6 +20,7 @@ import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.billing.service.BillingService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.SitesFinancialMutation;
 
 import lombok.RequiredArgsConstructor;
 
@@ -52,6 +53,7 @@ public class AdminPlanController {
         return ApiResponse.ok(policyChangeService.list(authUser));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/policy-changes")
     public ApiResponse<AdminBillingPolicyChangeResponse> createPolicyChange(
             @AuthenticationPrincipal AuthUser authUser,
@@ -59,6 +61,7 @@ public class AdminPlanController {
         return ApiResponse.ok(policyChangeService.create(authUser, request));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/policy-changes/{id}/cancel")
     public ApiResponse<AdminBillingPolicyChangeResponse> cancelPolicyChange(
             @AuthenticationPrincipal AuthUser authUser,

@@ -16,6 +16,7 @@ import com.careertuner.admin.credit.dto.AdminCreditSummary;
 import com.careertuner.admin.credit.service.AdminCreditService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.SitesFinancialMutation;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +48,7 @@ public class AdminCreditController {
         return ApiResponse.ok(service.summary(authUser));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/adjust")
     public ApiResponse<AdminCreditAdjustResponse> adjust(
             @AuthenticationPrincipal AuthUser authUser,

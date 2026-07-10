@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.auth.service.AuthService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.user.dto.AccountInfoResponse;
 import com.careertuner.user.dto.EmailRegistrationRequest;
 import com.careertuner.user.dto.LoginIdRequest;
@@ -20,6 +21,7 @@ import com.careertuner.user.dto.SocialLinkUrlResponse;
 import com.careertuner.user.service.UserAccountService;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 
 /** 계정 확충 API — 로그인 아이디·전화번호 설정, 연결 계정 조회. */
@@ -30,6 +32,7 @@ public class UserAccountController {
 
     private final UserAccountService service;
     private final AuthService authService;
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver;
 
     @GetMapping
     public ApiResponse<AccountInfoResponse> me(@AuthenticationPrincipal AuthUser authUser) {
@@ -50,15 +53,19 @@ public class UserAccountController {
 
     @PostMapping("/email-registration")
     public ApiResponse<Void> requestEmailRegistration(@AuthenticationPrincipal AuthUser authUser,
-                                                      @Valid @RequestBody EmailRegistrationRequest request) {
-        service.requestEmailRegistration(authUser.id(), request.email());
+                                                      @Valid @RequestBody EmailRegistrationRequest request,
+                                                      HttpServletRequest servletRequest) {
+        service.requestEmailRegistration(
+                authUser.id(), request.email(), frontendReturnUrlResolver.resolve(servletRequest));
         return ApiResponse.ok();
     }
 
     @PostMapping("/social/{provider}/link-url")
     public ApiResponse<SocialLinkUrlResponse> socialLinkUrl(@AuthenticationPrincipal AuthUser authUser,
-                                                            @PathVariable String provider) {
-        return ApiResponse.ok(new SocialLinkUrlResponse(authService.buildSocialLinkUrl(authUser.id(), provider)));
+                                                            @PathVariable String provider,
+                                                            HttpServletRequest servletRequest) {
+        return ApiResponse.ok(new SocialLinkUrlResponse(authService.buildSocialLinkUrl(
+                authUser.id(), provider, frontendReturnUrlResolver.resolve(servletRequest))));
     }
 
     @DeleteMapping("/social/{provider}")

@@ -19,7 +19,7 @@ export function OfflineBanner() {
   if (online) return null;
 
   return (
-    <div className="sticky top-0 z-[55] flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white">
+    <div className="flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-slate-950 dark:bg-amber-600 dark:text-white">
       <WifiOff className="size-3.5" />
       오프라인 상태입니다. 네트워크가 연결되면 자동으로 동기화됩니다.
     </div>

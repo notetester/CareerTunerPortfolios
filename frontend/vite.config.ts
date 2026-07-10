@@ -42,6 +42,9 @@ export default defineConfig(async ({ mode }) => {
           compatibility_flags: ['nodejs_compat'],
           assets: {
             binding: 'ASSETS',
+            // 기본 auto-trailing-slash는 /applications/123 같은 SPA 딥링크를 /로 307 정규화한다.
+            // URL 표기는 React Router가 소유하므로 자산 계층의 HTML 경로 정규화를 끈다.
+            html_handling: 'none',
             not_found_handling: 'single-page-application',
             run_worker_first: ['/api', '/api/*', '/__backup/*'],
           },
@@ -86,7 +89,7 @@ export default defineConfig(async ({ mode }) => {
         navigateFallback: 'index.html',
         // /api 와 별도 정적 지식맵은 SPA 폴백/캐시 대상에서 제외한다.
         // Pages의 /Obsidian/* 요청을 index.html로 돌리면 React Router 404가 노출된다.
-        navigateFallbackDenylist: [/^\/api/, /\/Obsidian(?:\/|$)/],
+        navigateFallbackDenylist: [/^\/api/, /^\/__backup\//, /\/Obsidian(?:\/|$)/],
         cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Web Push 핸들러(push/notificationclick)를 생성 SW 에 합친다. public/push-sw.js 참고.
