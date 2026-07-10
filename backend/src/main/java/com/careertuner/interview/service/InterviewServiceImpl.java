@@ -488,7 +488,11 @@ public class InterviewServiceImpl implements InterviewService {
                 payload.summaryFeedback(),
                 buildQuestionScores(sessionId));
 
-        interviewMapper.updateSessionResult(sessionId, payload.totalScore(), writeReport(response), LocalDateTime.now());
+        int updated = interviewMapper.updateSessionResult(
+                sessionId, payload.totalScore(), writeReport(response), LocalDateTime.now());
+        if (updated == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 세션을 찾을 수 없습니다.");
+        }
 
         // 리포트가 새로 생성된 경우에만 완료 알림을 남긴다(캐시 반환 시에는 발행하지 않는다).
         String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
