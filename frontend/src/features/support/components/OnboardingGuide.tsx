@@ -309,7 +309,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
                 )}
                 {g.step === "analyzing" && (
                   g.runParts.length === 0 ? (
-                    <AnalyzingStep />
+                    <AnalyzingStep g={g} />
                   ) : (
                     <AutoPrepWorkView
                       running={g.runRunning}
@@ -736,7 +736,25 @@ function JdStep({ g, jdRef, bubble, serverMode }: {
 }
 
 /* ── (목) 적합도 계산 중 ── */
-function AnalyzingStep() {
+function AnalyzingStep({ g }: { g: G }) {
+  // 공고 추출 실패로 분석이 차단된 경우(ensureCase 가 OnboardingPostingExtractionFailedError 로 조기 종료):
+  // 스피너 대신 사유와 상세 이동만 노출한다. 무인자 자동 재추출은 하지 않으므로 '다시 분석하기'는 없다.
+  if (g.extractionFailedCaseId != null) {
+    return (
+      <>
+        <GuideBubble text={COPY.fitEmpty} />
+        <div className="rounded-xl border border-border px-4 py-3 flex flex-col gap-2.5">
+          <div className="text-[12px] leading-[1.55] text-muted-foreground">
+            {g.runError ?? "공고문 추출에 실패했어요. 지원 건 상세에서 OCR 모델을 골라 다시 추출한 뒤 이어가 주세요."}
+          </div>
+          <a href={`/applications/${g.extractionFailedCaseId}/overview`}
+            className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full border border-border px-3 text-[11.5px] font-bold text-muted-foreground transition-colors hover:bg-muted">
+            지원 건 상세로 이동
+          </a>
+        </div>
+      </>
+    );
+  }
   return (
     <div className="flex flex-col items-center justify-center text-center py-10">
       <Loader2 size={32} className="animate-spin mb-4" style={{ color: "var(--orch-violet)" }} />
