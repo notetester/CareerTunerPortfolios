@@ -19,6 +19,7 @@ public class EmailVerification {
     private String email;
     private String token;
     private String purpose;           // VERIFY/EMAIL_CHANGE/RESET_PW/FIND_ID/DORMANT_RELEASE
+    private String frontendClient;    // primary/sites
     private LocalDateTime expiredAt;
     private boolean used;
     private LocalDateTime usedAt;

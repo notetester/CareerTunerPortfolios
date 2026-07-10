@@ -22,6 +22,7 @@ import com.careertuner.billing.dto.UsageRow;
 import com.careertuner.billing.service.BillingService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.SitesFinancialMutation;
 import com.careertuner.credit.domain.CreditProduct;
 import com.careertuner.credit.domain.CreditTransaction;
 import com.careertuner.payment.domain.Payment;
@@ -81,18 +82,21 @@ public class BillingController {
         return ApiResponse.ok(billingService.myBenefitTransactions(authUser.id(), limit == null ? 50 : limit));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/subscribe")
     public ApiResponse<MyBillingResponse> subscribe(@AuthenticationPrincipal AuthUser authUser,
                                                     @Validated @RequestBody SubscribeRequest request) {
         return ApiResponse.ok(billingService.subscribe(authUser.id(), request.planCode(), request.cycle()));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/credits/purchase")
     public ApiResponse<MyBillingResponse> purchaseCredits(@AuthenticationPrincipal AuthUser authUser,
                                                           @Validated @RequestBody CreditPurchaseRequest request) {
         return ApiResponse.ok(billingService.purchaseCredits(authUser.id(), request.productCode()));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/subscription/cancel")
     public ApiResponse<MyBillingResponse> cancelSubscription(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(billingService.cancelSubscription(authUser.id()));

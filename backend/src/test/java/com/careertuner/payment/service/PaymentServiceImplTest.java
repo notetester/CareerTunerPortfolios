@@ -67,6 +67,8 @@ class PaymentServiceImplTest {
         assertThat(response.orderName()).isEqualTo("Credit 1000");
         assertThat(response.amount()).isEqualTo(10000);
         assertThat(response.creditAmount()).isEqualTo(1000);
+        assertThat(response.successUrl()).isEqualTo("http://localhost:5173/billing/success");
+        assertThat(response.failUrl()).isEqualTo("http://localhost:5173/billing/fail");
 
         ArgumentCaptor<Payment> captor = ArgumentCaptor.forClass(Payment.class);
         verify(paymentMapper).insertPayment(captor.capture());

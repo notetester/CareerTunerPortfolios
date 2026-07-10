@@ -29,6 +29,8 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.JwtTokenProvider;
 import com.careertuner.common.security.JwtTokenProvider.OauthState;
+import com.careertuner.common.web.FrontendReturnTarget;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.loginrisk.service.LoginRiskPolicyService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
@@ -49,6 +51,7 @@ class AuthServiceImplTest {
     private final SocialOAuthService socialOAuthService = mock(SocialOAuthService.class);
     private final MfaService mfaService = mock(MfaService.class);
     private final CareerTunerProperties props = mock(CareerTunerProperties.class);
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver = mock(FrontendReturnUrlResolver.class);
     private final SecurityHistoryService securityHistoryService = mock(SecurityHistoryService.class);
     private final LoginRiskPolicyService loginRiskPolicyService = mock(LoginRiskPolicyService.class);
     private final com.careertuner.reward.service.RewardService rewardService =
@@ -56,13 +59,16 @@ class AuthServiceImplTest {
 
     private final AuthServiceImpl service = new AuthServiceImpl(
             userMapper, authMapper, passwordEncoder, jwtTokenProvider, emailService,
-            socialOAuthService, mfaService, props, securityHistoryService, loginRiskPolicyService, rewardService);
+            socialOAuthService, mfaService, props, frontendReturnUrlResolver,
+            securityHistoryService, loginRiskPolicyService, rewardService);
 
     private static final String EMAIL = "user@test.com";
 
     @BeforeEach
     void defaultPolicy() {
         when(loginRiskPolicyService.isLockoutEnabled()).thenReturn(false);
+        when(frontendReturnUrlResolver.primary())
+                .thenReturn(new FrontendReturnTarget("primary", "https://careertuner.kro.kr"));
     }
 
     @Test
@@ -88,7 +94,7 @@ class AuthServiceImplTest {
         assertThat(userCaptor.getValue().getEmail()).isNull();
         assertThat(userCaptor.getValue().getLoginId()).isEqualTo("career_user");
         verify(authMapper, never()).insertEmailVerification(any());
-        verify(emailService, never()).sendVerificationEmail(any(), any());
+        verify(emailService, never()).sendVerificationEmail(any(), any(), any());
         verify(authMapper).insertLoginHistory(org.mockito.ArgumentMatchers.argThat(history ->
                 "LOGIN_ID".equals(history.getLoginMethod()) && "career_user".equals(history.getLoginIdentifier())));
     }
@@ -166,7 +172,7 @@ class AuthServiceImplTest {
 
         service.requestPasswordReset(new PasswordResetRequest(null, "missing"), null);
 
-        verify(emailService, never()).sendPasswordResetEmail(any(), any());
+        verify(emailService, never()).sendPasswordResetEmail(any(), any(), any());
     }
 
     @Test
@@ -181,14 +187,33 @@ class AuthServiceImplTest {
         verify(authMapper).insertEmailVerification(captor.capture());
         EmailVerification verification = captor.getValue();
         org.assertj.core.api.Assertions.assertThat(verification.getPurpose()).isEqualTo("FIND_ID");
-        verify(emailService).sendFindIdEmail(eq(EMAIL), eq(verification.getToken()));
+        verify(emailService).sendFindIdEmail(eq(EMAIL), eq(verification.getToken()),
+                eq(new FrontendReturnTarget("primary", "https://careertuner.kro.kr")));
+    }
+
+    @Test
+    void verifyEmailResult_keepsSitesClientEvenWhenTokenExpired() {
+        EmailVerification verification = EmailVerification.builder()
+                .id(1L)
+                .userId(1L)
+                .email(EMAIL)
+                .purpose("VERIFY")
+                .frontendClient("sites")
+                .expiredAt(java.time.LocalDateTime.now().minusMinutes(1))
+                .build();
+        when(authMapper.findEmailVerificationByToken("expired-token")).thenReturn(verification);
+
+        var result = service.verifyEmailResult("expired-token");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.frontendClient()).isEqualTo("sites");
     }
 
     @Test
     void handleOAuthCallback_linkState_connectsSocialToCurrentUser() {
         when(socialOAuthService.isSupported("KAKAO")).thenReturn(true);
         when(jwtTokenProvider.parseOauthState("state", "KAKAO"))
-                .thenReturn(new OauthState("oauth_link_state", "KAKAO", 1L));
+                .thenReturn(new OauthState("oauth_link_state", "KAKAO", 1L, "sites"));
         when(socialOAuthService.fetchUserInfo("KAKAO", "code", "state"))
                 .thenReturn(new SocialUserInfo("KAKAO", "kakao-user", "user@test.com", "소셜"));
         when(userMapper.findById(1L)).thenReturn(User.builder().id(1L).email(EMAIL).status("ACTIVE").build());
@@ -200,6 +225,7 @@ class AuthServiceImplTest {
 
         assertThat(result.linked()).isTrue();
         assertThat(result.provider()).isEqualTo("KAKAO");
+        assertThat(result.frontendClient()).isEqualTo("sites");
         verify(authMapper).insertSocial(captor.capture());
         assertThat(captor.getValue().getUserId()).isEqualTo(1L);
         assertThat(captor.getValue().getProvider()).isEqualTo("KAKAO");
@@ -224,12 +250,22 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void resolveOAuthFrontendClient_returnsOnlyValueFromValidSignedState() {
+        when(socialOAuthService.isSupported("GOOGLE")).thenReturn(true);
+        when(jwtTokenProvider.parseOauthState("state", "GOOGLE"))
+                .thenReturn(new OauthState("oauth_state", "GOOGLE", null, "sites"));
+
+        assertThat(service.resolveOAuthFrontendClient("google", "state")).isEqualTo("sites");
+        assertThat(service.resolveOAuthFrontendClient("unknown", "state")).isNull();
+    }
+
+    @Test
     void buildSocialLinkUrl_whenProviderIsNotConfigured_returnsMockCallbackUrl() {
         when(socialOAuthService.isSupported("KAKAO")).thenReturn(true);
         when(socialOAuthService.isConfigured("KAKAO")).thenReturn(false);
         when(socialOAuthService.isMockEnabled()).thenReturn(true);
         when(userMapper.findById(1L)).thenReturn(User.builder().id(1L).email(EMAIL).status("ACTIVE").build());
-        when(jwtTokenProvider.createOauthLinkState("KAKAO", 1L)).thenReturn("signed-state");
+        when(jwtTokenProvider.createOauthLinkState("KAKAO", 1L, "primary")).thenReturn("signed-state");
         when(socialOAuthService.getMockAuthorizationUrl("KAKAO", "signed-state"))
                 .thenReturn("http://localhost:8080/api/auth/oauth/kakao/mock-callback?state=signed-state");
 
@@ -244,7 +280,7 @@ class AuthServiceImplTest {
         when(socialOAuthService.isConfigured("KAKAO")).thenReturn(false);
         when(socialOAuthService.isMockEnabled()).thenReturn(false);
         when(userMapper.findById(1L)).thenReturn(User.builder().id(1L).email(EMAIL).status("ACTIVE").build());
-        when(jwtTokenProvider.createOauthLinkState("KAKAO", 1L)).thenReturn("signed-state");
+        when(jwtTokenProvider.createOauthLinkState("KAKAO", 1L, "primary")).thenReturn("signed-state");
 
         assertThatThrownBy(() -> service.buildSocialLinkUrl(1L, "kakao"))
                 .isInstanceOf(BusinessException.class)

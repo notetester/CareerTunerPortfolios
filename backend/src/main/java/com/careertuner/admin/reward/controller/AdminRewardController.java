@@ -24,6 +24,7 @@ import com.careertuner.admin.reward.dto.AdminRewardRuleUpdateRequest;
 import com.careertuner.admin.reward.service.AdminRewardService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.SitesFinancialMutation;
 import com.careertuner.reward.domain.Coupon;
 import com.careertuner.reward.domain.RewardRule;
 import com.careertuner.reward.domain.UserCoupon;
@@ -47,6 +48,7 @@ public class AdminRewardController {
         return ApiResponse.ok(service.rules(authUser));
     }
 
+    @SitesFinancialMutation
     @PutMapping("/rules/{id}")
     public ApiResponse<RewardRule> updateRule(@AuthenticationPrincipal AuthUser authUser,
                                               @PathVariable Long id,
@@ -54,6 +56,7 @@ public class AdminRewardController {
         return ApiResponse.ok(service.updateRule(authUser, id, req));
     }
 
+    @SitesFinancialMutation
     @PatchMapping("/rules/{id}/enabled")
     public ApiResponse<RewardRule> toggleRule(@AuthenticationPrincipal AuthUser authUser,
                                               @PathVariable Long id,
@@ -67,12 +70,14 @@ public class AdminRewardController {
         return ApiResponse.ok(service.levels(authUser));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/levels")
     public ApiResponse<UserLevelPolicy> createLevel(@AuthenticationPrincipal AuthUser authUser,
                                                     @Valid @RequestBody AdminLevelPolicyRequest req) {
         return ApiResponse.ok(service.createLevel(authUser, req));
     }
 
+    @SitesFinancialMutation
     @PutMapping("/levels/{id}")
     public ApiResponse<UserLevelPolicy> updateLevel(@AuthenticationPrincipal AuthUser authUser,
                                                     @PathVariable Long id,
@@ -80,6 +85,7 @@ public class AdminRewardController {
         return ApiResponse.ok(service.updateLevel(authUser, id, req));
     }
 
+    @SitesFinancialMutation
     @DeleteMapping("/levels/{id}")
     public ApiResponse<Void> deleteLevel(@AuthenticationPrincipal AuthUser authUser,
                                          @PathVariable Long id) {
@@ -96,12 +102,14 @@ public class AdminRewardController {
         return ApiResponse.ok(service.coupons(authUser, keyword, page, size));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/coupons")
     public ApiResponse<Coupon> createCoupon(@AuthenticationPrincipal AuthUser authUser,
                                             @Valid @RequestBody AdminCouponRequest req) {
         return ApiResponse.ok(service.createCoupon(authUser, req));
     }
 
+    @SitesFinancialMutation
     @PutMapping("/coupons/{id}")
     public ApiResponse<Coupon> updateCoupon(@AuthenticationPrincipal AuthUser authUser,
                                             @PathVariable Long id,
@@ -109,6 +117,7 @@ public class AdminRewardController {
         return ApiResponse.ok(service.updateCoupon(authUser, id, req));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/coupons/{id}/issue")
     public ApiResponse<UserCoupon> issueCoupon(@AuthenticationPrincipal AuthUser authUser,
                                                @PathVariable Long id,

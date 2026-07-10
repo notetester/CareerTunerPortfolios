@@ -16,8 +16,8 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 - JDK 21
 - MySQL 8 — 개발은 할당받은 **`team1_db`** 사용. 스키마/시드 적용(최초 1회):
   `src/main/resources/db/schema.sql` → `src/main/resources/db/data.sql` 순서로 실행(IntelliJ Database 콘솔 권장).
-- 기존 DB를 갱신할 때는 코드 배포 전에 `src/main/resources/db/patches/20260710_a_consent_document_version.sql`을 적용해
-  동의 이력의 `consent_version` 컬럼과 기존 데이터 보정을 먼저 완료한다.
+- 기존 DB를 갱신할 때는 코드 배포 전에 필요한 `src/main/resources/db/patches/*.sql`을 적용한다. Sites 반환
+  주소 연동에는 `20260711_auth_frontend_return_client.sql`이 필요하며, 기존 이메일 토큰은 `primary`로 호환된다.
 
 ## 실행
 
@@ -74,7 +74,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | JWT | `JWT_SECRET` `JWT_ACCESS_TTL` `JWT_REFRESH_TTL` | dev 기본키 / `1800`(30분) / `1209600`(14일) |
 | OAuth | `OAUTH_{KAKAO,NAVER,GOOGLE}_CLIENT_ID` `..._CLIENT_SECRET` `..._REDIRECT_URI` | `CHANGEME`(미발급) |
 | 메일 | `MAIL_HOST` `MAIL_USERNAME` `MAIL_PASSWORD` `MAIL_FROM` `MAIL_DEV_MODE` | `smtp.naver.com` / 빈값 / 빈값 / no-reply / `true` |
-| 앱 | `APP_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / `http://localhost:8080` |
+| 앱 | `APP_FRONTEND_URL` `APP_SITES_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / 빈값(AWS 프로파일은 Sites 주소) / `http://localhost:8080` |
 | 업로드 | `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE` `SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE` `JOB_POSTING_MAX_FILE_SIZE_BYTES` | `10MB` / `12MB` / `10485760` |
 | 로컬 LLM | `AI_OLLAMA_BASE_URL` `AI_OLLAMA_MODEL` `AI_OLLAMA_CONNECT_TIMEOUT` `AI_OLLAMA_READ_TIMEOUT` | `http://localhost:11434` / `gemma4` / `3s` / `30s` |
 | 로컬 LLM 폴백 | `AI_OLLAMA_FALLBACK_BASE_URLS`(콤마 구분) `AI_OLLAMA_FALLBACK_ENABLED` | `http://localhost:11434` / `true` — 4090 미응답 시 부팅에서 자동 전환 |
@@ -102,7 +102,9 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 - **JWT**: 액세스 토큰은 `Authorization: Bearer <token>`. 리프레시 토큰은 불투명 UUID로 `refresh_token` 테이블에서 회전/폐기 관리.
 - **소셜 로그인 흐름**: 프런트가 `/api/auth/oauth/{provider}` 로 전체 페이지 이동 → 제공자 인증 →
   백엔드 콜백에서 사용자 조회/생성 후 JWT 발급 → 프런트 `/auth/callback#accessToken=…&refreshToken=…` 로 리다이렉트.
-  (서명된 state 토큰으로 CSRF 방지, 세션/쿠키 불필요)
+  반환 대상은 요청 URL이 아니라 서명된 state의 `primary`/`sites` named client로만 선택한다. OAuth 공급자에는
+  기존 AWS 백엔드 콜백 하나만 등록하며, 이메일 인증 토큰도 같은 client를 DB에 보존한다.
+- Sites 요청은 결제 준비를 서버에서 거부한다. 결제·구독·환불 mutation은 운영 AWS 프런트에서만 수행한다.
 
 ## 결제·구독 사용권 API
 

@@ -40,9 +40,10 @@ import com.careertuner.auth.dto.TokenRequest;
 import com.careertuner.auth.dto.TokenResponse;
 import com.careertuner.auth.service.AuthService;
 import com.careertuner.auth.service.MfaService;
-import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.FrontendReturnTarget;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
 
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
@@ -63,14 +64,15 @@ public class AuthController {
 
     private final AuthService authService;
     private final MfaService mfaService;
-    private final CareerTunerProperties props;
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver;
 
     // ── 이메일 회원가입/로그인 ──
 
     @PostMapping("/register")
     public ApiResponse<TokenResponse> register(@Valid @RequestBody RegisterRequest request,
                                                HttpServletRequest servletRequest) {
-        return ApiResponse.ok(authService.register(request, LoginRequestContext.from(servletRequest)));
+        return ApiResponse.ok(authService.register(
+                request, LoginRequestContext.from(servletRequest), frontendReturnUrlResolver.resolve(servletRequest)));
     }
 
     @PostMapping("/login")
@@ -175,20 +177,22 @@ public class AuthController {
     /** 이메일 링크 클릭 진입점. 검증 후 프런트 결과 페이지로 리다이렉트. */
     @GetMapping("/verify-email")
     public ResponseEntity<Void> verifyEmail(@RequestParam String token) {
-        boolean ok = authService.verifyEmail(token);
-        return redirect(props.getApp().getFrontendUrl() + "/auth/verify-email/result?success=" + ok);
+        var result = authService.verifyEmailResult(token);
+        FrontendReturnTarget target = frontendReturnUrlResolver.resolveStoredClient(result.frontendClient());
+        return redirect(target.absoluteUrl("/auth/verify-email/result?success=" + result.success()));
     }
 
     @PostMapping("/email/resend")
-    public ApiResponse<Void> resendVerification(@RequestParam String email) {
-        authService.resendVerification(email);
+    public ApiResponse<Void> resendVerification(@RequestParam String email, HttpServletRequest servletRequest) {
+        authService.resendVerification(email, frontendReturnUrlResolver.resolve(servletRequest));
         return ApiResponse.ok();
     }
 
     @PostMapping("/find-id/request")
     public ApiResponse<Void> requestFindId(@Valid @RequestBody FindIdRequest request,
                                            HttpServletRequest servletRequest) {
-        authService.requestFindId(request.email(), LoginRequestContext.from(servletRequest));
+        authService.requestFindId(request.email(), LoginRequestContext.from(servletRequest),
+                frontendReturnUrlResolver.resolve(servletRequest));
         return ApiResponse.ok();
     }
 
@@ -202,7 +206,8 @@ public class AuthController {
     @PostMapping("/password/reset-request")
     public ApiResponse<Void> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request,
                                                   HttpServletRequest servletRequest) {
-        authService.requestPasswordReset(request, LoginRequestContext.from(servletRequest));
+        authService.requestPasswordReset(request, LoginRequestContext.from(servletRequest),
+                frontendReturnUrlResolver.resolve(servletRequest));
         return ApiResponse.ok();
     }
 
@@ -216,7 +221,8 @@ public class AuthController {
     @PostMapping("/dormant/release-request")
     public ApiResponse<Void> requestDormantRelease(@Valid @RequestBody PasswordResetRequest request,
                                                    HttpServletRequest servletRequest) {
-        authService.requestDormantRelease(request, LoginRequestContext.from(servletRequest));
+        authService.requestDormantRelease(request, LoginRequestContext.from(servletRequest),
+                frontendReturnUrlResolver.resolve(servletRequest));
         return ApiResponse.ok();
     }
 
@@ -229,23 +235,32 @@ public class AuthController {
     // ── 소셜 로그인 ──
 
     @GetMapping("/oauth/{provider}")
-    public ResponseEntity<Void> oauthRedirect(@PathVariable String provider) {
-        return redirect(authService.buildAuthorizationUrl(provider));
+    public ResponseEntity<Void> oauthRedirect(@PathVariable String provider, HttpServletRequest servletRequest) {
+        return redirect(authService.buildAuthorizationUrl(provider, frontendReturnUrlResolver.resolve(servletRequest)));
     }
 
     @GetMapping("/oauth/{provider}/callback")
     public ResponseEntity<Void> oauthCallback(@PathVariable String provider,
-                                              @RequestParam String code,
+                                              @RequestParam(required = false) String code,
                                               @RequestParam(required = false) String state,
+                                              @RequestParam(required = false) String error,
                                               HttpServletRequest servletRequest) {
-        String frontend = props.getApp().getFrontendUrl();
+        FrontendReturnTarget failureTarget = frontendReturnUrlResolver.resolveStoredClient(
+                authService.resolveOAuthFrontendClient(provider, state));
+        if (error != null && !error.isBlank()) {
+            return redirect(failureTarget.absoluteUrl("/auth/callback?error=" + enc(oauthFailureCode(error))));
+        }
+        if (code == null || code.isBlank()) {
+            return redirect(failureTarget.absoluteUrl("/auth/callback?error=" + enc("social_login_failed")));
+        }
         try {
             OAuthCallbackResult result = authService.handleOAuthCallback(provider, code, state,
                     LoginRequestContext.from(servletRequest));
-            return redirectOAuthResult(frontend, result, false);
+            return redirectOAuthResult(frontendReturnUrlResolver.resolveStoredClient(result.frontendClient()),
+                    result, false);
         } catch (Exception e) {
             log.warn("[{}] OAuth 콜백 실패: {}", provider, e.getMessage());
-            return redirect(frontend + "/auth/callback#error=" + enc("social_login_failed"));
+            return redirect(failureTarget.absoluteUrl("/auth/callback?error=" + enc("social_login_failed")));
         }
     }
 
@@ -253,26 +268,29 @@ public class AuthController {
     public ResponseEntity<Void> oauthMockCallback(@PathVariable String provider,
                                                   @RequestParam(required = false) String state,
                                                   HttpServletRequest servletRequest) {
-        String frontend = props.getApp().getFrontendUrl();
         try {
             OAuthCallbackResult result = authService.handleOAuthMockCallback(provider, state,
                     LoginRequestContext.from(servletRequest));
-            return redirectOAuthResult(frontend, result, true);
+            return redirectOAuthResult(frontendReturnUrlResolver.resolveStoredClient(result.frontendClient()),
+                    result, true);
         } catch (Exception e) {
             log.warn("[{}] OAuth mock 콜백 실패: {}", provider, e.getMessage());
-            return redirect(frontend + "/auth/callback#error=" + enc("social_login_failed"));
+            FrontendReturnTarget target = frontendReturnUrlResolver.resolveStoredClient(
+                    authService.resolveOAuthFrontendClient(provider, state));
+            return redirect(target.absoluteUrl("/auth/callback?error=" + enc("social_login_failed")));
         }
     }
 
     // ── 내부 ──
 
-    private ResponseEntity<Void> redirectOAuthResult(String frontend, OAuthCallbackResult result, boolean mock) {
+    private ResponseEntity<Void> redirectOAuthResult(
+            FrontendReturnTarget target, OAuthCallbackResult result, boolean mock) {
         if (result.linked()) {
             String query = "/profile/detail?socialLinked=" + enc(result.provider());
             if (mock) {
                 query += "&socialMock=1";
             }
-            return redirect(frontend + query);
+            return redirect(target.absoluteUrl(query));
         }
         TokenResponse tokens = result.tokens();
         String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
@@ -281,7 +299,7 @@ public class AuthController {
         if (mock) {
             fragment += "&mockOAuth=1";
         }
-        return redirect(frontend + fragment);
+        return redirect(target.absoluteUrl(fragment));
     }
 
     private ResponseEntity<Void> redirect(String url) {
@@ -290,5 +308,12 @@ public class AuthController {
 
     private static String enc(String s) {
         return URLEncoder.encode(s, StandardCharsets.UTF_8);
+    }
+
+    static String oauthFailureCode(String providerError) {
+        return switch (providerError) {
+            case "access_denied", "user_cancelled", "consent_declined" -> "social_login_cancelled";
+            default -> "social_login_failed";
+        };
     }
 }

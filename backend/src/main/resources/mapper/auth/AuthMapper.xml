@@ -26,8 +26,8 @@
 
     <!-- 이메일 인증 토큰 -->
     <insert id="insertEmailVerification" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO email_verification (user_id, email, token, purpose, expired_at)
-        VALUES (#{userId}, #{email}, #{token}, #{purpose}, #{expiredAt})
+        INSERT INTO email_verification (user_id, email, token, purpose, frontend_client, expired_at)
+        VALUES (#{userId}, #{email}, #{token}, #{purpose}, COALESCE(#{frontendClient}, 'primary'), #{expiredAt})
     </insert>
 
     <select id="findEmailVerificationByToken" resultType="com.careertuner.auth.domain.EmailVerification">

@@ -86,7 +86,7 @@ export default defineConfig(async ({ mode }) => {
         navigateFallback: 'index.html',
         // /api 와 별도 정적 지식맵은 SPA 폴백/캐시 대상에서 제외한다.
         // Pages의 /Obsidian/* 요청을 index.html로 돌리면 React Router 404가 노출된다.
-        navigateFallbackDenylist: [/^\/api/, /\/Obsidian(?:\/|$)/],
+        navigateFallbackDenylist: [/^\/api/, /^\/__backup\//, /\/Obsidian(?:\/|$)/],
         cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Web Push 핸들러(push/notificationclick)를 생성 SW 에 합친다. public/push-sw.js 참고.

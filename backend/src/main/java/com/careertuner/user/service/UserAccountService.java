@@ -3,6 +3,7 @@ package com.careertuner.user.service;
 import com.careertuner.user.dto.AccountInfoResponse;
 import com.careertuner.user.dto.UserResumeDetailRequest;
 import com.careertuner.user.dto.UserResumeDetailResponse;
+import com.careertuner.common.web.FrontendReturnTarget;
 
 /** 계정 확충(로그인 아이디·전화번호·연결 계정) + 이력서 상세 스펙. */
 public interface UserAccountService {
@@ -17,6 +18,8 @@ public interface UserAccountService {
 
     /** 실제 이메일 등록/변경 인증 메일 발송. 링크 인증 완료 전까지는 기존 이메일을 유지한다. */
     void requestEmailRegistration(Long userId, String email);
+
+    void requestEmailRegistration(Long userId, String email, FrontendReturnTarget returnTarget);
 
     AccountInfoResponse unlinkSocial(Long userId, String provider);
 

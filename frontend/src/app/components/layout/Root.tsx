@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
 import { useConsent } from "@/app/auth/ConsentContext";
@@ -13,6 +13,7 @@ import { ChatbotBubble } from "../../../features/support/components/ChatbotWidge
 import { ApplicationExtractionMonitor } from "@/features/applications/components/ApplicationExtractionMonitor";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { OfflineBanner } from "./OfflineBanner";
+import { OutageFallbackBanner } from "./OutageFallbackBanner";
 import { RefundPolicyToastGate } from "@/features/billing/components/RefundPolicyToastGate";
 import { MfaApprovalWatcher } from "@/app/components/security/MfaApprovalWatcher";
 import { PlannerFloatingOverlay } from "@/features/planner/components/PlannerFloatingOverlay";
@@ -26,6 +27,26 @@ const AdSlot = lazy(() =>
     .catch(() => ({ default: (() => null) as unknown as typeof AdSlotComponent })),
 );
 
+function ServiceStatusBanners() {
+  return (
+    <>
+      <OfflineBanner />
+      <OutageFallbackBanner />
+    </>
+  );
+}
+
+function StandalonePage({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen">
+      <div className="sticky top-0 z-[60]">
+        <ServiceStatusBanners />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function Root() {
   const location = useLocation();
   const { isAuthenticated, loading } = useAuth();
@@ -36,11 +57,13 @@ export function Root() {
   const forceOnboarding = new URLSearchParams(search).has("ob");
   const forceHome = new URLSearchParams(search).has("home");
   if (location.pathname === "/" && !loading) {
-    if (forceOnboarding) return <OnboardingFlow />;
-    if (forceHome) return <AppHome />;
-    if (isNativeApp()) return isOnboarded() ? <AppHome /> : <OnboardingFlow />;
+    if (forceOnboarding) return <StandalonePage><OnboardingFlow /></StandalonePage>;
+    if (forceHome) return <StandalonePage><AppHome /></StandalonePage>;
+    if (isNativeApp()) {
+      return <StandalonePage>{isOnboarded() ? <AppHome /> : <OnboardingFlow />}</StandalonePage>;
+    }
     // 비로그인 홈(/)은 랜딩 페이지를 헤더/푸터 없이 전체화면으로 렌더한다.
-    if (!isAuthenticated) return <LandingPage />;
+    if (!isAuthenticated) return <StandalonePage><LandingPage /></StandalonePage>;
   }
   const isApplicationDetail = /^\/applications\/(?:new|\d+)/.test(location.pathname);
   const isAdmin = location.pathname.startsWith("/admin");
@@ -62,9 +85,11 @@ export function Root() {
       <ApplicationExtractionMonitor />
       <MfaApprovalWatcher />
       <PlannerFloatingOverlay enabled={isAuthenticated && !isAdmin && consentStatus?.aiDataAgreed === true} />
-      <OfflineBanner />
+      <div className="sticky top-0 z-[60]">
+        <ServiceStatusBanners />
+        {!isAdmin && <Header />}
+      </div>
       <RefundPolicyToastGate enabled={isAuthenticated && !isAdmin} />
-      {!isAdmin && <Header />}
       {!isAdmin && (
         <Suspense fallback={null}>
           <AdSlot placement="HOME_BANNER" />
