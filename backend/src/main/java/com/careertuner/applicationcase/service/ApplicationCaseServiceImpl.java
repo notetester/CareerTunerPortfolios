@@ -57,7 +57,6 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private static final String DEFAULT_COMPANY_NAME = "\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694";
     private static final String DEFAULT_JOB_TITLE = "\uC9C1\uBB34\uBA85 \uD655\uC778 \uD544\uC694";
     private static final String EXTRACTION_STATUS_QUEUED = "QUEUED";
-    private static final String EXTRACTION_STATUS_FAILED = "FAILED";
     private static final String EXTRACTION_STATUS_SUCCEEDED = "SUCCEEDED";
     private static final String EXTRACTION_QUALITY_PASS = "PASS";
     private static final String EXTRACTION_QUALITY_REVIEW_REQUIRED = "REVIEW_REQUIRED";
@@ -84,6 +83,7 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     private final NotificationMapper notificationMapper;
     private final ApplicationCaseAutoPipelineService autoPipelineService;
     private final ApplicationCaseInitialRunMapper initialRunMapper;
+    private final JobPostingReextractionService reextractionService;
 
     @Override
     @Transactional
@@ -385,38 +385,10 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
     }
 
     @Override
-    @Transactional
-    public ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId) {
-        accessService.requireOwned(userId, applicationCaseId);
-        if (extractionMapper.countActiveExtractionsByApplicationCaseId(applicationCaseId) > 0) {
-            throw new BusinessException(ErrorCode.CONFLICT, "이미 진행 중인 공고 추출 작업이 있습니다.");
-        }
-
-        ApplicationCaseExtraction latestExtraction = extractionMapper.findLatestExtractionByApplicationCaseId(applicationCaseId);
-        if (latestExtraction == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "Job posting extraction job was not found.");
-        }
-        if (!EXTRACTION_STATUS_FAILED.equals(latestExtraction.getStatus())) {
-            throw new BusinessException(ErrorCode.CONFLICT, "실패한 최신 공고 추출 작업만 재시도할 수 있습니다.");
-        }
-
-        Long failedJobPostingId = latestExtraction.getJobPostingId();
-        if (failedJobPostingId == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
-        }
-        jobPostingService.getJobPostingByIdForCase(userId, applicationCaseId, failedJobPostingId);
-        // 추출 실패 종결 시 FAILED 로 닫힌 초기 실행 프로필을 PENDING 으로 되살려,
-        // 재추출 성공 시 초기 파이프라인이 다시 claim 해 1회 실행되게 한다(프로필 없거나 FAILED 아니면 0행).
-        initialRunMapper.reopenForRetry(applicationCaseId);
-        // 수동 재추출은 strict 정책 대상이다(선택 provider 단일 실행·교차 provider 폴백 금지). 여기서 이전 OCR
-        // 선택값을 이어받으면 non-strict 라우터(선택 primary→기본 체인 폴백)를 타서, 선택 provider 실패 시 다른
-        // provider 로 폴백돼 정책을 위반한다. 그래서 strict 재추출 API 가 준비되기 전까지는 이 경로에서 OCR
-        // 선택값을 재사용하지 않는다(선택값 미전달 → 기본 자동 체인, 특정 primary 강제 없음).
-        return queueExtraction(
-                userId,
-                applicationCaseId,
-                failedJobPostingId,
-                latestExtraction.getSourceType());
+    public ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId, String ocrProvider) {
+        // 수동 재추출은 strict 정책(선택 provider 단일 호출·교차 폴백 금지·성공은 revision 만 갱신·초기 실행 프로필 불변).
+        // 진입 검증·짧은 TX 경계·상태 전이는 전용 서비스에 위임한다. 초기 실행 프로필은 재개(reopenForRetry)하지 않는다.
+        return reextractionService.reextract(userId, applicationCaseId, ocrProvider);
     }
 
     @Override

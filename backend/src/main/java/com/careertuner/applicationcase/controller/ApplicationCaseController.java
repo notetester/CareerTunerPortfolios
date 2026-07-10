@@ -159,8 +159,9 @@ public class ApplicationCaseController {
 
     @PostMapping("/{id}/job-posting/extraction/retry")
     public ApiResponse<ApplicationCaseExtractionResponse> retryJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
-                                                                                   @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id));
+                                                                                   @PathVariable Long id,
+                                                                                   @RequestParam("ocrProvider") String ocrProvider) {
+        return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id, ocrProvider));
     }
 
     @PatchMapping("/{id}/job-posting/extraction/review")

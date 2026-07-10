@@ -58,17 +58,6 @@
           AND execution_token = #{executionToken}
     </update>
 
-    <update id="reopenForRetry">
-        UPDATE application_case_initial_run
-        SET state = 'PENDING',
-            execution_token = NULL,
-            started_at = NULL,
-            finished_at = NULL,
-            failure_reason = NULL
-        WHERE application_case_id = #{applicationCaseId}
-          AND state = 'FAILED'
-    </update>
-
     <select id="findStaleRunning" resultMap="ApplicationCaseInitialRunResultMap">
         SELECT *
         FROM application_case_initial_run

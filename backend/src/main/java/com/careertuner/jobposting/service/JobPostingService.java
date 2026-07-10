@@ -148,6 +148,41 @@ public class JobPostingService {
         }
     }
 
+    /**
+     * 동기 strict 재추출용 OCR — 사용자가 고른 provider 하나만 호출한다(교차 provider 폴백 없음).
+     * <b>트랜잭션을 열지 않는다</b>(OCR 원격 호출이 짧은 저장 트랜잭션 밖에서 돌도록 호출부가 경계를 분리).
+     * provider 실패·빈 결과는 예외가 아니라 FAILED 마커 {@link ExtractedPosting}(qualityStatus=FAILED)으로 온다.
+     */
+    public ExtractedPosting extractUploadedJobPostingStrict(Long userId,
+                                                            Long applicationCaseId,
+                                                            String sourceType,
+                                                            String uploadedFileUrl,
+                                                            String ocrRequestedProvider) {
+        accessService.requireOwned(userId, applicationCaseId);
+        try {
+            StoredJobPostingFile storedFile = fileStorage.load(applicationCaseId, uploadedFileUrl, sourceType);
+            ExtractedPosting extracted = textExtractor.extractFileStrict(storedFile, ocrRequestedProvider);
+            if (extracted.usage() != null) {
+                aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, extracted.usage());
+            }
+            return extracted;
+        } catch (RuntimeException ex) {
+            aiUsageLogService.recordFailure(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, ex.getMessage());
+            throw ex;
+        }
+    }
+
+    /** 재추출 평가에 필요한 원본 공고 도메인 조회(소유권 확인 포함). 응답 DTO 가 아닌 도메인을 반환한다. */
+    @Transactional(readOnly = true)
+    public JobPosting getJobPostingDomainForCase(Long userId, Long applicationCaseId, Long jobPostingId) {
+        accessService.requireOwned(userId, applicationCaseId);
+        JobPosting jobPosting = jobPostingMapper.findJobPostingByIdAndCaseId(jobPostingId, applicationCaseId);
+        if (jobPosting == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
+        }
+        return jobPosting;
+    }
+
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public JobPostingResponse saveExtractedJobPosting(Long userId, Long applicationCaseId, ExtractedPosting extracted) {
         accessService.requireOwned(userId, applicationCaseId);

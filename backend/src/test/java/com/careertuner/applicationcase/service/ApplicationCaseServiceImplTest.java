@@ -629,7 +629,8 @@ class ApplicationCaseServiceImplTest {
                 applicationCaseMapper, extractionMapper, accessService, jobPostingService,
                 mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
                 mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
-                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper,
+                mock(JobPostingReextractionService.class));
         MultipartFile file = mock(MultipartFile.class);
 
         doAnswer(invocation -> {
@@ -1445,7 +1446,8 @@ class ApplicationCaseServiceImplTest {
                 mock(OpenAiResponsesClient.class),
                 mock(NotificationMapper.class),
                 mock(ApplicationCaseAutoPipelineService.class),
-                initialRunMapper);
+                initialRunMapper,
+                mock(JobPostingReextractionService.class));
     }
 
     private static ApplicationCaseInitialRun initialRun(String state) {
@@ -1897,112 +1899,14 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
-    void retryJobPostingExtractionRequiresOwnedCaseAndQueuesFailedExtractionPosting() {
+    void retryJobPostingExtractionDelegatesToStrictReextraction() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-        ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "PDF", "FAILED");
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
-        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
-                20L,
-                10L,
-                1,
-                null,
-                "local:application-postings/10/posting.pdf",
-                null,
-                "PDF",
-                null));
-        doAnswer(invocation -> {
-            ApplicationCaseExtraction retry = invocation.getArgument(0);
-            retry.setId(41L);
-            return null;
-        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
-
-        ApplicationCaseExtractionResponse response = service.retryJobPostingExtraction(1L, 10L);
-
-        ArgumentCaptor<ApplicationCaseExtraction> retryCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
-        verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
-        verify(extractionMapper).countActiveExtractionsByApplicationCaseId(10L);
-        verify(extractionMapper).findLatestExtractionByApplicationCaseId(10L);
-        verify(jobPostingService).getJobPostingByIdForCase(1L, 10L, 20L);
-        verify(extractionMapper).insertApplicationCaseExtraction(retryCaptor.capture());
-        assertThat(retryCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
-        assertThat(retryCaptor.getValue().getJobPostingId()).isEqualTo(20L);
-        assertThat(retryCaptor.getValue().getUserId()).isEqualTo(1L);
-        assertThat(retryCaptor.getValue().getSourceType()).isEqualTo("PDF");
-        assertThat(retryCaptor.getValue().getStatus()).isEqualTo("QUEUED");
-        assertThat(response.id()).isEqualTo(41L);
-        assertThat(response.status()).isEqualTo("QUEUED");
-    }
-
-    @Test
-    void retryJobPostingExtractionReopensFailedInitialRunProfile() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        JobPostingReextractionService reextractionService = mock(JobPostingReextractionService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
         ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
                 applicationCaseMapper,
-                extractionMapper,
-                accessService,
-                jobPostingService,
-                mock(JobAnalysisService.class),
-                mock(CompanyAnalysisService.class),
-                mock(JobAnalysisMapper.class),
-                mock(OpenAiResponsesClient.class),
-                mock(NotificationMapper.class),
-                mock(ApplicationCaseAutoPipelineService.class),
-                initialRunMapper);
-        ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "PDF", "FAILED");
-        failed.setOcrRequestedProvider("CLAUDE"); // 최초 선택값 — 수동 재추출에서는 재사용하지 않아야 한다(strict 정책)
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
-        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
-                20L, 10L, 1, null, "local:application-postings/10/posting.pdf", null, "PDF", null));
-        doAnswer(invocation -> {
-            invocation.<ApplicationCaseExtraction>getArgument(0).setId(41L);
-            return null;
-        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
-
-        service.retryJobPostingExtraction(1L, 10L);
-
-        // 추출 실패로 FAILED 처리된 초기 실행 프로필을 PENDING 으로 되살려,
-        // 재추출 성공 시 파이프라인이 다시 claim 해 초기 실행 1회가 보장되는지 잠근다.
-        verify(initialRunMapper).reopenForRetry(10L);
-        // 수동 재추출은 strict 정책 대상 — 이전 OCR 선택값을 재사용하면 non-strict 라우터로 교차 provider 폴백이
-        // 일어나므로, strict 재추출 API 준비 전까지 선택값을 이어받지 않는다(재큐 provider=NULL → 기본 자동 체인).
-        ArgumentCaptor<ApplicationCaseExtraction> requeued = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
-        verify(extractionMapper).insertApplicationCaseExtraction(requeued.capture());
-        assertThat(requeued.getValue().getOcrRequestedProvider()).isNull();
-    }
-
-    @Test
-    void retryJobPostingExtractionDoesNotReopenProfileWhenRetryRejected() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
-                applicationCaseMapper,
-                extractionMapper,
+                mock(ApplicationCaseExtractionMapper.class),
                 accessService,
                 mock(JobPostingService.class),
                 mock(JobAnalysisService.class),
@@ -2011,175 +1915,18 @@ class ApplicationCaseServiceImplTest {
                 mock(OpenAiResponsesClient.class),
                 mock(NotificationMapper.class),
                 mock(ApplicationCaseAutoPipelineService.class),
-                initialRunMapper);
+                mock(ApplicationCaseInitialRunMapper.class),
+                reextractionService);
+        ApplicationCaseExtractionResponse expected =
+                ApplicationCaseExtractionResponse.from(extraction(41L, 10L, 20L, 1L, "PDF", "QUEUED"));
+        when(reextractionService.reextract(1L, 10L, "CLAUDE")).thenReturn(expected);
 
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        // 진행 중 추출이 있어 재시도 자체가 거절되는 경로 — 프로필을 되살리면 안 된다.
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(1);
+        ApplicationCaseExtractionResponse response = service.retryJobPostingExtraction(1L, 10L, "CLAUDE");
 
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class);
-
-        verify(initialRunMapper, never()).reopenForRetry(anyLong());
-    }
-
-    @Test
-    void retryJobPostingExtractionBlocksWhenAnyActiveExtractionExistsForCase() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(1);
-
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class);
-
-        verify(extractionMapper, never()).findLatestExtractionByApplicationCaseId(10L);
-        verify(jobPostingService, never()).getJobPosting(any(), any());
-        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
-    }
-
-    @Test
-    void retryJobPostingExtractionUsesFailedPdfPostingWhenLatestPostingIsText() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-        ApplicationCaseExtraction failed = extraction(50L, 10L, 20L, 1L, "PDF", "FAILED");
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
-        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
-                20L,
-                10L,
-                1,
-                null,
-                "local:application-postings/10/posting.pdf",
-                null,
-                "PDF",
-                null));
-        when(jobPostingService.getJobPosting(1L, 10L)).thenReturn(new JobPostingResponse(
-                99L,
-                10L,
-                2,
-                "manual corrected text",
-                null,
-                null,
-                "TEXT",
-                null));
-        doAnswer(invocation -> {
-            ApplicationCaseExtraction retry = invocation.getArgument(0);
-            retry.setId(51L);
-            return null;
-        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
-
-        ApplicationCaseExtractionResponse response = service.retryJobPostingExtraction(1L, 10L);
-
-        ArgumentCaptor<ApplicationCaseExtraction> retryCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
-        verify(jobPostingService).getJobPostingByIdForCase(1L, 10L, 20L);
-        verify(jobPostingService, never()).getJobPosting(1L, 10L);
-        verify(extractionMapper).insertApplicationCaseExtraction(retryCaptor.capture());
-        assertThat(retryCaptor.getValue().getJobPostingId()).isEqualTo(20L);
-        assertThat(retryCaptor.getValue().getSourceType()).isEqualTo("PDF");
-        assertThat(response.id()).isEqualTo(51L);
-    }
-
-    @Test
-    void retryJobPostingExtractionReportsConflictWhenGuardedInsertLosesRace() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-        ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "URL", "FAILED");
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
-        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
-                20L,
-                10L,
-                1,
-                null,
-                "https://example.com/jobs/backend",
-                null,
-                "URL",
-                null));
-        doThrow(new DuplicateKeyException("uk_case_extraction_active"))
-                .when(extractionMapper)
-                .insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
-
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
-                        .isEqualTo(ErrorCode.CONFLICT));
-    }
-
-    @Test
-    void retryJobPostingExtractionRejectsWhenLatestExtractionIsNotFailed() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L))
-                .thenReturn(extraction(40L, 10L, 20L, 1L, "URL", "SUCCEEDED"));
-
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class);
-
-        verify(jobPostingService, never()).getJobPosting(any(), any());
-        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
-    }
-
-    @Test
-    void retryJobPostingExtractionStopsBeforeRetryLookupWhenCaseIsNotOwned() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class);
-
-        verify(extractionMapper, never()).countActiveExtractionsByApplicationCaseId(any());
-        verify(extractionMapper, never()).findLatestExtractionByApplicationCaseId(any());
-        verify(jobPostingService, never()).getJobPosting(any(), any());
-        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        // 수동 재추출은 전용 strict 서비스에 위임된다. 진입검증·짧은 TX·strict OCR·상태 전이는
+        // JobPostingReextractionServiceTest 가 검증한다(초기 실행 프로필 reopen 은 폐지 — 여기서도 미주입).
+        assertThat(response).isSameAs(expected);
+        verify(reextractionService).reextract(1L, 10L, "CLAUDE");
     }
 
     private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
@@ -2248,7 +1995,8 @@ class ApplicationCaseServiceImplTest {
         ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
                 applicationCaseMapper, extractionMapper, accessService, jobPostingService,
                 mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
-                mock(OpenAiResponsesClient.class), notificationMapper, autoPipelineService, initialRunMapper);
+                mock(OpenAiResponsesClient.class), notificationMapper, autoPipelineService, initialRunMapper,
+                mock(JobPostingReextractionService.class));
 
         doAnswer(invocation -> {
             ((ApplicationCase) invocation.getArgument(0)).setId(10L);
@@ -2288,7 +2036,8 @@ class ApplicationCaseServiceImplTest {
                 applicationCaseMapper, extractionMapper, accessService, jobPostingService,
                 mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
                 mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
-                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper,
+                mock(JobPostingReextractionService.class));
 
         doAnswer(invocation -> {
             ((ApplicationCase) invocation.getArgument(0)).setId(11L);
@@ -2328,7 +2077,8 @@ class ApplicationCaseServiceImplTest {
                 applicationCaseMapper, extractionMapper, accessService, jobPostingService,
                 mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
                 mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
-                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper,
+                mock(JobPostingReextractionService.class));
         MultipartFile file = mock(MultipartFile.class);
 
         assertThatThrownBy(() -> service.createFromJobPostingUpload(1L, file, "PDF", true, "gpt-9", null, null))
@@ -2354,7 +2104,8 @@ class ApplicationCaseServiceImplTest {
                 applicationCaseMapper, extractionMapper, accessService, jobPostingService,
                 mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
                 mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
-                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper);
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper,
+                mock(JobPostingReextractionService.class));
         MultipartFile file = mock(MultipartFile.class);
 
         // LOCAL 은 OCR 대상이 아니므로 OCR provider 로는 거절돼야 한다(분석 provider 집합과 다름).
@@ -2385,7 +2136,8 @@ class ApplicationCaseServiceImplTest {
                 openAiClient,
                 notificationMapper,
                 autoPipelineService,
-                mock(ApplicationCaseInitialRunMapper.class));
+                mock(ApplicationCaseInitialRunMapper.class),
+                mock(JobPostingReextractionService.class));
     }
 
     private static ApplicationCaseExtraction extraction(Long id,

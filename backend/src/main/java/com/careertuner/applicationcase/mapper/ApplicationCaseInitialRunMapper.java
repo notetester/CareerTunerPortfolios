@@ -31,10 +31,4 @@ public interface ApplicationCaseInitialRunMapper {
     /** stale-reaper: RUNNING 이면서 started_at 이 임계 이전인 프로필(자동 재시도 없이 FAILED 처리 대상). */
     List<ApplicationCaseInitialRun> findStaleRunning(@Param("timeoutMinutes") long timeoutMinutes,
                                                      @Param("limit") int limit);
-
-    /**
-     * 재추출(retry) 시 FAILED 프로필을 PENDING 으로 되살려 재추출 성공 시 초기 파이프라인이 다시 claim 할 수 있게 한다.
-     * FAILED 만 되살린다(DONE 은 초기 실행 완료라 재개 금지) — 프로필이 없거나 FAILED 아니면 0행, 무해.
-     */
-    int reopenForRetry(@Param("applicationCaseId") Long applicationCaseId);
 }

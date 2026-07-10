@@ -52,7 +52,8 @@ class ApplicationCaseServiceImplAnalysisTimezoneTest {
                 mock(OpenAiResponsesClient.class),
                 mock(NotificationMapper.class),
                 mock(ApplicationCaseAutoPipelineService.class),
-                mock(ApplicationCaseInitialRunMapper.class));
+                mock(ApplicationCaseInitialRunMapper.class),
+                mock(JobPostingReextractionService.class));
 
         AnalysisResponse response = service.getAnalysis(1L, 10L);
 
@@ -83,7 +84,8 @@ class ApplicationCaseServiceImplAnalysisTimezoneTest {
                 mock(OpenAiResponsesClient.class),
                 mock(NotificationMapper.class),
                 mock(ApplicationCaseAutoPipelineService.class),
-                mock(ApplicationCaseInitialRunMapper.class));
+                mock(ApplicationCaseInitialRunMapper.class),
+                mock(JobPostingReextractionService.class));
 
         ApplicationCaseResponse response = service.get(1L, 10L);
 
@@ -115,7 +117,8 @@ class ApplicationCaseServiceImplAnalysisTimezoneTest {
                 mock(OpenAiResponsesClient.class),
                 mock(NotificationMapper.class),
                 mock(ApplicationCaseAutoPipelineService.class),
-                mock(ApplicationCaseInitialRunMapper.class));
+                mock(ApplicationCaseInitialRunMapper.class),
+                mock(JobPostingReextractionService.class));
 
         java.util.List<AiUsageFailureResponse> failures = service.getAiUsageFailures(1L, 10L, 20);
 

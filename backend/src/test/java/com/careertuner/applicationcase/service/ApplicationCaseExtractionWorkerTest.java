@@ -912,17 +912,25 @@ class ApplicationCaseExtractionWorkerTest {
                                                           AiUsageLogService aiUsageLogService,
                                                           ApplicationCaseAutoPipelineService autoPipelineService,
                                                           NotificationService notificationService) {
-        return new ApplicationCaseExtractionWorker(
+        TransactionTemplate transactionTemplate = transactionTemplate();
+        // strict 재추출과 공유하는 lifecycle 은 실제 processor 로 구동한다 — 기존 워커 테스트 검증(저장·mark·알림·
+        // 케이스 메타)이 그대로 processor 를 통과하며 리팩터링이 의미보존임을 증명한다.
+        JobPostingExtractionProcessor extractionProcessor = new JobPostingExtractionProcessor(
                 extractionMapper,
                 applicationCaseMapper,
-                jobPostingMapper,
                 jobPostingService,
                 new ApplicationCaseExtractionQualityGate(new ObjectMapper()),
                 openAiClient,
                 aiUsageLogService,
-                autoPipelineService,
                 notificationService,
-                transactionTemplate());
+                transactionTemplate);
+        return new ApplicationCaseExtractionWorker(
+                extractionMapper,
+                jobPostingMapper,
+                jobPostingService,
+                autoPipelineService,
+                extractionProcessor,
+                transactionTemplate);
     }
 
     private static ApplicationCaseExtraction extraction(Long id,

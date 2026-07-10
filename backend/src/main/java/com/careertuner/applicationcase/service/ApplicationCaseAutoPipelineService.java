@@ -172,7 +172,8 @@ public class ApplicationCaseAutoPipelineService {
      * 초기 파이프라인이 실행되지 않은 채 끝나는 경로(비활성·원문 없음·케이스 없음·추출 실패 종결)에서
      * PENDING 프로필을 FAILED 로 닫는다. PENDING 으로 남기면 수동 분석 가드가 CONFLICT 로 영구 차단되기 때문.
      * claim(PENDING→RUNNING) 후 같은 토큰으로 markFailed — 프로필이 없거나 PENDING 이 아니면 claim 0행이라 무해.
-     * 재추출(retry) 경로는 {@code reopenForRetry} 로 FAILED 프로필을 PENDING 으로 되살려 초기 실행 1회를 다시 보장한다.
+     * strict 재추출(retry)은 초기 실행 프로필을 되살리지 않는다(정책: 재추출 성공은 공고 revision 만 갱신,
+     * 자동 재분석 없음). 실패로 닫힌 프로필은 FAILED 로 남고 사용자가 모델을 골라 수동 분석한다.
      */
     public void abandonInitialRunIfPending(Long applicationCaseId, String reason) {
         String executionToken = UUID.randomUUID().toString();

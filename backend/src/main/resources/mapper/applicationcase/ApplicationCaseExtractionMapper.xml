@@ -113,6 +113,12 @@
         LIMIT #{limit}
     </select>
 
+    <select id="findExtractionById" resultMap="ApplicationCaseExtractionResultMap">
+        SELECT *
+        FROM application_case_extraction
+        WHERE id = #{id}
+    </select>
+
     <select id="findRunningExtractionForUpdate" resultMap="ApplicationCaseExtractionResultMap">
         SELECT *
         FROM application_case_extraction
