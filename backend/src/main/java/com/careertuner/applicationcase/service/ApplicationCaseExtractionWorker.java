@@ -340,7 +340,8 @@ public class ApplicationCaseExtractionWorker {
                     extraction.getUserId(),
                     extraction.getApplicationCaseId(),
                     sourceType,
-                    requiredText(posting.getUploadedFileUrl(), "uploadedFileUrl"));
+                    requiredText(posting.getUploadedFileUrl(), "uploadedFileUrl"),
+                    extraction.getOcrRequestedProvider());
             case "TEXT", "MANUAL" -> new ExtractedPosting(
                     sourceType,
                     posting.getUploadedFileUrl(),

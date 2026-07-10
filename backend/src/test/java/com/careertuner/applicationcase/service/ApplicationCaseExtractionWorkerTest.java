@@ -274,7 +274,7 @@ class ApplicationCaseExtractionWorkerTest {
         verify(openAiClient, never()).extractJobPostingMetadata(any());
         verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
         verify(jobPostingService, never()).extractUrlJobPosting(any());
-        verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any());
+        verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any(), any());
         verify(jobPostingService, never()).saveExtractedJobPosting(any(), any(), any());
 
         ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
@@ -327,7 +327,7 @@ class ApplicationCaseExtractionWorkerTest {
                 .sourceType("PDF")
                 .build());
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(existingCase());
-        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "PDF", fileReference))
+        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "PDF", fileReference, null))
                 .thenReturn(new ExtractedPosting("PDF", fileReference, null, extractedText, null));
         when(jobPostingService.saveExtractedJobPosting(eq(1L), eq(10L), any(ExtractedPosting.class)))
                 .thenReturn(new JobPostingResponse(22L, 10L, 2, null, fileReference, extractedText, "PDF", null));
@@ -345,7 +345,7 @@ class ApplicationCaseExtractionWorkerTest {
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
-        verify(jobPostingService).extractUploadedJobPosting(1L, 10L, "PDF", fileReference);
+        verify(jobPostingService).extractUploadedJobPosting(1L, 10L, "PDF", fileReference, null);
         verify(extractionMapper).markExtractionSucceeded(
                 eq(32L),
                 eq(22L),
@@ -378,6 +378,7 @@ class ApplicationCaseExtractionWorkerTest {
                 autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(39L, 10L, 20L, 1L, "IMAGE");
+        extraction.setOcrRequestedProvider("OPENAI"); // 등록 시 고른 OCR provider 가 워커→추출로 이어져야 한다
         String fileReference = "local:application-postings/10/posting.png";
         String extractedText = "Responsibilities: build APIs. Qualifications: Java and Spring.";
 
@@ -391,7 +392,7 @@ class ApplicationCaseExtractionWorkerTest {
                 .uploadedFileUrl(fileReference)
                 .sourceType("IMAGE")
                 .build());
-        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference))
+        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference, "OPENAI"))
                 .thenReturn(new ExtractedPosting(
                         "IMAGE",
                         fileReference,
@@ -423,6 +424,8 @@ class ApplicationCaseExtractionWorkerTest {
         int processed = worker.processQueuedExtractions();
 
         assertThat(processed).isEqualTo(1);
+        // 등록 시 고른 OCR provider 를 추출 서비스까지 그대로 전달하는지 잠근다(라우팅 배선).
+        verify(jobPostingService).extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference, "OPENAI");
         verify(openAiClient, never()).extractJobPostingMetadata(any());
         verify(applicationCaseMapper, never()).updateApplicationCase(any());
         verify(aiUsageLogService, never()).recordSuccess(any(), any(), any(), any());
@@ -461,7 +464,7 @@ class ApplicationCaseExtractionWorkerTest {
                 .uploadedFileUrl(fileReference)
                 .sourceType("IMAGE")
                 .build());
-        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference))
+        when(jobPostingService.extractUploadedJobPosting(1L, 10L, "IMAGE", fileReference, null))
                 .thenReturn(new ExtractedPosting(
                         "IMAGE",
                         fileReference,
@@ -794,7 +797,7 @@ class ApplicationCaseExtractionWorkerTest {
                 any());
         assertThat(reasonCaptor.getValue()).contains("timed out");
         verify(jobPostingMapper, never()).findJobPostingByIdAndCaseId(any(), any());
-        verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any());
+        verify(jobPostingService, never()).extractUploadedJobPosting(any(), any(), any(), any(), any());
         verify(openAiClient, never()).extractJobPostingMetadata(any());
 
         ArgumentCaptor<Notification> notificationCaptor = ArgumentCaptor.forClass(Notification.class);

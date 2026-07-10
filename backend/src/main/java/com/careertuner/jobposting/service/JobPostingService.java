@@ -131,11 +131,13 @@ public class JobPostingService {
     public ExtractedPosting extractUploadedJobPosting(Long userId,
                                                        Long applicationCaseId,
                                                        String sourceType,
-                                                       String uploadedFileUrl) {
+                                                       String uploadedFileUrl,
+                                                       String ocrRequestedProvider) {
         accessService.requireOwned(userId, applicationCaseId);
         try {
             StoredJobPostingFile storedFile = fileStorage.load(applicationCaseId, uploadedFileUrl, sourceType);
-            ExtractedPosting extracted = textExtractor.extractFile(storedFile);
+            // 등록 시 고른 OCR provider 를 primary 로 라우팅(미선택=null=기본 자동 체인).
+            ExtractedPosting extracted = textExtractor.extractFile(storedFile, ocrRequestedProvider);
             if (extracted.usage() != null) {
                 aiUsageLogService.recordSuccess(userId, applicationCaseId, FEATURE_JOB_POSTING_OCR, extracted.usage());
             }
