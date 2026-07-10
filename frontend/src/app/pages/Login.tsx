@@ -7,6 +7,7 @@ import { Badge } from "../components/ui/badge";
 import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { ApiError } from "../lib/api";
+import { useOutageFallback } from "../lib/outageFallback";
 import { checkEmailDuplicate, checkLoginIdDuplicate } from "../auth/authApi";
 import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2, UserRound } from "lucide-react";
 
@@ -31,6 +32,7 @@ export function LoginPage() {
   const [loginIdDuplicate, setLoginIdDuplicate] = useState(false);
   const navigate = useNavigate();
   const { login, register, socialLogin } = useAuth();
+  const { socialOAuthBlocked } = useOutageFallback();
 
   const switchMode = (nextMode: "login" | "signup") => {
     setMode(nextMode);
@@ -244,6 +246,8 @@ export function LoginPage() {
                   type="button"
                   className="w-full h-11 text-sm font-medium"
                   onClick={() => socialLogin(s.provider)}
+                  disabled={socialOAuthBlocked}
+                  title={socialOAuthBlocked ? "AWS 연결 복구 후 소셜 로그인을 이용할 수 있습니다." : undefined}
                 >
                   <span className={`mr-2 inline-flex size-5 items-center justify-center rounded-full text-[11px] font-black text-white ${s.className}`}>
                     {s.mark}
@@ -251,6 +255,11 @@ export function LoginPage() {
                   {s.label}
                 </Button>
               ))}
+              {socialOAuthBlocked && (
+                <p className="text-center text-xs font-medium text-amber-700 dark:text-amber-300">
+                  장애 체험 중에는 소셜 로그인을 사용할 수 없습니다. 아이디·이메일 체험 로그인을 이용해 주세요.
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-3">

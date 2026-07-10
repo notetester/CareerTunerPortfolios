@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Award, BarChart3, CheckCircle2, CreditCard, Loader2, ReceiptText, RotateCcw, Zap } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
+import { useOutageFallback } from "../lib/outageFallback";
 import {
   cancelSubscription, getCreditProducts, getMonthlyUsage, getMyBilling, getMyPayments, getPlans,
   subscribe,
@@ -69,6 +70,7 @@ export function BillingPage() {
   const requestedTab = searchParams.get("tab") ?? "plans";
   const activeTab: BillingTab = tabs.includes(requestedTab as BillingTab) ? (requestedTab as BillingTab) : "plans";
   const { isAuthenticated } = useAuth();
+  const { sitesPaymentBlocked } = useOutageFallback();
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [products, setProducts] = useState<CreditProduct[]>([]);
@@ -92,6 +94,13 @@ export function BillingPage() {
   const subscriptionPeriodEnd = billing?.periodEnd ?? null;
   const isCancelScheduled = billing?.subscriptionStatus === "CANCELED" && subscriptionPeriodEnd !== null;
   const isSubscriptionActive = billing?.subscriptionStatus === "ACTIVE" && subscriptionPeriodEnd !== null;
+  const sitesPaymentMessage = "Sites 백업 화면에서는 결제·구독 변경·환불 신청을 진행할 수 없습니다. 운영 웹을 이용해 주세요.";
+
+  const rejectSitesPayment = (): boolean => {
+    if (!sitesPaymentBlocked) return false;
+    setError(sitesPaymentMessage);
+    return true;
+  };
 
   const loadPublic = async () => {
     const [p, c] = await Promise.all([getPlans(), getCreditProducts()]);
@@ -123,6 +132,7 @@ export function BillingPage() {
   }), [isAuthenticated]);
 
   const doSubscribe = async (planCode: string) => {
+    if (rejectSitesPayment()) return;
     setBusy(`sub-${planCode}`);
     setError(null);
     try {
@@ -146,6 +156,7 @@ export function BillingPage() {
   };
 
   const doCancel = async () => {
+    if (rejectSitesPayment()) return;
     setBusy("cancel");
     try {
       setBilling(await cancelSubscription());
@@ -156,6 +167,7 @@ export function BillingPage() {
   };
 
   const doPurchase = async (productCode: string) => {
+    if (rejectSitesPayment()) return;
     setBusy(`buy-${productCode}`);
     setError(null);
     try {
@@ -174,6 +186,7 @@ export function BillingPage() {
   };
 
   const confirmPolicyAndPay = async () => {
+    if (rejectSitesPayment()) return;
     if (!pendingPayment || !refundPolicy) {
       setError("결제에 적용할 환불 정책을 다시 확인해 주세요.");
       return;
@@ -203,6 +216,7 @@ export function BillingPage() {
   };
 
   const openTossPayment = async () => {
+    if (rejectSitesPayment()) return;
     if (!readyPayment) return;
     const ready = readyPayment;
     setPaymentLaunchBusy(true);
@@ -224,6 +238,7 @@ export function BillingPage() {
   };
 
   const cancelPreparedPayment = async () => {
+    if (rejectSitesPayment()) return;
     if (!readyPayment || paymentLaunchBusy) return;
     const orderId = readyPayment.orderId;
     setPaymentLaunchBusy(true);
@@ -240,6 +255,7 @@ export function BillingPage() {
   };
 
   const openRefundRequest = async (payment: Payment) => {
+    if (rejectSitesPayment()) return;
     setRefundPayment(payment);
     setRefundEligibility(null);
     setRefundError(null);
@@ -273,6 +289,7 @@ export function BillingPage() {
   };
 
   const submitRefundRequest = async (reasonCode: RefundReasonCode, reasonText: string) => {
+    if (rejectSitesPayment()) return;
     if (!refundPayment) return;
     setRefundBusy(true);
     setRefundError(null);
@@ -320,6 +337,12 @@ export function BillingPage() {
           <p className="mt-1 text-sm text-slate-500">요금제, AI 사용량, 크레딧 충전, 결제 내역을 한 곳에서 관리합니다</p>
         </div>
 
+        {sitesPaymentBlocked && (
+          <div role="note" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm font-medium text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+            Sites 백업 화면에서는 요금제·사용량·결제 내역을 조회할 수 있지만 결제, 구독 변경과 환불 신청은 할 수 없습니다.
+          </div>
+        )}
+
         {billing && (
           <div
             className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4 ${
@@ -339,7 +362,7 @@ export function BillingPage() {
               <span className="ml-3">보유 크레딧 <strong>{billing.creditBalance}</strong>개</span>
             </div>
             {billing.subscriptionStatus === "ACTIVE" && (
-              <Button size="sm" variant="outline" disabled={busy === "cancel"} onClick={() => void doCancel()}>
+              <Button size="sm" variant="outline" disabled={sitesPaymentBlocked || busy === "cancel"} onClick={() => void doCancel()}>
                 {busy === "cancel" && <Loader2 className="size-3.5 animate-spin" />} 구독 해지
               </Button>
             )}
@@ -362,10 +385,10 @@ export function BillingPage() {
               <div className="mt-1 text-xs text-blue-700">정책 확인 창을 닫았습니다. 아래 버튼을 눌러 안전하게 결제창을 여세요.</div>
             </div>
             <div className="flex shrink-0 gap-2">
-              <Button variant="outline" disabled={paymentLaunchBusy} onClick={() => void cancelPreparedPayment()}>
+              <Button variant="outline" disabled={sitesPaymentBlocked || paymentLaunchBusy} onClick={() => void cancelPreparedPayment()}>
                 결제 취소
               </Button>
-              <Button disabled={paymentLaunchBusy} onClick={() => void openTossPayment()}>
+              <Button disabled={sitesPaymentBlocked || paymentLaunchBusy} onClick={() => void openTossPayment()}>
                 {paymentLaunchBusy && <Loader2 className="size-4 animate-spin" />}
                 Toss 결제창 열기
               </Button>
@@ -416,7 +439,7 @@ export function BillingPage() {
                         ))}
                       </div>
                       <Button
-                        disabled={!isAuthenticated || isCurrent || busy !== null || readyPayment !== null}
+                        disabled={sitesPaymentBlocked || !isAuthenticated || isCurrent || busy !== null || readyPayment !== null}
                         className={isPending ? "w-full bg-blue-700 shadow-lg shadow-blue-200" : popular ? "w-full bg-primary" : "w-full"}
                         variant={popular ? "default" : "outline"}
                         onClick={() => void doSubscribe(plan.code)}
@@ -512,7 +535,7 @@ export function BillingPage() {
                       <div className="text-xl font-black text-blue-600">{won(pack.price)}</div>
                       <Button
                         className={isPending ? "w-full bg-amber-600 text-white hover:bg-amber-600" : "w-full"}
-                        disabled={!isAuthenticated || busy !== null || readyPayment !== null}
+                        disabled={sitesPaymentBlocked || !isAuthenticated || busy !== null || readyPayment !== null}
                         onClick={() => void doPurchase(pack.code)}
                       >
                         {isPending && <Loader2 className="size-4 animate-spin" />}
@@ -557,7 +580,7 @@ export function BillingPage() {
                           {payment.status === "PAID" ? "결제 완료" : "결제 취소"}
                         </Badge>
                         {payment.status === "PAID" && !refund && (
-                          <Button size="sm" variant="outline" onClick={() => void openRefundRequest(payment)}>
+                          <Button size="sm" variant="outline" disabled={sitesPaymentBlocked} onClick={() => void openRefundRequest(payment)}>
                             환불 신청
                           </Button>
                         )}

@@ -1,4 +1,5 @@
 import type { TossPaymentReadyResponse } from "../types/billing";
+import { isSitesPaymentBlocked } from "@/app/lib/outageFallback";
 
 const TOSS_PAYMENT_SDK_URL = "https://js.tosspayments.com/v1/payment";
 const TOSS_CLIENT_KEY = import.meta.env.VITE_TOSS_CLIENT_KEY as string | undefined;
@@ -48,6 +49,9 @@ function loadTossPaymentSdk(): Promise<void> {
 
 /** 백엔드가 확정한 결제 정보로 Toss 결제창을 연다. */
 export async function requestTossCardPayment(ready: TossPaymentReadyResponse): Promise<void> {
+  if (isSitesPaymentBlocked()) {
+    throw new Error("Sites 백업 화면에서는 실제 결제를 진행할 수 없습니다. 운영 웹을 이용해 주세요.");
+  }
   if (!TOSS_CLIENT_KEY) {
     throw new Error("Toss 클라이언트 키가 설정되어 있지 않습니다.");
   }
