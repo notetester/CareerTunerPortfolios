@@ -120,7 +120,6 @@ export const router = createBrowserRouter([
       { path: "legal/privacy", Component: LegalPage },
       { path: "legal/marketing", Component: LegalPage },
       { path: "legal/ai-data-consent", Component: LegalPage },
-      { path: "legal/marketing", Component: LegalPage },
       { path: "legal/resume-analysis-consent", Component: LegalPage },
       { path: "legal/copyright", Component: LegalPage },
       { path: "login", Component: LoginPage },
