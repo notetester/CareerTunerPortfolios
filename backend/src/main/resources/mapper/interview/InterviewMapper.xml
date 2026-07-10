@@ -67,6 +67,7 @@
         WHERE s.id = #{id}
           AND ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
+          AND s.deleted_at IS NULL
     </select>
 
     <update id="updateSessionResult">

@@ -749,7 +749,7 @@ export function HomePage() {
                   size="lg"
                   variant="outline"
                   className="w-full sm:w-auto justify-center border-white/20 text-white bg-card/10 hover:bg-card/20 text-base px-8"
-                  onClick={() => navigate("/applications/demo")}
+                  onClick={() => navigate("/login")}
                 >
                   <Play className="mr-2 size-4" />
                   데모 체험하기
@@ -933,7 +933,7 @@ export function HomePage() {
             <Button
               size="lg"
               className="bg-primary text-base px-10"
-              onClick={() => window.location.href = "/login"}
+              onClick={() => navigate("/login")}
             >
               지금 바로 시작하기
               <ArrowRight className="ml-2 size-5" />

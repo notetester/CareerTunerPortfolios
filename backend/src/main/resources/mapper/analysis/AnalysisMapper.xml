@@ -51,16 +51,19 @@
                 SELECT COUNT(*)
                 FROM interview_session interview_count_source
                 WHERE interview_count_source.application_case_id = ac.id
+                  AND interview_count_source.deleted_at IS NULL
             ) AS interview_count,
             (
                 SELECT ROUND(AVG(interview_score_source.total_score))
                 FROM interview_session interview_score_source
                 WHERE interview_score_source.application_case_id = ac.id
+                  AND interview_score_source.deleted_at IS NULL
             ) AS average_interview_score,
             (
                 SELECT COUNT(*)
                 FROM interview_session scored_interview_count_source
                 WHERE scored_interview_count_source.application_case_id = ac.id
+                  AND scored_interview_count_source.deleted_at IS NULL
                   AND scored_interview_count_source.total_score IS NOT NULL
             ) AS scored_interview_count,
             (
@@ -69,6 +72,7 @@
                 INNER JOIN interview_question answer_question ON answer_question.id = answer_count_source.question_id
                 INNER JOIN interview_session answer_session ON answer_session.id = answer_question.interview_session_id
                 WHERE answer_session.application_case_id = ac.id
+                  AND answer_session.deleted_at IS NULL
             ) AS interview_answer_count,
             (
                 SELECT ROUND(AVG(answer_score_source.score))
@@ -76,6 +80,7 @@
                 INNER JOIN interview_question score_question ON score_question.id = answer_score_source.question_id
                 INNER JOIN interview_session score_session ON score_session.id = score_question.interview_session_id
                 WHERE score_session.application_case_id = ac.id
+                  AND score_session.deleted_at IS NULL
             ) AS average_interview_answer_score,
             (
                 SELECT COUNT(*)
@@ -83,6 +88,7 @@
                 INNER JOIN interview_question scored_answer_question ON scored_answer_question.id = scored_answer_count_source.question_id
                 INNER JOIN interview_session scored_answer_session ON scored_answer_session.id = scored_answer_question.interview_session_id
                 WHERE scored_answer_session.application_case_id = ac.id
+                  AND scored_answer_session.deleted_at IS NULL
                   AND scored_answer_count_source.score IS NOT NULL
             ) AS scored_interview_answer_count
             ,
@@ -92,6 +98,7 @@
                 INNER JOIN interview_question corrected_question ON corrected_question.id = corrected_answer_source.question_id
                 INNER JOIN interview_session corrected_session ON corrected_session.id = corrected_question.interview_session_id
                 WHERE corrected_session.application_case_id = ac.id
+                  AND corrected_session.deleted_at IS NULL
                   AND corrected_answer_source.improved_answer IS NOT NULL
                   AND corrected_answer_source.improved_answer != ''
             ) AS corrected_answer_count

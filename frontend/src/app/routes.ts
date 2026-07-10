@@ -20,6 +20,7 @@ import { ServiceInfoPage } from "./pages/ServiceInfo";
 import { SupportPage } from "./pages/Support";
 import { CompanyPage } from "./pages/Company";
 import { LegalPage } from "./pages/Legal";
+import { NotFoundPage } from "./pages/NotFound";
 import { LoginPage } from "./pages/Login";
 import { AuthCallbackPage } from "./pages/AuthCallback";
 import { SocialConsentPage } from "./pages/SocialConsent";
@@ -110,6 +111,7 @@ export const router = createBrowserRouter([
       { path: "legal/terms", Component: LegalPage },
       { path: "legal/privacy", Component: LegalPage },
       { path: "legal/ai-data-consent", Component: LegalPage },
+      { path: "legal/marketing", Component: LegalPage },
       { path: "legal/copyright", Component: LegalPage },
       { path: "login", Component: LoginPage },
       { path: "auth/callback", Component: AuthCallbackPage },
@@ -123,6 +125,8 @@ export const router = createBrowserRouter([
       { path: "auth/mfa", Component: MfaLoginPage },
       { path: "notifications", Component: NotificationPage },
       ...adminRoutes,
+      // catch-all 404 — 죽은 링크가 라우터 기본 오류 화면 대신 스타일된 안내로 떨어진다.
+      { path: "*", Component: NotFoundPage },
     ],
   },
 ], { basename });

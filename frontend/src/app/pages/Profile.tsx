@@ -473,7 +473,8 @@ export function ProfilePage() {
             </Card>
           </aside>
 
-          <section className="space-y-5">
+          {/* min-w-0: 그리드/플렉스 자식이 내용(탭 목록) 최소폭으로 부풀어 페이지 가로 오버플로를 만드는 것 방지 */}
+          <section className="min-w-0 space-y-5">
             <Tabs value={activeTab} onValueChange={changeProfileTab}>
               <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
                 {profileTabValues.map((tab) => (
@@ -1050,7 +1051,7 @@ function TabStatusBadge({ status }: { status: ReturnType<typeof getProfileTabSta
 function TabGuide({ tab, status }: { tab: ProfileTab; status: ReturnType<typeof getProfileTabStatuses>[ProfileTab] }) {
   const meta = profileTabMeta[tab];
   return (
-    <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+    <div className="mb-4 rounded-lg border border-slate-200 bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="text-sm font-black text-slate-900">{meta.label}</div>
         <RequirementBadge requirement={meta.requirement} />

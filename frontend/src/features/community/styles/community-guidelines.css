@@ -1,5 +1,7 @@
 /* ── 커뮤니티 가이드라인 사용자 페이지 ── */
-.gl-wrap { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; }
+/* 이 페이지는 고정 라이트 문서 디자인(#fff 카드·hex 텍스트) — 색 미지정 요소가 다크 foreground 를 상속해
+   흰 카드 위에서 안 보이는 것을 막기 위해 루트에서 잉크색을 고정한다. */
+.gl-wrap { max-width: 760px; margin: 0 auto; padding: 0 16px 48px; color: #0f172a; }
 
 .gl-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: #94a3b8;
   text-decoration: none; margin-bottom: 18px; white-space: nowrap; cursor: pointer; }

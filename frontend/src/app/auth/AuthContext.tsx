@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
+import { apiBase } from "../lib/apiBase";
 import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "../lib/tokenStore";
 
@@ -124,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const socialLogin = useCallback((provider: SocialProvider) => {
     // 전체 페이지 이동 → 백엔드가 제공자로 리다이렉트
-    window.location.href = `/api/auth/oauth/${provider}`;
+    window.location.href = `${apiBase()}/auth/oauth/${provider}`;
   }, []);
 
   const logout = useCallback(async () => {

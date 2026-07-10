@@ -30,7 +30,7 @@ export function BillingFailPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-12">
-      <Card className="mx-auto max-w-xl border border-slate-200 bg-white">
+      <Card className="mx-auto max-w-xl border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
             <XCircle className="size-5 text-red-600" />

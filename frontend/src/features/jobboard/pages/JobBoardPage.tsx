@@ -22,7 +22,7 @@ const SORT_OPTIONS: Array<{ value: NonNullable<JobBoardSearchParams["sort"]>; la
   { value: "views", label: "조회순" },
 ];
 
-const selectClass = "h-10 rounded-md border border-slate-200 bg-white px-3 text-sm";
+const selectClass = "h-10 rounded-md border border-slate-200 bg-card px-3 text-sm";
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "-";
@@ -144,7 +144,7 @@ export function JobBoardPage() {
       {loading ? (
         <div className="py-16 text-center text-sm text-slate-500">공고를 불러오는 중...</div>
       ) : items.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white py-16 text-center text-sm text-slate-500">
+        <div className="rounded-lg border border-slate-200 bg-card py-16 text-center text-sm text-slate-500">
           조건에 맞는 공고가 없습니다.
         </div>
       ) : (

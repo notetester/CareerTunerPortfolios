@@ -42,7 +42,7 @@ interface Props {
   onCancel: () => void;
 }
 
-const selectClass = "h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm";
+const selectClass = "h-10 w-full rounded-md border border-slate-200 bg-card px-3 text-sm";
 
 /** 채용공고 작성/수정 폼 — 사람인식 상세 필드 전부. */
 export function JobPostingForm({ initial, saving, onSave, onCancel }: Props) {
