@@ -239,6 +239,77 @@ public class JobPostingTextExtractor {
         };
     }
 
+    /**
+     * strict OCR 재추출 — 사용자가 고른 provider 하나만 호출한다(수동 재추출 정책: 교차 provider 폴백 금지,
+     * 동일 provider 통신 재시도만[각 client 내부 재시도에 위임]). 등록 초기 실행의 "선택 우선 후 체인"과 다르다.
+     * <ul>
+     * <li>provider 는 필수(CLAUDE/OPENAI/SELF_OCR) — 미선택·미지 값이면 400.</li>
+     * <li>텍스트 PDF 는 PDFBox 직접 추출이 우선이라 선택한 OCR provider 가 실제로 쓰이지 않는다(ocrProvider="pdfbox").</li>
+     * <li>선택 provider 가 미설정/빈 결과/통신 실패면 다른 provider 로 넘어가지 않고 FAILED 를 반환한다
+     *     (호출부가 기존 공고문·분석을 보존). SELF_OCR 은 워커의 구조화 실패 메타를 그대로 싣는다.</li>
+     * </ul>
+     */
+    public ExtractedPosting extractFileStrict(StoredJobPostingFile file, String requestedOcrProvider) {
+        String selected = normalizeOcrProvider(requestedOcrProvider);
+        if (selected == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "strict 재추출에는 OCR 모델(provider) 선택이 필요합니다.");
+        }
+        if ("PDF".equals(file.sourceType())) {
+            String text = extractTextPdf(file);
+            if (!text.isBlank()) {
+                // 텍스트 PDF: PDFBox 우선 — 선택한 OCR provider 는 사용되지 않는다(호출부가 응답 메타로 안내).
+                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null, "pdfbox", null);
+            }
+        }
+        return strictOcr(selected, file, "PDF".equals(file.sourceType()));
+    }
+
+    /** 선택 provider 하나만 호출하고, 성공(비어있지 않은 텍스트)이면 그 결과를, 아니면 폴백 없이 FAILED 를 반환한다. */
+    private ExtractedPosting strictOcr(String provider, StoredJobPostingFile file, boolean pdf) {
+        try {
+            switch (provider) {
+                case "CLAUDE" -> {
+                    Optional<ExtractedPosting> claude = tryClaudeOcr(file, pdf);
+                    if (claude.isPresent()) {
+                        return claude.get();
+                    }
+                }
+                case "OPENAI" -> {
+                    // 사용자 명시 선택 → 관리자 자동폴백 정책 무관하게 실행. blank 면 null.
+                    ExtractedPosting openAi = extractOpenAiOcr(file, pdf);
+                    if (openAi != null) {
+                        return openAi;
+                    }
+                }
+                case "SELF_OCR" -> {
+                    // 워커가 응답하면(성공이든 구조화 FAILED 든) 그 결과를 그대로 쓴다 — 다른 provider 로 넘기지 않는다.
+                    Optional<ExtractedPosting> worker = aiWorkerClient.extractFile(file);
+                    if (worker.isPresent()) {
+                        return worker.get();
+                    }
+                }
+                default -> { /* normalize 로 걸러짐 */ }
+            }
+        } catch (RuntimeException ex) {
+            // 동일 provider 통신 실패(내부 재시도 소진). 교차 폴백 없이 FAILED 로 종료.
+            log.warn("strict OCR({}) 통신 실패 → FAILED (폴백 없음): {}", provider, ex.getMessage());
+        }
+        return strictFailedExtraction(file, pdf, provider);
+    }
+
+    private static ExtractedPosting strictFailedExtraction(StoredJobPostingFile file, boolean pdf, String provider) {
+        return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
+                pdf ? "IMAGE_PDF_OCR" : "IMAGE_OCR",
+                0,
+                "FAILED",
+                null,
+                null,
+                false,
+                "선택한 OCR 모델(%s)로 공고문을 추출하지 못했습니다. 다른 모델을 고르거나 공고문을 텍스트로 직접 입력해 주세요.".formatted(provider),
+                null,
+                null);
+    }
+
     public ExtractedPosting extractUrl(String url) {
         ValidatedHttpUrl validatedUrl = validateSafeHttpUrlForFetch(url, hostResolver);
         try {

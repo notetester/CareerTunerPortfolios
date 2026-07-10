@@ -26,6 +26,9 @@ import org.junit.jupiter.api.Test;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.careertuner.applicationcase.service.AiUsage;
@@ -876,6 +879,117 @@ class JobPostingTextExtractorTest {
         verify(anthropic).extractImageText(any(), any());     // 기본 체인 폴백
     }
 
+    @Test
+    void strictExtractionRunsOnlySelectedProviderWithoutTouchingOthers() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.extractImageText(any(), any()))
+                .thenReturn(new OcrPayload("OpenAI strict posting", "openai", "gpt-4o", null));
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+        // Claude 도 configured 이지만 strict 는 선택 provider(OPENAI)만 호출 → Claude 는 쓰이지 않는다.
+        BAnthropicClient anthropic = mock(BAnthropicClient.class);
+        when(anthropic.configured()).thenReturn(true);
+        ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFileStrict(imageFile(), "OPENAI");
+
+        assertThat(result.extractedText()).isEqualTo("OpenAI strict posting");
+        assertThat(result.ocrProvider()).isEqualTo("openai");
+        verify(anthropic, never()).extractImageText(any(), any());
+    }
+
+    @Test
+    void strictExtractionFailsWithoutCrossProviderFallback() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.extractImageText(any(), any())).thenThrow(new RuntimeException("openai down"));
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+        // Claude 가 텍스트를 줄 수 있어도 strict OPENAI 실패는 다른 provider 로 폴백하지 않는다(수동 재추출 정책).
+        BAnthropicClient anthropic = mock(BAnthropicClient.class);
+        when(anthropic.configured()).thenReturn(true);
+        when(anthropic.extractImageText(any(), any()))
+                .thenReturn(new OcrPayload("Claude should not be used", "claude", "claude-haiku-4-5", null));
+        ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFileStrict(imageFile(), "OPENAI");
+
+        assertThat(result.extractedText()).isEmpty();
+        assertThat(result.qualityStatus()).isEqualTo("FAILED");
+        assertThat(result.fallbackReason()).contains("OPENAI");
+        verify(anthropic, never()).extractImageText(any(), any());
+    }
+
+    @Test
+    void strictExtractionWithUnavailableSelectedProviderFailsWithoutUsingOthers() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+        // CLAUDE 선택했지만 미설정 → strict 는 OpenAI 로 넘어가지 않고 FAILED.
+        BAnthropicClient anthropic = mock(BAnthropicClient.class);
+        when(anthropic.configured()).thenReturn(false);
+        ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFileStrict(imageFile(), "CLAUDE");
+
+        assertThat(result.qualityStatus()).isEqualTo("FAILED");
+        verify(openAiClient, never()).extractImageText(any(), any());
+    }
+
+    @Test
+    void strictExtractionRequiresProvider() {
+        JobPostingTextExtractor extractor = extractor();
+
+        Throwable thrown = catchThrowable(() -> extractor.extractFileStrict(imageFile(), null));
+
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
+    }
+
+    @Test
+    void strictExtractionUsesPdfBoxForTextPdfWithoutCallingSelectedProvider() throws IOException {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+
+        // 텍스트 PDF 는 PDFBox 우선 — strict 로 OPENAI 를 골라도 OCR provider 는 호출되지 않는다.
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFileStrict(new StoredJobPostingFile(
+                "PDF",
+                "local:application-postings/10/posting.pdf",
+                "posting.pdf",
+                "application/pdf",
+                java.nio.file.Path.of("posting.pdf"),
+                pdfWithText("Backend Engineer at Acme")), "OPENAI");
+
+        assertThat(result.extractedText()).contains("Backend Engineer at Acme");
+        assertThat(result.ocrProvider()).isEqualTo("pdfbox");
+        verify(openAiClient, never()).extractPdfText(any(), any());
+        verify(openAiClient, never()).extractImageText(any(), any());
+    }
+
     private static StoredJobPostingFile imageFile() {
         return new StoredJobPostingFile(
                 "IMAGE",
@@ -884,6 +998,24 @@ class JobPostingTextExtractorTest {
                 "image/png",
                 java.nio.file.Path.of("posting.png"),
                 new byte[]{1, 2, 3});
+    }
+
+    /** 텍스트가 들어있는 1페이지 PDF — strict 텍스트 PDF 우선(PDFBox) 검증용. */
+    private static byte[] pdfWithText(String text) throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                content.beginText();
+                content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                content.newLineAtOffset(72, 700);
+                content.showText(text);
+                content.endText();
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            document.save(out);
+            return out.toByteArray();
+        }
     }
 
     private static JobPostingTextExtractor extractor() {
