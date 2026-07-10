@@ -72,7 +72,7 @@ std::unique_ptr<QSettings> SettingsStore::createSettings()
 
 QString SettingsStore::baseUrl() const
 {
-    // 기본은 팀 공용 원격 백엔드(Tailscale) — 기본값 상수는 defaultBaseUrl() 한 곳에서 관리
+    // 기본은 공개 AWS 통합 백엔드 — 기본값 상수는 defaultBaseUrl() 한 곳에서 관리
     return m_s->value("server/baseUrl", defaultBaseUrl()).toString();
 }
 void SettingsStore::setBaseUrl(const QString& v)
