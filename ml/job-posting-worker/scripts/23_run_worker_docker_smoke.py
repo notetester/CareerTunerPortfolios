@@ -16,6 +16,7 @@ from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_REPO_ROOT = SCRIPT_DIR.parents[2]
+OCR_PYTHON_VERSION = "3.12"
 DEFAULT_TEXT = (
     "Company: Acme. Role: Backend Engineer. Responsibilities: build Spring APIs "
     "and operate batch workers. Qualifications: Java, Spring Boot, MySQL, testing, "
@@ -119,7 +120,12 @@ def run_smoke(
     if not skip_build:
         build_command = ["docker", "build", "-t", image]
         if install_ocr:
-            build_command.extend(["--build-arg", "INSTALL_OCR=true"])
+            build_command.extend([
+                "--build-arg",
+                f"PYTHON_VERSION={OCR_PYTHON_VERSION}",
+                "--build-arg",
+                "INSTALL_OCR=true",
+            ])
         build_command.append(str(worker_root))
         build = run_command(build_command, cwd=repo_root, timeout=1800)
         checks.append({"name": "docker build", **build.to_dict()})

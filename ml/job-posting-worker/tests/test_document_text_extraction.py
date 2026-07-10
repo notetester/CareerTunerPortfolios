@@ -31,6 +31,7 @@ class DocumentTextExtractionTest(unittest.TestCase):
                 "FLAGS_use_mkldnn": os.environ.get("FLAGS_use_mkldnn"),
                 "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME"),
                 "PADDLE_OCR_BASE_DIR": os.environ.get("PADDLE_OCR_BASE_DIR"),
+                "PADDLE_PDX_CACHE_HOME": os.environ.get("PADDLE_PDX_CACHE_HOME"),
             }
             try:
                 for key in original:
@@ -43,6 +44,7 @@ class DocumentTextExtractionTest(unittest.TestCase):
                 self.assertEqual(os.environ["FLAGS_use_mkldnn"], "0")
                 self.assertEqual(os.environ["XDG_CACHE_HOME"], str(cache / ".cache"))
                 self.assertEqual(os.environ["PADDLE_OCR_BASE_DIR"], str(cache / ".paddleocr"))
+                self.assertEqual(os.environ["PADDLE_PDX_CACHE_HOME"], str(cache / ".paddlex"))
                 self.assertTrue(cache.exists())
             finally:
                 for key, value in original.items():
