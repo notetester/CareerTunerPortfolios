@@ -8,6 +8,8 @@ dist-apk/
 
 # Vite / tooling cache
 .vite/
+.wrangler/
+.dev.vars*
 *.local
 
 # Capacitor
