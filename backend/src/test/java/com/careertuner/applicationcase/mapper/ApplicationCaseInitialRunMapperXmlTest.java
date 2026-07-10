@@ -51,6 +51,17 @@ class ApplicationCaseInitialRunMapperXmlTest {
     }
 
     @Test
+    void reopenForRetryOnlyRevivesFailedProfileAndClearsRunMetadata() throws Exception {
+        String reopen = statement("<update id=\"reopenForRetry\"");
+        assertThat(reopen).contains("state = 'PENDING'");
+        assertThat(reopen).contains("execution_token = NULL");
+        assertThat(reopen).contains("started_at = NULL");
+        assertThat(reopen).contains("finished_at = NULL");
+        assertThat(reopen).contains("failure_reason = NULL");
+        assertThat(reopen).contains("state = 'FAILED'"); // FAILED 만 재개(DONE 재개 금지)
+    }
+
+    @Test
     void staleRunningQueryUsesStartedAtCutoffAndOnlyRunning() throws Exception {
         String stale = statement("<select id=\"findStaleRunning\"");
         assertThat(stale).contains("state = 'RUNNING'");

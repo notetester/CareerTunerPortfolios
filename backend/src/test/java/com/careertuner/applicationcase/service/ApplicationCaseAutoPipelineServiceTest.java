@@ -65,16 +65,21 @@ class ApplicationCaseAutoPipelineServiceTest {
         fitAnalysisMapper = mock(FitAnalysisMapper.class);
         interviewMapper = mock(InterviewMapper.class);
         objectMapper = new ObjectMapper();
-        BAnalysisProperties properties = new BAnalysisProperties();
+        companyAnalysisService = mock(com.careertuner.companyanalysis.service.CompanyAnalysisService.class);
+        service = buildService(runtimeSettingServiceReturningFallback());
+    }
+
+    /** 같은 mock 협력자로 서비스만 다시 구성한다(runtime_setting 스텁 교체용 — 자동 파이프라인 on/off 테스트). */
+    private ApplicationCaseAutoPipelineService buildService(
+            com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingService) {
         BAnalysisGenerationService bAnalysisGenerationService = new BAnalysisGenerationService(
-                properties,
+                new BAnalysisProperties(),
                 mock(BLocalLlmClient.class),
                 new BJobSentenceClassifier(),
                 objectMapper,
                 mock(BAnthropicClient.class),
                 mock(OpenAiResponsesClient.class));
-        companyAnalysisService = mock(com.careertuner.companyanalysis.service.CompanyAnalysisService.class);
-        service = new ApplicationCaseAutoPipelineService(
+        return new ApplicationCaseAutoPipelineService(
                 applicationCaseMapper,
                 initialRunMapper,
                 jobAnalysisMapper,
@@ -86,7 +91,7 @@ class ApplicationCaseAutoPipelineServiceTest {
                 bAnalysisGenerationService,
                 new com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer(objectMapper),
                 companyAnalysisService,
-                runtimeSettingServiceReturningFallback(),
+                runtimeSettingService,
                 mock(com.careertuner.reward.service.RewardService.class));
     }
 
@@ -216,6 +221,62 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
     }
 
+    @Test
+    void abandonsPendingProfileWhenAutoPipelineDisabled() {
+        // [P1 회귀] 자동 파이프라인 OFF 로 조기 반환할 때 프로필을 PENDING 으로 남기면
+        // 수동 분석 가드(CONFLICT)가 영구 차단된다 — claim 후 자신의 토큰으로 FAILED 로 닫아야 한다.
+        service = buildService(runtimeSettingServiceReturning(false));
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        ArgumentCaptor<String> claimToken = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).claimForRun(eq(10L), claimToken.capture());
+        verify(initialRunMapper).markFailed(eq(10L), eq(claimToken.getValue()), anyString());
+        // 파이프라인 자체는 실행되지 않는다.
+        verify(applicationCaseMapper, never()).findApplicationCaseByIdAndUserId(anyLong(), anyLong());
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+        verify(initialRunMapper, never()).markDone(anyLong(), anyString());
+    }
+
+    @Test
+    void abandonSkipsMarkFailedWhenNoProfileExists() {
+        // 프로필 없는 레거시 케이스 — OFF 조기 반환 시 claim 이 0행이라 markFailed 를 부르지 않는다.
+        service = buildService(runtimeSettingServiceReturning(false));
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(0);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        verify(initialRunMapper).claimForRun(eq(10L), anyString());
+        verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+    }
+
+    @Test
+    void abandonsPendingProfileWhenPostingTextBlank() {
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, "   ");
+
+        ArgumentCaptor<String> claimToken = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).claimForRun(eq(10L), claimToken.capture());
+        verify(initialRunMapper).markFailed(eq(10L), eq(claimToken.getValue()), anyString());
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+    }
+
+    @Test
+    void abandonsPendingProfileWhenApplicationCaseNotFound() {
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(null);
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        ArgumentCaptor<String> claimToken = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).claimForRun(eq(10L), claimToken.capture());
+        verify(initialRunMapper).markFailed(eq(10L), eq(claimToken.getValue()), anyString());
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+    }
+
     private void stubRunnableDraftCase() {
         when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
                 .id(10L)
@@ -252,6 +313,13 @@ class ApplicationCaseAutoPipelineServiceTest {
     private static com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingServiceReturningFallback() {
         var svc = mock(com.careertuner.runtimesetting.service.RuntimeSettingService.class);
         when(svc.getBoolean(any(), org.mockito.ArgumentMatchers.anyBoolean())).thenAnswer(inv -> inv.getArgument(1));
+        return svc;
+    }
+
+    /** 런타임 설정이 고정값을 돌려주는 스텁 — 자동 파이프라인 on/off 강제용. */
+    private static com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingServiceReturning(boolean value) {
+        var svc = mock(com.careertuner.runtimesetting.service.RuntimeSettingService.class);
+        when(svc.getBoolean(any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(value);
         return svc;
     }
 

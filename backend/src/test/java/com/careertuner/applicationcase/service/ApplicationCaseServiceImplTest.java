@@ -1940,6 +1940,81 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
+    void retryJobPostingExtractionReopensFailedInitialRunProfile() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper,
+                extractionMapper,
+                accessService,
+                jobPostingService,
+                mock(JobAnalysisService.class),
+                mock(CompanyAnalysisService.class),
+                mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class),
+                mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class),
+                initialRunMapper);
+        ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "PDF", "FAILED");
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
+        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
+        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
+                20L, 10L, 1, null, "local:application-postings/10/posting.pdf", null, "PDF", null));
+        doAnswer(invocation -> {
+            invocation.<ApplicationCaseExtraction>getArgument(0).setId(41L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+
+        service.retryJobPostingExtraction(1L, 10L);
+
+        // 추출 실패로 FAILED 처리된 초기 실행 프로필을 PENDING 으로 되살려,
+        // 재추출 성공 시 파이프라인이 다시 claim 해 초기 실행 1회가 보장되는지 잠근다.
+        verify(initialRunMapper).reopenForRetry(10L);
+    }
+
+    @Test
+    void retryJobPostingExtractionDoesNotReopenProfileWhenRetryRejected() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper,
+                extractionMapper,
+                accessService,
+                mock(JobPostingService.class),
+                mock(JobAnalysisService.class),
+                mock(CompanyAnalysisService.class),
+                mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class),
+                mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class),
+                initialRunMapper);
+
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
+                .id(10L)
+                .userId(1L)
+                .build());
+        // 진행 중 추출이 있어 재시도 자체가 거절되는 경로 — 프로필을 되살리면 안 된다.
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(1);
+
+        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
+                .isInstanceOf(BusinessException.class);
+
+        verify(initialRunMapper, never()).reopenForRetry(anyLong());
+    }
+
+    @Test
     void retryJobPostingExtractionBlocksWhenAnyActiveExtractionExistsForCase() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);

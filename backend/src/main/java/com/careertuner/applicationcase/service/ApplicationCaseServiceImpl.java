@@ -383,6 +383,9 @@ public class ApplicationCaseServiceImpl implements ApplicationCaseService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "공고문을 찾을 수 없습니다.");
         }
         jobPostingService.getJobPostingByIdForCase(userId, applicationCaseId, failedJobPostingId);
+        // 추출 실패 종결 시 FAILED 로 닫힌 초기 실행 프로필을 PENDING 으로 되살려,
+        // 재추출 성공 시 초기 파이프라인이 다시 claim 해 1회 실행되게 한다(프로필 없거나 FAILED 아니면 0행).
+        initialRunMapper.reopenForRetry(applicationCaseId);
         return queueExtraction(
                 userId,
                 applicationCaseId,

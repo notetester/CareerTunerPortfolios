@@ -105,7 +105,13 @@ public class ApplicationCaseAutoPipelineService {
                                        Long jobPostingId,
                                        Integer jobPostingRevision,
                                        String postingText) {
-        if (!autoPipelineEnabled() || isBlank(postingText)) {
+        boolean pipelineEnabled = autoPipelineEnabled();
+        if (!pipelineEnabled || isBlank(postingText)) {
+            // 초기 실행이 여기서 끝나는데 프로필을 PENDING 으로 남기면 수동 분석 가드(CONFLICT)가 영구 차단된다
+            // (가드는 PENDING/RUNNING 차단, reaper 는 RUNNING 만 회수). FAILED 로 닫아 수동 분석 경로를 연다.
+            abandonInitialRunIfPending(applicationCaseId, pipelineEnabled
+                    ? "공고 원문이 비어 있어 초기 실행을 건너뛰었습니다."
+                    : "자동 파이프라인이 비활성화되어 초기 실행을 건너뛰었습니다.");
             return;
         }
 
@@ -114,6 +120,7 @@ public class ApplicationCaseAutoPipelineService {
                 userId);
         if (applicationCase == null) {
             recordFailure(userId, applicationCaseId, FEATURE_PIPELINE, "Application case not found.");
+            abandonInitialRunIfPending(applicationCaseId, "지원 건을 찾을 수 없어 초기 실행을 종료했습니다.");
             return;
         }
 
@@ -158,6 +165,19 @@ public class ApplicationCaseAutoPipelineService {
             markInitialRunFailed(applicationCaseId, executionToken, safeMessage(ex));
             recordFailure(userId, applicationCaseId, FEATURE_PIPELINE, safeMessage(ex));
             log.warn("Self AI application-case pipeline failed. applicationCaseId={}", applicationCaseId, ex);
+        }
+    }
+
+    /**
+     * 초기 파이프라인이 실행되지 않은 채 끝나는 경로(비활성·원문 없음·케이스 없음·추출 실패 종결)에서
+     * PENDING 프로필을 FAILED 로 닫는다. PENDING 으로 남기면 수동 분석 가드가 CONFLICT 로 영구 차단되기 때문.
+     * claim(PENDING→RUNNING) 후 같은 토큰으로 markFailed — 프로필이 없거나 PENDING 이 아니면 claim 0행이라 무해.
+     * 재추출(retry) 경로는 {@code reopenForRetry} 로 FAILED 프로필을 PENDING 으로 되살려 초기 실행 1회를 다시 보장한다.
+     */
+    public void abandonInitialRunIfPending(Long applicationCaseId, String reason) {
+        String executionToken = UUID.randomUUID().toString();
+        if (initialRunMapper.claimForRun(applicationCaseId, executionToken) == 1) {
+            initialRunMapper.markFailed(applicationCaseId, executionToken, truncate(reason, 1000));
         }
     }
 

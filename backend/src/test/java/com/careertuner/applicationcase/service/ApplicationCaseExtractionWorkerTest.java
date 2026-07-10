@@ -526,6 +526,7 @@ class ApplicationCaseExtractionWorkerTest {
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
                 applicationCaseMapper,
@@ -533,6 +534,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction extraction = extraction(33L, 10L, 20L, 1L, "URL");
         String jobUrl = "https://example.com/jobs/backend";
@@ -592,6 +594,8 @@ class ApplicationCaseExtractionWorkerTest {
         verify(notificationService).notify(notificationCaptor.capture());
         assertThat(notificationCaptor.getValue().getType()).isEqualTo("JOB_POSTING_EXTRACTION_FAILED");
         assertThat(notificationCaptor.getValue().getLink()).isEqualTo("/applications/10/overview");
+        // 추출 실패 종결 시 초기 실행 프로필을 닫아(PENDING 누수 방지) 수동 분석 CONFLICT 영구 차단을 막는지 잠근다.
+        verify(autoPipelineService).abandonInitialRunIfPending(eq(10L), any(String.class));
     }
 
     @Test
@@ -741,6 +745,7 @@ class ApplicationCaseExtractionWorkerTest {
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
                 applicationCaseMapper,
@@ -748,6 +753,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction stale = ApplicationCaseExtraction.builder()
                 .id(35L)
@@ -796,6 +802,8 @@ class ApplicationCaseExtractionWorkerTest {
         assertThat(notificationCaptor.getValue().getType()).isEqualTo("JOB_POSTING_EXTRACTION_FAILED");
         assertThat(notificationCaptor.getValue().getTargetId()).isEqualTo(10L);
         assertThat(notificationCaptor.getValue().getLink()).isEqualTo("/applications/10/overview");
+        // stale 만료도 추출 실패 종결 — 초기 실행 프로필을 닫아 PENDING 누수를 막는지 잠근다.
+        verify(autoPipelineService).abandonInitialRunIfPending(eq(10L), any(String.class));
     }
 
     @Test
@@ -807,6 +815,7 @@ class ApplicationCaseExtractionWorkerTest {
         OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
         AiUsageLogService aiUsageLogService = mock(AiUsageLogService.class);
         NotificationService notificationService = mock(NotificationService.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
         ApplicationCaseExtractionWorker worker = worker(
                 extractionMapper,
                 applicationCaseMapper,
@@ -814,6 +823,7 @@ class ApplicationCaseExtractionWorkerTest {
                 jobPostingService,
                 openAiClient,
                 aiUsageLogService,
+                autoPipelineService,
                 notificationService);
         ApplicationCaseExtraction stale = ApplicationCaseExtraction.builder()
                 .id(36L)
@@ -852,6 +862,8 @@ class ApplicationCaseExtractionWorkerTest {
                 eq(false),
                 any());
         verify(notificationService, never()).notify(any());
+        // 실패 마킹 경합에서 진 쪽은 프로필도 건드리지 않는다(이긴 쪽 종결 처리에 맡김).
+        verify(autoPipelineService, never()).abandonInitialRunIfPending(any(), any());
     }
 
     @Test

@@ -278,6 +278,11 @@ public class ApplicationCaseExtractionWorker {
                     quality != null && quality.fallbackEligible(),
                     quality == null ? null : quality.fallbackReason()) == 1) {
                 notificationService.notify(failureNotification(extraction, errorMessage));
+                // 추출 실패 종결 시 초기 실행 프로필(PENDING)을 닫아 수동 분석의 CONFLICT 영구 차단을 막는다.
+                // 재추출(retry)은 reopenForRetry 로 프로필을 PENDING 으로 되살려 초기 실행을 다시 보장한다.
+                autoPipelineService.abandonInitialRunIfPending(
+                        extraction.getApplicationCaseId(),
+                        "공고 추출 실패로 초기 실행을 종료했습니다: " + errorMessage);
             }
             return null;
         });
@@ -299,6 +304,10 @@ public class ApplicationCaseExtractionWorker {
                 return false;
             }
             notificationService.notify(failureNotification(extraction, errorMessage));
+            // completeFailed 와 동일 — stale 만료도 추출 실패 종결이므로 프로필을 닫는다.
+            autoPipelineService.abandonInitialRunIfPending(
+                    extraction.getApplicationCaseId(),
+                    "공고 추출 실패로 초기 실행을 종료했습니다: " + errorMessage);
             return true;
         }));
     }
