@@ -28,6 +28,7 @@ import com.careertuner.admin.staffgrade.dto.AdminStaffGradePage;
 import com.careertuner.admin.staffgrade.dto.AdminStaffGradeRow;
 import com.careertuner.admin.staffgrade.dto.AdminStaffGradeUpsertRequest;
 import com.careertuner.admin.staffgrade.service.AdminStaffGradeService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -37,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자/직원 등급·급여 콘솔(SUPER_ADMIN 전용). 편집·이력·Excel 내보내기/업로드. */
 @RestController
 @RequestMapping("/api/admin/staff-grades")
+@RequireAdminPermission({"POLICY_ADMIN"})
 @RequiredArgsConstructor
 @Validated
 public class AdminStaffGradeController {

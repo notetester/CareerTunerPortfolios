@@ -1,5 +1,7 @@
 package com.careertuner.community.search;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.Map;
 
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +16,7 @@ import com.careertuner.common.web.ApiResponse;
  */
 @RestController
 @RequestMapping("/api/admin/community")
+@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
 public class CommunityEmbeddingAdminController {
 
     private final CommunityEmbeddingService embeddingService;

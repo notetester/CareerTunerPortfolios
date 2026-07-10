@@ -17,6 +17,7 @@ import com.careertuner.admin.chatbot.dto.AdminUnansweredStatusRequest;
 import com.careertuner.admin.chatbot.dto.ChatbotConversationDrillResponse;
 import com.careertuner.admin.chatbot.dto.FaqDraftResponse;
 import com.careertuner.admin.chatbot.service.AdminUnansweredService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.faq.dto.AdminFaqRequest;
 import com.careertuner.admin.faq.dto.AdminFaqResponse;
 import com.careertuner.common.security.AuthUser;
@@ -30,6 +31,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN", "AI_OPERATION_MANAGE", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminUnansweredController {
 

@@ -1,5 +1,7 @@
 package com.careertuner.admin.fitanalysis.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import jakarta.validation.Valid;
@@ -32,6 +34,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/fit-analyses")
+@RequireAdminPermission({"ANALYSIS_READ", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminFitAnalysisController {
 
@@ -70,6 +73,7 @@ public class AdminFitAnalysisController {
 
     /** gate review workflow: 검토 완료/재분석 요청/대기 되돌리기 처리(+선택 메모). */
     @PatchMapping("/{id}/gate-review")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<AdminFitAnalysisDetailResponse> reviewGate(@AuthenticationPrincipal AuthUser authUser,
                                                                   @PathVariable Long id,
                                                                   @Valid @RequestBody AdminGateReviewRequest request) {
@@ -85,6 +89,7 @@ public class AdminFitAnalysisController {
     }
 
     @PostMapping("/{id}/memos")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<AdminFitAnalysisMemoResponse> createMemo(@AuthenticationPrincipal AuthUser authUser,
                                                                 @PathVariable Long id,
                                                                 @Valid @RequestBody AdminFitAnalysisMemoRequest request) {
@@ -93,6 +98,7 @@ public class AdminFitAnalysisController {
     }
 
     @PatchMapping("/{id}/memos/{memoId}")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<AdminFitAnalysisMemoResponse> updateMemo(@AuthenticationPrincipal AuthUser authUser,
                                                                 @PathVariable Long id,
                                                                 @PathVariable Long memoId,
@@ -102,6 +108,7 @@ public class AdminFitAnalysisController {
     }
 
     @DeleteMapping("/{id}/memos/{memoId}")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<Void> deleteMemo(@AuthenticationPrincipal AuthUser authUser,
                                         @PathVariable Long id,
                                         @PathVariable Long memoId) {

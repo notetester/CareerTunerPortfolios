@@ -1,5 +1,7 @@
 package com.careertuner.admin.jobanalysis.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 import java.time.LocalDate;
 
@@ -26,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/job-analysis")
+@RequireAdminPermission({"ANALYSIS_READ", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminJobAnalysisController {
 
@@ -82,6 +85,7 @@ public class AdminJobAnalysisController {
     }
 
     @PatchMapping("/{analysisId}/memo")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<Void> updateMemo(@AuthenticationPrincipal AuthUser authUser,
                                         @PathVariable Long analysisId,
                                         @Valid @RequestBody AdminMemoRequest request) {

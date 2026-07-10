@@ -13,11 +13,13 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.profile.dto.UserProfileResponse;
 import com.careertuner.profile.service.ProfileService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/profiles")
+@RequireAdminPermission({"PROFILE_READ", "MEMBER_ADMIN"})
 @RequiredArgsConstructor
 public class AdminProfileController {
 

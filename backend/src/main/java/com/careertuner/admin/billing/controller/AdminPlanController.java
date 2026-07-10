@@ -16,6 +16,7 @@ import com.careertuner.billing.dto.AdminPlansResponse;
 import com.careertuner.billing.dto.AiFeatureBenefitPolicyResponse;
 import com.careertuner.billing.dto.SubscriptionBenefitPolicyResponse;
 import com.careertuner.billing.service.BillingPolicyChangeService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.billing.service.BillingService;
 import com.careertuner.common.security.AuthUser;
@@ -27,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 요금제/크레딧 상품 조회. */
 @RestController
 @RequestMapping("/api/admin/plans")
+@RequireAdminPermission({"BILLING_READ", "BILLING_ADMIN"})
 @RequiredArgsConstructor
 public class AdminPlanController {
 
@@ -55,6 +57,7 @@ public class AdminPlanController {
 
     @SitesFinancialMutation
     @PostMapping("/policy-changes")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<AdminBillingPolicyChangeResponse> createPolicyChange(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminBillingPolicyChangeRequest request) {
@@ -63,6 +66,7 @@ public class AdminPlanController {
 
     @SitesFinancialMutation
     @PostMapping("/policy-changes/{id}/cancel")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<AdminBillingPolicyChangeResponse> cancelPolicyChange(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

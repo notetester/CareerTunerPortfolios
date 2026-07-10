@@ -1,5 +1,7 @@
 package com.careertuner.admin.activitylog;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 활동 로그 + 보안 이력 조회 API. */
 @RestController
 @RequestMapping("/api/admin")
+@RequireAdminPermission({"ADMIN_AUDIT_READ", "SECURITY_LOG_READ", "AUDIT_ADMIN"})
 @RequiredArgsConstructor
 public class AdminActivityLogController {
 

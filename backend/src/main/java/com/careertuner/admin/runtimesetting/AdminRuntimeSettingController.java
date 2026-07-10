@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.runtimesetting.domain.RuntimeSetting;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 key-value 런타임 설정 콘솔 API. */
 @RestController
 @RequestMapping("/api/admin/runtime-settings")
+@RequireAdminPermission({"POLICY_MANAGE", "POLICY_ADMIN"})
 @RequiredArgsConstructor
 public class AdminRuntimeSettingController {
 

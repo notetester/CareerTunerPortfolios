@@ -4,7 +4,7 @@
 <mapper namespace="com.careertuner.admin.policy.mapper.AdminPolicyMapper">
 
     <select id="findAll" resultType="com.careertuner.admin.policy.dto.AdminSystemPolicyRow">
-        SELECT id, policy_code, display_name, description,
+        SELECT policy_code, display_name, description,
                JSON_UNQUOTE(JSON_EXTRACT(config_json, '$')) AS config_json,
                schedule_type, active, last_run_at, last_run_status, last_run_message,
                updated_by, created_at, updated_at
@@ -13,7 +13,7 @@
     </select>
 
     <select id="findByCode" resultType="com.careertuner.admin.policy.dto.AdminSystemPolicyRow">
-        SELECT id, policy_code, display_name, description,
+        SELECT policy_code, display_name, description,
                JSON_UNQUOTE(JSON_EXTRACT(config_json, '$')) AS config_json,
                schedule_type, active, last_run_at, last_run_status, last_run_message,
                updated_by, created_at, updated_at

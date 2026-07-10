@@ -22,6 +22,7 @@ import com.careertuner.admin.reward.dto.AdminLevelPolicyRequest;
 import com.careertuner.admin.reward.dto.AdminRewardHistoryPage;
 import com.careertuner.admin.reward.dto.AdminRewardRuleUpdateRequest;
 import com.careertuner.admin.reward.service.AdminRewardService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.common.web.SitesFinancialMutation;
@@ -36,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 리워드 콘솔: 적립 규칙 on/off·값, 레벨 정책, 쿠폰, 리워드 이력. */
 @RestController
 @RequestMapping("/api/admin/rewards")
+@RequireAdminPermission({"BILLING_READ", "BILLING_ADMIN"})
 @RequiredArgsConstructor
 @Validated
 public class AdminRewardController {
@@ -50,6 +52,7 @@ public class AdminRewardController {
 
     @SitesFinancialMutation
     @PutMapping("/rules/{id}")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<RewardRule> updateRule(@AuthenticationPrincipal AuthUser authUser,
                                               @PathVariable Long id,
                                               @Valid @RequestBody AdminRewardRuleUpdateRequest req) {
@@ -58,6 +61,7 @@ public class AdminRewardController {
 
     @SitesFinancialMutation
     @PatchMapping("/rules/{id}/enabled")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<RewardRule> toggleRule(@AuthenticationPrincipal AuthUser authUser,
                                               @PathVariable Long id,
                                               @RequestParam boolean enabled) {
@@ -72,6 +76,7 @@ public class AdminRewardController {
 
     @SitesFinancialMutation
     @PostMapping("/levels")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<UserLevelPolicy> createLevel(@AuthenticationPrincipal AuthUser authUser,
                                                     @Valid @RequestBody AdminLevelPolicyRequest req) {
         return ApiResponse.ok(service.createLevel(authUser, req));
@@ -79,6 +84,7 @@ public class AdminRewardController {
 
     @SitesFinancialMutation
     @PutMapping("/levels/{id}")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<UserLevelPolicy> updateLevel(@AuthenticationPrincipal AuthUser authUser,
                                                     @PathVariable Long id,
                                                     @Valid @RequestBody AdminLevelPolicyRequest req) {
@@ -87,6 +93,7 @@ public class AdminRewardController {
 
     @SitesFinancialMutation
     @DeleteMapping("/levels/{id}")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<Void> deleteLevel(@AuthenticationPrincipal AuthUser authUser,
                                          @PathVariable Long id) {
         service.deleteLevel(authUser, id);
@@ -104,6 +111,7 @@ public class AdminRewardController {
 
     @SitesFinancialMutation
     @PostMapping("/coupons")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<Coupon> createCoupon(@AuthenticationPrincipal AuthUser authUser,
                                             @Valid @RequestBody AdminCouponRequest req) {
         return ApiResponse.ok(service.createCoupon(authUser, req));
@@ -111,6 +119,7 @@ public class AdminRewardController {
 
     @SitesFinancialMutation
     @PutMapping("/coupons/{id}")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<Coupon> updateCoupon(@AuthenticationPrincipal AuthUser authUser,
                                             @PathVariable Long id,
                                             @Valid @RequestBody AdminCouponRequest req) {
@@ -119,6 +128,7 @@ public class AdminRewardController {
 
     @SitesFinancialMutation
     @PostMapping("/coupons/{id}/issue")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<UserCoupon> issueCoupon(@AuthenticationPrincipal AuthUser authUser,
                                                @PathVariable Long id,
                                                @Valid @RequestBody AdminCouponIssueRequest req) {

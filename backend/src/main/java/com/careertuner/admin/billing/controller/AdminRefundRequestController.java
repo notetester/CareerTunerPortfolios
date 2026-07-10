@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.billing.dto.RefundRequestResponse;
 import com.careertuner.billing.dto.RefundReviewRequest;
 import com.careertuner.billing.service.RefundRequestService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.common.web.SitesFinancialMutation;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/refunds")
+@RequireAdminPermission({"BILLING_READ", "BILLING_ADMIN"})
 @RequiredArgsConstructor
 public class AdminRefundRequestController {
     private final RefundRequestService service;
@@ -36,6 +38,7 @@ public class AdminRefundRequestController {
 
     @SitesFinancialMutation
     @PostMapping("/{id}/approve")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<RefundRequestResponse> approve(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -45,6 +48,7 @@ public class AdminRefundRequestController {
 
     @SitesFinancialMutation
     @PostMapping("/{id}/reject")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<RefundRequestResponse> reject(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,

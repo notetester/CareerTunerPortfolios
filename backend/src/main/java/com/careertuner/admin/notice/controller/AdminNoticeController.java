@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.admin.notice.dto.AdminNoticeRequest;
 import com.careertuner.admin.notice.dto.AdminNoticeResponse;
 import com.careertuner.admin.notice.service.AdminNoticeService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/notices")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
 @RequiredArgsConstructor
 public class AdminNoticeController {
 
