@@ -14,7 +14,7 @@ import sys
 import tempfile
 import threading
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,7 @@ SUPPORTED_SOURCE_TYPES = {"TEXT", "MANUAL", "URL", "HTML", "PDF", "IMAGE"}
 # 기본(filePath/text) 요청은 작지만, sendBytes(파일 base64 동봉) 모드는 20MB 파일 → ~27MB base64.
 # 파일경로 공유(co-location) 없는 배포를 위해 상한을 32MB 로 둔다(업로드 실효 한도 ≤20MB + base64 33% + 여유).
 MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024
+OCR_REQUEST_LOCK = threading.Lock()
 
 
 def load_document_module():
@@ -166,11 +167,12 @@ def extract_from_file(payload: dict[str, Any], source_type: str) -> dict[str, An
     existing_ocr_dir = Path(existing_ocr_dir_text) if existing_ocr_dir_text else None
     with tempfile.TemporaryDirectory(prefix="ct_job_posting_worker_") as tmp:
         output_dir = Path(tmp)
-        meta = DOCUMENT.extract_document(
-            input_path=file_path,
-            output_dir=output_dir,
-            existing_ocr_dir=existing_ocr_dir,
-        )
+        with OCR_REQUEST_LOCK:
+            meta = DOCUMENT.extract_document(
+                input_path=file_path,
+                output_dir=output_dir,
+                existing_ocr_dir=existing_ocr_dir,
+            )
         text_path, _ = DOCUMENT.output_paths(file_path, output_dir)
         text = text_path.read_text(encoding="utf-8", errors="replace") if text_path.exists() else ""
         return {"text": DOCUMENT.normalize_text(text), "meta": meta, **meta}
@@ -197,11 +199,12 @@ def extract_from_bytes(payload: dict[str, Any], source_type: str) -> dict[str, A
         input_path = Path(tmp) / f"input{suffix}"
         input_path.write_bytes(data)
         output_dir = Path(tmp)
-        meta = DOCUMENT.extract_document(
-            input_path=input_path,
-            output_dir=output_dir,
-            existing_ocr_dir=None,
-        )
+        with OCR_REQUEST_LOCK:
+            meta = DOCUMENT.extract_document(
+                input_path=input_path,
+                output_dir=output_dir,
+                existing_ocr_dir=None,
+            )
         text_path, _ = DOCUMENT.output_paths(input_path, output_dir)
         text = text_path.read_text(encoding="utf-8", errors="replace") if text_path.exists() else ""
         return {"text": DOCUMENT.normalize_text(text), "meta": meta, **meta}
@@ -298,9 +301,10 @@ def warmup_ocr() -> None:
 
 
 def run_server(host: str, port: int) -> None:
-    warmup_ocr()
-    server = HTTPServer((host, port), WorkerHandler)
+    server = ThreadingHTTPServer((host, port), WorkerHandler)
+    server.daemon_threads = True
     print(f"job-posting-worker listening on http://{host}:{port}", flush=True)
+    threading.Thread(target=warmup_ocr, name="ocr-warmup", daemon=True).start()
     server.serve_forever()
 
 

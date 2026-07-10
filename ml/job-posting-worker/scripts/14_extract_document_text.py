@@ -14,6 +14,7 @@ import json
 import os
 import re
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,6 +105,7 @@ class ExtractionOptions:
 
 _PADDLE_OCR_CACHE: dict[str, Any] = {}
 _PPSTRUCTURE_CACHE: dict[str, Any] = {}
+_OCR_ENGINE_LOCK = threading.Lock()
 
 
 def configure_ocr_cache_env(cache_root: Path | None = None) -> Path:
@@ -115,6 +117,7 @@ def configure_ocr_cache_env(cache_root: Path | None = None) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("XDG_CACHE_HOME", str(root / ".cache"))
     os.environ.setdefault("PADDLE_OCR_BASE_DIR", str(root / ".paddleocr"))
+    os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(root / ".paddlex"))
     return root
 
 
@@ -287,28 +290,29 @@ def is_constructor_argument_error(exc: Exception) -> bool:
 
 
 def create_paddle_ocr(lang: str):
-    if lang in _PADDLE_OCR_CACHE:
-        return _PADDLE_OCR_CACHE[lang]
-    paddle_ocr_class = load_paddleocr_class()
-    constructor_options = [
-        {"lang": lang, "enable_mkldnn": False},
-        {"lang": lang},
-        {"enable_mkldnn": False},
-        {},
-    ]
-    last_error: Exception | None = None
-    for options in constructor_options:
-        try:
-            ocr = paddle_ocr_class(**options)
-            _PADDLE_OCR_CACHE[lang] = ocr
-            return ocr
-        except (TypeError, ValueError, RuntimeError) as exc:
-            if isinstance(exc, RuntimeError) and "Unknown argument" not in str(exc):
-                raise
-            if isinstance(exc, (TypeError, ValueError)) and not is_constructor_argument_error(exc):
-                raise
-            last_error = exc
-    raise RuntimeError("Unable to create PaddleOCR with supported constructor options.") from last_error
+    with _OCR_ENGINE_LOCK:
+        if lang in _PADDLE_OCR_CACHE:
+            return _PADDLE_OCR_CACHE[lang]
+        paddle_ocr_class = load_paddleocr_class()
+        constructor_options = [
+            {"lang": lang, "enable_mkldnn": False},
+            {"lang": lang},
+            {"enable_mkldnn": False},
+            {},
+        ]
+        last_error: Exception | None = None
+        for options in constructor_options:
+            try:
+                ocr = paddle_ocr_class(**options)
+                _PADDLE_OCR_CACHE[lang] = ocr
+                return ocr
+            except (TypeError, ValueError, RuntimeError) as exc:
+                if isinstance(exc, RuntimeError) and "Unknown argument" not in str(exc):
+                    raise
+                if isinstance(exc, (TypeError, ValueError)) and not is_constructor_argument_error(exc):
+                    raise
+                last_error = exc
+        raise RuntimeError("Unable to create PaddleOCR with supported constructor options.") from last_error
 
 
 def collect_ocr_text(value: Any) -> list[str]:
@@ -401,25 +405,26 @@ def load_ppstructure_class():
 
 
 def create_ppstructure(lang: str):
-    if lang in _PPSTRUCTURE_CACHE:
-        return _PPSTRUCTURE_CACHE[lang]
-    ppstructure_class = load_ppstructure_class()
-    # enable_mkldnn=False 는 PaddleX 공통 kwargs 로 하위 모델 전체에 전파돼 oneDNN 런타임 크래시를 막는다.
-    constructor_options = [
-        {"lang": lang, "enable_mkldnn": False},
-        {"lang": lang},
-        {"enable_mkldnn": False},
-        {},
-    ]
-    last_error: Exception | None = None
-    for options in constructor_options:
-        try:
-            engine = ppstructure_class(**options)
-            _PPSTRUCTURE_CACHE[lang] = engine
-            return engine
-        except (TypeError, ValueError, RuntimeError) as exc:
-            last_error = exc
-    raise RuntimeError("Unable to create PPStructureV3 with supported options.") from last_error
+    with _OCR_ENGINE_LOCK:
+        if lang in _PPSTRUCTURE_CACHE:
+            return _PPSTRUCTURE_CACHE[lang]
+        ppstructure_class = load_ppstructure_class()
+        # enable_mkldnn=False 는 PaddleX 공통 kwargs 로 하위 모델 전체에 전파돼 oneDNN 런타임 크래시를 막는다.
+        constructor_options = [
+            {"lang": lang, "enable_mkldnn": False},
+            {"lang": lang},
+            {"enable_mkldnn": False},
+            {},
+        ]
+        last_error: Exception | None = None
+        for options in constructor_options:
+            try:
+                engine = ppstructure_class(**options)
+                _PPSTRUCTURE_CACHE[lang] = engine
+                return engine
+            except (TypeError, ValueError, RuntimeError) as exc:
+                last_error = exc
+        raise RuntimeError("Unable to create PPStructureV3 with supported options.") from last_error
 
 
 def ppstructure_text(input_path: Path, lang: str) -> str:

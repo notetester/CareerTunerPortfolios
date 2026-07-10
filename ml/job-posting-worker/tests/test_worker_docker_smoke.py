@@ -76,7 +76,9 @@ class WorkerDockerSmokeTest(unittest.TestCase):
         self.assertIn("docker run", names)
         self.assertIn("health endpoint", names)
         self.assertIn("text extraction endpoint", names)
-        self.assertIn("--build-arg", summary["checks"][0]["command"])
+        build_command = summary["checks"][0]["command"]
+        self.assertIn("PYTHON_VERSION=3.12", build_command)
+        self.assertIn("INSTALL_OCR=true", build_command)
 
 
 if __name__ == "__main__":

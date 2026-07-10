@@ -84,16 +84,18 @@ def static_checks(repo_root: Path) -> list[ReadinessCheck]:
             "JOB_POSTING_AI_WORKER_BASE_URL",
             "http://job-posting-worker:8091",
             "media_uploads:/app/.uploads:ro",
+            "job_posting_ai_cache:/app/.cache/job-posting-ai",
+            "JOB_POSTING_AI_CACHE_DIR",
             "condition: service_healthy",
             "JOB_POSTING_WORKER_INSTALL_OCR",
         ]),
         "compose worker service",
-        "compose wires backend to the internal worker and shared upload volume",
+        "compose wires backend to the internal worker, shared upload volume, and persistent OCR cache",
     ))
     checks.append(check(
-        contains_all(dockerfile, ["INSTALL_OCR", "requirements-ocr.txt"]),
+        contains_all(dockerfile, ["INSTALL_OCR", "requirements-ocr.txt", "libgomp1", "JOB_POSTING_AI_CACHE_DIR"]),
         "worker OCR image option",
-        "worker image can be built with optional self-hosted PaddleOCR dependencies",
+        "worker image includes the optional PaddleOCR dependencies, native runtime, and writable cache",
     ))
     extraction_script = worker_root / "scripts" / "14_extract_document_text.py"
     checks.append(check(
@@ -113,9 +115,11 @@ def static_checks(repo_root: Path) -> list[ReadinessCheck]:
             "python scripts/18_check_release_readiness.py",
             "docker compose config",
             "python ml/job-posting-worker/scripts/23_run_worker_docker_smoke.py",
+            "--install-ocr",
+            "import paddle, paddleocr, paddlex, fitz, cv2",
         ]),
         "service pipeline CI",
-        "CI covers backend tests, worker tests, worker drills, synthetic stabilization, compose config, worker image build, and runtime smoke evidence",
+        "CI covers backend tests, worker tests, worker drills, stabilization, compose config, and both worker image variants",
     ))
     checks.append(check(
         contains_all(frontend_workflow, [
