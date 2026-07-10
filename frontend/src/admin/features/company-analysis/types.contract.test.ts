@@ -1,4 +1,5 @@
 import {
+  NULL_ANALYSIS_PROVENANCE,
   parseVerifiedFactViews,
   type VerifiedFactView,
 } from "@/features/applications/types/analysis";
@@ -50,6 +51,7 @@ const companyAnalysisRow: AdminCompanyAnalysisRow = {
   refreshRecommendedAt: "2026-06-09T00:00:00Z",
   confirmedAt: null,
   adminMemo: null,
+  ...NULL_ANALYSIS_PROVENANCE,
   createdAt: "2026-06-02T00:00:00Z",
 };
 

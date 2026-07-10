@@ -14,6 +14,7 @@ import type {
 } from "@/features/applications/types/applicationCase";
 import type { JobPosting, JobPostingMetadata } from "@/features/applications/types/jobPosting";
 import type { JobAnalysis, CompanyAnalysis } from "@/features/applications/types/analysis";
+import { NULL_ANALYSIS_PROVENANCE } from "@/features/applications/types/analysis";
 
 // from-job-posting 응답 타입(applicationCasesApi 에서 export). 타입 전용 import.
 import type { CreateApplicationCaseFromJobPostingResponse } from "@/features/applications/api/applicationCasesApi";
@@ -177,6 +178,7 @@ function buildJobAnalysis(applicationCaseId: number, analysisId: number): JobAna
     ambiguousConditions: JSON.stringify([]),
     confirmedAt: iso(1),
     adminMemo: null,
+    ...NULL_ANALYSIS_PROVENANCE,
     createdAt: iso(3),
   };
 }
@@ -202,6 +204,7 @@ function buildCompanyAnalysis(applicationCaseId: number, analysisId: number): Co
     refreshRecommendedAt: iso(-27),
     confirmedAt: iso(1),
     adminMemo: null,
+    ...NULL_ANALYSIS_PROVENANCE,
     createdAt: iso(3),
   };
 }

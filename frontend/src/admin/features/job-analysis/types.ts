@@ -46,13 +46,14 @@ export interface AdminJobAnalysisRow {
   ambiguousConditions: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
-  // 모델 선택·실행 provenance. 자동 초기 실행·strict 재분석만 채우고 레거시·mock 행은 없거나 NULL.
-  requestedProvider?: string | null;
-  actualProvider?: string | null;
-  actualModel?: string | null;
-  fallbackUsed?: boolean | null;
-  attemptPath?: string | null;
-  runMode?: string | null;
+  // 모델 선택·실행 provenance(응답이 항상 내려주는 nullable 필드). 자동 초기 실행·strict 재분석만 값이 있고
+  // 레거시 행은 NULL. 계약 강화를 위해 required-nullable(필드 누락을 tsc 가 잡음).
+  requestedProvider: string | null;
+  actualProvider: string | null;
+  actualModel: string | null;
+  fallbackUsed: boolean | null;
+  attemptPath: string | null;
+  runMode: string | null;
   createdAt: string;
 }
 

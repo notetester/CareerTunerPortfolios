@@ -15,13 +15,14 @@ export interface JobAnalysis {
   ambiguousConditions: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
-  // 모델 선택·실행 provenance. 자동 초기 실행·strict 재분석만 채우고 레거시·mock 행은 없거나 NULL(표시 안 함).
-  requestedProvider?: string | null;
-  actualProvider?: string | null;
-  actualModel?: string | null;
-  fallbackUsed?: boolean | null;
-  attemptPath?: string | null;
-  runMode?: string | null;
+  // 모델 선택·실행 provenance(응답이 항상 내려주는 nullable 필드). 자동 초기 실행·strict 재분석만 값이 있고
+  // 레거시 행은 NULL(표시 안 함). 계약 강화를 위해 optional 이 아니라 required-nullable 로 둔다(필드 누락을 tsc 가 잡음).
+  requestedProvider: string | null;
+  actualProvider: string | null;
+  actualModel: string | null;
+  fallbackUsed: boolean | null;
+  attemptPath: string | null;
+  runMode: string | null;
   createdAt: string;
 }
 
@@ -48,13 +49,14 @@ export interface CompanyAnalysis {
   refreshRecommendedAt: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
-  // 모델 선택·실행 provenance. 자동 초기 실행·strict 재분석만 채우고 레거시·mock 행은 없거나 NULL(표시 안 함).
-  requestedProvider?: string | null;
-  actualProvider?: string | null;
-  actualModel?: string | null;
-  fallbackUsed?: boolean | null;
-  attemptPath?: string | null;
-  runMode?: string | null;
+  // 모델 선택·실행 provenance(응답이 항상 내려주는 nullable 필드). 자동 초기 실행·strict 재분석만 값이 있고
+  // 레거시 행은 NULL(표시 안 함). 계약 강화를 위해 optional 이 아니라 required-nullable 로 둔다(필드 누락을 tsc 가 잡음).
+  requestedProvider: string | null;
+  actualProvider: string | null;
+  actualModel: string | null;
+  fallbackUsed: boolean | null;
+  attemptPath: string | null;
+  runMode: string | null;
   createdAt: string;
 }
 
@@ -541,6 +543,19 @@ export function getDifficultyLabel(value: string | null | undefined): string {
 }
 
 // ── 분석 provenance(생성 모델·실행 이력) 표시 헬퍼 (지원건별 모델 선택·재실행) ──
+
+/**
+ * provenance 미기록(레거시·mock·자동 무선택) 분석 행용 기본값 — 6필드 전부 null.
+ * required-nullable 타입을 만족시키면서 "기록 없음"을 표현하는 fixture·과거 데이터 구성에 쓴다.
+ */
+export const NULL_ANALYSIS_PROVENANCE = {
+  requestedProvider: null,
+  actualProvider: null,
+  actualModel: null,
+  fallbackUsed: null,
+  attemptPath: null,
+  runMode: null,
+} as const;
 
 const ANALYSIS_PROVIDER_LABELS: Record<string, string> = {
   LOCAL: "자체 모델",
