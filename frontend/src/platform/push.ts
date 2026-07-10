@@ -55,15 +55,26 @@ async function registerNative(): Promise<PushRegisterResult> {
   const perm = await plugin.requestPermissions();
   if (perm.receive !== "granted") return "denied";
   return await new Promise<PushRegisterResult>((resolve) => {
+    // FCM 미설정(google-services 부재) 기기에서는 registration 이벤트가 영원히 오지 않아 호출부 버튼이
+    // 영구 busy 로 잠긴다 — registrationError 와 타임아웃으로 반드시 결착시킨다.
+    let settled = false;
+    const settle = (result: PushRegisterResult) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = window.setTimeout(() => settle("permission-only"), 15_000);
+    plugin.addListener("registrationError", () => settle("permission-only"));
     plugin.addListener("registration", (data) => {
       const token = data.value;
-      if (!token) { resolve("permission-only"); return; }
+      if (!token) { settle("permission-only"); return; }
       // disablePush 에서 서버 등록을 지울 수 있게 토큰을 보관한다.
       try { localStorage.setItem(FCM_TOKEN_KEY, token); } catch { /* no-op */ }
       void api<void>("/notifications/push", {
         method: "POST",
         body: JSON.stringify({ kind: "FCM", token }),
-      }).then(() => resolve("subscribed")).catch(() => resolve("permission-only"));
+      }).then(() => settle("subscribed")).catch(() => settle("permission-only"));
     });
     void plugin.register();
   });
@@ -162,7 +173,13 @@ export async function enablePush(): Promise<PushRegisterResult> {
     return "permission-only";
   }
   try {
-    const reg = await navigator.serviceWorker.ready;
+    // 서비스워커가 등록되지 않은 환경(dev 서버 등)에서는 .ready 가 영원히 resolve 되지 않아
+    // 알림 토글이 잠긴다 — 5초 타임아웃으로 결착시킨다.
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5_000)),
+    ]);
+    if (!reg) return "permission-only";
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),

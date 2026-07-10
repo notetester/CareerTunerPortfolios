@@ -52,7 +52,7 @@ export function BillingSuccessPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-12">
-      <Card className="mx-auto max-w-xl border border-slate-200 bg-white">
+      <Card className="mx-auto max-w-xl border border-slate-200 bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl text-[#16171a]">
             {loading ? <Loader2 className="size-5 animate-spin text-blue-600" /> : <CheckCircle2 className="size-5 text-green-600" />}

@@ -50,6 +50,10 @@ export function initNativeShell(): void {
   if (initialized || !isNativeApp()) return;
   initialized = true;
 
+  // 광고 등 플랫폼 타겟 소비자(AdSlot 의 __CT_PLATFORM__)가 네이티브 앱을 식별하도록 전역 플래그를 세팅한다
+  // — 미세팅이면 앱이 항상 platform=WEB 으로 요청해 APP 타겟 광고가 어디서도 노출되지 않는다.
+  (globalThis as { __CT_PLATFORM__?: string }).__CT_PLATFORM__ = "APP";
+
   // 상태바: 웹뷰가 상태바 밑으로 깔리지 않게 오버레이를 끄고, 테마색을 맞춘다.
   try {
     const sb = nativePlugin<CapStatusBar>("StatusBar");

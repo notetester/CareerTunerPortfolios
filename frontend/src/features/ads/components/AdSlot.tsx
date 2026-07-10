@@ -141,12 +141,12 @@ function AdItem({ ad, onVisible, onClick }: AdItemProps) {
           : undefined
       }
       className={[
-        "relative overflow-hidden rounded-lg border border-slate-200 bg-white",
+        "relative overflow-hidden rounded-lg border border-slate-200 bg-card",
         clickable ? "cursor-pointer transition hover:border-slate-300 hover:shadow-sm" : "",
       ].join(" ")}
       aria-label={clickable ? `광고: ${ad.title}` : undefined}
     >
-      <span className="absolute right-2 top-2 z-10 rounded bg-slate-900/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+      <span className="absolute right-2 top-2 z-10 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
         AD
       </span>
       {ad.imageUrl ? (

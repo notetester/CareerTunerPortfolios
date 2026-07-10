@@ -61,11 +61,13 @@
                 SELECT COUNT(*)
                 FROM interview_session interview_count_source
                 WHERE interview_count_source.application_case_id = ac.id
+                  AND interview_count_source.deleted_at IS NULL
             ) AS interview_count,
             (
                 SELECT latest_interview.total_score
                 FROM interview_session latest_interview
                 WHERE latest_interview.application_case_id = ac.id
+                  AND latest_interview.deleted_at IS NULL
                   AND latest_interview.total_score IS NOT NULL
                 ORDER BY latest_interview.created_at DESC, latest_interview.id DESC
                 LIMIT 1
@@ -129,6 +131,7 @@
             WHERE ac.user_id = #{userId}
               AND ac.archived_at IS NULL
               AND ac.deleted_at IS NULL
+              AND interview.deleted_at IS NULL
 
             UNION ALL
 
@@ -156,6 +159,7 @@
         WHERE ac.user_id = #{userId}
           AND ac.archived_at IS NULL
           AND ac.deleted_at IS NULL
+          AND interview.deleted_at IS NULL
           AND interview.created_at &gt;= DATE_SUB(CURRENT_DATE, INTERVAL WEEKDAY(CURRENT_DATE) DAY)
     </select>
 
@@ -191,6 +195,7 @@
         WHERE ac.user_id = #{userId}
           AND ac.archived_at IS NULL
           AND ac.deleted_at IS NULL
+          AND interview.deleted_at IS NULL
           AND interview.total_score IS NOT NULL
         ORDER BY occurred_at DESC, interview.id DESC
         LIMIT 2

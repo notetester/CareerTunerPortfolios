@@ -212,7 +212,7 @@ export function AccountInfoCard() {
             </span>
             <div className="flex flex-wrap gap-2">
               <Input
-                className="max-w-xs bg-white"
+                className="max-w-xs"
                 value={emailDraft}
                 onChange={(e) => setEmailDraft(e.target.value)}
                 placeholder="인증받을 이메일"
@@ -309,7 +309,7 @@ export function AccountInfoCard() {
             {["GOOGLE", "KAKAO", "NAVER"].map((provider) => {
               const linked = info?.linkedProviders.includes(provider) ?? false;
               return (
-                <div key={provider} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1">
+                <div key={provider} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-card px-2 py-1">
                   <Badge className={linked ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}>
                     {PROVIDER_LABELS[provider] ?? provider}
                   </Badge>
