@@ -20,6 +20,7 @@ import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
+import com.careertuner.applicationcase.service.BAnalysisGenerationService.AnalysisProvenance;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
 import com.careertuner.applicationcase.service.OpenAiResponsesClient.CompanyAnalysisPayload;
@@ -59,6 +60,8 @@ import tools.jackson.databind.ObjectMapper;
 public class ApplicationCaseAutoPipelineService {
 
     private static final String MODEL = "self-rules-v1";
+    // 초기 자동 파이프라인이 채우는 run_mode(수동 strict 재분석은 MANUAL). preferred 경로에서만 provenance 기록.
+    private static final String RUN_MODE_INITIAL = "INITIAL";
     private static final String FEATURE_PIPELINE = "APPLICATION_CASE_PIPELINE";
     private static final String FEATURE_JOB_ANALYSIS = "JOB_ANALYSIS";
     private static final String FEATURE_COMPANY_RESEARCH = "COMPANY_RESEARCH";
@@ -127,14 +130,22 @@ public class ApplicationCaseAutoPipelineService {
         // 초기 실행 프로필 claim(PENDING→RUNNING) — 등록 경로가 만든 프로필이 있으면 반드시 획득해야
         // 초기 파이프라인이 1회만 돈다(추출 확정이 두 번 불려도 두 번째는 claim 실패로 진입하지 않는다).
         // 프로필이 없는 케이스(레거시·수동 create)는 토큰 없이 진행하되 아래 ANALYZING 진입게이트로만 가드한다.
+        ApplicationCaseInitialRun profile = initialRunMapper.findByApplicationCaseId(applicationCaseId);
         String executionToken = null;
-        if (initialRunMapper.findByApplicationCaseId(applicationCaseId) != null) {
+        if (profile != null) {
             executionToken = UUID.randomUUID().toString();
             if (initialRunMapper.claimForRun(applicationCaseId, executionToken) != 1) {
                 // 이미 다른 실행이 claim 했거나 완료/실패된 프로필 → 초기 파이프라인 재진입 금지.
                 return;
             }
         }
+
+        // 등록 시 사용자가 고른 분석 provider(없으면 null=자동 체인). 무효 값은 등록에서 이미 400 거절되므로
+        // 여기 parse 는 유효 provider 만 통과한다(방어적으로 Optional.empty()=null=자동).
+        BAnalysisProvider jobProvider = profile == null ? null
+                : BAnalysisProvider.parse(profile.getJobAnalysisProvider()).orElse(null);
+        BAnalysisProvider companyProvider = profile == null ? null
+                : BAnalysisProvider.parse(profile.getCompanyAnalysisProvider()).orElse(null);
 
         // ANALYZING 진입게이트 — 마킹(DRAFT|READY→ANALYZING CAS)에 성공해야만 파이프라인을 실행한다.
         // 이미 ANALYZING/완료 등 실행 불가 상태면 중복 실행을 막기 위해 중단하고, claim 한 프로필은 FAILED 로 되돌린다.
@@ -146,13 +157,19 @@ public class ApplicationCaseAutoPipelineService {
         }
 
         try {
-            GeneratedJobAnalysis generatedJob = bAnalysisGenerationService.generateJobAnalysis(applicationCase, postingText);
+            // 등록 선택이 있으면 preferred 경로(선택 우선 + 나머지 기본 체인 폴백 + self-rules)로, 없으면 기존 자동
+            // 체인으로 돌린다. preferred 경로만 provenance 를 채우고(run_mode=INITIAL), 자동 체인은 NULL 이다.
+            GeneratedJobAnalysis generatedJob = jobProvider != null
+                    ? bAnalysisGenerationService.generateJobAnalysisPreferred(applicationCase, postingText, jobProvider)
+                    : bAnalysisGenerationService.generateJobAnalysis(applicationCase, postingText);
             JobAnalysis jobAnalysis = createJobAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedJob);
             // flag ON 이면 사용자 직접 경로(CompanyAnalysisService)와 동일한 웹검색 로직으로 WEB evidence 를 모아
             // R1 생성(공고+웹)과 저장 gate(2소스)에 넘긴다. flag OFF·키 미설정·검색 실패면 빈 목록 → 공고-only(D-4c).
             List<CompanyWebEvidence> companyWebEvidence = companyAnalysisService.collectWebEvidence(applicationCase);
-            GeneratedCompanyAnalysis generatedCompany =
-                    bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, postingText, companyWebEvidence);
+            GeneratedCompanyAnalysis generatedCompany = companyProvider != null
+                    ? bAnalysisGenerationService.generateCompanyAnalysisPreferred(
+                            applicationCase, postingText, companyWebEvidence, companyProvider)
+                    : bAnalysisGenerationService.generateCompanyAnalysis(applicationCase, postingText, companyWebEvidence);
             createCompanyAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedCompany, postingText, companyWebEvidence);
             createFitAnalysis(userId, applicationCaseId);
             createInterviewPrep(applicationCase, jobAnalysis);
@@ -217,7 +234,7 @@ public class ApplicationCaseAutoPipelineService {
                                           Integer jobPostingRevision,
                                           GeneratedJobAnalysis generated) {
         JobAnalysisPayload payload = generated.payload();
-        JobAnalysis jobAnalysis = JobAnalysis.builder()
+        JobAnalysis.JobAnalysisBuilder builder = JobAnalysis.builder()
                 .applicationCaseId(applicationCase.getId())
                 .jobPostingId(jobPostingId)
                 .jobPostingRevision(jobPostingRevision)
@@ -230,8 +247,9 @@ public class ApplicationCaseAutoPipelineService {
                 .difficulty(payload.difficulty())
                 .summary(payload.summary())
                 .evidence(payload.evidence())
-                .ambiguousConditions(payload.ambiguousConditions())
-                .build();
+                .ambiguousConditions(payload.ambiguousConditions());
+        applyInitialRunProvenance(builder, generated.provenance());
+        JobAnalysis jobAnalysis = builder.build();
         jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
         recordFallbackIfNeeded(applicationCase.getUserId(), applicationCase.getId(), FEATURE_JOB_ANALYSIS, generated);
         recordSuccess(applicationCase.getUserId(), applicationCase.getId(), FEATURE_JOB_ANALYSIS, payload.usage());
@@ -257,7 +275,7 @@ public class ApplicationCaseAutoPipelineService {
                 webEvidence).payload();
         // 사용자 직접 생성 경로(CompanyAnalysisService)와 동일하게 KST 로 찍는다(JVM tz 무관 · BDisplayTime).
         LocalDateTime checkedAt = BDisplayTime.now();
-        CompanyAnalysis companyAnalysis = CompanyAnalysis.builder()
+        CompanyAnalysis.CompanyAnalysisBuilder builder = CompanyAnalysis.builder()
                 .applicationCaseId(applicationCase.getId())
                 .jobPostingId(jobPostingId)
                 .jobPostingRevision(jobPostingRevision)
@@ -271,11 +289,42 @@ public class ApplicationCaseAutoPipelineService {
                 .aiInferences(payload.aiInferences())
                 .sourceType("JOB_POSTING")
                 .checkedAt(checkedAt)
-                .refreshRecommendedAt(checkedAt.plusDays(30))
-                .build();
+                .refreshRecommendedAt(checkedAt.plusDays(30));
+        applyInitialRunProvenance(builder, generated.provenance());
+        CompanyAnalysis companyAnalysis = builder.build();
         companyAnalysisMapper.insertCompanyAnalysis(companyAnalysis);
         recordFallbackIfNeeded(applicationCase.getUserId(), applicationCase.getId(), FEATURE_COMPANY_RESEARCH, generated);
         recordSuccess(applicationCase.getUserId(), applicationCase.getId(), FEATURE_COMPANY_RESEARCH, payload.usage());
+    }
+
+    /**
+     * 초기 등록 preferred 경로의 provenance(요청·실제 provider·모델·폴백여부·시도순서)를 공고분석 행에 기록한다.
+     * run_mode 는 항상 {@code INITIAL}(수동 strict=MANUAL 과 구분). provenance 가 null(선택 없는 자동 체인)이면
+     * 아무 컬럼도 세팅하지 않아 기존 동작대로 전부 NULL 로 남는다.
+     */
+    private void applyInitialRunProvenance(JobAnalysis.JobAnalysisBuilder builder, AnalysisProvenance provenance) {
+        if (provenance == null) {
+            return;
+        }
+        builder.requestedProvider(provenance.requestedProvider())
+                .actualProvider(provenance.actualProvider())
+                .actualModel(provenance.actualModel())
+                .fallbackUsed(provenance.fallbackUsed())
+                .attemptPath(provenance.attemptPathJson())
+                .runMode(RUN_MODE_INITIAL);
+    }
+
+    /** 초기 등록 preferred 경로의 provenance 를 기업분석 행에 기록한다(공고분석과 동일 계약, run_mode=INITIAL). */
+    private void applyInitialRunProvenance(CompanyAnalysis.CompanyAnalysisBuilder builder, AnalysisProvenance provenance) {
+        if (provenance == null) {
+            return;
+        }
+        builder.requestedProvider(provenance.requestedProvider())
+                .actualProvider(provenance.actualProvider())
+                .actualModel(provenance.actualModel())
+                .fallbackUsed(provenance.fallbackUsed())
+                .attemptPath(provenance.attemptPathJson())
+                .runMode(RUN_MODE_INITIAL);
     }
 
     private void createFitAnalysis(Long userId, Long applicationCaseId) {

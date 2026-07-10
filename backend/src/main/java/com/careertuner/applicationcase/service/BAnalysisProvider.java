@@ -52,8 +52,21 @@ public enum BAnalysisProvider {
         if (attempts == null || attempts.isEmpty()) {
             return null;
         }
-        return attempts.stream()
-                .map(p -> "\"" + p.name() + "\"")
+        return attemptPathJson(attempts.stream().map(Enum::name).toList());
+    }
+
+    /**
+     * 통제된 토큰 목록(provider 이름 + {@code SELF_RULES} 같은 비-provider 안전망)을 {@code attempt_path} JSON
+     * 으로 직렬화한다. 초기 등록 preferred 경로는 폴백·self-rules 까지 시도 순서에 담아야 해서
+     * enum 목록만으로는 표현할 수 없다(예: {@code ["CLAUDE","OPENAI","SELF_RULES"]}). 토큰은 enum 이름 계열
+     * 대문자라 escape 가 필요 없다 — 임의 사용자 입력을 넘기지 말 것. 빈 목록이면 {@code null}.
+     */
+    public static String attemptPathJson(List<String> tokens) {
+        if (tokens == null || tokens.isEmpty()) {
+            return null;
+        }
+        return tokens.stream()
+                .map(token -> "\"" + token + "\"")
                 .collect(Collectors.joining(",", "[", "]"));
     }
 }

@@ -72,13 +72,19 @@ class ApplicationCaseAutoPipelineServiceTest {
     /** 같은 mock 협력자로 서비스만 다시 구성한다(runtime_setting 스텁 교체용 — 자동 파이프라인 on/off 테스트). */
     private ApplicationCaseAutoPipelineService buildService(
             com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingService) {
-        BAnalysisGenerationService bAnalysisGenerationService = new BAnalysisGenerationService(
+        return buildService(runtimeSettingService, new BAnalysisGenerationService(
                 new BAnalysisProperties(),
                 mock(BLocalLlmClient.class),
                 new BJobSentenceClassifier(),
                 objectMapper,
                 mock(BAnthropicClient.class),
-                mock(OpenAiResponsesClient.class));
+                mock(OpenAiResponsesClient.class)));
+    }
+
+    /** 생성 서비스를 mock 으로 주입하는 변형 — preferred 경로 호출·provenance 기록 배선(P0-1·P1-4) 검증용. */
+    private ApplicationCaseAutoPipelineService buildService(
+            com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingService,
+            BAnalysisGenerationService bAnalysisGenerationService) {
         return new ApplicationCaseAutoPipelineService(
                 applicationCaseMapper,
                 initialRunMapper,
@@ -148,6 +154,88 @@ class ApplicationCaseAutoPipelineServiceTest {
         assertThat(usageCaptor.getAllValues())
                 .allMatch(log -> "self-rules-v1".equals(log.getModel()))
                 .allMatch(log -> Integer.valueOf(0).equals(log.getCreditUsed()));
+    }
+
+    @Test
+    void initialRunUsesSelectedProvidersAndRecordsInitialProvenance() {
+        // [P0-1·P1-4] 등록 시 job=CLAUDE·company=OPENAI 를 골랐으면 초기 파이프라인이 preferred 경로로 그 provider 를
+        // 우선 실행하고, 결과 행에 provenance 6컬럼(run_mode=INITIAL)을 기록한다.
+        stubRunnableDraftCase();
+        stubAnalysisInsertCallbacks();
+        BAnalysisGenerationService generation = mock(BAnalysisGenerationService.class);
+        service = buildService(runtimeSettingServiceReturningFallback(), generation);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(profileWithProviders("CLAUDE", "OPENAI"));
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        when(generation.generateJobAnalysisPreferred(any(), anyString(), eq(BAnalysisProvider.CLAUDE)))
+                .thenReturn(new BAnalysisGenerationService.GeneratedJobAnalysis(jobPayload(), null, null,
+                        new BAnalysisGenerationService.AnalysisProvenance(
+                                "CLAUDE", "CLAUDE", "claude-haiku-test", false, "[\"CLAUDE\"]")));
+        when(generation.generateCompanyAnalysisPreferred(any(), anyString(), any(), eq(BAnalysisProvider.OPENAI)))
+                .thenReturn(new BAnalysisGenerationService.GeneratedCompanyAnalysis(companyPayload(), null, null,
+                        new BAnalysisGenerationService.AnalysisProvenance(
+                                "OPENAI", "OPENAI", "gpt-test", false, "[\"OPENAI\"]")));
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        // preferred 경로 호출(자동 체인 미호출).
+        verify(generation).generateJobAnalysisPreferred(any(), anyString(), eq(BAnalysisProvider.CLAUDE));
+        verify(generation, never()).generateJobAnalysis(any(), anyString());
+        verify(generation).generateCompanyAnalysisPreferred(any(), anyString(), any(), eq(BAnalysisProvider.OPENAI));
+        verify(generation, never()).generateCompanyAnalysis(any(), anyString(), any());
+
+        ArgumentCaptor<JobAnalysis> jobCaptor = ArgumentCaptor.forClass(JobAnalysis.class);
+        verify(jobAnalysisMapper).insertJobAnalysis(jobCaptor.capture());
+        JobAnalysis job = jobCaptor.getValue();
+        assertThat(job.getRequestedProvider()).isEqualTo("CLAUDE");
+        assertThat(job.getActualProvider()).isEqualTo("CLAUDE");
+        assertThat(job.getActualModel()).isEqualTo("claude-haiku-test");
+        assertThat(job.getFallbackUsed()).isFalse();
+        assertThat(job.getAttemptPath()).isEqualTo("[\"CLAUDE\"]");
+        assertThat(job.getRunMode()).isEqualTo("INITIAL");
+
+        ArgumentCaptor<CompanyAnalysis> companyCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
+        verify(companyAnalysisMapper).insertCompanyAnalysis(companyCaptor.capture());
+        CompanyAnalysis company = companyCaptor.getValue();
+        assertThat(company.getRequestedProvider()).isEqualTo("OPENAI");
+        assertThat(company.getActualProvider()).isEqualTo("OPENAI");
+        assertThat(company.getActualModel()).isEqualTo("gpt-test");
+        assertThat(company.getFallbackUsed()).isFalse();
+        assertThat(company.getAttemptPath()).isEqualTo("[\"OPENAI\"]");
+        assertThat(company.getRunMode()).isEqualTo("INITIAL");
+    }
+
+    @Test
+    void initialRunWithoutSelectionUsesAutoChainAndLeavesProvenanceNull() {
+        // 선택이 없으면(프로필 provider NULL) 기존 자동 체인으로 돌고 provenance 컬럼은 전부 NULL 로 남는다(현행 보존).
+        stubRunnableDraftCase();
+        stubAnalysisInsertCallbacks();
+        BAnalysisGenerationService generation = mock(BAnalysisGenerationService.class);
+        service = buildService(runtimeSettingServiceReturningFallback(), generation);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        when(generation.generateJobAnalysis(any(), anyString()))
+                .thenReturn(new BAnalysisGenerationService.GeneratedJobAnalysis(jobPayload(), null, null));
+        when(generation.generateCompanyAnalysis(any(), anyString(), any()))
+                .thenReturn(new BAnalysisGenerationService.GeneratedCompanyAnalysis(companyPayload(), null, null));
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        verify(generation).generateJobAnalysis(any(), anyString());
+        verify(generation, never()).generateJobAnalysisPreferred(any(), anyString(), any());
+        verify(generation).generateCompanyAnalysis(any(), anyString(), any());
+        verify(generation, never()).generateCompanyAnalysisPreferred(any(), anyString(), any(), any());
+
+        ArgumentCaptor<JobAnalysis> jobCaptor = ArgumentCaptor.forClass(JobAnalysis.class);
+        verify(jobAnalysisMapper).insertJobAnalysis(jobCaptor.capture());
+        assertThat(jobCaptor.getValue().getRequestedProvider()).isNull();
+        assertThat(jobCaptor.getValue().getActualProvider()).isNull();
+        assertThat(jobCaptor.getValue().getFallbackUsed()).isNull();
+        assertThat(jobCaptor.getValue().getRunMode()).isNull();
+
+        ArgumentCaptor<CompanyAnalysis> companyCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
+        verify(companyAnalysisMapper).insertCompanyAnalysis(companyCaptor.capture());
+        assertThat(companyCaptor.getValue().getRequestedProvider()).isNull();
+        assertThat(companyCaptor.getValue().getRunMode()).isNull();
     }
 
     @Test
@@ -345,6 +433,30 @@ class ApplicationCaseAutoPipelineServiceTest {
 
     private static ApplicationCaseInitialRun pendingProfile() {
         return profile("PENDING");
+    }
+
+    /** 등록 시 job/company 분석 provider 를 고른 PENDING 프로필(preferred 경로 진입 조건). */
+    private static ApplicationCaseInitialRun profileWithProviders(String jobProvider, String companyProvider) {
+        return ApplicationCaseInitialRun.builder()
+                .applicationCaseId(10L)
+                .state("PENDING")
+                .jobAnalysisProvider(jobProvider)
+                .companyAnalysisProvider(companyProvider)
+                .build();
+    }
+
+    private static OpenAiResponsesClient.JobAnalysisPayload jobPayload() {
+        return new OpenAiResponsesClient.JobAnalysisPayload(
+                "FULL_TIME", "MID", "[\"Java\"]", "[]", "개발 업무", "경력자", "NORMAL",
+                "백엔드 개발자를 위한 공고 분석 요약입니다.", "[]", "[]",
+                new OpenAiResponsesClient.Usage("claude-haiku-test", 1, 1, 2));
+    }
+
+    private static OpenAiResponsesClient.CompanyAnalysisPayload companyPayload() {
+        return new OpenAiResponsesClient.CompanyAnalysisPayload(
+                "기업 요약입니다.", "확인 불가", "IT 서비스", "[]", "면접 준비 포인트",
+                "[]", "[]", "[]", "[]",
+                new OpenAiResponsesClient.Usage("gpt-test", 1, 1, 2));
     }
 
     private static ApplicationCaseInitialRun profile(String state) {

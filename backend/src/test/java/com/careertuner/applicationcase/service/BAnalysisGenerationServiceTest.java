@@ -1426,6 +1426,112 @@ class BAnalysisGenerationServiceTest {
         verify(openAiResponsesClient, never()).analyzeJobPosting(any(), any());
     }
 
+    // ── 초기 등록 preferred 경로: 선택 우선 + 나머지 기본 체인 폴백 + self-rules 안전망 + provenance ──
+
+    @Test
+    void generateJobAnalysisPreferredUsesSelectedProviderFirstWithoutFallback() {
+        // 선택=CLAUDE. local 이 활성이어도 preferred 는 CLAUDE 를 먼저 시도하고 성공하면 나머지는 건너뛴다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.model()).thenReturn("claude-haiku-test");
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validJobJson());
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result = service.generateJobAnalysisPreferred(
+                applicationCase(), postingText(), BAnalysisProvider.CLAUDE);
+
+        assertThat(result.fellBack()).isFalse();
+        var provenance = result.provenance();
+        assertThat(provenance.requestedProvider()).isEqualTo("CLAUDE");
+        assertThat(provenance.actualProvider()).isEqualTo("CLAUDE");
+        assertThat(provenance.actualModel()).isEqualTo("claude-haiku-test");
+        assertThat(provenance.fallbackUsed()).isFalse();
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"CLAUDE\"]");
+        verify(localLlmClient, never()).chat(anyString(), anyString(), any());
+    }
+
+    @Test
+    void generateJobAnalysisPreferredFallsBackThroughChainWhenSelectedFails() {
+        // 선택=CLAUDE 가 실패하면 나머지 기본 체인(local→...)으로 폴백한다. actual=LOCAL, fallback_used=true.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(validJobJson());
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenThrow(new RuntimeException("claude down"));
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result = service.generateJobAnalysisPreferred(
+                applicationCase(), postingText(), BAnalysisProvider.CLAUDE);
+
+        assertThat(result.fellBack()).isFalse();
+        var provenance = result.provenance();
+        assertThat(provenance.requestedProvider()).isEqualTo("CLAUDE");
+        assertThat(provenance.actualProvider()).isEqualTo("LOCAL");
+        assertThat(provenance.actualModel()).isEqualTo("qwen-test");
+        assertThat(provenance.fallbackUsed()).isTrue();
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"CLAUDE\",\"LOCAL\"]");
+    }
+
+    @Test
+    void generateJobAnalysisPreferredFallsBackToSelfRulesWhenAllProvidersFail() {
+        // 선택=CLAUDE 실패 + local 비활성 + openai 미설정 → self-rules 안전망. actual=SELF_RULES, fellBack=true.
+        BAnalysisProperties properties = new BAnalysisProperties(); // local 비활성
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenThrow(new RuntimeException("claude down"));
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class); // configured()=false
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result = service.generateJobAnalysisPreferred(
+                applicationCase(), postingText(), BAnalysisProvider.CLAUDE);
+
+        assertThat(result.fellBack()).isTrue();
+        assertThat(result.payload().usage().model()).isEqualTo(BAnalysisGenerationService.SELF_RULES_MODEL);
+        var provenance = result.provenance();
+        assertThat(provenance.requestedProvider()).isEqualTo("CLAUDE");
+        assertThat(provenance.actualProvider()).isEqualTo("SELF_RULES");
+        assertThat(provenance.fallbackUsed()).isTrue();
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"CLAUDE\",\"SELF_RULES\"]");
+    }
+
+    @Test
+    void generateCompanyAnalysisPreferredUsesSelectedProviderFirst() {
+        // 선택=OPENAI. local·claude 가 가용이어도 OPENAI 를 먼저 시도하고 성공하면 나머지는 건너뛴다.
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.configured()).thenReturn(true);
+        when(openAiClient.analyzeCompany(any(), anyString(), any(), any())).thenReturn(openAiCompanyPayload("gpt-test"));
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result = service.generateCompanyAnalysisPreferred(
+                applicationCase(), postingText(), List.of(), BAnalysisProvider.OPENAI);
+
+        assertThat(result.fellBack()).isFalse();
+        var provenance = result.provenance();
+        assertThat(provenance.requestedProvider()).isEqualTo("OPENAI");
+        assertThat(provenance.actualProvider()).isEqualTo("OPENAI");
+        assertThat(provenance.actualModel()).isEqualTo("gpt-test");
+        assertThat(provenance.fallbackUsed()).isFalse();
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"OPENAI\"]");
+        verify(anthropicClient, never()).chat(anyString(), anyString(), any());
+        verify(localLlmClient, never()).chat(anyString(), anyString(), any());
+    }
+
     private static String validJobJson() {
         return """
                 {
