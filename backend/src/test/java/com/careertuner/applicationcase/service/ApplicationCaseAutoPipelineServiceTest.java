@@ -305,26 +305,30 @@ class ApplicationCaseAutoPipelineServiceTest {
         stubRunnableDraftCase();
         when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
         when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
-        doThrow(new RuntimeException("x".repeat(2000)))
+        String longMessage = "boom-" + "a".repeat(2000);
+        doThrow(new RuntimeException(longMessage))
                 .when(companyAnalysisService).collectWebEvidence(any(ApplicationCase.class));
 
         service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
 
+        // 정확히 255자 + 앞 255자 원문 보존(단순 ≤255 보다 강하게 잠근다).
         ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
         verify(initialRunMapper).markFailed(eq(10L), anyString(), reason.capture());
-        assertThat(reason.getValue().length()).isLessThanOrEqualTo(255);
+        assertThat(reason.getValue()).hasSize(255).isEqualTo(longMessage.substring(0, 255));
     }
 
     @Test
     void abandonTruncatesFailureReasonToInitialRunColumnLength() {
         // abandonInitialRunIfPending 도 동일 컬럼에 쓰므로 255자 이하로 잘라야 한다(markFailed truncation 고착 방지).
         when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        String longReason = "abandon-" + "b".repeat(2000);
 
-        service.abandonInitialRunIfPending(10L, "y".repeat(2000));
+        service.abandonInitialRunIfPending(10L, longReason);
 
+        // 정확히 255자 + 앞 255자 원문 보존.
         ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
         verify(initialRunMapper).markFailed(eq(10L), anyString(), reason.capture());
-        assertThat(reason.getValue().length()).isLessThanOrEqualTo(255);
+        assertThat(reason.getValue()).hasSize(255).isEqualTo(longReason.substring(0, 255));
     }
 
     @Test
