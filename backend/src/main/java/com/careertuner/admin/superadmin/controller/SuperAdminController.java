@@ -26,6 +26,8 @@ import com.careertuner.admin.superadmin.dto.PermissionGovernanceDtos.BulkRevokeR
 import com.careertuner.admin.superadmin.dto.PermissionGovernanceDtos.PermissionRequestCreate;
 import com.careertuner.admin.superadmin.dto.PermissionGovernanceDtos.RejectRequest;
 import com.careertuner.admin.superadmin.service.SuperAdminService;
+import com.careertuner.admin.permission.annotation.AdminRoleOnly;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -34,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/super")
+@RequireAdminPermission({"ADMIN_PERMISSION_MANAGE", "POLICY_ADMIN"})
 @RequiredArgsConstructor
 public class SuperAdminController {
 
@@ -166,6 +169,7 @@ public class SuperAdminController {
     /* ── 권한 요청/승인 워크플로우 ── */
 
     @PostMapping("/permission-requests")
+    @AdminRoleOnly
     public ApiResponse<Void> requestPermissions(@AuthenticationPrincipal AuthUser authUser,
                                                 @RequestBody PermissionRequestCreate request) {
         service.requestPermissions(authUser, request.userId(), request.permissionCodes(), request.description());

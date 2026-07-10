@@ -16,6 +16,8 @@ import com.careertuner.admin.user.dto.AdminUserRow;
 import com.careertuner.admin.user.dto.AdminUserStatusUpdateRequest;
 import com.careertuner.admin.user.mapper.AdminUserMapper;
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.common.security.AdminAccountMutationGuard;
+import com.careertuner.admin.common.security.AdminAccountState;
 import com.careertuner.admin.common.grid.AdminGridSpec;
 import com.careertuner.admin.common.grid.AdminListNormalizer;
 import com.careertuner.admin.common.grid.AdminListQuery;
@@ -50,6 +52,7 @@ public class AdminUserService {
     private final AdminUserMapper mapper;
     private final AuthMapper authMapper;
     private final AdminActionLogService actionLogService;
+    private final AdminAccountMutationGuard accountMutationGuard;
 
     @Transactional(readOnly = true)
     public List<AdminUserRow> users(AuthUser authUser, String keyword, String status, String role, int limit) {
@@ -131,11 +134,12 @@ public class AdminUserService {
         int updated = 0;
         int skipped = 0;
         for (Long id : ids) {
-            AdminUserRow existing = mapper.findUser(id);
-            if (existing == null || nextStatus.equals(existing.getStatus())) {
+            AdminAccountState locked = accountMutationGuard.validateStatusChange(authUser, id, nextStatus);
+            if (locked == null || nextStatus.equals(locked.status())) {
                 skipped++;
                 continue;
             }
+            AdminUserRow existing = mapper.findUser(id);
             mapper.updateStatus(id, nextStatus, reason, blockedUntil, authUser.id());
             mapper.insertStatusHistory(id, authUser.id(), existing.getStatus(), nextStatus, reason,
                     null, blockedUntil);
@@ -176,8 +180,12 @@ public class AdminUserService {
     @Transactional
     public AdminUserRow updateStatus(AuthUser authUser, Long id, AdminUserStatusUpdateRequest request) {
         requireAdmin(authUser);
-        AdminUserRow existing = findExisting(id);
         String nextStatus = normalize(request.status(), STATUSES, true);
+        AdminAccountState locked = accountMutationGuard.validateStatusChange(authUser, id, nextStatus);
+        if (locked == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원을 찾을 수 없습니다.");
+        }
+        AdminUserRow existing = findExisting(id);
         LocalDateTime blockedUntil = "BLOCKED".equals(nextStatus) ? request.blockedUntil() : null;
         String reason = blankToNull(request.reason());
         int updated = mapper.updateStatus(id, nextStatus, reason, blockedUntil, authUser.id());

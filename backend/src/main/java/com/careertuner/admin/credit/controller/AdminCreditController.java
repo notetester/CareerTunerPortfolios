@@ -14,6 +14,7 @@ import com.careertuner.admin.credit.dto.AdminCreditAdjustResponse;
 import com.careertuner.admin.credit.dto.AdminCreditPage;
 import com.careertuner.admin.credit.dto.AdminCreditSummary;
 import com.careertuner.admin.credit.service.AdminCreditService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.common.web.SitesFinancialMutation;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/credits")
+@RequireAdminPermission({"BILLING_READ", "BILLING_ADMIN"})
 @RequiredArgsConstructor
 @Validated
 public class AdminCreditController {
@@ -50,6 +52,7 @@ public class AdminCreditController {
 
     @SitesFinancialMutation
     @PostMapping("/adjust")
+    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
     public ApiResponse<AdminCreditAdjustResponse> adjust(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody AdminCreditAdjustRequest request

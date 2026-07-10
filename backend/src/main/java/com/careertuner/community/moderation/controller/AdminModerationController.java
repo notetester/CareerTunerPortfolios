@@ -1,5 +1,7 @@
 package com.careertuner.community.moderation.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
@@ -41,6 +43,7 @@ import com.careertuner.community.moderation.service.PostModerationService;
 @RestController
 @RequestMapping("/api/admin/ai")
 @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN", "AI_OPERATION_MANAGE", "AI_ADMIN"})
 public class AdminModerationController {
 
     private final PostModerationService moderationService;

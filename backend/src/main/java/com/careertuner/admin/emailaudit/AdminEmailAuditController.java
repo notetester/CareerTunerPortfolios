@@ -1,5 +1,7 @@
 package com.careertuner.admin.emailaudit;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -25,6 +27,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/email-audit")
+@RequireAdminPermission({"EMAIL_AUDIT_READ", "AUDIT_ADMIN"})
 @RequiredArgsConstructor
 public class AdminEmailAuditController {
 

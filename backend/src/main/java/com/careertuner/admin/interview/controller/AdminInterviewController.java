@@ -1,5 +1,7 @@
 package com.careertuner.admin.interview.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/interview")
+@RequireAdminPermission({"INTERVIEW_READ", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminInterviewController {
 
@@ -59,6 +62,7 @@ public class AdminInterviewController {
     }
 
     @PutMapping("/sessions/{id}/memo")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<Void> updateMemo(@AuthenticationPrincipal AuthUser authUser,
                                         @PathVariable Long id,
                                         @RequestBody UpdateAdminMemoRequest request) {

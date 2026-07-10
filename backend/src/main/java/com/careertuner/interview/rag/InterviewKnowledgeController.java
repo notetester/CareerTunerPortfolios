@@ -1,5 +1,7 @@
 package com.careertuner.interview.rag;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 import java.util.Map;
 
@@ -24,12 +26,14 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 면접 RAG 지식베이스 관리. */
 @RestController
 @RequestMapping("/api/admin/interview/knowledge")
+@RequireAdminPermission({"INTERVIEW_READ", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class InterviewKnowledgeController {
 
     private final InterviewKnowledgeService service;
 
     @PostMapping
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<InterviewKnowledge> add(@AuthenticationPrincipal AuthUser authUser,
                                                @Valid @RequestBody AddKnowledgeRequest request) {
         return ApiResponse.ok(service.addDocument(authUser, request.kind(), request.title(),
@@ -43,6 +47,7 @@ public class InterviewKnowledgeController {
     }
 
     @PutMapping("/{id}")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<InterviewKnowledge> update(@AuthenticationPrincipal AuthUser authUser,
                                                   @PathVariable Long id,
                                                   @Valid @RequestBody AddKnowledgeRequest request) {
@@ -51,12 +56,14 @@ public class InterviewKnowledgeController {
     }
 
     @DeleteMapping("/{id}")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<Void> delete(@AuthenticationPrincipal AuthUser authUser, @PathVariable Long id) {
         service.delete(authUser, id);
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/reindex")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<Map<String, Integer>> reindex(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(Map.of("reindexed", service.reindexAll(authUser)));
     }

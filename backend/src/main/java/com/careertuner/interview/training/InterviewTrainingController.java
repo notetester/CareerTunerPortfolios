@@ -1,5 +1,7 @@
 package com.careertuner.interview.training;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 면접 학습 데이터 파이프라인: 통계 / JSONL 추출 / 평가 하니스 / 파인튜닝. */
 @RestController
 @RequestMapping("/api/admin/interview/training")
+@RequireAdminPermission({"INTERVIEW_READ", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class InterviewTrainingController {
 
@@ -43,12 +46,14 @@ public class InterviewTrainingController {
     }
 
     @PostMapping("/eval")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<EvalHarnessResponse> eval(@AuthenticationPrincipal AuthUser authUser,
                                                  @RequestParam(defaultValue = "20") int sampleSize) {
         return ApiResponse.ok(service.runEvalHarness(authUser, sampleSize));
     }
 
     @PostMapping("/fine-tune")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<FineTuneResponse> fineTune(@AuthenticationPrincipal AuthUser authUser,
                                                   @RequestParam(required = false) String baseModel) {
         return ApiResponse.ok(service.startFineTune(authUser, baseModel));

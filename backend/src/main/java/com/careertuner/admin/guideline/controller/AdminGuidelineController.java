@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.admin.guideline.dto.AdminGuidelineRequest;
 import com.careertuner.admin.guideline.dto.AdminGuidelineResponse;
 import com.careertuner.admin.guideline.service.AdminGuidelineService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/guidelines")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
 @RequiredArgsConstructor
 public class AdminGuidelineController {
 

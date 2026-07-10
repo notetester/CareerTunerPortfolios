@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.collaboration.dto.AdminConversationDetailResponse;
 import com.careertuner.collaboration.dto.AdminConversationRoomResponse;
 import com.careertuner.collaboration.service.CollaborationAdminService;
@@ -26,6 +27,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 채팅방 오버사이트 — /api/admin/collaboration/**. AdminAccess 패턴 적용. */
 @RestController
 @RequestMapping("/api/admin/collaboration")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
 @RequiredArgsConstructor
 @Validated
 public class CollaborationAdminController {

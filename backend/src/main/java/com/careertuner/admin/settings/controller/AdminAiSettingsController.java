@@ -1,5 +1,7 @@
 package com.careertuner.admin.settings.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -19,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/ai-settings")
+@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminAiSettingsController {
 

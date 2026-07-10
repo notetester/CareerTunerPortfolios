@@ -1,64 +1,117 @@
 import { useEffect, useState } from "react";
 import { api } from "@/app/lib/api";
+import { subscribeTokenStore } from "@/app/lib/tokenStore";
+import type { AdminPermissionStatus } from "@/admin/auth/adminAccess";
 
 /**
  * 관리자 실효 권한 조회 훅 (GET /api/admin/me/permissions).
- *
- * 사이드바/메뉴 노출 제어 전용 — 서버 인터셉터(@RequireAdminPermission)가 항상 최종 방어선이다.
- * AdminShell 이 페이지마다 마운트되므로 모듈 캐시로 세션당 1회만 조회한다
- * (권한 변경은 재로그인/새로고침 시 반영 — 60초 서버 캐시와 동일한 완화 기준).
+ * 캐시는 사용자 id+role 단위이며 token 교체/폐기 시 전부 버린다.
  */
-
 export interface AdminMePermissions {
   role: string;
   superAdmin: boolean;
   permissions: string[];
 }
 
-let cached: AdminMePermissions | null = null;
-let inflight: Promise<AdminMePermissions> | null = null;
+export interface AdminPermissionsState {
+  status: AdminPermissionStatus;
+  data: AdminMePermissions | null;
+}
 
-function fetchPermissions(): Promise<AdminMePermissions> {
+interface KeyedState extends AdminPermissionsState {
+  key: string | null;
+}
+
+const cache = new Map<string, AdminMePermissions>();
+const inflight = new Map<string, Promise<AdminMePermissions>>();
+let cacheEpoch = 0;
+
+function permissionKey(userId: number | null, role: string | null): string | null {
+  if (!Number.isSafeInteger(userId) || userId == null || userId <= 0 || !role) return null;
+  return `${userId}:${role}`;
+}
+
+function fetchPermissions(key: string, expectedRole: string): Promise<AdminMePermissions> {
+  const cached = cache.get(key);
   if (cached) return Promise.resolve(cached);
-  if (!inflight) {
-    inflight = api<AdminMePermissions>("/admin/me/permissions", { method: "GET" })
-      .then((data) => {
-        cached = data;
-        return data;
-      })
-      .finally(() => {
-        inflight = null;
-      });
-  }
-  return inflight;
+  const pending = inflight.get(key);
+  if (pending) return pending;
+
+  const requestEpoch = cacheEpoch;
+  const request = api<AdminMePermissions>("/admin/me/permissions", { method: "GET" })
+    .then((data) => {
+      if (
+        data.role !== expectedRole
+        || !Array.isArray(data.permissions)
+        || data.permissions.some((permission) => typeof permission !== "string")
+      ) {
+        throw new Error("관리자 권한 응답이 현재 사용자와 일치하지 않습니다.");
+      }
+      if (cacheEpoch === requestEpoch) cache.set(key, data);
+      return data;
+    })
+    .finally(() => {
+      if (inflight.get(key) === request) inflight.delete(key);
+    });
+  inflight.set(key, request);
+  return request;
 }
 
-/** 로그아웃/계정 전환 시 캐시 초기화용(필요한 곳에서 호출). */
-export function clearAdminPermissionsCache() {
-  cached = null;
+export function clearAdminPermissionsCache(): void {
+  cacheEpoch += 1;
+  cache.clear();
+  inflight.clear();
 }
 
-/**
- * @param enabled 관리자 계정일 때만 true 로 — 일반 사용자는 호출하지 않는다.
- * @returns 로딩 중/실패면 null (호출부는 role 기반 기본 동작으로 폴백).
- */
-export function useAdminPermissions(enabled: boolean): AdminMePermissions | null {
-  const [data, setData] = useState<AdminMePermissions | null>(cached);
+// 로그인 계정 전환, refresh token 교체, 로그아웃 모두 이전 계정 권한을 재사용하지 않는다.
+subscribeTokenStore(() => clearAdminPermissionsCache());
+
+export function useAdminPermissions(
+  userId: number | null,
+  role: string | null,
+  enabled: boolean,
+): AdminPermissionsState {
+  const key = permissionKey(userId, role);
+  const [tokenRevision, setTokenRevision] = useState(0);
+  const [state, setState] = useState<KeyedState>(() => {
+    const cached = key ? cache.get(key) : null;
+    if (enabled && key && cached) return { key, status: "ready", data: cached };
+    return { key, status: enabled && key ? "loading" : "idle", data: null };
+  });
+
+  // 같은 userId라도 access token이 교체되면 이전 요청 결과를 버리고 새 세션으로 다시 조회한다.
+  useEffect(() => subscribeTokenStore(() => {
+    setTokenRevision((current) => current + 1);
+  }), []);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !key || !role) {
+      setState({ key, status: "idle", data: null });
+      return;
+    }
+
+    const cached = cache.get(key);
+    if (cached) {
+      setState({ key, status: "ready", data: cached });
+      return;
+    }
+
     let cancelled = false;
-    fetchPermissions()
-      .then((result) => {
-        if (!cancelled) setData(result);
+    setState({ key, status: "loading", data: null });
+    fetchPermissions(key, role)
+      .then((data) => {
+        if (!cancelled) setState({ key, status: "ready", data });
       })
       .catch(() => {
-        // 조회 실패 시 null 유지 — 사이드바는 role 기본 노출로 폴백(서버 검증은 별도)
+        if (!cancelled) setState({ key, status: "error", data: null });
       });
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [enabled, key, role, tokenRevision]);
 
-  return enabled ? data : null;
+  if (state.key !== key) {
+    return { status: enabled && key ? "loading" : "idle", data: null };
+  }
+  return { status: state.status, data: state.data };
 }

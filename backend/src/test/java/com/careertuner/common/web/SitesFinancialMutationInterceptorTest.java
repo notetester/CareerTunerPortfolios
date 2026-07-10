@@ -44,7 +44,7 @@ class SitesFinancialMutationInterceptorTest {
     void setUp() {
         CareerTunerProperties props = new CareerTunerProperties();
         props.getApp().setFrontendUrl("https://careertuner.kro.kr");
-        props.getApp().setSitesFrontendUrl("https://careertuner-backup.career-tuner-4654.chatgpt.site");
+        props.getApp().setSitesFrontendUrl("https://careertuner.career-tuner-4654.chatgpt.site");
         interceptor = new SitesFinancialMutationInterceptor(new FrontendReturnUrlResolver(props));
     }
 

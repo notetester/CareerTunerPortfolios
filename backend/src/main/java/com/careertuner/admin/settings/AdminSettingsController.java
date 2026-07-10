@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.admin.settings.dto.SettingsExport;
 import com.careertuner.admin.settings.dto.SettingsImportResult;
@@ -29,6 +30,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/settings")
+@RequireAdminPermission({"POLICY_MANAGE", "POLICY_ADMIN"})
 @RequiredArgsConstructor
 public class AdminSettingsController {
 

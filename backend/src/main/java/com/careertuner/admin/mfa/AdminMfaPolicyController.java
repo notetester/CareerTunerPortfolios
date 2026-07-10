@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.auth.dto.MfaPolicyResponse;
 import com.careertuner.auth.dto.MfaPolicyUpdateRequest;
 import com.careertuner.auth.service.MfaService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/mfa-policy")
+@RequireAdminPermission({"POLICY_MANAGE", "POLICY_ADMIN"})
 @RequiredArgsConstructor
 public class AdminMfaPolicyController {
     private final MfaService mfaService;
