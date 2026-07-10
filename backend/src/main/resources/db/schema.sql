@@ -239,6 +239,7 @@ CREATE TABLE IF NOT EXISTS application_case_extraction (
     job_posting_id      BIGINT NULL,
     user_id             BIGINT NOT NULL,
     source_type         VARCHAR(20) NOT NULL,
+    ocr_requested_provider VARCHAR(20) NULL,                 -- 선택 OCR provider 스냅샷 (CLAUDE/OPENAI/SELF_OCR)
     status              VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
     active_status_marker TINYINT GENERATED ALWAYS AS (
         CASE WHEN status IN ('QUEUED', 'RUNNING') THEN 1 ELSE NULL END
@@ -285,6 +286,12 @@ CREATE TABLE IF NOT EXISTS job_analysis (
     ambiguous_conditions JSON NULL,
     confirmed_at        DATETIME NULL,
     admin_memo          VARCHAR(2000) NULL,
+    requested_provider  VARCHAR(20) NULL,                    -- 선택 provider (LOCAL/CLAUDE/OPENAI)
+    actual_provider     VARCHAR(20) NULL,                    -- 실제 성공 provider
+    actual_model        VARCHAR(80) NULL,                    -- 실제 모델 ID
+    fallback_used       TINYINT(1) NULL,                     -- 폴백 여부(NULL=legacy/unknown)
+    attempt_path        JSON NULL,                           -- 시도한 provider 순서·결과
+    run_mode            VARCHAR(20) NULL,                    -- INITIAL/MANUAL (legacy=NULL)
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_job_analysis_case (application_case_id),
@@ -311,12 +318,39 @@ CREATE TABLE IF NOT EXISTS company_analysis (
     refresh_recommended_at DATETIME NULL,
     confirmed_at        DATETIME NULL,
     admin_memo          VARCHAR(2000) NULL,
+    requested_provider  VARCHAR(20) NULL,                    -- 선택 provider (OPENAI/CLAUDE/LOCAL)
+    actual_provider     VARCHAR(20) NULL,                    -- 실제 성공 provider
+    actual_model        VARCHAR(80) NULL,                    -- 실제 모델 ID
+    fallback_used       TINYINT(1) NULL,                     -- 폴백 여부(NULL=legacy/unknown)
+    attempt_path        JSON NULL,                           -- 시도한 provider 순서·결과
+    run_mode            VARCHAR(20) NULL,                    -- INITIAL/MANUAL (legacy=NULL)
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_company_analysis_case (application_case_id),
     KEY idx_company_analysis_posting (job_posting_id),
     CONSTRAINT fk_company_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
     CONSTRAINT fk_company_analysis_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 지원 건별 초기 실행 프로필(모델 선택·재실행 Phase 1). 초기 자동 파이프라인의 "중복 진입 방지 + 늦은 완료
+-- fencing"을 제공한다(외부 모델 호출 포함이라 엄밀한 exactly-once 는 아니다). worker 추출성공/최초확정 경로가
+-- state 를 PENDING→RUNNING 으로 조건부 claim 하고, execution_token 으로 stale-reaper 의 늦은 갱신을 fencing 한다.
+-- OCR 선택값은 실행 주체(추출 워커)가 달라 application_case_extraction.ocr_requested_provider 에 스냅샷한다.
+CREATE TABLE IF NOT EXISTS application_case_initial_run (
+    application_case_id       BIGINT NOT NULL,
+    state                     VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/RUNNING/DONE/FAILED
+    job_analysis_provider     VARCHAR(20) NULL,                       -- LOCAL/CLAUDE/OPENAI (미선택=NULL → 현행 체인)
+    company_analysis_provider VARCHAR(20) NULL,                       -- OPENAI/CLAUDE/LOCAL
+    execution_token           CHAR(36) NULL,                          -- RUNNING claim 시 UUID 발급(fencing 토큰)
+    started_at                DATETIME NULL,
+    finished_at               DATETIME NULL,
+    failure_reason            VARCHAR(255) NULL,
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (application_case_id),
+    KEY idx_initial_run_stale (state, started_at),
+    CONSTRAINT chk_initial_run_state CHECK (state IN ('PENDING', 'RUNNING', 'DONE', 'FAILED')),
+    CONSTRAINT fk_initial_run_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- 기업분석 웹검색 결과 캐시(235 §4·§6). 같은 회사 재검색 방지(비용↓)와 신선도 판정 근거.
