@@ -34,6 +34,8 @@ import {
 } from "./domains/f-area";
 
 import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
+import { canAccessMockApi } from "@/admin/auth/adminAccess";
+import { getOutageFallbackSnapshot } from "../outageFallback";
 
 import type { MockRoute } from "./registry";
 import { ok } from "./registry";
@@ -59,6 +61,8 @@ import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
 export const MOCK_UNHANDLED = Symbol("mock-unhandled");
+/** 현재 mock 세션으로 접근할 수 없는 관리자 API sentinel. */
+export const MOCK_FORBIDDEN = Symbol("mock-forbidden");
 
 let demoJobPostingFallbackSetting = {
   enabled: false,
@@ -79,18 +83,30 @@ let mockSessionUser = demoUser;
 const MOCK_ROLE_KEY = "careertuner.mock.role";
 
 function setMockSession(user: typeof demoUser) {
-  mockSessionUser = user;
+  // 장애 fallback은 운영자 콘솔 대체 수단이 아니다. static-demo에서만 명시적 관리자 persona를 허용한다.
+  const nextUser = user.role === "ADMIN" && getOutageFallbackSnapshot().mode !== "static-demo"
+    ? demoUser
+    : user;
+  mockSessionUser = nextUser;
   if (typeof localStorage !== "undefined") {
-    if (user.role === "ADMIN") localStorage.setItem(MOCK_ROLE_KEY, "ADMIN");
+    if (nextUser.role === "ADMIN") localStorage.setItem(MOCK_ROLE_KEY, "ADMIN");
     else localStorage.removeItem(MOCK_ROLE_KEY);
   }
 }
 
 function getMockSession() {
-  if (typeof localStorage !== "undefined" && localStorage.getItem(MOCK_ROLE_KEY) === "ADMIN") {
+  if (
+    getOutageFallbackSnapshot().mode === "static-demo"
+    && typeof localStorage !== "undefined"
+    && localStorage.getItem(MOCK_ROLE_KEY) === "ADMIN"
+  ) {
     return demoAdminUser;
   }
-  return mockSessionUser;
+  return getOutageFallbackSnapshot().mode === "static-demo" ? mockSessionUser : demoUser;
+}
+
+export function canResolveMockRequest(rawPath: string): boolean {
+  return canAccessMockApi(rawPath, getMockSession().role);
 }
 
 // ── C: 적합도 분석 mock 세션 상태 ──
@@ -141,7 +157,7 @@ const coreRoutes: MockRoute[] = [
     pattern: /^\/auth\/login$/,
     handler: ({ body }) => {
       const email = String((body as { email?: unknown })?.email ?? "").toLowerCase();
-      setMockSession(email.startsWith("admin@") ? demoAdminUser : demoUser);
+      setMockSession(email === demoAdminUser.email ? demoAdminUser : demoUser);
       // MFA 도입 이후 LoginResponse 는 token 을 중첩으로 담는다 — flat 반환 시 로그인이 조용히 실패(토큰 미저장).
       return {
         mfaRequired: false,
@@ -473,7 +489,8 @@ const routes: MockRoute[] = [
 export async function resolveMock(
   rawPath: string,
   options: RequestInit,
-): Promise<unknown | typeof MOCK_UNHANDLED> {
+): Promise<unknown | typeof MOCK_UNHANDLED | typeof MOCK_FORBIDDEN> {
+  if (!canResolveMockRequest(rawPath)) return MOCK_FORBIDDEN;
   const method = (options.method ?? "GET").toUpperCase();
   const [path, queryString = ""] = rawPath.split("?");
   const query = new URLSearchParams(queryString);
