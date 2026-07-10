@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   X, ArrowRight, ArrowLeft, Check, PenLine, FileText, UserRound, Briefcase,
-  Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, Github, Lightbulb,
+  Link2, FileUp, ClipboardPaste, ShieldCheck, Video, Loader2, GitFork, Lightbulb,
   Minimize2, Maximize2, ClipboardList, CheckCircle2, RotateCcw,
 } from "lucide-react";
 
@@ -11,6 +11,7 @@ import {
   type DocSlot, type GuideStep, type LinkKey,
 } from "../onboarding/guideData";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
+import { draftPickFromCounts } from "@/app/profile/profileDraftMerge";
 
 const ORCH_GLYPH = "✦";
 const CUSTOM_ROLE = "__custom__";
@@ -317,6 +318,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
                       company={null}
                       showFooter={false}
                       onRetry={() => void g.runReal()}
+                      onAttachCoverLetter={g.attachCoverLetter}
                       onNavigate={onNavigate}
                     />
                   )
@@ -372,10 +374,10 @@ function ServerWaitingView({ text, waitingSince, nextPollAt }: {
 
 type G = ReturnType<typeof useOnboardingGuide>;
 type FileRefs = {
-  cover: React.RefObject<HTMLInputElement>;
-  resume: React.RefObject<HTMLInputElement>;
-  portfolio: React.RefObject<HTMLInputElement>;
-  jd: React.RefObject<HTMLInputElement>;
+  cover: React.RefObject<HTMLInputElement | null>;
+  resume: React.RefObject<HTMLInputElement | null>;
+  portfolio: React.RefObject<HTMLInputElement | null>;
+  jd: React.RefObject<HTMLInputElement | null>;
 };
 
 /* ── STEP 1: 직군 ── */
@@ -435,6 +437,10 @@ function DocsStep({ g, fileRefs }: { g: G; fileRefs: FileRefs }) {
         ))}
       </div>
 
+      {(g.profileImportNotice || g.profileDraftStatus !== "idle" || g.profileDraftError) && (
+        <ProfileDraftCard g={g} />
+      )}
+
       {/* 직군별 링크 필드(분석에 넣음 vs 저장만 구분) */}
       {g.field.links.length > 0 && (
         <div className="mt-4">
@@ -450,13 +456,146 @@ function DocsStep({ g, fileRefs }: { g: G; fileRefs: FileRefs }) {
   );
 }
 
-function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.RefObject<HTMLInputElement> }) {
+/**
+ * 이력서 구조화 초안 확인 카드. 승인 필드만 applyProfileDraft → PUT /profile.
+ * saveOnboardingProfile(:720) 은 이후 AWAIT_MODE 시점이라, docs 에서 먼저 써도 RMW 가 보존한다.
+ */
+function ProfileDraftCard({ g }: { g: G }) {
+  const draft = g.profileDraft;
+  const eduCount = Array.isArray(draft?.education) ? (draft.education as unknown[]).length : 0;
+  const careerCount = Array.isArray(draft?.career) ? (draft.career as unknown[]).length : 0;
+  const projectCount = Array.isArray(draft?.projects) ? (draft.projects as unknown[]).length : 0;
+  const skillCount = Array.isArray(draft?.skills) ? draft.skills.length : 0;
+  const linkCount = Array.isArray(draft?.portfolioLinks) ? draft.portfolioLinks.length : 0;
+  const hasAny = eduCount + careerCount + projectCount + skillCount + linkCount > 0;
+  // 건수가 0인 필드는 체크하지 않음 — true 기본이면 apply 시 빈 [] 로 기존 값을 지운다.
+  const [pick, setPick] = useState(() =>
+    draftPickFromCounts({
+      education: eduCount,
+      career: careerCount,
+      projects: projectCount,
+      skills: skillCount,
+      portfolioLinks: linkCount,
+    }),
+  );
+  useEffect(() => {
+    setPick(
+      draftPickFromCounts({
+        education: eduCount,
+        career: careerCount,
+        projects: projectCount,
+        skills: skillCount,
+        portfolioLinks: linkCount,
+      }),
+    );
+  }, [eduCount, careerCount, projectCount, skillCount, linkCount, draft]);
+  const [applying, setApplying] = useState(false);
+
+  return (
+    <div className="mt-3 rounded-xl border border-border px-3 py-2.5 text-[12px]"
+      style={{ background: "var(--orch-surface)", borderColor: "var(--orch-violet)" }}>
+      <div className="font-extrabold mb-1.5" style={{ color: "var(--orch-violet)" }}>
+        프로필 문서 반영
+      </div>
+      {g.profileImportNotice && (
+        <p className="text-muted-foreground mb-1.5 leading-relaxed">{g.profileImportNotice}</p>
+      )}
+      {g.profileDraftStatus === "running" && (
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <Loader2 size={12} className="animate-spin" />
+          구조화 분석 중…
+        </div>
+      )}
+      {g.profileDraftError && (
+        <p className="text-amber-700 leading-relaxed">{g.profileDraftError}</p>
+      )}
+      {g.profileDraftStatus === "done" && draft && hasAny && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-muted-foreground">반영할 항목을 고른 뒤 적용하세요. (자동 저장 안 함)</p>
+          {eduCount > 0 && (
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={pick.education}
+                onChange={(e) => setPick((p) => ({ ...p, education: e.target.checked }))} />
+              학력 {eduCount}건
+            </label>
+          )}
+          {careerCount > 0 && (
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={pick.career}
+                onChange={(e) => setPick((p) => ({ ...p, career: e.target.checked }))} />
+              경력 {careerCount}건
+            </label>
+          )}
+          {projectCount > 0 && (
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={pick.projects}
+                onChange={(e) => setPick((p) => ({ ...p, projects: e.target.checked }))} />
+              프로젝트 {projectCount}건
+            </label>
+          )}
+          {skillCount > 0 && (
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={pick.skills}
+                onChange={(e) => setPick((p) => ({ ...p, skills: e.target.checked }))} />
+              기술 {skillCount}개
+            </label>
+          )}
+          {linkCount > 0 && (
+            <label className="flex items-center gap-1.5">
+              <input type="checkbox" checked={pick.portfolioLinks}
+                onChange={(e) => setPick((p) => ({ ...p, portfolioLinks: e.target.checked }))} />
+              링크 {linkCount}개
+            </label>
+          )}
+          <div className="flex gap-2 mt-1">
+            <button
+              type="button"
+              disabled={applying}
+              className="text-[11.5px] font-bold px-2.5 py-1 rounded-lg text-white"
+              style={{ background: "var(--orch-violet)" }}
+              onClick={() => {
+                setApplying(true);
+                void g.applyProfileDraft(pick).finally(() => setApplying(false));
+              }}
+            >
+              {applying ? "반영 중…" : "선택 항목 적용"}
+            </button>
+            <button type="button" className="text-[11.5px] font-bold text-muted-foreground"
+              onClick={() => g.dismissProfileDraft()}>
+              무시
+            </button>
+          </div>
+        </div>
+      )}
+      {g.profileDraftStatus === "done" && draft && !hasAny && (
+        <p className="text-muted-foreground">구조 항목은 비어 있고 원문만 프로필에 들어갔어요.</p>
+      )}
+    </div>
+  );
+}
+
+function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.RefObject<HTMLInputElement | null> }) {
   const Icon = DOC_ICON[slot.icon];
   const mine = g.docs.filter((d) => d.slot === slot.key);
+  const [dragOver, setDragOver] = useState(false);
   return (
     <div>
-      <div className="flex items-center gap-2.5 rounded-xl border border-border px-3 py-2.5"
-        style={slot.key === "cover" ? { borderStyle: "dashed", borderColor: "var(--orch-point)", background: "var(--orch-surface)" } : undefined}>
+      <div className="flex items-center gap-2.5 rounded-xl border border-border px-3 py-2.5 transition-colors"
+        style={
+          dragOver
+            ? { borderStyle: "dashed", borderColor: "var(--orch-violet)", background: "var(--orch-surface)" }
+            : slot.key === "cover"
+              ? { borderStyle: "dashed", borderColor: "var(--orch-point)", background: "var(--orch-surface)" }
+              : undefined
+        }
+        onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+        onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) void g.addDoc(slot.key, slot.kind, f);
+        }}>
         <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0"
           style={{ background: "var(--orch-surface)", color: "var(--orch-violet)" }}>
           <Icon size={16} />
@@ -479,6 +618,11 @@ function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.Re
         </div>
       )}
       <input ref={inputRef} type="file" className="hidden"
+        accept={
+          slot.key === "resume" || slot.key === "cover"
+            ? ".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : undefined
+        }
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) void g.addDoc(slot.key, slot.kind, f);
@@ -490,7 +634,7 @@ function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.Re
 
 function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
   const meta = LINK_FIELDS[lkey];
-  const Icon = lkey === "github" ? Github : lkey === "blog" ? ClipboardPaste : Link2;
+  const Icon = lkey === "github" ? GitFork : lkey === "blog" ? ClipboardPaste : Link2;
   const value = g.links[lkey] ?? "";
   return (
     <div>
@@ -538,11 +682,12 @@ function LinkFieldRow({ lkey, g }: { lkey: LinkKey; g: G }) {
 
 /* ── STEP 4: 공고문 ── */
 function JdStep({ g, jdRef, bubble, serverMode }: {
-  g: G; jdRef: React.RefObject<HTMLInputElement>;
+  g: G; jdRef: React.RefObject<HTMLInputElement | null>;
   bubble?: string;
   /** ④ 온보딩 매핑 모드 — 붙여넣기 영역을 크게(입력 방식 자체는 링크·파일·붙여넣기 모두 동일 지원). */
   serverMode?: boolean;
 }) {
+  const [dragOver, setDragOver] = useState(false);
   return (
     <>
       <GuideBubble text={bubble ?? COPY.jd} />
@@ -554,8 +699,17 @@ function JdStep({ g, jdRef, bubble, serverMode }: {
       </div>
       <div className="flex gap-2 mb-2.5">
         <button onClick={() => jdRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+          onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) void g.addJdFile(f);
+          }}
+          style={dragOver ? { borderStyle: "dashed", borderColor: "var(--orch-violet)", color: "var(--orch-violet)" } : undefined}
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground hover:text-foreground transition-colors">
-          <FileUp size={13} /> 파일 업로드
+          <FileUp size={13} /> {dragOver ? "여기에 놓기" : "파일 업로드"}
         </button>
         <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-border bg-card text-[11.5px] font-semibold text-muted-foreground">
           <ClipboardPaste size={13} /> 텍스트 붙여넣기 ↓

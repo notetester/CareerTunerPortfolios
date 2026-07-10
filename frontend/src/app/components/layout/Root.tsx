@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Outlet, ScrollRestoration, useLocation } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
 import { LandingPage } from "@/features/landing/pages/LandingPage";
@@ -11,7 +12,17 @@ import { ApplicationExtractionMonitor } from "@/features/applications/components
 import { MobileBottomNav } from "./MobileBottomNav";
 import { OfflineBanner } from "./OfflineBanner";
 import { RefundPolicyToastGate } from "@/features/billing/components/RefundPolicyToastGate";
-import { AdSlot } from "@/features/ads/components/AdSlot";
+import { MfaApprovalWatcher } from "@/app/components/security/MfaApprovalWatcher";
+import { PlannerFloatingOverlay } from "@/features/planner/components/PlannerFloatingOverlay";
+import type { AdSlot as AdSlotComponent } from "@/features/ads/components/AdSlot";
+
+// 광고차단기가 /ads/ 경로의 모듈 요청을 차단하면(dev 의 ERR_BLOCKED_BY_CLIENT) 정적 임포트는 앱 셸 전체를
+// 빈 화면으로 만든다. 지연 로드 + 실패 시 무광고 렌더로 격리한다(차단 = 광고 미노출이 의미상으로도 맞다).
+const AdSlot = lazy(() =>
+  import("@/features/ads/components/AdSlot")
+    .then((m) => ({ default: m.AdSlot }))
+    .catch(() => ({ default: (() => null) as unknown as typeof AdSlotComponent })),
+);
 
 export function Root() {
   const location = useLocation();
@@ -46,10 +57,16 @@ export function Root() {
         }
       />
       <ApplicationExtractionMonitor />
+      <MfaApprovalWatcher />
+      <PlannerFloatingOverlay enabled={isAuthenticated && !isAdmin} />
       <OfflineBanner />
       <RefundPolicyToastGate enabled={isAuthenticated && !isAdmin} />
       {!isAdmin && <Header />}
-      {!isAdmin && <AdSlot placement="HOME_BANNER" />}
+      {!isAdmin && (
+        <Suspense fallback={null}>
+          <AdSlot placement="HOME_BANNER" />
+        </Suspense>
+      )}
       {/* 하단 탭에 콘텐츠가 가리지 않도록 모바일에서 하단 패딩(탭 높이 + safe-area) 확보 */}
       <main className={`flex-1 ${showMobileNav ? "pb-[calc(56px+env(safe-area-inset-bottom))] xl:pb-0" : ""}`}>
         <Outlet />

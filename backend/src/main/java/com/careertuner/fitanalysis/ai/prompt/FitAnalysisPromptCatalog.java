@@ -52,6 +52,9 @@ public final class FitAnalysisPromptCatalog {
             + "적합도 설명(fitSummary), 강점(strengths), 위험요인(risks), 지원 전 보완 액션(strategyActions), "
             + "부족역량 학습 사유(learningTaskReasons)를 생성한다. "
             + "입력에 없는 회사명·기술·자격증·수치를 추가하지 않는다. "
+            + "'기업 맥락'이 주어지면 지원 전략(strategyActions)과 설명에서 '이 회사는 ~하니 ~하게 접근하라'처럼 "
+            + "지원 방향으로만 활용하고, 기업 정보를 지원자의 보유 역량으로 서술하지 않는다. "
+            + "기업 맥락이 없으면 공고 기반으로만 설명한다. "
             + "합격 보장·합격률 단정 같은 표현을 쓰지 않는다. "
             + "아래 JSON 객체만 반환한다: "
             + "{\"fitSummary\": \"...\", \"strengths\": [\"...\"], \"risks\": [\"...\"], "
@@ -98,8 +101,9 @@ public final class FitAnalysisPromptCatalog {
                                               String profileSkills, String profileCertificates,
                                               int fitScore, String applyDecision,
                                               String matchedSkills, String missingRequiredSkills,
-                                              String missingPreferredSkills) {
-        return """
+                                              String missingPreferredSkills, String companyContext) {
+        // 핵심 본문은 학습 데이터(assemble_dataset.py build_fit_user)와 동일 구조를 유지한다(train/serve 정합).
+        String base = """
                 # 적합도 분석 입력
                 회사명: %s
                 직무명: %s
@@ -126,6 +130,16 @@ public final class FitAnalysisPromptCatalog {
                 safe(profileSkills), safe(profileCertificates),
                 fitScore, safe(applyDecision), safe(matchedSkills),
                 safe(missingRequiredSkills), safe(missingPreferredSkills));
+        // 기업 맥락은 있을 때만 뒤에 덧붙인다(없으면 본문이 학습 프롬프트와 byte 동일 → skew 없음).
+        // 지원 회사 정보이지 지원자 보유역량이 아니다 — strategyActions/설명에서 접근 전략으로만 활용.
+        if (companyContext != null && !companyContext.isBlank()) {
+            return base + """
+
+                    ## 기업 맥락 (지원 회사 정보 — 지원자 보유역량과 혼동 금지, 지원 전략 참고용)
+                    %s
+                    """.formatted(companyContext.trim());
+        }
+        return base;
     }
 
     private static String safe(String value) {

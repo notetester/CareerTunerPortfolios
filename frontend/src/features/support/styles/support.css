@@ -112,6 +112,7 @@
 /* TipTap HTML 공지 렌더용 보강 (마크다운 렌더는 위 규칙으로 충분) */
 .ct-nprose em, .ct-nprose i { font-style: italic; }
 .ct-nprose a { color: var(--brand-blue, #2563eb); text-decoration: underline; }
+.ct-nprose img, .faq-answer-html img { max-width: 100%; height: auto; margin: 14px 0; border-radius: 10px; display: block; }
 .ct-nprose blockquote { margin: 14px 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--av-blue); color: var(--ink-2); }
 .ct-nprose code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em;
   background: var(--av-line-soft); padding: 1px 5px; border-radius: 4px; }

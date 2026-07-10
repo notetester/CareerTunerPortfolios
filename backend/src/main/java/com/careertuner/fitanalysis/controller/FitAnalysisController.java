@@ -9,10 +9,12 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.fitanalysis.dto.CareerCertificateStrategyResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisHistoryEntryResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
@@ -31,6 +33,13 @@ public class FitAnalysisController {
     @GetMapping
     public ApiResponse<List<FitAnalysisDetailResponse>> list(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(fitAnalysisService.list(authUser.id()));
+    }
+
+    /** 장기 커리어 자격증 전략 — 희망직무(desiredJob) 기준, 현재 지원 건 전략과 분리. 외부 API 미호출(결정론). */
+    @GetMapping("/career-certificate-strategy")
+    public ApiResponse<CareerCertificateStrategyResponse> careerCertificateStrategy(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(fitAnalysisService.careerCertificateStrategy(authUser.id()));
     }
 
     @GetMapping("/application-cases/{applicationCaseId}")
@@ -54,8 +63,9 @@ public class FitAnalysisController {
      */
     @PostMapping("/application-cases/{applicationCaseId}")
     public ApiResponse<FitAnalysisDetailResponse> generate(@AuthenticationPrincipal AuthUser authUser,
-                                                           @PathVariable Long applicationCaseId) {
-        return ApiResponse.ok(fitAnalysisService.generate(authUser.id(), applicationCaseId));
+                                                           @PathVariable Long applicationCaseId,
+                                                           @RequestParam(defaultValue = "false") boolean certificateStrategy) {
+        return ApiResponse.ok(fitAnalysisService.generate(authUser.id(), applicationCaseId, certificateStrategy));
     }
 
     @PatchMapping("/{fitAnalysisId}/learning-tasks/{taskId}")

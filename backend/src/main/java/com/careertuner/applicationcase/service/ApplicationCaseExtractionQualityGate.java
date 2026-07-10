@@ -162,9 +162,19 @@ public class ApplicationCaseExtractionQualityGate {
         String strategy = strategy(sourceType, extractedPosting);
         Map<String, Object> metrics = metrics(normalizedText, textLength, sectionHints.size(), criticalSection);
         String reportJson = toJson(report(strategy, score, qualityStatus, metrics, warnings, sectionHints));
-        String modelVersionsJson = toJson(Map.of(
-                "qualityGate", "rules-v1",
-                "fallbackPolicy", "openai-disabled-by-default"));
+        // OCR provider/model 귀속을 quality gate 정보와 merge(덮어쓰지 않음) — strategy 로는 엔진 식별 불가하므로.
+        Map<String, Object> modelVersions = new LinkedHashMap<>();
+        modelVersions.put("qualityGate", "rules-v1");
+        modelVersions.put("fallbackPolicy", "openai-disabled-by-default");
+        if (extractedPosting != null && extractedPosting.ocrProvider() != null) {
+            Map<String, Object> ocr = new LinkedHashMap<>();
+            ocr.put("provider", extractedPosting.ocrProvider());
+            if (extractedPosting.ocrModel() != null) {
+                ocr.put("model", extractedPosting.ocrModel());
+            }
+            modelVersions.put("ocr", ocr);
+        }
+        String modelVersionsJson = toJson(modelVersions);
 
         return new QualityGateResult(
                 strategy,

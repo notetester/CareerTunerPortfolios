@@ -70,6 +70,7 @@ docs/면접AI_워크플로우_의사결정.md
 # ----- Logs -----
 *.log
 backend/logs/
+backend/data/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -80,6 +81,22 @@ pnpm-debug.log*
 
 # ----- Local agent files -----
 .agents/
+
+# ----- Obsidian local state -----
+# The repository root can be opened as an Obsidian vault. Stable shared
+# settings may be tracked under .obsidian/, but volatile workspace state and
+# personal plugins should stay local. Team plugins can be added intentionally
+# through review with `git add -f .obsidian/plugins/<plugin-id>/...`.
+.obsidian/workspace.json
+.obsidian/workspaces.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+.obsidian/.trash/
+.obsidian/graph.json
+.obsidian/backlink.json
+.obsidian/bookmarks.json
+.obsidian/recent-files-obsidian.json
+.obsidian/plugins/
 
 # ----- Submodule working-tree contents -----
 # The parent repo tracks only the gitlink pointer for these paths.

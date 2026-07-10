@@ -3,6 +3,7 @@ import { ClipboardList, Download, Loader2, Maximize2, PhoneOff, Play, SkipForwar
 import { AgentEventsEnum, LiveAvatarSession, SessionEvent } from "@heygen/liveavatar-web-sdk";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import {
@@ -468,6 +469,7 @@ export function AvatarTab({
             아바타 면접관이 준비된 질문 {preparedQuestions ? Math.min(preparedQuestions.length, 6) : 6}개를
             음성으로 묻고, 웹캠으로 표정·자세·음성을 분석해 종합 점수를 제공합니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" />
 
           {keyMissing && (
             <div className="space-y-2 rounded-lg bg-amber-50 p-3">

@@ -219,11 +219,32 @@ public class BAnalysisGenerationService {
         return generateCompanyAnalysis(applicationCase, postingText, List.of());
     }
 
+    /** 기업분석 provider. 우선순위는 {@code careertuner.b-analysis.company.provider} 로 결정한다. */
+    private enum CompanyProvider {
+        LOCAL("Local LLM"),
+        CLAUDE("Claude"),
+        OPENAI("OpenAI");
+
+        private final String label;
+
+        CompanyProvider(String label) {
+            this.label = label;
+        }
+
+        String label() {
+            return label;
+        }
+    }
+
     /**
-     * 회사 분석 폴백 체인(공고+WEB 2소스 · 235 §1·§3): 자체모델(Ollama) → Claude(Haiku) → OpenAI → self-rules-v1.
-     * webEvidence 중 URL 보유분이 있으면 local/Claude R1 user 입력에 {@code [웹 검색 근거]} 블록({url,snippet})을
-     * 붙이고 company schema sourceKind enum 에 WEB 를 additive 로 연다. 빈 목록/URL 없음이면 현행과 완전히 동일하다.
-     * hosted(OpenAI) 폴백의 웹 입력은 D-4c 범위 — 이번 배치는 공고문만 넘긴다.
+     * 회사 분석 폴백 체인(공고+WEB 2소스 · 235 §1·§3). 1순위 provider 는
+     * {@code careertuner.b-analysis.company.provider}(auto/openai/claude)로 정하고, 최종 안전망은 항상 self-rules-v1 이다.
+     * webEvidence 중 URL 보유분이 있으면 local/Claude user 입력에 {@code [웹 검색 근거]} 블록({url,snippet})을 붙이고
+     * company schema sourceKind enum 에 WEB 를 additive 로 연다. 빈 목록/URL 없음이면 현행과 완전히 동일하다.
+     * hosted 경로는 grounding 완화판({@link CompanyAnalysisPromptCatalog#HOSTED_SYSTEM_PROMPT})을 쓰고,
+     * R1(local)은 현행 {@link CompanyAnalysisPromptCatalog#SYSTEM_PROMPT} 를 유지한다(canonical eval 불변).
+     * OpenAI 경로도 이제 같은 {@code [웹 검색 근거]} 블록을 받는다(Phase 2 · D-4c 경계 개방) — 단 companyPrompt 대신
+     * 별도 user prompt 끝에 같은 블록을 append 한다(웹 근거가 없으면 공고문만 넘긴다).
      */
     public GeneratedCompanyAnalysis generateCompanyAnalysis(ApplicationCase applicationCase, String postingText,
                                                             List<CompanyWebEvidence> webEvidence) {
@@ -232,62 +253,81 @@ public class BAnalysisGenerationService {
         boolean includeWeb = !usableWeb.isEmpty();
         String lastError = null;
 
-        // 1) 자체모델(Ollama).
-        if (properties.getLocalLlm().isEnabled()) {
+        for (CompanyProvider provider : companyProviderOrder()) {
+            if (!companyProviderAvailable(provider)) {
+                continue;
+            }
             try {
-                String content = localLlmClient.chat(
-                        CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
-                        companyPrompt(applicationCase, postingText, classification, usableWeb),
-                        companyAnalysisSchema(includeWeb));
-                CompanyAnalysisPayload payload = parseLocalCompanyPayload(content, applicationCase, postingText,
-                        properties.getLocalLlm().getModel());
+                CompanyAnalysisPayload payload = switch (provider) {
+                    case LOCAL -> attemptLocalCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
+                    case CLAUDE -> attemptClaudeCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
+                    case OPENAI -> openAiResponsesClient.analyzeCompany(applicationCase, postingText,
+                            properties.getCompany().getOpenAiModel(), webEvidenceBlock(usableWeb));
+                };
+                log.info("{} company analysis succeeded", provider.label());
                 return new GeneratedCompanyAnalysis(payload, null, null);
             } catch (RuntimeException ex) {
                 lastError = safeMessage(ex);
-                log.warn("Local LLM company analysis failed: {}", lastError);
+                log.warn("{} company analysis failed: {}", provider.label(), lastError);
             }
         }
 
-        // 2) 1차 폴백: Claude(Haiku).
-        if (anthropicClient.configured()) {
-            try {
-                String content = anthropicClient.chat(
-                        CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
-                        companyPrompt(applicationCase, postingText, classification, usableWeb),
-                        companyAnalysisSchema(includeWeb));
-                CompanyAnalysisPayload payload = parseLocalCompanyPayload(content, applicationCase, postingText,
-                        anthropicClient.model());
-                log.info("Claude company analysis succeeded");
-                return new GeneratedCompanyAnalysis(payload, null, null);
-            } catch (RuntimeException ex) {
-                lastError = safeMessage(ex);
-                log.warn("Claude company analysis failed: {}", lastError);
-            }
-        }
-
-        // 3) 2차 폴백: OpenAI(hosted). ★웹 입력 미적용 — hosted 웹 배선은 D-4c 범위(공고문만 넘긴다).
-        if (openAiResponsesClient.configured()) {
-            try {
-                CompanyAnalysisPayload payload = openAiResponsesClient.analyzeCompany(applicationCase, postingText);
-                log.info("OpenAI company analysis succeeded");
-                return new GeneratedCompanyAnalysis(payload, null, null);
-            } catch (RuntimeException ex) {
-                lastError = safeMessage(ex);
-                log.warn("OpenAI company analysis failed: {}", lastError);
-            }
-        }
-
-        // 4) 최종 안전망: self-rules-v1.
+        // 최종 안전망: self-rules-v1. 아무 provider 도 시도되지 않았으면(전부 비활성/미설정) 의도된 기본 동작이라
+        // fallback 으로 표시하지 않는다.
         if (lastError == null) {
             return new GeneratedCompanyAnalysis(
                     selfRulesCompanyAnalysis(applicationCase, postingText, classification), null, null);
         }
-        String reason = "Local/Claude/OpenAI company analysis unavailable; fallback to self-rules-v1: " + lastError;
+        String reason = "Company analysis providers unavailable; fallback to self-rules-v1: " + lastError;
         log.warn("{}", reason);
         return new GeneratedCompanyAnalysis(
                 selfRulesCompanyAnalysis(applicationCase, postingText, classification),
                 reason,
                 properties.getLocalLlm().getModel());
+    }
+
+    /**
+     * 기업분석 provider 시도 순서를 config 로 정한다. 어떤 값이든 세 provider 를 모두 포함하되 순서만 바꾸며,
+     * 미설정/비활성 provider 는 상위 루프에서 건너뛴다. 기본(auto)은 현행과 동일(R1 → Claude → OpenAI).
+     */
+    private List<CompanyProvider> companyProviderOrder() {
+        String raw = properties.getCompany().getProvider();
+        String provider = raw == null ? "auto" : raw.trim().toLowerCase(Locale.ROOT);
+        return switch (provider) {
+            case "openai" -> List.of(CompanyProvider.OPENAI, CompanyProvider.CLAUDE, CompanyProvider.LOCAL);
+            case "claude", "anthropic" -> List.of(CompanyProvider.CLAUDE, CompanyProvider.OPENAI, CompanyProvider.LOCAL);
+            default -> List.of(CompanyProvider.LOCAL, CompanyProvider.CLAUDE, CompanyProvider.OPENAI);
+        };
+    }
+
+    private boolean companyProviderAvailable(CompanyProvider provider) {
+        return switch (provider) {
+            case LOCAL -> properties.getLocalLlm().isEnabled();
+            case CLAUDE -> anthropicClient.configured();
+            case OPENAI -> openAiResponsesClient.configured();
+        };
+    }
+
+    /** 자체 R1(local) 기업분석 1회 시도 — 현행 {@link CompanyAnalysisPromptCatalog#SYSTEM_PROMPT} 유지. */
+    private CompanyAnalysisPayload attemptLocalCompany(ApplicationCase applicationCase, String postingText,
+                                                       Classification classification,
+                                                       List<CompanyWebEvidence> usableWeb, boolean includeWeb) {
+        String content = localLlmClient.chat(
+                CompanyAnalysisPromptCatalog.SYSTEM_PROMPT,
+                companyPrompt(applicationCase, postingText, classification, usableWeb),
+                companyAnalysisSchema(includeWeb));
+        return parseLocalCompanyPayload(content, applicationCase, postingText, properties.getLocalLlm().getModel());
+    }
+
+    /** Claude(hosted) 기업분석 1회 시도 — grounding 완화판 프롬프트를 쓴다(파싱/검증은 local 과 공유). */
+    private CompanyAnalysisPayload attemptClaudeCompany(ApplicationCase applicationCase, String postingText,
+                                                        Classification classification,
+                                                        List<CompanyWebEvidence> usableWeb, boolean includeWeb) {
+        String content = anthropicClient.chat(
+                CompanyAnalysisPromptCatalog.HOSTED_SYSTEM_PROMPT,
+                companyPrompt(applicationCase, postingText, classification, usableWeb),
+                companyAnalysisSchema(includeWeb));
+        return parseLocalCompanyPayload(content, applicationCase, postingText, anthropicClient.model());
     }
 
     private JobAnalysisPayload selfRulesJobAnalysis(ApplicationCase applicationCase,
@@ -1036,10 +1076,11 @@ public class BAnalysisGenerationService {
     }
 
     /**
-     * WEB 입력 배선(local/Claude 한정 · 235 §1). usableWeb(URL 보유분)가 있으면 {@code [웹 검색 근거]} 블록을
-     * 먼저 만들어 그 길이를 공고 본문 예산에서 차감한 뒤 붙인다(웹 블록이 num_ctx 예산을 초과하지 않도록 — 리뷰 반영).
-     * 빈 목록이면 base 를 그대로 반환한다(=현행 프롬프트 완전 불변). b-v6 프롬프트가 이 블록 형식을 기대한다.
-     * URL blank/null evidence 는 상위 usableWebEvidence 에서 이미 제외됐다.
+     * local/Claude 전용 프롬프트 조립(공고 본문 num_ctx 예산 절단 포함 · 235 §1). usableWeb(URL 보유분)가 있으면
+     * {@link #webEvidenceBlock} 으로 만든 {@code [웹 검색 근거]} 블록을 공고 본문 예산에서 그 길이만큼 차감한 뒤
+     * 붙인다(웹 블록이 num_ctx 예산을 초과하지 않도록 — 리뷰 반영). 블록 포맷 자체는 {@link #webEvidenceBlock} 이
+     * 만들며 OpenAI 경로도 같은 포맷을 재사용한다(그쪽은 예산 절단 없이 append). 빈 목록이면 base 를 그대로
+     * 반환한다(=현행 프롬프트 완전 불변). URL blank/null evidence 는 상위 usableWebEvidence 에서 이미 제외됐다.
      */
     private String companyPrompt(ApplicationCase applicationCase, String postingText, Classification classification,
                                  List<CompanyWebEvidence> usableWeb) {

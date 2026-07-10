@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { ApiError } from "@/app/lib/api";
 import * as communityApi from "../api/communityApi";
 import type {
   CommunityPost, CommunityComment, CommunityCategory,
@@ -17,8 +18,12 @@ interface CommunityState {
   currentPost: CommunityPost | null;
   comments: CommunityComment[];
   detailLoading: boolean;
+  /** 상세 조회가 404 — 삭제(DELETED)·숨김(HIDDEN)·없는 id를 백엔드가 모두 NOT_FOUND 로 응답한다. */
+  detailNotFound: boolean;
+  /** 상세·댓글 전용 에러. 목록 화면(error)과 섞으면 상세 실패가 목록에 에러로 남는다. */
+  detailError: string | null;
 
-  /* 에러 */
+  /* 에러 — 목록(fetchPosts) 전용 */
   error: string | null;
 
   /* 액션 */
@@ -94,6 +99,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   currentPost: null,
   comments: [],
   detailLoading: false,
+  detailNotFound: false,
+  detailError: null,
   error: null,
 
   fetchPosts: async (category, sort, keyword) => {
@@ -127,12 +134,14 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   fetchPostDetail: async (id) => {
-    set({ detailLoading: true, error: null });
+    // 이전 글을 먼저 비운다 — 남겨두면 조회 실패 시 직전에 보던 글(삭제한 글 포함)이 그대로 렌더된다.
+    set({ currentPost: null, detailLoading: true, detailNotFound: false, detailError: null });
     try {
       const currentPost = await communityApi.getPostDetail(id);
       set({ currentPost, detailLoading: false });
     } catch (e) {
-      set({ detailLoading: false, error: (e as Error).message });
+      const notFound = e instanceof ApiError && e.status === 404;
+      set({ currentPost: null, detailLoading: false, detailNotFound: notFound, detailError: (e as Error).message });
     }
   },
 
@@ -141,7 +150,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
       const comments = await communityApi.getComments(postId);
       set({ comments });
     } catch (e) {
-      set({ error: (e as Error).message });
+      set({ detailError: (e as Error).message });
     }
   },
 

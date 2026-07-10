@@ -7,6 +7,8 @@ import java.nio.file.Path;
 
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.jobposting.service.JobPostingTextExtractor;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -190,5 +192,34 @@ class ApplicationCaseExtractionQualityGateTest {
         JsonNode report = objectMapper.readTree(result.qualityReportJson());
 
         assertThat(report.path("metrics").path("criticalSectionExists").asBoolean()).isFalse();
+    }
+
+    @Test
+    void modelVersionsJsonMergesOcrProviderWithoutOverwritingQualityGateInfo() throws Exception {
+        // Claude/OpenAI OCR 로 만든 ExtractedPosting(ocrProvider/model 귀속 포함)
+        JobPostingTextExtractor.ExtractedPosting extracted = new JobPostingTextExtractor.ExtractedPosting(
+                "IMAGE", "cloudinary:image/authenticated/pdf/application-postings/10/x", null,
+                "채용정보", null, "openai", "gpt-4o");
+
+        ApplicationCaseExtractionQualityGate.QualityGateResult result = qualityGate.evaluate(
+                "IMAGE", extracted,
+                "회사명: Acme 직무: 백엔드 개발자 자격요건: Java, Spring 우대사항: AWS 담당업무: API 개발 접수기간: 2026-07-31");
+        JsonNode modelVersions = objectMapper.readTree(result.modelVersionsJson());
+
+        // quality gate 정보는 보존하고 ocr 귀속을 merge(덮어쓰지 않음)
+        assertThat(modelVersions.path("qualityGate").asText()).isEqualTo("rules-v1");
+        assertThat(modelVersions.path("fallbackPolicy").isMissingNode()).isFalse();
+        assertThat(modelVersions.path("ocr").path("provider").asText()).isEqualTo("openai");
+        assertThat(modelVersions.path("ocr").path("model").asText()).isEqualTo("gpt-4o");
+    }
+
+    @Test
+    void modelVersionsJsonHasNoOcrKeyWhenProviderAbsent() throws Exception {
+        ApplicationCaseExtractionQualityGate.QualityGateResult result =
+                qualityGate.evaluate("TEXT", null, "회사명: Acme 자격요건: Java 담당업무: 개발");
+        JsonNode modelVersions = objectMapper.readTree(result.modelVersionsJson());
+
+        assertThat(modelVersions.path("qualityGate").asText()).isEqualTo("rules-v1");
+        assertThat(modelVersions.path("ocr").isMissingNode()).isTrue();
     }
 }

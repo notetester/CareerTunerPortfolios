@@ -15,14 +15,18 @@ import com.careertuner.admin.applicationcase.dto.AdminApplicationCaseSummary;
 import com.careertuner.admin.applicationcase.dto.AdminStatusUpdateRequest;
 import com.careertuner.admin.applicationcase.mapper.AdminApplicationCaseMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
+import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 import com.careertuner.companyanalysis.dto.CompanyAnalysisResponse;
 import com.careertuner.companyanalysis.mapper.CompanyAnalysisMapper;
 import com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer;
+import com.careertuner.jobanalysis.domain.JobAnalysis;
 import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.mapper.JobAnalysisMapper;
+import com.careertuner.jobposting.domain.JobPosting;
 import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.jobposting.mapper.JobPostingMapper;
 
@@ -46,7 +50,9 @@ public class AdminApplicationCaseService {
     @Transactional(readOnly = true)
     public List<AdminApplicationCaseRow> applicationCases(AuthUser authUser, AdminApplicationCaseSearchCriteria criteria) {
         requireAdmin(authUser);
-        return mapper.findApplicationCases(normalizeCriteria(criteria));
+        return mapper.findApplicationCases(normalizeCriteria(criteria)).stream()
+                .map(AdminApplicationCaseService::toDisplayRow)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -62,17 +68,33 @@ public class AdminApplicationCaseService {
         if (applicationCase == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Application case not found.");
         }
+        // created_at 등은 DB CURRENT_TIMESTAMP(UTC)로 저장된다. 사용자 화면과 동일하게 관리자 상세도 KST 로 표시한다(BDisplayTime).
         return new AdminApplicationCaseDetail(
-                applicationCase,
-                jobPostingMapper.findJobPostingRevisionsByCaseId(id).stream().map(JobPostingResponse::from).toList(),
-                jobAnalysisMapper.findJobAnalysisHistoryByCaseId(id).stream().map(JobAnalysisResponse::from).toList(),
+                toDisplayRow(applicationCase),
+                jobPostingMapper.findJobPostingRevisionsByCaseId(id).stream().map(this::toJobPostingResponse).toList(),
+                jobAnalysisMapper.findJobAnalysisHistoryByCaseId(id).stream().map(this::toJobAnalysisResponse).toList(),
                 companyAnalysisMapper.findCompanyAnalysisHistoryByCaseId(id).stream()
-                        .map(analysis -> CompanyAnalysisResponse.from(
-                                analysis,
-                                companyAnalysisCanonicalizer.withoutUnknownMarkers(analysis.getAiInferences()),
-                                companyAnalysisCanonicalizer.extractUnknowns(analysis.getAiInferences())))
+                        .map(this::toCompanyAnalysisResponse)
                         .toList(),
                 aiUsageMapper.findBUsageLogsByCaseId(id, 100));
+    }
+
+    private JobPostingResponse toJobPostingResponse(JobPosting jobPosting) {
+        jobPosting.setCreatedAt(BDisplayTime.dbToDisplay(jobPosting.getCreatedAt()));
+        return JobPostingResponse.from(jobPosting);
+    }
+
+    private JobAnalysisResponse toJobAnalysisResponse(JobAnalysis analysis) {
+        analysis.setCreatedAt(BDisplayTime.dbToDisplay(analysis.getCreatedAt()));
+        return JobAnalysisResponse.from(analysis);
+    }
+
+    private CompanyAnalysisResponse toCompanyAnalysisResponse(CompanyAnalysis analysis) {
+        analysis.setCreatedAt(BDisplayTime.dbToDisplay(analysis.getCreatedAt()));
+        return CompanyAnalysisResponse.from(
+                analysis,
+                companyAnalysisCanonicalizer.withoutUnknownMarkers(analysis.getAiInferences()),
+                companyAnalysisCanonicalizer.extractUnknowns(analysis.getAiInferences()));
     }
 
     @Transactional
@@ -88,7 +110,23 @@ public class AdminApplicationCaseService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "Application case not found.");
         }
         applicationCaseMapper.insertStatusHistory(id, authUser.id(), existing.getStatus(), nextStatus, blankToNull(request.memo()));
-        return mapper.findApplicationCase(id);
+        return toDisplayRow(mapper.findApplicationCase(id));
+    }
+
+    /**
+     * 관리자 행의 표시 시각을 KST 로 맞춘다. created_at/updated_at/deleted_at 과 최신 분석 시각(MAX(created_at))은
+     * DB(UTC)라 UTC→KST 변환하고, archived_at 은 Java(now)로 이미 KST 라 그대로 둔다(BDisplayTime).
+     */
+    private static AdminApplicationCaseRow toDisplayRow(AdminApplicationCaseRow row) {
+        if (row == null) {
+            return null;
+        }
+        row.setCreatedAt(BDisplayTime.dbToDisplay(row.getCreatedAt()));
+        row.setUpdatedAt(BDisplayTime.dbToDisplay(row.getUpdatedAt()));
+        row.setDeletedAt(BDisplayTime.dbToDisplay(row.getDeletedAt()));
+        row.setLatestJobAnalysisAt(BDisplayTime.dbToDisplay(row.getLatestJobAnalysisAt()));
+        row.setLatestCompanyAnalysisAt(BDisplayTime.dbToDisplay(row.getLatestCompanyAnalysisAt()));
+        return row;
     }
 
     private static AdminApplicationCaseSearchCriteria normalizeCriteria(AdminApplicationCaseSearchCriteria criteria) {

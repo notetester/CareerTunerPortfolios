@@ -30,6 +30,7 @@ import {
   Award,
   LogOut,
   ShieldCheck,
+  CalendarClock,
 } from "lucide-react";
 
 const navItems = [
@@ -101,15 +102,22 @@ const navItems = [
     ],
   },
   {
+    label: "플래너",
+    href: "/planner",
+    icon: CalendarClock,
+    children: [
+      { label: "일정 관리", href: "/planner" },
+      { label: "메모 관리", href: "/planner?tab=memo" },
+      { label: "오버레이 관리", href: "/planner?tab=overlay" },
+    ],
+  },
+  {
     label: "커뮤니티",
     href: "/community",
     icon: Users,
     children: [
-      { label: "취업 후기", href: "/community?cat=hired" },
-      { label: "면접 후기", href: "/community?cat=interview" },
-      { label: "직무별 질문 공유", href: "/community?cat=questions" },
-      { label: "합격 전략 게시판", href: "/community?cat=strategy" },
-      { label: "자유게시판", href: "/community?cat=free" },
+      { label: "인기글", href: "/community?sort=likes" },
+      { label: "내 활동", href: "/community/activity" },
     ],
   },
   {
@@ -174,6 +182,8 @@ export function Header() {
   const { user, isAuthenticated, logout } = useAuth();
 
   const isLoggedIn = isAuthenticated;
+  const canSeeAdminMenu = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+  const visibleNavItems = navItems.filter((item) => item.href !== "/admin" || canSeeAdminMenu);
   const userInitial = user?.name?.trim()?.charAt(0) ?? user?.email?.charAt(0).toUpperCase() ?? "U";
   const planLabel = user?.plan === "FREE" ? "무료 플랜" : user?.plan === "PRO" ? "프로 플랜" : user?.plan ?? "기본 플랜";
   const credit = user?.credit ?? 0;
@@ -222,7 +232,7 @@ export function Header() {
           </Link>
 
           {/* Desktop Navigation (폭이 부족하면 넘치는 항목을 '더보기'로 보냄 → HeaderNav) */}
-          <HeaderNav items={navItems} pathname={location.pathname} />
+          <HeaderNav items={visibleNavItems} pathname={location.pathname} />
 
           {/* Right side */}
           <div className="flex items-center gap-1 sm:gap-2 justify-self-end">
@@ -305,7 +315,7 @@ export function Header() {
       {mobileOpen && (
         <div className="xl:hidden border-t border-border bg-background">
           <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 py-4 space-y-3">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <div key={item.href} className="rounded-xl border border-border bg-card p-1">
                 <Link
                   to={item.href}

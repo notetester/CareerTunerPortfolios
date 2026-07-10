@@ -14,7 +14,7 @@
 ## 모델 정책
 
 - Base model: `Qwen/Qwen2.5-3B-Instruct`
-- 운영 태그: `careertuner-e-correction-3b:latest`
+- 현재 운영 태그: `careertuner-e-correction-3b:delivery-s-f16-20260708`
 - 구성: 네 첨삭 task를 처리하는 Qwen2.5-3B LoRA 통합 모델 1개
 - fallback: 동일 3B repair 1회 → Anthropic → OpenAI
 

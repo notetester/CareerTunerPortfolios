@@ -20,11 +20,16 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.careertuner.fitanalysis.ai.MockFitAnalysisAiService;
+import com.careertuner.fitanalysis.certificate.CertificateEvidenceService;
 import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
 import com.careertuner.notification.service.NotificationService;
+
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -35,7 +40,7 @@ class FitAnalysisServiceImplTest {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         ObjectMapper objectMapper = new ObjectMapper();
         var usageLogService = mock(com.careertuner.applicationcase.service.AiUsageLogService.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper, usageLogService);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper, usageLogService, mock(CertificateEvidenceService.class), transactionTemplate());
         FitAnalysisGenerationSource source = source();
         FitAnalysisResult previous = FitAnalysisResult.builder()
                 .id(10L).applicationCaseId(20L).fitScore(60)
@@ -66,7 +71,7 @@ class FitAnalysisServiceImplTest {
         FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(
                 mapper, new MockFitAnalysisAiService(), new EvidenceGateService(),
                 mock(NotificationService.class), new ObjectMapper(),
-                mock(com.careertuner.applicationcase.service.AiUsageLogService.class));
+                mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         when(mapper.findGenerationSource(1L, 20L)).thenReturn(source());
         doAnswer(invocation -> {
             FitAnalysisResult row = invocation.getArgument(0);
@@ -100,7 +105,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void scoreBreakdownNeverExceedsEachMaximumAndSumsToFitScore() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class));
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         FitAnalysisResult result = FitAnalysisResult.builder()
                 .id(11L).applicationCaseId(20L).fitScore(100)
                 .conditionMatrix("[]").gapRecommendations("[]").strategyActions("[]")
@@ -112,6 +117,40 @@ class FitAnalysisServiceImplTest {
 
         assertThat(response.scoreBreakdown()).allSatisfy(item -> assertThat(item.earned()).isLessThanOrEqualTo(item.maximum()));
         assertThat(response.scoreBreakdown().stream().mapToInt(item -> item.earned()).sum()).isEqualTo(100);
+    }
+
+    @Test
+    void careerStrategyExcludesHeldCertsAndMarksThemAsStrengths() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        var profile = new com.careertuner.fitanalysis.domain.CareerProfileSource();
+        profile.setDesiredJob("데이터 엔지니어");
+        profile.setProfileCertificates("[\"SQLD\"]");
+        when(mapper.findCareerProfile(1L)).thenReturn(profile);
+
+        var strategy = service.careerCertificateStrategy(1L);
+
+        // 데이터 직군 카탈로그(SQLD/ADsP/빅데이터분석기사)에서 보유(SQLD)는 강점으로, 후보에선 제외.
+        assertThat(strategy.heldStrengths()).containsExactly("SQLD");
+        assertThat(strategy.longTermCandidates())
+                .extracting(c -> c.name())
+                .containsExactly("ADsP", "빅데이터분석기사");
+        // 장기 관점 표현 — 이번 지원 건 전략처럼 말하지 않는다.
+        assertThat(strategy.longTermCandidates().get(0).reason()).contains("이번 지원 건과는 별개");
+        assertThat(strategy.note()).contains("실무 프로젝트");
+    }
+
+    @Test
+    void careerStrategyWithoutDesiredJobDegradesHonestly() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        when(mapper.findCareerProfile(1L)).thenReturn(null);
+
+        var strategy = service.careerCertificateStrategy(1L);
+
+        assertThat(strategy.longTermCandidates()).isEmpty();
+        assertThat(strategy.heldStrengths()).isEmpty();
+        assertThat(strategy.note()).contains("희망 직무를 등록");
     }
 
     private static FitAnalysisGenerationSource source() {
@@ -130,5 +169,15 @@ class FitAnalysisServiceImplTest {
         source.setProfileCertificates("[]");
         source.setDesiredJob("프론트엔드 개발자");
         return source;
+    }
+
+    /** 콜백을 즉시 실행하는 테스트용 TransactionTemplate(실제 트랜잭션 없이 쓰기 로직 검증). */
+    private static TransactionTemplate transactionTemplate() {
+        return new TransactionTemplate() {
+            @Override
+            public <T> T execute(TransactionCallback<T> action) {
+                return action.doInTransaction(mock(TransactionStatus.class));
+            }
+        };
     }
 }

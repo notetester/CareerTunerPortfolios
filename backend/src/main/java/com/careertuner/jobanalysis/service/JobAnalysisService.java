@@ -1,6 +1,5 @@
 package com.careertuner.jobanalysis.service;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
@@ -16,6 +15,7 @@ import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisJsonValidator;
+import com.careertuner.applicationcase.support.BDisplayTime;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
@@ -70,7 +70,7 @@ public class JobAnalysisService {
                         .ambiguousConditions(payload.ambiguousConditions())
                         .build();
                 jobAnalysisMapper.insertJobAnalysis(jobAnalysis);
-                JobAnalysisResponse response = JobAnalysisResponse.from(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+                JobAnalysisResponse response = toResponse(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
                 statusService.markReadyAfterAnalysis(userId, applicationCaseId, previousStatus);
                 if (generated.fellBack()) {
                     aiUsageLogService.recordFailure(
@@ -104,14 +104,14 @@ public class JobAnalysisService {
     @Transactional(readOnly = true)
     public JobAnalysisResponse getJobAnalysis(Long userId, Long applicationCaseId) {
         accessService.requireOwned(userId, applicationCaseId);
-        return JobAnalysisResponse.from(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
+        return toResponse(jobAnalysisMapper.findLatestJobAnalysisByCaseId(applicationCaseId));
     }
 
     @Transactional(readOnly = true)
     public List<JobAnalysisResponse> getJobAnalysisHistory(Long userId, Long applicationCaseId) {
         accessService.requireOwned(userId, applicationCaseId);
         return jobAnalysisMapper.findJobAnalysisHistoryByCaseId(applicationCaseId).stream()
-                .map(JobAnalysisResponse::from)
+                .map(this::toResponse)
                 .toList();
     }
 
@@ -141,11 +141,20 @@ public class JobAnalysisService {
                         request.ambiguousConditions(),
                         existing.getAmbiguousConditions(),
                         analysisJsonValidator::validateAmbiguousConditions))
-                .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? LocalDateTime.now() : existing.getConfirmedAt())
+                .confirmedAt(Boolean.TRUE.equals(request.confirmed()) ? BDisplayTime.now() : existing.getConfirmedAt())
                 .adminMemo(existing.getAdminMemo())
                 .build();
         jobAnalysisMapper.updateJobAnalysisReview(updated);
-        return JobAnalysisResponse.from(jobAnalysisMapper.findJobAnalysisByIdAndCaseId(analysisId, applicationCaseId));
+        return toResponse(jobAnalysisMapper.findJobAnalysisByIdAndCaseId(analysisId, applicationCaseId));
+    }
+
+    /** created_at 은 DB CURRENT_TIMESTAMP(UTC)로 저장된다. 화면(KST) 표시를 위해 응답 직전 UTC→KST 로 보정한다. */
+    private JobAnalysisResponse toResponse(JobAnalysis analysis) {
+        if (analysis == null) {
+            return null;
+        }
+        analysis.setCreatedAt(BDisplayTime.dbToDisplay(analysis.getCreatedAt()));
+        return JobAnalysisResponse.from(analysis);
     }
 
     private void restorePreviousStatus(Long userId, Long applicationCaseId, String previousStatus, RuntimeException ex) {

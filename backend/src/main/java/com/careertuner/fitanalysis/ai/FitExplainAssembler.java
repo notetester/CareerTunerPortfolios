@@ -72,7 +72,7 @@ public class FitExplainAssembler {
                 join(command.requiredSkills()), join(command.preferredSkills()), command.duties(),
                 join(command.profileSkills()), join(command.profileCertificates()),
                 skeleton.fitScore(), trainingDecision(skeleton.applyDecision()),
-                join(matched), join(missingRequired), join(missingPreferred));
+                join(matched), join(missingRequired), join(missingPreferred), command.companyContext());
     }
 
     /**

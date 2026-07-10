@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { CheckCircle2, Loader2, RotateCcw, Paperclip, ArrowUpRight, Check, type LucideIcon } from "lucide-react";
 
 import {
@@ -19,11 +20,20 @@ interface Props {
   /** 재시도 = 마지막 실행 요청 전체 재실행(부분 재실행 API 없음 — 붙으면 failedOnly 분기 추가).
    *  미전달이면 재시도 버튼 자체를 숨긴다(죽은 버튼 노출 방지). */
   onRetry?: () => void;
+  /** 자소서 첨부 = 파일 업로드 후 그 첨부를 실어 재실행. onRetry 와 같은 원칙으로,
+   *  미전달이면 첨부 버튼 자체를 숨긴다. reject 하면 카드에 실패 문구를 띄운다. */
+  onAttachCoverLetter?: (file: File) => Promise<void>;
   onNavigate: (path: string) => void;
 }
 
+/** 백엔드 AutoPrepAttachmentLoader 가 본문을 뽑는 종류만 받는다(text/*, 텍스트 PDF, .docx).
+ *  구형 .doc 은 파서가 없어 제외 — 받아봐야 조용히 건너뛴다. */
+const COVER_LETTER_ACCEPT =
+  ".txt,.md,.pdf,.docx,text/plain,text/markdown,application/pdf," +
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
 /** AI 오케스트레이터 진행/결과 화면 — 6파트 병렬 실행을 "면접 봐도 되는지"에 답하는 형태로 보여준다. */
-export function AutoPrepWorkView({ running, parts, caseId, company = null, showFooter = true, onRetry, onNavigate }: Props) {
+export function AutoPrepWorkView({ running, parts, caseId, company = null, showFooter = true, onRetry, onAttachCoverLetter, onNavigate }: Props) {
   if (parts.length === 0) {
     return null;
   }
@@ -39,7 +49,7 @@ export function AutoPrepWorkView({ running, parts, caseId, company = null, showF
       <StatusBandView band={band} parts={parts} onRetry={onRetry} />
       <div className="grid grid-cols-1 gap-2.5 p-3.5 pt-3 @[420px]:grid-cols-2 @[600px]:grid-cols-3">
         {orderedParts.map((part) => (
-          <PartCard key={part.key} part={part} allFailed={band.allFailed} caseId={caseId} onRetry={onRetry} onNavigate={onNavigate} />
+          <PartCard key={part.key} part={part} allFailed={band.allFailed} caseId={caseId} onRetry={onRetry} onAttachCoverLetter={onAttachCoverLetter} onNavigate={onNavigate} />
         ))}
       </div>
       {showFooter && <FooterBar band={band} helper={helper} caseId={caseId} onNavigate={onNavigate} />}
@@ -109,9 +119,10 @@ function StatusBandView({ band, parts, onRetry }: { band: StatusBand; parts: Par
 }
 
 function PartCard({
-  part, allFailed, caseId, onRetry, onNavigate,
+  part, allFailed, caseId, onRetry, onAttachCoverLetter, onNavigate,
 }: {
-  part: PartState; allFailed: boolean; caseId: number | null; onRetry?: () => void; onNavigate: (path: string) => void;
+  part: PartState; allFailed: boolean; caseId: number | null; onRetry?: () => void;
+  onAttachCoverLetter?: (file: File) => Promise<void>; onNavigate: (path: string) => void;
 }) {
   const meta = PART_META[part.key as PartKey];
   if (!meta) return null;
@@ -158,9 +169,9 @@ function PartCard({
           <StatusPill text="건너뜀" tone="neutral" />
         </TitleRow>
         <div className="flex-1 pt-2 text-[12px] leading-[1.55] text-ink-2">{skippedReason(part)}</div>
-        {part.key === "WRITE" && (
+        {part.key === "WRITE" && onAttachCoverLetter && (
           <div className="pt-1.5">
-            <TintButton icon={<Paperclip size={12} />} label="자소서 첨부" onClick={() => {}} />
+            <CoverLetterAttachButton onAttach={onAttachCoverLetter} />
           </div>
         )}
       </div>
@@ -240,21 +251,62 @@ function StatusPill({ text, tone }: { text: string; tone: "neutral" | "danger" |
 }
 
 function TintButton({
-  icon, label, onClick, iconTrailing,
+  icon, label, onClick, iconTrailing, disabled,
 }: {
-  icon: React.ReactNode; label: string; onClick: () => void; iconTrailing?: boolean;
+  icon: React.ReactNode; label: string; onClick: () => void; iconTrailing?: boolean; disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-[30px] shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 text-[11.5px] font-bold transition-colors hover:brightness-95"
+      disabled={disabled}
+      className="inline-flex h-[30px] shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 text-[11.5px] font-bold transition-colors hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
       style={{ background: "var(--orch-surface)", border: "1px solid rgba(94,106,210,0.3)", color: "var(--orch-violet)" }}
     >
       {!iconTrailing && icon}
       {label}
       {iconTrailing && icon}
     </button>
+  );
+}
+
+/**
+ * SKIPPED 된 WRITE 카드의 "자소서 첨부" — 파일을 고르면 부모가 업로드 후 첨부를 실어 재실행한다.
+ * 재실행이 시작되면 이 카드는 running 으로 바뀌며 사라지므로, busy 는 업로드 구간만 덮는다.
+ */
+function CoverLetterAttachButton({ onAttach }: { onAttach: (file: File) => Promise<void> }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pick = (file: File | undefined) => {
+    if (!file || busy) return;
+    setError(null);
+    setBusy(true);
+    onAttach(file)
+      .catch(() => setError("첨부에 실패했어요. 파일을 확인하고 다시 시도해 주세요."))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={COVER_LETTER_ACCEPT}
+        className="hidden"
+        aria-label="자소서 파일 선택"
+        // 같은 파일을 다시 고를 수 있게 값을 비운다(change 는 값이 바뀔 때만 발화).
+        onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }}
+      />
+      <TintButton
+        icon={busy ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+        label={busy ? "첨부하는 중" : "자소서 첨부"}
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      />
+      {error && <p className="pt-1 text-[11px] leading-[1.5] text-red-600">{error}</p>}
+    </>
   );
 }
 

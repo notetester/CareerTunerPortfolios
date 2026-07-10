@@ -18,7 +18,8 @@ class CorrectionAiPropertiesTest {
 
         properties.getSelf().setBaseUrl("http://localhost:11434");
         assertThat(properties.selfProviderEnabled()).isTrue();
-        assertThat(properties.getSelf().getModel()).isEqualTo("careertuner-e-correction-3b:latest");
+        assertThat(properties.getSelf().getModel())
+                .isEqualTo("careertuner-e-correction-3b:delivery-s-f16-20260708");
         assertThat(properties.getSelf().getMaxTokens()).isEqualTo(3072);
         assertThat(properties.getSelf().getMaxAttempts()).isEqualTo(2);
         assertThat(properties.getOpenAiTimeout()).isEqualTo(java.time.Duration.ofSeconds(30));

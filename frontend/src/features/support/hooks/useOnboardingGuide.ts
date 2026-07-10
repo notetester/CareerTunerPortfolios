@@ -3,6 +3,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAutoPrepRun, type PartState } from "@/features/autoprep/hooks/useAutoPrepRun";
 import type { AutoPrepRequest, PrepStepResult } from "@/features/autoprep/types/autoPrep";
 import {
+  getProfile,
+  importProfileDocument,
+  pollProfileAnalyze,
+  saveProfile,
+  startProfileAnalyze,
+  type ProfileAnalyzeDraft,
+} from "@/app/profile/profileApi";
+import { mergeApprovedProfileDraft, type DraftApplyOpts } from "@/app/profile/profileDraftMerge";
+import {
   createCaseFromFile, createCaseFromText, createCaseFromUrl, fetchGithubReadme, getLatestExtractionStatus,
   retryExtraction, uploadDocument, type UploadedFile,
 } from "../api/onboardingApi";
@@ -79,6 +88,11 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   const [caseId, setCaseId] = useState<number | null>(null);
   const [fit, setFit] = useState<GuideResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  /** 이력서 구조화 초안 — React state 보관(D-1). 새로고침 시 소실. 자동 DB 커밋 금지. */
+  const [profileDraft, setProfileDraft] = useState<ProfileAnalyzeDraft | null>(null);
+  const [profileDraftStatus, setProfileDraftStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
+  const [profileDraftError, setProfileDraftError] = useState<string | null>(null);
+  const [profileImportNotice, setProfileImportNotice] = useState<string | null>(null);
 
   // 실제 오케 SSE 실행 — useChatbot 이 쓰는 것과 동일한 공용 훅(파싱/누적 로직 단일 소스, 여긴 재사용만).
   const run = useAutoPrepRun();
@@ -151,19 +165,90 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   }, []);
 
   // ── 서류 업로드: 자소서/이력서/포폴 → /file/upload → fileId 보관 ──
+  // 이력서: import(RESUME_TEXT) + analyze(구조화 초안). 자소서: import(SELF_INTRO).
+  // 구조화 필드는 자동 커밋하지 않음 — profileDraft 확인 후 applyProfileDraft.
   const addDoc = useCallback(
     async (slot: DocItem["slot"], kind: DocItem["kind"], file: File) => {
       const item: DocItem = { slot, kind, file, uploading: true };
       setDocs((prev) => [...prev, item]);
+      setProfileImportNotice(null);
       try {
         const res: UploadedFile = await uploadDocument(file, kind);
         setDocs((prev) => prev.map((d) => (d === item ? { ...d, id: res.id, uploading: false } : d)));
+
+        if (slot === "resume" && res.id != null) {
+          try {
+            const imported = await importProfileDocument(res.id, "RESUME_TEXT");
+            setProfileImportNotice(
+              imported.truncated
+                ? "이력서 일부만 프로필에 저장했어요."
+                : "이력서 원문을 프로필에 넣었어요. 구조화 분석 중…",
+            );
+            setProfileDraftStatus("running");
+            setProfileDraft(null);
+            setProfileDraftError(null);
+            const started = await startProfileAnalyze(res.id);
+            const finished = await pollProfileAnalyze(started.jobId);
+            if (finished.status === "DONE" && finished.draft) {
+              setProfileDraft(finished.draft);
+              setProfileDraftStatus("done");
+              setProfileImportNotice("이력서에서 학력·경력 등을 뽑았어요. 아래 확인 후 반영해 주세요.");
+            } else {
+              setProfileDraftStatus("failed");
+              setProfileDraftError(
+                finished.errorMessage || "구조화 분석은 실패했어요. 폼을 직접 채워주세요.",
+              );
+              setProfileImportNotice(null);
+            }
+          } catch (e) {
+            setProfileDraftStatus("failed");
+            setProfileDraftError(e instanceof Error ? e.message : "첨부에 실패했어요. 다시 시도해 주세요.");
+            setProfileImportNotice(null);
+          }
+        } else if (slot === "cover" && res.id != null) {
+          try {
+            const imported = await importProfileDocument(res.id, "SELF_INTRO");
+            setProfileImportNotice(
+              imported.truncated
+                ? "자소서 일부만 프로필에 저장했어요."
+                : "자기소개서 원문을 프로필에 넣었어요.",
+            );
+          } catch (e) {
+            setProfileImportNotice(
+              e instanceof Error ? e.message : "자소서 프로필 반영에 실패했어요.",
+            );
+          }
+        }
       } catch {
         setDocs((prev) => prev.map((d) => (d === item ? { ...d, uploading: false, error: true } : d)));
       }
     },
     [],
   );
+
+  /**
+   * 구조화 초안 중 승인 필드만 PUT /profile. 자동 커밋 경로가 아님 — 사용자 확인 후 호출.
+   * saveOnboardingProfile(:720) 이후 시점에 호출되도록 가이드 docs→jd 흐름에서 확인 카드를 둔다.
+   */
+  const applyProfileDraft = useCallback(
+    async (opts: DraftApplyOpts) => {
+      if (!profileDraft) return;
+      // 현재 프로필 RMW + 승인·비어 있지 않은 배열만 교체(mergeApprovedProfileDraft).
+      const cur = await getProfile();
+      const body = mergeApprovedProfileDraft(cur, profileDraft, opts);
+      await saveProfile(body);
+      setProfileDraft(null);
+      setProfileDraftStatus("idle");
+      setProfileImportNotice("선택한 항목을 프로필에 반영했어요.");
+    },
+    [profileDraft],
+  );
+
+  const dismissProfileDraft = useCallback(() => {
+    setProfileDraft(null);
+    setProfileDraftStatus("idle");
+    setProfileDraftError(null);
+  }, []);
 
   const removeDoc = useCallback((target: DocItem) => {
     setDocs((prev) => prev.filter((d) => d !== target));
@@ -262,8 +347,11 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
   /**
    * ★ 실제 실행: collect() 스냅샷 → 공고 케이스 생성 → AutoPrepRequest 조립 → 오케 SSE.
    *   목값 없음. SSE 구독/누적은 useAutoPrepRun(run)이 전담 — 완료 감지는 아래 useEffect.
+   *
+   * extraAttachmentIds: 방금 업로드해 아직 docs 상태에 반영되지 않은 첨부(attachCoverLetter 경로).
+   *   setDocs 는 비동기라 이 클로저의 docs 가 못 보므로 id 를 직접 받아 합친다.
    */
-  const runReal = useCallback(async () => {
+  const runReal = useCallback(async (extraAttachmentIds: number[] = []) => {
     // 재실행(뒤로→jd→다시 다음) 대비 클린 슬레이트 — run.start 전 잠깐의 await 구간에서
     // 아래 완료 감지 effect 가 "이전 실행의 settled parts"를 이번 실행의 완료로 오인하지 않게 한다.
     run.reset();
@@ -282,9 +370,10 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
 
     // 2) AutoPrepRequest 조립.
     //    - 자소서(ATTACHMENT) 만 attachmentFileIds 로 (이력서/포폴 제외 — 소비 핸들러 없음).
-    const attachmentFileIds = docs
-      .filter((d) => d.kind === "ATTACHMENT" && d.id != null)
-      .map((d) => d.id as number);
+    const attachmentFileIds = Array.from(new Set([
+      ...docs.filter((d) => d.kind === "ATTACHMENT" && d.id != null).map((d) => d.id as number),
+      ...extraAttachmentIds,
+    ]));
     const req: AutoPrepRequest = {
       applicationCaseId: effectiveCaseId,
       attachmentFileIds: attachmentFileIds.length ? attachmentFileIds : undefined,
@@ -294,6 +383,16 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     // 3) 오케 SSE 실행 — run.parts 누적은 useAutoPrepRun 내부, 완료는 아래 effect 가 감지해 finalize.
     void run.start(req);
   }, [caseId, ensureCase, docs, run]);
+
+  /**
+   * SKIPPED 된 WRITE 카드에서 자소서를 뒤늦게 첨부 → 그 자리에서 재실행.
+   * docs 스텝을 건너뛴 사용자가 앞 단계로 되돌아가지 않고도 교정을 이어받게 한다.
+   */
+  const attachCoverLetter = useCallback(async (file: File) => {
+    const uploaded: UploadedFile = await uploadDocument(file, "ATTACHMENT");
+    setDocs((prev) => [...prev, { slot: "cover", kind: "ATTACHMENT", file, id: uploaded.id, uploading: false }]);
+    await runReal([uploaded.id]);
+  }, [runReal]);
 
   // ★ 실행 완료 감지: analyzing 단계에서 run 이 멈추고(running=false) 전 파트가 settle 되면 결과 조립.
   //   run.parts 는 useAutoPrepRun 이 SSE 로 채우는 살아있는 상태라 클로저 문제 없이 항상 최신값을 본다.
@@ -366,6 +465,10 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     runError: runError ?? run.error,
     runParts: run.parts,
     runRunning: run.running,
+    profileDraft,
+    profileDraftStatus,
+    profileDraftError,
+    profileImportNotice,
     // actions
     setRole,
     hydrate,
@@ -375,6 +478,8 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     removePortfolioReadme,
     addDoc,
     removeDoc,
+    applyProfileDraft,
+    dismissProfileDraft,
     setJdUrl,
     setJdText,
     addJdFile,
@@ -382,6 +487,7 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     go,
     ensureCase,
     runReal,
+    attachCoverLetter,
     reset,
     collect,
   };

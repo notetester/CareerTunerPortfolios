@@ -14,6 +14,7 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.community.moderation.service.ModerationSettingService;
+import com.careertuner.file.service.FileService;
 import com.careertuner.support.dto.CreateTicketRequest;
 import com.careertuner.support.mapper.TicketMapper;
 import com.careertuner.support.mapper.TicketMessageMapper;
@@ -28,11 +29,12 @@ class TicketServiceImplTest {
     private final TicketMessageMapper messageMapper = mock(TicketMessageMapper.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private final ModerationSettingService moderationSettingService = mock(ModerationSettingService.class);
+    private final FileService fileService = mock(FileService.class);
 
     private final TicketServiceImpl service =
-            new TicketServiceImpl(ticketMapper, messageMapper, eventPublisher, moderationSettingService);
+            new TicketServiceImpl(ticketMapper, messageMapper, eventPublisher, moderationSettingService, fileService);
 
-    private static final CreateTicketRequest REQ = new CreateTicketRequest("기타", "제목", "본문 내용");
+    private static final CreateTicketRequest REQ = new CreateTicketRequest("기타", "제목", "본문 내용", null);
     private static final long USER = 7L;
 
     // ── OFF(inquiry max=0): 무제약 — 사용량 조회조차 안 하고 통과 ──

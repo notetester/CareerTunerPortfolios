@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ClipboardList, Loader2, Mic, PhoneOff, Radio } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import {
   createRealtimeSession,
@@ -397,6 +398,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
             {questions ? ` ${trial ? 1 : Math.min(questions.length, 6)}개` : ""}로 음성 면접을
             진행합니다. 종료하면 답변 트랜스크립트와 음성 분석 점수(말 속도·군말·톤·자신감)가 저장됩니다.
           </p>
+          <AiChargeCostBadge featureType="INTERVIEW_VOICE_SCORING" prefix="종료 후 채점" />
 
           {(status === "idle" || status === "scored" || status === "error") && (
             <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">

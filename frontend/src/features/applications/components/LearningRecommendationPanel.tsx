@@ -3,14 +3,17 @@ import { AlertTriangle, Award, BookOpen, CalendarCheck, CheckCircle2, Circle, Gr
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
-import { updateFitAnalysisLearningTask } from "@/features/analysis/api/fitAnalysisApi";
+import { getCareerCertificateStrategy, updateFitAnalysisLearningTask } from "@/features/analysis/api/fitAnalysisApi";
 import type {
+  CareerCertificateStrategy,
+  CertificateEvidenceSnapshot,
   FitAnalysisDetail,
   FitAnalysisLearningTask,
   FitCertificateRecommendation,
   FitGapRecommendation,
 } from "@/features/analysis/types/fitAnalysis";
 import { parseJsonList, parseJsonValue } from "@/features/analysis/types/fitAnalysis";
+import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 
 interface LearningRecommendationPanelProps {
   analyses: FitAnalysisDetail[];
@@ -60,6 +63,8 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
       </div>
       {taskError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">{taskError}</div>}
 
+      <CareerStrategyCard />
+
       <div className="grid gap-4 lg:grid-cols-2">
         {analyses.map((analysis) => {
           const studyItems = parseJsonList(analysis.recommendedStudy);
@@ -96,15 +101,18 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
                       학습 항목을 {completionRate}% 완료했습니다. 적합도를 다시 분석해 점수가 얼마나 올랐는지 확인해보세요.
                     </p>
                     {onReanalyze && (
-                      <Button
-                        size="sm"
-                        className="shrink-0 bg-green-600 text-white hover:bg-green-700"
-                        disabled={reanalyzing}
-                        onClick={onReanalyze}
-                      >
-                        <RefreshCw className={`size-3.5 ${reanalyzing ? "animate-spin" : ""}`} />
-                        {reanalyzing ? "재분석 중..." : "적합도 재분석"}
-                      </Button>
+                      <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
+                        <AiChargeCostBadge featureType="FIT_ANALYSIS" />
+                        <Button
+                          size="sm"
+                          className="bg-green-600 text-white hover:bg-green-700"
+                          disabled={reanalyzing}
+                          onClick={onReanalyze}
+                        >
+                          <RefreshCw className={`size-3.5 ${reanalyzing ? "animate-spin" : ""}`} />
+                          {reanalyzing ? "재분석 중..." : "적합도 재분석"}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -120,6 +128,7 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
                   </div>
                 )}
                 <CertificateList recommendations={detailedCertificates} fallbackItems={certificates} />
+                <CertificateEvidenceSection snapshot={analysis.certificateEvidence ?? null} />
               </CardContent>
             </Card>
           );
@@ -127,6 +136,153 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
       </div>
     </div>
   );
+}
+
+/** 장기 커리어 자격증 전략(희망직무 기준) — 특정 지원 건 전략과 분리된 사용자 단위 섹션. 실패 시 조용히 숨김(보조 정보). */
+function CareerStrategyCard() {
+  const [strategy, setStrategy] = useState<CareerCertificateStrategy | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCareerCertificateStrategy()
+      .then((data) => { if (!cancelled) setStrategy(data); })
+      .catch(() => { /* 보조 섹션 — 실패해도 학습 추천 본문을 막지 않는다. */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!strategy) return null;
+  const hasContent = strategy.heldStrengths.length > 0 || strategy.longTermCandidates.length > 0;
+  return (
+    <Card className="border border-indigo-100 bg-indigo-50/50">
+      <CardContent className="space-y-2 p-4">
+        <div className="flex flex-wrap items-center gap-1.5 text-sm font-semibold text-slate-800">
+          <GraduationCap className="size-4 text-indigo-600" />
+          장기 커리어 전략{strategy.desiredJob ? ` · ${strategy.desiredJob}` : ""}
+          <span className="rounded-full border border-indigo-200 bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+            이번 지원과 별개
+          </span>
+        </div>
+        {strategy.heldStrengths.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+            <span className="font-semibold text-slate-700">보유 강점:</span>
+            {strategy.heldStrengths.map((name) => (
+              <span key={name} className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">{name}</span>
+            ))}
+          </div>
+        )}
+        {strategy.longTermCandidates.length > 0 && (
+          <ul className="space-y-1 text-xs leading-5 text-slate-600">
+            {strategy.longTermCandidates.map((candidate) => (
+              <li key={candidate.name}>
+                <span className="font-semibold text-slate-800">{candidate.name}</span> — {candidate.reason}
+              </li>
+            ))}
+          </ul>
+        )}
+        {!hasContent && strategy.desiredJob == null && (
+          <p className="text-xs leading-5 text-slate-500">{strategy.note}</p>
+        )}
+        {hasContent && <p className="text-[11px] leading-5 text-slate-400">{strategy.note}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** 자격증 전략·근거(공식 출처 조회 snapshot). 탭 요청이어도 '평가'라 후순위/불필요도 정상. 확인 못 하면 솔직하게 안내. */
+function CertificateEvidenceSection({ snapshot }: { snapshot: CertificateEvidenceSnapshot | null }) {
+  if (!snapshot) return null;
+  const items = snapshot.items ?? [];
+  const verdict = strategyVerdict(snapshot.strategyStatus);
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+        <Award className="size-4 text-blue-600" />
+        자격증 전략 · 근거
+        {verdict && <EvidencePill tone={verdict.tone}>{verdict.label}</EvidencePill>}
+      </div>
+      {verdict?.note && <p className="mb-2 text-xs leading-5 text-slate-500">{verdict.note}</p>}
+      {items.length === 0 ? (
+        <p className="text-xs leading-5 text-slate-500">{emptyItemsMessage(snapshot.strategyStatus)}</p>
+      ) : (
+      <ul className="space-y-2">
+        {items.map((item) => (
+          <li key={item.certName} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-slate-800">{item.certName}</span>
+              <EvidenceBadge status={item.scheduleStatus} registration={item.registrationStatus} />
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{item.message}</p>
+            {item.scheduleRounds.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-500">
+                {item.scheduleRounds.slice(0, 2).map((round, index) => (
+                  <li key={index}>
+                    {round.round ? `${round.round} · ` : ""}필기 {fmtCertDate(round.docExam)} · 합격발표 {fmtCertDate(round.docPass)}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {item.sourceName && (
+              <div className="mt-1 text-[11px] text-slate-400">
+                출처: {item.sourceUrl
+                  ? <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="underline">{item.sourceName}</a>
+                  : item.sourceName}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      )}
+    </div>
+  );
+}
+
+/** items 가 비었을 때의 솔직한 안내 — '미연동/확인 못함'을 '자격증 불필요'로 오분류하지 않는다(판정과 문구 일치). */
+function emptyItemsMessage(status: string | null): string {
+  if (status === "NOT_NEEDED" || status === "OPTIONAL_LOW_PRIORITY") {
+    return "현재 공고 기준으로는 자격증보다 실무 경험·프로젝트 보완이 우선입니다.";
+  }
+  // RECOMMENDED/REQUIRED/USE_EXISTING 인데 근거가 비어 있음 = 공식 출처 조회 미연동/확인 실패 — 불필요가 아니다.
+  return "공식 출처 근거 조회가 아직 연동되지 않았거나 확인하지 못했습니다. 위 추천 자격증은 참고하되, 일정은 임의로 제시하지 않습니다.";
+}
+
+/** 게이트 판정 → 화면 배지·안내(솔직 표현). 탭 요청이어도 후순위/불필요가 정상 결과다. */
+function strategyVerdict(status: string | null): { label: string; tone: "green" | "slate" | "amber" | "blue" | "red"; note?: string } | null {
+  switch (status) {
+    case "REQUIRED_OR_STRONGLY_PREFERRED": return { label: "강하게 필요", tone: "red" };
+    case "RECOMMENDED": return { label: "추천", tone: "blue" };
+    case "USE_EXISTING_AS_STRENGTH": return { label: "보유 강점 활용", tone: "green" };
+    case "OPTIONAL_LOW_PRIORITY": return { label: "후순위", tone: "slate", note: "있으면 도움되지만 현재 우선순위는 낮습니다. 실무 경험 보완이 먼저입니다." };
+    case "NOT_NEEDED": return { label: "현 시점 불필요", tone: "slate", note: "이 공고에서는 자격증보다 프로젝트·배포·경험 보완이 더 중요합니다." };
+    default: return null;
+  }
+}
+
+function EvidenceBadge({ status, registration }: { status: string; registration: string | null }) {
+  if (registration === "ABOLISHED_OR_CANCELLED") return <EvidencePill tone="red">등록 폐지</EvidencePill>;
+  switch (status) {
+    case "VERIFIED_CURRENT": return <EvidencePill tone="green">공식 일정 확인</EvidencePill>;
+    case "OFFICIAL_NO_SCHEDULE": return <EvidencePill tone="slate">올해 미편성</EvidencePill>;
+    case "UPSTREAM_UNAVAILABLE": return <EvidencePill tone="amber">공식 서비스 확인 불가</EvidencePill>;
+    case "MANUAL_REQUIRED": return <EvidencePill tone="blue">주관기관 확인 필요</EvidencePill>;
+    case "NOT_APPLICABLE": return <EvidencePill tone="slate">시행기관 확인</EvidencePill>;
+    default: return <EvidencePill tone="slate">확인 불가</EvidencePill>;
+  }
+}
+
+function EvidencePill({ tone, children }: { tone: "green" | "slate" | "amber" | "blue" | "red"; children: string }) {
+  const cls: Record<string, string> = {
+    green: "border-green-200 bg-green-50 text-green-700",
+    slate: "border-slate-200 bg-slate-100 text-slate-600",
+    amber: "border-amber-200 bg-amber-50 text-amber-700",
+    blue: "border-blue-200 bg-blue-50 text-blue-700",
+    red: "border-red-200 bg-red-50 text-red-700",
+  };
+  return <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cls[tone]}`}>{children}</span>;
+}
+
+function fmtCertDate(value: string | null): string {
+  if (!value || value.length !== 8) return "미정";
+  return `${value.slice(0, 4)}.${value.slice(4, 6)}.${value.slice(6, 8)}`;
 }
 
 /** 주간 학습 계획: 미완료 과제를 우선순위(HIGH→LOW)·정렬순으로 골라 이번 주 목표 3개를 제안한다. */

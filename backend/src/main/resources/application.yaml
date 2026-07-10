@@ -116,8 +116,8 @@ careertuner:
     model: ${OPENAI_MODEL:gpt-5}
     base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     timeout: ${OPENAI_TIMEOUT:300s}
-    job-posting-fallback-enabled: ${JOB_POSTING_OPENAI_FALLBACK_ENABLED:false}
-    job-posting-fallback-allowlist: ${JOB_POSTING_OPENAI_FALLBACK_ALLOWLIST:}
+    job-posting-fallback-enabled: ${JOB_POSTING_OPENAI_FALLBACK_ENABLED:true}
+    job-posting-fallback-allowlist: ${JOB_POSTING_OPENAI_FALLBACK_ALLOWLIST:JOB_POSTING_PDF_OCR,JOB_POSTING_IMAGE_OCR}
   profile:
     ai:
       finetuned:
@@ -126,6 +126,18 @@ careertuner:
         base-url: ${PROFILE_AI_FINETUNED_BASE_URL:}
         model: ${PROFILE_AI_FINETUNED_MODEL:qwen3-profile-lora-v4}
         timeout: ${PROFILE_AI_FINETUNED_TIMEOUT:240s}
+    # 이력서 문서 → 학력/경력/프로젝트 구조화. 챗봇 Ollama(AI_OLLAMA_BASE_URL + qwen3:8b)와 동일 경로.
+    # skills 는 KNOWN_SKILLS 스캔(LLM 아님). 끄기: PROFILE_RESUME_STRUCTURER_ENABLED=false
+    resume-structurer:
+      enabled: ${PROFILE_RESUME_STRUCTURER_ENABLED:true}
+      # 로컬 Ollama 전멸 시 챗봇과 같은 호스티드 폴백(Claude→OpenAI, 키 없으면 스킵).
+      # ⚠️이력서 원문(개인정보)이 외부 API 로 전송되는 경로 — 필요 시 false 로 차단.
+      hosted-fallback: ${PROFILE_RESUME_HOSTED_FALLBACK_ENABLED:true}
+      base-url: ${PROFILE_RESUME_OLLAMA_BASE_URL:${AI_OLLAMA_BASE_URL:http://localhost:11434}}
+      model: ${PROFILE_RESUME_OLLAMA_MODEL:${AI_AGENT_MODEL:qwen3:8b}}
+      num-ctx: ${PROFILE_RESUME_OLLAMA_NUM_CTX:8192}
+      num-predict: ${PROFILE_RESUME_OLLAMA_NUM_PREDICT:2048}
+      timeout: ${PROFILE_RESUME_OLLAMA_TIMEOUT:120s}
   analysis:
     ai:
       # C 적합도/취업분석 AI provider. openai(기본/폴백) | oss(자체 파인튜닝 careertuner-c-career-strategy-3b)
@@ -143,6 +155,20 @@ careertuner:
         retry-backoff: ${CAREERTUNER_ANALYSIS_AI_OSS_RETRY_BACKOFF:400ms}
         # grounding guard: 설명이 '부족 역량을 보유로 서술'하면 재호출(소진 시 폴백). 점수/판단은 규칙엔진 소유.
         grounding-retries: ${CAREERTUNER_ANALYSIS_AI_OSS_GROUNDING_RETRIES:1}
+  certificate:
+    # C 자격증 근거 조회(공공데이터). 국가자격 목록/시험일정=q-net(간헐 불안정), 민간=odcloud(안정).
+    # service-key 가 비면 라이브 조회를 하지 않고 안전하게 degrade(날짜 미생성). 키는 env 로만 주입(repo 커밋 금지).
+    data-go-kr:
+      service-key: ${CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY:}
+      # http 기본 — openapi.q-net.or.kr 은 443 리스너가 없어 https 가 연결 자체 불가(2026-07-10 실측: 443 connect
+      # timeout, 80 은 게이트웨이 응답). 서버사이드 전용 호출 + 키 로그 금지로 완화하며, 업스트림이 TLS 를 제공하면
+      # env 로 전환한다. data.go.kr 발급 키는 '디코딩(raw)' 형태를 넣는다(재인코딩 안 함).
+      qnet-base-url: ${CAREERTUNER_CERT_QNET_BASE_URL:http://openapi.q-net.or.kr/api/service/rest}
+      odcloud-base-url: ${CAREERTUNER_CERT_ODCLOUD_BASE_URL:https://api.odcloud.kr/api}
+      # 민간자격등록정보(15075600) odcloud 데이터셋 uddi + 스냅샷 라벨(비실시간 — 반기 갱신). 신규 스냅샷 나오면 값만 교체.
+      private-cert-uddi: ${CAREERTUNER_CERT_PRIVATE_UDDI:uddi:fadae7c0-8b78-400d-9581-d4003721de76}
+      private-cert-snapshot: ${CAREERTUNER_CERT_PRIVATE_SNAPSHOT:20251231}
+      timeout-seconds: ${CAREERTUNER_CERT_TIMEOUT_SECONDS:15}
   anthropic:
     # 면접 LLM 1차(기본) provider(Claude Haiku). 선생(합성 데이터 증류)·런타임 공통.
     # 키가 비어 있으면 자동으로 OpenAI 로 폴백한다(로드맵 Phase 4).
@@ -172,6 +198,15 @@ careertuner:
       # CPU PaddleOCR/PPStructure는 첫 케이스 모델 로딩+추론에 수십 초 걸려 30s로는 타임아웃됨(긴 이미지 27.5s 실측).
       timeout: ${JOB_POSTING_AI_WORKER_TIMEOUT:120s}
   b-analysis:
+    # 기업분석 1순위 provider. openai(기본, OpenAI→Claude→R1) | auto(R1→Claude→OpenAI) | claude(Claude 우선).
+    # 실측 비교 결과 hosted(OpenAI) 품질이 우세해 기본값을 openai 로 둔다. 최종 안전망은 항상 self-rules-v1.
+    # OPENAI_API_KEY 미설정 환경은 OpenAI 를 건너뛰고 다음 순위(Claude→R1)로 안전하게 degrade 한다.
+    # 공고분석(job)은 이 설정과 무관하게 현행 폴백 체인을 유지한다.
+    company:
+      provider: ${B_ANALYSIS_COMPANY_PROVIDER:openai}
+      # 기업분석 OpenAI 경로 전용 모델. 비어 있으면 공용 careertuner.openai.model(gpt-5) 사용.
+      # gpt-5.4-mini = 지연·비용 최적화(실측 검증). 다른 OpenAI 호출(공고폴백·메타데이터·OCR)은 영향 없음.
+      open-ai-model: ${B_ANALYSIS_COMPANY_OPENAI_MODEL:gpt-5.4-mini}
     local-llm:
       enabled: ${B_ANALYSIS_LOCAL_LLM_ENABLED:true}
       base-url: ${B_ANALYSIS_OLLAMA_BASE_URL:http://localhost:11434}
@@ -252,6 +287,9 @@ ai:
   ollama:
     base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
     model: ${AI_OLLAMA_MODEL:gemma4}
+    # 이미지(vision) 검열 전용 모델 — 텍스트는 gemma4, 이미지는 텍스트/광고 인식이 강한 VL 모델을 쓴다.
+    # 미설치 환경이면 vision 호출 실패 → Claude/OpenAI vision 폴백.
+    vision-model: "${AI_OLLAMA_VISION_MODEL:qwen2.5vl:7b}"
     connect-timeout: ${AI_OLLAMA_CONNECT_TIMEOUT:10s}
     read-timeout: ${AI_OLLAMA_READ_TIMEOUT:60s}
   tagging:

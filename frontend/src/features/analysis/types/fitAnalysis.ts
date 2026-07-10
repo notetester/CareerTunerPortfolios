@@ -91,6 +91,46 @@ export interface FitAnalysisLearningTask {
   completedAt: string | null;
 }
 
+export interface CertificateScheduleRound {
+  round: string | null;
+  docRegStart: string | null;
+  docRegEnd: string | null;
+  docExam: string | null;
+  docPass: string | null;
+  pracExamStart: string | null;
+  pracExamEnd: string | null;
+  pracPass: string | null;
+}
+
+// 자격증 근거(생성 시 수집된 snapshot). 확인된 것만 말하고, 확인 못 하면 message 로 솔직하게 안내한다.
+export interface CertificateEvidenceItem {
+  certName: string;
+  kind: string; // NATIONAL_TECHNICAL | NATIONAL_PROFESSIONAL | PRIVATE_OR_OTHER | UNKNOWN
+  scheduleStatus: string; // VERIFIED_CURRENT | OFFICIAL_NO_SCHEDULE | UPSTREAM_UNAVAILABLE | MANUAL_REQUIRED | NOT_APPLICABLE
+  registrationStatus: string | null;
+  message: string;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  scheduleRounds: CertificateScheduleRound[];
+}
+
+// 자격증 근거 snapshot. strategyStatus 는 게이트 판정(NOT_NEEDED/OPTIONAL_LOW_PRIORITY/RECOMMENDED 등) — 탭 요청이어도
+// '평가'이므로 후순위/불필요도 정상 결과다.
+export interface CertificateEvidenceSnapshot {
+  generatedAt: string | null;
+  strategyStatus: string | null;
+  triggeredSignals: string[];
+  items: CertificateEvidenceItem[];
+}
+
+// 장기 커리어 자격증 전략(희망직무 기준). 현재 지원 건 전략과 분리 — "이번 지원"이 아니라 커리어 관점.
+export interface CareerCertificateStrategy {
+  desiredJob: string | null;
+  heldStrengths: string[];
+  longTermCandidates: { name: string; reason: string }[];
+  note: string;
+}
+
 export interface FitAnalysisDetail {
   id: number;
   applicationCaseId: number;
@@ -120,6 +160,7 @@ export interface FitAnalysisDetail {
   createdAt: string | null;
   application: FitAnalysisApplication;
   learningTasks: FitAnalysisLearningTask[];
+  certificateEvidence?: CertificateEvidenceSnapshot | null;
 }
 
 export function parseJsonValue<T>(value: string | null | undefined, fallback: T): T {

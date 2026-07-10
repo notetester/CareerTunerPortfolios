@@ -27,6 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
+import com.careertuner.applicationcase.service.AiUsage;
 import com.careertuner.applicationcase.service.AiUsageLogService;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.common.exception.BusinessException;
@@ -177,6 +178,53 @@ class JobPostingServiceTest {
         assertThat(response.revision()).isEqualTo(7);
         assertThat(response.uploadedFileUrl()).isEqualTo("local:application-postings/10/posting.pdf");
         assertThat(response.extractedText()).isEqualTo("inserted extracted text");
+    }
+
+    @Test
+    void uploadJobPostingFileRecordsOcrUsageWhenPresent() {
+        Map<Long, JobPosting> insertedById = new HashMap<>();
+        JobPostingMapper jobPostingMapper = mapperReturningInsertedRows(insertedById);
+        ApplicationCaseMapper applicationCaseMapper = ownedApplicationCaseMapper();
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        JobPostingFileStorage fileStorage = mock(JobPostingFileStorage.class);
+        JobPostingTextExtractor textExtractor = mock(JobPostingTextExtractor.class);
+        JobPostingService service = new JobPostingService(
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper),
+                jobPostingMapper,
+                usageLogService,
+                fileStorage,
+                textExtractor);
+        MultipartFile file = mock(MultipartFile.class);
+        StoredJobPostingFile storedFile = new StoredJobPostingFile(
+                "PDF",
+                "local:application-postings/10/posting.pdf",
+                "posting.pdf",
+                "application/pdf",
+                Path.of("posting.pdf"),
+                new byte[]{1, 2, 3});
+        AiUsage usage = new AiUsage("claude-haiku-4-5", 1200, 300, 1500);
+
+        when(fileStorage.store(10L, file, "PDF")).thenReturn(storedFile);
+        when(textExtractor.extractFile(storedFile)).thenReturn(new ExtractedPosting(
+                "PDF",
+                "local:application-postings/10/posting.pdf",
+                null,
+                "claude 로 추출한 공고 텍스트",
+                usage,
+                "claude",
+                "claude-haiku-4-5"));
+        when(jobPostingMapper.nextRevisionForCase(10L)).thenReturn(7);
+        doAnswer(invocation -> {
+            JobPosting posting = invocation.getArgument(0);
+            posting.setId(51L);
+            insertedById.put(51L, copy(posting));
+            return null;
+        }).when(jobPostingMapper).insertJobPosting(any(JobPosting.class));
+
+        service.uploadJobPostingFile(1L, 10L, file, "PDF");
+
+        // Claude OCR 도 usage(AiUsage) 를 실어오므로 JOB_POSTING_OCR usage log 로 기록된다(String 반환 시절엔 미기록).
+        verify(usageLogService).recordSuccess(1L, 10L, "JOB_POSTING_OCR", usage);
     }
 
     @Test

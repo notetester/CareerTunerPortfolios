@@ -6,22 +6,35 @@
  */
 import DOMPurify from "dompurify";
 
-// TipTap 툴바(볼드/이탤릭/리스트/인용/링크/코드)가 만드는 태그 + 읽기용 .dv-prose가 스타일링하는 태그만 허용
+// TipTap 툴바(볼드/이탤릭/리스트/인용/링크/코드/이미지)가 만드는 태그 + 읽기용 .dv-prose가 스타일링하는 태그만 허용
 const ALLOWED_TAGS = [
   "p", "br", "strong", "b", "em", "i", "s", "u",
   "ul", "ol", "li", "blockquote", "code", "pre",
-  "a", "h1", "h2", "h3",
+  "a", "h1", "h2", "h3", "img",
 ];
-const ALLOWED_ATTR = ["href", "target", "rel"];
+const ALLOWED_ATTR = ["href", "target", "rel", "src", "alt", "title"];
 
-// 링크에 안전 속성 강제 (reverse tabnabbing 방지). 모듈당 1회만 등록.
+// 이미지 src 는 우리가 저장한 것만 허용: https 절대 URL(Cloudinary) 또는 루트 상대경로(/api 로컬 서빙).
+// data:/blob:/http: 등은 차단(SVG data-uri XSS·믹스콘텐츠·추적 방지).
+const SAFE_IMG_SRC = /^https:\/\//i;
+
+// 링크·이미지에 안전 속성을 강제한다. 모듈당 1회만 등록.
 let hookRegistered = false;
-function registerLinkHook() {
+function registerSanitizeHooks() {
   if (hookRegistered) return;
   DOMPurify.addHook("afterSanitizeAttributes", (node) => {
     if (node.nodeName === "A") {
       node.setAttribute("target", "_blank");
       node.setAttribute("rel", "noopener noreferrer nofollow");
+    }
+    if (node.nodeName === "IMG") {
+      const src = node.getAttribute("src") ?? "";
+      if (!SAFE_IMG_SRC.test(src) && !src.startsWith("/")) {
+        node.remove(); // 허용되지 않은 출처의 이미지는 통째로 제거
+        return;
+      }
+      node.setAttribute("loading", "lazy");
+      node.setAttribute("referrerpolicy", "no-referrer");
     }
   });
   hookRegistered = true;
@@ -33,7 +46,7 @@ function registerLinkHook() {
  * 위 허용 태그/속성만 남는다.
  */
 export function sanitizePostHtml(html: string): string {
-  registerLinkHook();
+  registerSanitizeHooks();
   return DOMPurify.sanitize(html ?? "", {
     ALLOWED_TAGS,
     ALLOWED_ATTR,

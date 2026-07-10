@@ -1,4 +1,6 @@
 import { api } from "@/app/lib/api";
+import { apiBase } from "@/app/lib/apiBase";
+import { getAccessToken } from "@/app/lib/tokenStore";
 import type { Inquiry, InquiryStatus, InquiryMessage } from "../data/inquiriesData";
 import type {
   AdminTicketListResponse,
@@ -25,6 +27,7 @@ function detailToInquiry(b: AdminTicketDetailResponse): Inquiry {
       name: m.name,
       time: m.time,
       text: m.text,
+      attachments: (m.attachments ?? []).map((a) => ({ id: a.id, name: a.name, size: a.size })),
     }));
   return {
     id: b.id,
@@ -106,4 +109,19 @@ export function generateMemberSummary(id: number): Promise<string> {
   return api<{ summary: string }>(`/admin/tickets/${id}/member-summary`, {
     method: "POST",
   }).then((r) => r.summary);
+}
+
+/** 상담사 티켓 첨부 다운로드 — 관리자 전용 엔드포인트(인증 blob, 소유자 아니어도 허용). */
+export async function downloadAttachment(fileId: number, name: string): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${apiBase()}/admin/tickets/attachments/${fileId}/content`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("다운로드 실패");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }

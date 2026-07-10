@@ -24,6 +24,7 @@ import {
 } from "@/features/billing/api/refundPolicyApi";
 import { RefundPolicyConfirmDialog } from "@/features/billing/components/RefundPolicyConfirmDialog";
 import { RefundRequestDialog } from "@/features/billing/components/RefundRequestDialog";
+import { getAiFeatureLabel } from "@/features/billing/aiFeatureLabels";
 import {
   createRefundRequest, getMyRefundRequests, previewRefundRequest,
   type RefundEligibility, type RefundReasonCode, type RefundRequestRow,
@@ -45,21 +46,6 @@ const PLAN_FEATURES: Record<string, string[]> = {
   BASIC: ["공고 분석 월 20회", "텍스트 면접 무제한", "답변 첨삭 월 5회"],
   PRO: ["공고 분석 무제한", "음성 면접", "장기 취업 분석"],
   PREMIUM: ["아바타 면접관", "영상/자세 분석", "1:1 전략 컨설팅"],
-};
-
-const FEATURE_LABEL: Record<string, string> = {
-  JOB_POSTING_METADATA: "공고문 분석",
-  JOB_ANALYSIS: "공고 분석",
-  COMPANY_ANALYSIS: "기업 분석",
-  FIT_ANALYSIS: "적합도 분석",
-  INTERVIEW_QUESTION: "예상 질문 생성",
-  INTERVIEW_ANSWER_EVAL: "면접 답변 평가",
-  INTERVIEW_REPORT: "면접 리포트",
-  CAREER_TREND: "장기 취업 분석",
-  DASHBOARD_SUMMARY: "대시보드 요약",
-  PROFILE_SUMMARY: "프로필 요약",
-  PROFILE_SKILL_EXTRACT: "기술 추출",
-  PROFILE_COMPLETENESS: "프로필 완성도",
 };
 
 const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
@@ -466,7 +452,7 @@ export function BillingPage() {
                       return (
                         <div key={row.featureType} className="space-y-1.5">
                           <div className="flex items-center justify-between text-sm">
-                            <span className="font-semibold text-slate-700">{FEATURE_LABEL[row.featureType] ?? row.featureType}</span>
+                            <span className="font-semibold text-slate-700">{getAiFeatureLabel(row.featureType)}</span>
                             <span className="text-xs text-slate-500">{row.used}회 · 크레딧 {row.creditUsed}</span>
                           </div>
                           <Progress value={Math.round((row.used / max) * 100)} className="h-2" />

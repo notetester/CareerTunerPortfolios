@@ -30,8 +30,12 @@ USER_BASE, CASE_BASE = 911000, 910000
 PASSWORD = "Career1234!"
 
 
-def load_cases() -> list[dict]:
-    return [json.loads(line) for line in FIXTURE.read_text(encoding="utf-8").splitlines() if line.strip()]
+def load_cases(fixture: Path = FIXTURE) -> list[dict]:
+    return [json.loads(line) for line in fixture.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def email_for(prefix: str, case_id: str) -> str:
+    return f"e2e-{prefix}-{case_id.lower()}@careertuner.dev"
 
 
 def sql_str(value: str) -> str:
@@ -42,14 +46,15 @@ def sql_json(values: list[str]) -> str:
     return sql_str(json.dumps(values, ensure_ascii=False))
 
 
-def emit_seed_sql(out: Path) -> None:
-    rows = load_cases()
-    lines = ["-- A-only baseline 60케이스 E2E 시드(합성, PII 0). INSERT IGNORE 멱등 — 삭제 불필요.",
+def emit_seed_sql(out: Path, fixture: Path = FIXTURE, user_base: int = USER_BASE,
+                  case_base: int = CASE_BASE, email_prefix: str = "a-only") -> None:
+    rows = load_cases(fixture)
+    lines = [f"-- E2E 시드(합성, PII 0). fixture={fixture.name}, user_base={user_base}, case_base={case_base}. INSERT IGNORE 멱등.",
              "-- 생성기: ml/career-strategy-llm/scripts/run_e2e_production_baseline.py seed-sql"]
     for i, row in enumerate(rows, start=1):
-        uid, cid = USER_BASE + i, CASE_BASE + i
+        uid, cid = user_base + i, case_base + i
         case_id = row["caseId"]
-        email = f"e2e-a-only-{case_id.lower()}@careertuner.dev"
+        email = email_for(email_prefix, case_id)
         p, j = row["profile"], row["job"]
         lines.append(
             f"INSERT IGNORE INTO users (id, email, password, password_enabled, name, email_verified, user_type, role, status, plan, credit) "
@@ -87,12 +92,13 @@ def api(base: str, path: str, body: dict | None, token: str | None, timeout: int
         raise SystemExit(f"backend 연결 실패({path}): {exc}") from exc
 
 
-def run_e2e(base: str, out_dir: Path, timeout: int) -> None:
-    rows = load_cases()
+def run_e2e(base: str, out_dir: Path, timeout: int, fixture: Path = FIXTURE,
+            case_base: int = CASE_BASE, email_prefix: str = "a-only", capture: bool = False) -> None:
+    rows = load_cases(fixture)
     results = []
     for i, row in enumerate(rows, start=1):
-        case_id, app_case_id = row["caseId"], CASE_BASE + i
-        email = f"e2e-a-only-{case_id.lower()}@careertuner.dev"
+        case_id, app_case_id = row["caseId"], case_base + i
+        email = email_for(email_prefix, case_id)
         status, login = api(base, "/api/auth/login", {"email": email, "password": PASSWORD}, None, 30)
         if status != 200 or not login or not login.get("data"):
             results.append({"caseId": case_id, "phase": "login", "httpStatus": status})
@@ -112,6 +118,13 @@ def run_e2e(base: str, out_dir: Path, timeout: int) -> None:
             "maxSeverity": safety.get("maxSeverity"), "gateReasonCount": len(safety.get("gateReasons") or []),
             "evidenceGateVersion": safety.get("evidenceGateVersion"),
         }
+        if capture:
+            # 게이트 재현율 판정용: 사용자 노출 텍스트(소유 단정이 나타나는 필드)를 저장.
+            # raw 출력이므로 .local-tmp(gitignore) 로만 나가고 본체 커밋 금지.
+            entry["captured"] = {k: data.get(k) for k in (
+                "fitSummary", "strategy", "strengths", "risks", "strategyActions",
+                "scoreBasis", "learningTaskReasons", "matchedSkills", "missingSkills",
+                "applyDecision", "gapRecommendations", "conditionMatrix")}
         results.append(entry)
         print(f"  {case_id}: http={status} model={entry['model']} gate={entry['gateStatus']} {latency_ms}ms")
 
@@ -134,17 +147,23 @@ def run_e2e(base: str, out_dir: Path, timeout: int) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p1 = sub.add_parser("seed-sql")
-    p1.add_argument("--out", required=True, type=Path)
-    p2 = sub.add_parser("run")
-    p2.add_argument("--base", default="http://localhost:8081")
-    p2.add_argument("--out", required=True, type=Path)
-    p2.add_argument("--timeout-seconds", type=int, default=150)
+    # 공통 옵션: fixture 와 id base 를 바꿔 a_only 외 픽스처(예: gate_adversarial_v1)를 충돌 없이 시드/실행.
+    for p in (sub.add_parser("seed-sql"), sub.add_parser("run")):
+        p.add_argument("--out", required=True, type=Path)
+        p.add_argument("--fixture", type=Path, default=FIXTURE, help="케이스 JSONL(기본 a_only_baseline_v1)")
+        p.add_argument("--user-base", type=int, default=USER_BASE, help="users id 시작(다른 픽스처와 충돌 회피)")
+        p.add_argument("--case-base", type=int, default=CASE_BASE, help="application_case id 시작")
+        p.add_argument("--email-prefix", default="a-only", help="시드 계정 이메일 prefix(픽스처 구분)")
+        if p.prog.endswith("run"):
+            p.add_argument("--base", default="http://localhost:8081")
+            p.add_argument("--timeout-seconds", type=int, default=150)
+            p.add_argument("--capture", action="store_true",
+                           help="사용자 노출 텍스트 캡처(게이트 재현율 판정용, raw→.local-tmp)")
     args = parser.parse_args(argv)
     if args.cmd == "seed-sql":
-        emit_seed_sql(args.out)
+        emit_seed_sql(args.out, args.fixture, args.user_base, args.case_base, args.email_prefix)
     else:
-        run_e2e(args.base, args.out, args.timeout_seconds)
+        run_e2e(args.base, args.out, args.timeout_seconds, args.fixture, args.case_base, args.email_prefix, args.capture)
     return 0
 
 

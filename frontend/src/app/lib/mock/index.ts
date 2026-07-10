@@ -14,6 +14,7 @@ import {
   demoAnalysisHistory,
   demoCareerPlan,
   demoApplicationCases,
+  demoCareerCertificateStrategy,
   demoFitAnalyses,
   findFitByApplicationCase,
   findFitHistoryByApplicationCase,
@@ -31,6 +32,8 @@ import {
   demoAdminNotices, demoAdminFaqs, demoAdminGuidelines, demoAdminTickets, adminTicketDetail,
   demoAdminNotifications,
 } from "./domains/f-area";
+
+import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
 
 import type { MockRoute } from "./registry";
 import { ok } from "./registry";
@@ -87,6 +90,47 @@ function getMockSession() {
   return mockSessionUser;
 }
 
+// ── C: 적합도 분석 mock 세션 상태 ──
+// 데모 데이터(101 카카오·102 네이버)에 없는 지원 건에 demoFitAnalyses[0](카카오)를 fallback 으로 반환하면
+// 새 지원 건에 남의 회사 분석이 표시된다. POST(생성)는 demoFitAnalyses[0] 을 해당 지원 건 정보로 치환한
+// 사본을 만들어 이 Map 에 보관하고(세션 내 유지), GET 미존재는 null(레지스트리의 기존 not-found 패턴 —
+// 상태코드/에러 메커니즘이 없고 useApplicationFitAnalysis 가 null 을 '분석 미실행 안내'로 처리한다).
+const generatedFitAnalyses = new Map<number, FitAnalysisDetail>();
+let nextGeneratedFitAnalysisId = 251; // 정적 201·202(학습 과제 id 2011~/2021~ 대역)와 충돌하지 않는 대역
+
+function findAnyFitByApplicationCase(applicationCaseId: number): FitAnalysisDetail | undefined {
+  return findFitByApplicationCase(applicationCaseId) ?? generatedFitAnalyses.get(applicationCaseId);
+}
+
+function buildGeneratedFitAnalysis(applicationCaseId: number): FitAnalysisDetail {
+  const template = demoFitAnalyses[0];
+  const applicationCase = demoApplicationCases.find((item) => item.id === applicationCaseId);
+  const id = nextGeneratedFitAnalysisId++;
+  return {
+    ...template,
+    id,
+    applicationCaseId,
+    createdAt: new Date().toISOString(),
+    application: {
+      id: applicationCaseId,
+      companyName: applicationCase?.companyName ?? "새 지원 기업",
+      jobTitle: applicationCase?.jobTitle ?? "프론트엔드 개발자",
+      postingDate: applicationCase?.postingDate ?? null,
+      status: applicationCase?.status ?? "READY",
+      favorite: applicationCase?.favorite ?? false,
+      updatedAt: applicationCase?.updatedAt ?? new Date().toISOString(),
+    },
+    // 학습 과제는 새 id/fitAnalysisId 로 복제(토글 상태가 템플릿 원본과 섞이지 않게), 미완료로 시작한다.
+    learningTasks: template.learningTasks.map((task, index) => ({
+      ...task,
+      id: id * 10 + index + 1,
+      fitAnalysisId: id,
+      completed: false,
+      completedAt: null,
+    })),
+  };
+}
+
 const coreRoutes: MockRoute[] = [
   // ── 인증(공통 게이트) ──
   {
@@ -95,7 +139,15 @@ const coreRoutes: MockRoute[] = [
     handler: ({ body }) => {
       const email = String((body as { email?: unknown })?.email ?? "").toLowerCase();
       setMockSession(email.startsWith("admin@") ? demoAdminUser : demoUser);
-      return { ...demoTokenResponse, user: getMockSession() };
+      // MFA 도입 이후 LoginResponse 는 token 을 중첩으로 담는다 — flat 반환 시 로그인이 조용히 실패(토큰 미저장).
+      return {
+        mfaRequired: false,
+        mfaSetupRecommended: false,
+        challengeToken: null,
+        challengeMethod: null,
+        expiresIn: demoTokenResponse.expiresIn,
+        token: { ...demoTokenResponse, user: getMockSession() },
+      };
     },
   },
   { method: "POST", pattern: /^\/auth\/register$/, handler: ok(demoTokenResponse) },
@@ -292,11 +344,14 @@ const coreRoutes: MockRoute[] = [
   { method: "POST", pattern: /^\/file\/upload$/, handler: () => fileAsset() },
 
   // ── C: 적합도 분석 ──
-  { method: "GET", pattern: /^\/fit-analyses$/, handler: ok(demoFitAnalyses) },
+  { method: "GET", pattern: /^\/fit-analyses$/, handler: () => [...demoFitAnalyses, ...generatedFitAnalyses.values()] },
+  // 장기 커리어 자격증 전략(사용자 단위, 현재 지원 건과 분리)
+  { method: "GET", pattern: /^\/fit-analyses\/career-certificate-strategy$/, handler: ok(demoCareerCertificateStrategy) },
   {
+    // 미존재 지원 건은 null(분석 미실행) — 다른 회사 분석을 fallback 으로 보여주지 않는다.
     method: "GET",
     pattern: /^\/fit-analyses\/application-cases\/(\d+)$/,
-    handler: ({ params }) => findFitByApplicationCase(Number(params[0])) ?? demoFitAnalyses[0],
+    handler: ({ params }) => findAnyFitByApplicationCase(Number(params[0])) ?? null,
   },
   {
     // 재분석 히스토리(점수·역량 변화 추적)
@@ -305,30 +360,45 @@ const coreRoutes: MockRoute[] = [
     handler: ({ params }) => findFitHistoryByApplicationCase(Number(params[0])),
   },
   {
+    // 생성/재분석. 데모 데이터에 없는 지원 건은 그 건의 회사 정보로 치환한 사본을 생성해 세션 내 유지한다.
     method: "POST",
     pattern: /^\/fit-analyses\/application-cases\/(\d+)$/,
-    handler: ({ params }) => findFitByApplicationCase(Number(params[0])) ?? demoFitAnalyses[0],
+    handler: ({ params }) => {
+      const applicationCaseId = Number(params[0]);
+      const existing = findAnyFitByApplicationCase(applicationCaseId);
+      if (existing) return existing;
+      const generated = buildGeneratedFitAnalysis(applicationCaseId);
+      generatedFitAnalyses.set(applicationCaseId, generated);
+      return generated;
+    },
   },
   {
-    // 학습 과제 완료 토글: 요청 body 의 completed 를 그대로 반영해 echo (목이라 영속화는 없음)
+    // 학습 과제 완료 토글: 원본 과제 객체를 직접 갱신해 세션 내(새로고침 전까지) 완료 상태·준비율이 유지되게 한다.
+    // (GET /fit-analyses/application-cases/:id 가 같은 객체를 반환하므로 탭 이동·재조회 후에도 반영된다.)
     method: "PATCH",
     pattern: /^\/fit-analyses\/(\d+)\/learning-tasks\/(\d+)$/,
     handler: ({ params, body }) => {
       const fitAnalysisId = Number(params[0]);
       const taskId = Number(params[1]);
       const completed = !!(body as { completed?: boolean })?.completed;
-      const source = demoFitAnalyses
-        .flatMap((f) => f.learningTasks)
-        .find((t) => t.id === taskId);
+      const task = [...demoFitAnalyses, ...generatedFitAnalyses.values()]
+        .flatMap((analysis) => analysis.learningTasks)
+        .find((item) => item.id === taskId);
+      if (task) {
+        task.completed = completed;
+        task.completedAt = completed ? new Date().toISOString() : null;
+        return { ...task };
+      }
+      // 데모 데이터에 없는 과제 id 는 기존처럼 요청 값을 echo 한다(영속 대상 없음).
       return {
         id: taskId,
         fitAnalysisId,
-        skill: source?.skill ?? "",
-        title: source?.title ?? "",
-        practiceTask: source?.practiceTask ?? "",
-        expectedDuration: source?.expectedDuration ?? "",
-        priority: source?.priority ?? "MEDIUM",
-        sortOrder: source?.sortOrder ?? 0,
+        skill: "",
+        title: "",
+        practiceTask: "",
+        expectedDuration: "",
+        priority: "MEDIUM",
+        sortOrder: 0,
         completed,
         completedAt: completed ? new Date().toISOString() : null,
       };

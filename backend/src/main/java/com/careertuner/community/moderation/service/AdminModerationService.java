@@ -9,7 +9,9 @@ import com.careertuner.community.domain.PostCategory;
 import com.careertuner.community.domain.PostStatus;
 import com.careertuner.community.mapper.CommunityCommentMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
+import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.ModerationView;
+import com.careertuner.community.moderation.domain.PostAiResult;
 import com.careertuner.community.moderation.dto.ModerationDetailResponse;
 import com.careertuner.community.moderation.dto.ModerationItemResponse;
 import com.careertuner.community.moderation.dto.ModerationListRequest;
@@ -19,8 +21,10 @@ import com.careertuner.community.moderation.dto.ModerationStatsResponse;
 import com.careertuner.community.moderation.mapper.CommentAiResultMapper;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -206,8 +210,39 @@ public class AdminModerationService {
                 view.getModel(),
                 view.getAttemptCount(),
                 view.getCreatedAt(),
-                view.getCompletedAt()
+                view.getCompletedAt(),
+                loadImageResults(view.getPostId())
         );
+    }
+
+    /** 본문 이미지 검열(IMAGE_MODERATION) 결과를 관리자 상세용 목록으로 파싱. 없으면 빈 목록(best-effort). */
+    private List<ModerationDetailResponse.ImageModerationItem> loadImageResults(Long postId) {
+        List<ModerationDetailResponse.ImageModerationItem> items = new ArrayList<>();
+        try {
+            PostAiResult result = aiResultMapper.findByPostIdAndTaskType(postId, AiTaskType.IMAGE_MODERATION);
+            if (result == null || result.getResultJson() == null) {
+                return items;
+            }
+            JsonNode images = objectMapper.readTree(result.getResultJson()).path("images");
+            if (images.isArray()) {
+                for (JsonNode img : images) {
+                    JsonNode conf = img.path("confidence");
+                    items.add(new ModerationDetailResponse.ImageModerationItem(
+                            textOrNull(img, "url"),
+                            textOrNull(img, "category"),
+                            conf.isNumber() ? conf.asDouble() : null,
+                            textOrNull(img, "action")));
+                }
+            }
+        } catch (Exception e) {
+            // 이미지 결과 없거나 파싱 실패 → 빈 목록으로 조용히 넘어간다(텍스트 상세는 그대로 노출).
+        }
+        return items;
+    }
+
+    private static String textOrNull(JsonNode node, String field) {
+        JsonNode v = node.path(field);
+        return v.isMissingNode() || v.isNull() ? null : v.asText();
     }
 
     private ModerationResult parseResult(String json) {

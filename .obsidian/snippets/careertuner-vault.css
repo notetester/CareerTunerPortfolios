@@ -1,0 +1,64 @@
+body {
+  --ct-accent: #4fd1c5;
+  --ct-gold: #f5c451;
+  --ct-blue: #7aa2ff;
+  --ct-border: color-mix(in srgb, var(--text-muted) 22%, transparent);
+}
+
+.markdown-preview-view h1,
+.markdown-preview-view h2,
+.markdown-preview-view h3 {
+  letter-spacing: 0;
+}
+
+.markdown-preview-view h1 {
+  border-bottom: 1px solid var(--ct-border);
+  padding-bottom: 0.35em;
+}
+
+.markdown-preview-view table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--ct-border);
+  border-radius: 8px;
+}
+
+.markdown-preview-view th {
+  background: color-mix(in srgb, var(--ct-blue) 18%, var(--background-secondary));
+}
+
+.markdown-preview-view th,
+.markdown-preview-view td {
+  padding: 0.75em 0.85em;
+  border-bottom: 1px solid var(--ct-border);
+}
+
+.markdown-preview-view tr:last-child td {
+  border-bottom: 0;
+}
+
+.markdown-preview-view .callout[data-callout="important"] {
+  --callout-color: 245, 196, 81;
+}
+
+.markdown-preview-view .callout[data-callout="tip"] {
+  --callout-color: 79, 209, 197;
+}
+
+.markdown-preview-view a.internal-link {
+  color: var(--ct-accent);
+  font-weight: 650;
+}
+
+.nav-folder-title[data-path="docs/obsidian-vault"] {
+  color: var(--ct-accent);
+  font-weight: 700;
+}
+
+.nav-file-title[data-path$="HOME.md"],
+.nav-file-title[data-path$="AI_CONTEXT_MAP.md"] {
+  color: var(--ct-gold);
+  font-weight: 700;
+}

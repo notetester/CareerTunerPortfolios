@@ -58,8 +58,9 @@ export default defineConfig(({ mode }) => {
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2}'],
         navigateFallback: 'index.html',
-        // /api 는 SPA 폴백/캐시 대상에서 제외 — 백엔드로 직접 나가고 캐시하지 않는다.
-        navigateFallbackDenylist: [/^\/api/],
+        // /api 와 별도 정적 지식맵은 SPA 폴백/캐시 대상에서 제외한다.
+        // Pages의 /Obsidian/* 요청을 index.html로 돌리면 React Router 404가 노출된다.
+        navigateFallbackDenylist: [/^\/api/, /\/Obsidian(?:\/|$)/],
         cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Web Push 핸들러(push/notificationclick)를 생성 SW 에 합친다. public/push-sw.js 참고.
@@ -106,7 +107,6 @@ export default defineConfig(({ mode }) => {
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) {
-            if (id.includes('/src/admin/')) return 'admin'
             if (id.includes('/src/features/community/')) return 'community'
             if (id.includes('/src/features/collaboration/')) return 'collaboration'
             return undefined
