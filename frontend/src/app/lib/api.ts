@@ -1,6 +1,12 @@
 import { apiBase } from "./apiBase";
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./tokenStore";
-import { MOCK_UNHANDLED, resolveMock } from "./mock";
+import {
+  activateOutageFallbackIfConfirmed,
+  isNetworkOutageError,
+  isOutageFallbackActive,
+  isOutageStatus,
+  shouldUseMockData,
+} from "./outageFallback";
 
 /** 백엔드 공통 응답 envelope. */
 export interface ApiEnvelope<T> {
@@ -25,8 +31,83 @@ export class ApiError extends Error {
 //  - 우선순위: (네이티브 앱/dev 의) 런타임 오버라이드 → VITE_API_BASE_URL → 상대경로 "/api"
 //  - 런타임 오버라이드가 바뀔 수 있어 상수 캐시 없이 매 요청 시 평가한다.
 
-// 데모/목 모드: 백엔드 없이 동작(자체완결 APK·GitHub Pages 데모). 등록된 mock 핸들러로 응답한다.
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
+type RequestResult<T> =
+  | { kind: "real"; response: Response }
+  | { kind: "mock"; value: T };
+
+let mockModulePromise: Promise<typeof import("./mock")> | null = null;
+
+function loadMockModule(): Promise<typeof import("./mock")> {
+  mockModulePromise ??= import("./mock");
+  return mockModulePromise;
+}
+
+function canFallbackSameRequest(init: RequestInit): boolean {
+  const method = (init.method ?? "GET").toUpperCase();
+  return method === "GET" || method === "HEAD";
+}
+
+function demoUnavailableMessage(kind: "data" | "file"): string {
+  const prefix = isOutageFallbackActive() ? "장애 체험 모드" : "데모 모드";
+  return kind === "file"
+    ? `${prefix}에서는 제공되지 않는 파일입니다.`
+    : `${prefix}에서는 제공되지 않는 데이터입니다.`;
+}
+
+async function resolveMockData<T>(path: string, options: RequestInit): Promise<T> {
+  const mock = await loadMockModule();
+  const value = await mock.resolveMock(path, options);
+  if (value !== mock.MOCK_UNHANDLED) return value as T;
+  throw new ApiError(demoUnavailableMessage("data"), "DEMO_UNAVAILABLE", 501);
+}
+
+async function resolveMockBlob(path: string, options: RequestInit): Promise<Blob> {
+  const mock = await loadMockModule();
+  const value = await mock.resolveMock(path, options);
+  if (value === mock.MOCK_UNHANDLED) {
+    throw new ApiError(demoUnavailableMessage("file"), "DEMO_UNAVAILABLE", 501);
+  }
+  if (value instanceof Blob) return value;
+  throw new ApiError("데모 파일 응답 형식이 올바르지 않습니다.", "DEMO_INVALID_RESPONSE", 500);
+}
+
+/** 실제 요청을 우선한다. 장애가 확인되면 조회만 즉시 mock으로 대체하고 mutation은 첫 시도를 실패 처리한다. */
+async function requestRealFirst<T>(
+  url: string,
+  init: RequestInit,
+  resolveFallback: () => Promise<T>,
+): Promise<RequestResult<T>> {
+  if (shouldUseMockData()) {
+    return { kind: "mock", value: await resolveFallback() };
+  }
+
+  try {
+    const response = await fetch(url, init);
+    if (isOutageStatus(response.status) && await activateOutageFallbackIfConfirmed()) {
+      if (canFallbackSameRequest(init)) {
+        return { kind: "mock", value: await resolveFallback() };
+      }
+      throw createOutageMutationUncertainError();
+    }
+    return { kind: "real", response };
+  } catch (error) {
+    if (isNetworkOutageError(error) && await activateOutageFallbackIfConfirmed()) {
+      if (canFallbackSameRequest(init)) {
+        return { kind: "mock", value: await resolveFallback() };
+      }
+      throw createOutageMutationUncertainError();
+    }
+    throw error;
+  }
+}
+
+export function createOutageMutationUncertainError(): ApiError {
+  return new ApiError(
+    "운영 서비스가 요청을 처리했는지 확인할 수 없어 안전을 위해 결과를 반영하지 않았습니다. 장애 체험 모드에서 다시 시도해 주세요.",
+    "OUTAGE_MUTATION_UNCERTAIN",
+    503,
+  );
+}
 
 function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
   const headers = new Headers(options.headers ?? {});
@@ -82,20 +163,25 @@ export async function api<T = unknown>(
   config: { auth?: boolean } = {},
 ): Promise<T> {
   const withAuth = config.auth ?? true;
-
-  // 데모/목 모드: 네트워크 대신 mock 레지스트리로 응답. 미등록 엔드포인트는 "데모 미제공" 에러.
-  if (USE_MOCK) {
-    const mocked = await resolveMock(path, options);
-    if (mocked !== MOCK_UNHANDLED) return mocked as T;
-    throw new ApiError("데모 모드에서는 제공되지 않는 데이터입니다.", "DEMO_UNAVAILABLE", 501);
-  }
-
-  let res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
+  const resolveFallback = () => resolveMockData<T>(path, options);
+  let result = await requestRealFirst(
+    `${apiBase()}${path}`,
+    { ...options, headers: buildHeaders(options, withAuth) },
+    resolveFallback,
+  );
+  if (result.kind === "mock") return result.value;
+  let res = result.response;
 
   if (res.status === 401 && withAuth && getRefreshToken()) {
     const refreshed = await tryRefresh();
     if (refreshed) {
-      res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, true) });
+      result = await requestRealFirst(
+        `${apiBase()}${path}`,
+        { ...options, headers: buildHeaders(options, true) },
+        resolveFallback,
+      );
+      if (result.kind === "mock") return result.value;
+      res = result.response;
     }
   }
 
@@ -113,21 +199,24 @@ export async function apiBlob(
   config: { auth?: boolean } = {},
 ): Promise<Blob> {
   const withAuth = config.auth ?? true;
-
-  if (USE_MOCK) {
-    const mocked = await resolveMock(path, options);
-    if (mocked === MOCK_UNHANDLED) {
-      throw new ApiError("데모 모드에서는 제공되지 않는 파일입니다.", "DEMO_UNAVAILABLE", 501);
-    }
-    if (mocked instanceof Blob) return mocked;
-    throw new ApiError("데모 파일 응답 형식이 올바르지 않습니다.", "DEMO_INVALID_RESPONSE", 500);
-  }
-
-  let res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
+  const resolveFallback = () => resolveMockBlob(path, options);
+  let result = await requestRealFirst(
+    `${apiBase()}${path}`,
+    { ...options, headers: buildHeaders(options, withAuth) },
+    resolveFallback,
+  );
+  if (result.kind === "mock") return result.value;
+  let res = result.response;
   if (res.status === 401 && withAuth && getRefreshToken()) {
     const refreshed = await tryRefresh();
     if (refreshed) {
-      res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, true) });
+      result = await requestRealFirst(
+        `${apiBase()}${path}`,
+        { ...options, headers: buildHeaders(options, true) },
+        resolveFallback,
+      );
+      if (result.kind === "mock") return result.value;
+      res = result.response;
     }
   }
   if (!res.ok) {

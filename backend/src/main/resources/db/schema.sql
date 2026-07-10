@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS email_verification (
     email       VARCHAR(255) NOT NULL,
     token       VARCHAR(255) NOT NULL,                           -- UUID
     purpose     VARCHAR(20)  NOT NULL DEFAULT 'VERIFY',          -- VERIFY/EMAIL_CHANGE/RESET_PW/FIND_ID/DORMANT_RELEASE
+    frontend_client VARCHAR(32) NOT NULL DEFAULT 'primary',      -- 결과를 돌려보낼 named frontend client
     expired_at  DATETIME     NOT NULL,
     used        TINYINT(1)   NOT NULL DEFAULT 0,
     used_at     DATETIME     NULL,

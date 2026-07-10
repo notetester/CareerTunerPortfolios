@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import com.careertuner.common.config.CareerTunerProperties;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.common.web.FrontendReturnTarget;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
 
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -23,30 +25,47 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
     private final CareerTunerProperties props;
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver;
 
     @Value("${spring.mail.username:}")
     private String smtpUsername;
 
     /** 이메일 인증 링크 발송. 링크는 백엔드 verify 엔드포인트를 가리키고, 검증 후 프런트로 리다이렉트된다. */
     public void sendVerificationEmail(String to, String token) {
+        sendVerificationEmail(to, token, frontendReturnUrlResolver.primary());
+    }
+
+    public void sendVerificationEmail(String to, String token, FrontendReturnTarget returnTarget) {
         String link = props.getApp().getApiBaseUrl() + "/api/auth/verify-email?token=" + token;
         send(to, "[CareerTuner] 이메일 인증을 완료해 주세요", verifyHtml(link), link);
     }
 
     /** 비밀번호 재설정 링크 발송(프런트 재설정 페이지로 이동). */
     public void sendPasswordResetEmail(String to, String token) {
-        String link = props.getApp().getFrontendUrl() + "/auth/reset-password?token=" + token;
+        sendPasswordResetEmail(to, token, frontendReturnUrlResolver.primary());
+    }
+
+    public void sendPasswordResetEmail(String to, String token, FrontendReturnTarget returnTarget) {
+        String link = returnTarget.absoluteUrl("/auth/reset-password?token=" + token);
         send(to, "[CareerTuner] 비밀번호 재설정 안내", resetHtml(link), link);
     }
 
     /** 아이디 찾기 링크 발송. 링크 안에서 마스킹된 로그인 아이디만 보여준다. */
     public void sendFindIdEmail(String to, String token) {
-        String link = props.getApp().getFrontendUrl() + "/auth/find-id/result?token=" + token;
+        sendFindIdEmail(to, token, frontendReturnUrlResolver.primary());
+    }
+
+    public void sendFindIdEmail(String to, String token, FrontendReturnTarget returnTarget) {
+        String link = returnTarget.absoluteUrl("/auth/find-id/result?token=" + token);
         send(to, "[CareerTuner] 아이디 확인 안내", findIdHtml(link), link);
     }
 
     public void sendDormantReleaseEmail(String to, String token) {
-        String link = props.getApp().getFrontendUrl() + "/auth/release-dormant?token=" + token;
+        sendDormantReleaseEmail(to, token, frontendReturnUrlResolver.primary());
+    }
+
+    public void sendDormantReleaseEmail(String to, String token, FrontendReturnTarget returnTarget) {
+        String link = returnTarget.absoluteUrl("/auth/release-dormant?token=" + token);
         send(to, "[CareerTuner] 휴면 계정 해제 안내", dormantHtml(link), link);
     }
 

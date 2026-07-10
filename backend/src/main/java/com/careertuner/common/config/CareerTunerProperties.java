@@ -24,6 +24,8 @@ public class CareerTunerProperties {
     public static class App {
         /** 소셜 로그인 완료/이메일 링크가 향하는 프런트엔드 주소 */
         private String frontendUrl = "http://localhost:5173";
+        /** Codex Sites 백업 프런트엔드 주소. 비어 있으면 sites 클라이언트를 허용하지 않는다. */
+        private String sitesFrontendUrl = "";
         /** OAuth redirect-uri·이메일 링크 조립용 백엔드 주소 */
         private String apiBaseUrl = "http://localhost:8080";
     }

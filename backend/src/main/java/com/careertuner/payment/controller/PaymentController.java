@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.SitesFinancialMutation;
 import com.careertuner.payment.dto.TossPaymentCancelRequest;
 import com.careertuner.payment.dto.TossPaymentCancelResponse;
 import com.careertuner.payment.dto.TossPaymentConfirmRequest;
@@ -27,6 +28,7 @@ public class PaymentController {
     private final PaymentService paymentService;
 
     /** 크레딧 상품 결제창을 띄우기 전에 서버 기준 결제 대기 건을 만든다. */
+    @SitesFinancialMutation
     @PostMapping("/ready")
     public ApiResponse<TossPaymentReadyResponse> ready(@AuthenticationPrincipal AuthUser authUser,
                                                        @Valid @RequestBody TossPaymentReadyRequest request) {
@@ -34,12 +36,14 @@ public class PaymentController {
     }
 
     /** Toss 성공 리다이렉트 이후 결제를 승인하고 사용자 크레딧을 충전한다. */
+    @SitesFinancialMutation
     @PostMapping("/confirm")
     public ApiResponse<TossPaymentConfirmResponse> confirm(@AuthenticationPrincipal AuthUser authUser,
                                                            @Valid @RequestBody TossPaymentConfirmRequest request) {
         return ApiResponse.ok(paymentService.confirm(authUser.id(), request));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/cancel")
     public ApiResponse<TossPaymentCancelResponse> cancel(@AuthenticationPrincipal AuthUser authUser,
                                                          @Valid @RequestBody TossPaymentCancelRequest request) {

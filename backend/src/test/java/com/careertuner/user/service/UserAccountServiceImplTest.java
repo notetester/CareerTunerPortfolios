@@ -19,6 +19,8 @@ import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.auth.service.EmailService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.common.web.FrontendReturnTarget;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.dto.AccountInfoResponse;
 import com.careertuner.user.mapper.UserAccountMapper;
@@ -35,11 +37,13 @@ class UserAccountServiceImplTest {
     private final UserAccountMapper mapper = mock(UserAccountMapper.class);
     private final AuthMapper authMapper = mock(AuthMapper.class);
     private final EmailService emailService = mock(EmailService.class);
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver = mock(FrontendReturnUrlResolver.class);
     private final UserAccountServiceImpl service = new UserAccountServiceImpl(
             mapper,
             new ObjectMapper(),
             authMapper,
-            emailService);
+            emailService,
+            frontendReturnUrlResolver);
 
     private User user(Long id, String loginId, String phone) {
         return User.builder().id(id).email("redacted-826b0cff85484558@example.com").name("홍길동")
@@ -124,16 +128,19 @@ class UserAccountServiceImplTest {
         when(mapper.countByEmailExcludingUser("new@example.com", 1L)).thenReturn(0);
         ArgumentCaptor<EmailVerification> captor = ArgumentCaptor.forClass(EmailVerification.class);
 
-        service.requestEmailRegistration(1L, " New@Example.COM ");
+        FrontendReturnTarget target = new FrontendReturnTarget(
+                "sites", "https://careertuner-backup.career-tuner-4654.chatgpt.site");
+        service.requestEmailRegistration(1L, " New@Example.COM ", target);
 
         verify(authMapper).insertEmailVerification(captor.capture());
         EmailVerification verification = captor.getValue();
         assertThat(verification.getUserId()).isEqualTo(1L);
         assertThat(verification.getEmail()).isEqualTo("new@example.com");
         assertThat(verification.getPurpose()).isEqualTo("EMAIL_CHANGE");
+        assertThat(verification.getFrontendClient()).isEqualTo("sites");
         assertThat(verification.getToken()).isNotBlank();
         assertThat(verification.getExpiredAt()).isAfter(LocalDateTime.now().plusHours(23));
-        verify(emailService).sendVerificationEmail("new@example.com", verification.getToken());
+        verify(emailService).sendVerificationEmail("new@example.com", verification.getToken(), target);
     }
 
     @Test

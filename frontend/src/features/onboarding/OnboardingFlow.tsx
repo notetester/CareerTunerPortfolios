@@ -4,6 +4,7 @@ import { useAuth, type SocialProvider } from "@/app/auth/AuthContext";
 import { useConsent } from "@/app/auth/ConsentContext";
 import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
 import { enablePush } from "@/platform/push";
+import { useOutageFallback } from "@/app/lib/outageFallback";
 import { Sparkles, FileText, MessageSquare, Mic, Video, UserRound, X, Bell, Check, ChevronRight, type LucideIcon } from "lucide-react";
 import {
   clearOnboardingResume,
@@ -87,6 +88,7 @@ const CONSENT_ITEMS: { id: ConsentKey; label: string; required: boolean; href?: 
 export function OnboardingFlow() {
   const nav = useNavigate();
   const { isAuthenticated, login, socialLogin } = useAuth();
+  const { socialOAuthBlocked } = useOutageFallback();
   const { save: saveConsents } = useConsent();
   const hasPendingResume = readPendingOnboardingConsents() !== null;
   const resumeStep = new URLSearchParams(window.location.search).get("obResume") === "billing"
@@ -287,12 +289,13 @@ export function OnboardingFlow() {
 
             <div className="ob-social">
               {PROVIDERS.map((p) => (
-                <button key={p.id} className={`ob-soc s-${p.cls}`} onClick={() => doSocialLogin(p.id)} disabled={busy || !requiredOk}>
+                <button key={p.id} className={`ob-soc s-${p.cls}`} onClick={() => doSocialLogin(p.id)} disabled={busy || !requiredOk || socialOAuthBlocked}>
                   <span className="ob-soc-ic">{p.icon}</span>
                   <span className="ob-soc-tx">{p.label}로 계속하기</span>
                 </button>
               ))}
             </div>
+            {socialOAuthBlocked && <p className="ob-hint">장애 체험 중에는 소셜 로그인을 사용할 수 없어요.</p>}
 
             <div className="ob-or"><span>또는</span></div>
 

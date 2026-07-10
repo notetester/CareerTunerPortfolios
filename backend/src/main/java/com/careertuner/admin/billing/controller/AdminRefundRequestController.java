@@ -16,6 +16,7 @@ import com.careertuner.billing.dto.RefundReviewRequest;
 import com.careertuner.billing.service.RefundRequestService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.SitesFinancialMutation;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class AdminRefundRequestController {
         return ApiResponse.ok(service.listAdmin(authUser, status));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/{id}/approve")
     public ApiResponse<RefundRequestResponse> approve(
             @AuthenticationPrincipal AuthUser authUser,
@@ -41,6 +43,7 @@ public class AdminRefundRequestController {
         return ApiResponse.ok(service.approve(authUser, id, request));
     }
 
+    @SitesFinancialMutation
     @PostMapping("/{id}/reject")
     public ApiResponse<RefundRequestResponse> reject(
             @AuthenticationPrincipal AuthUser authUser,

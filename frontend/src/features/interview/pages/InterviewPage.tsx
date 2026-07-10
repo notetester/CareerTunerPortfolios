@@ -4,6 +4,7 @@ import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/auth/AuthContext";
+import { useOutageFallback } from "@/app/lib/outageFallback";
 import { isNativeApp } from "@/platform/capacitor";
 import { toast } from "@/features/notification/components/toast";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
@@ -51,6 +52,7 @@ export function InterviewPage() {
   const startDemo = useTutorialStore((s) => s.startDemo);
   const stopDemo = useTutorialStore((s) => s.stop);
   const notifyTab = useTutorialStore((s) => s.notifyTab);
+  const { mode: dataMode } = useOutageFallback();
   const mockActive = mode !== "off"; // 데모/튜토리얼 둘 다 더미·게이트 우회
   const isTutorial = mode === "tutorial"; // 풍선·자동 진행은 튜토리얼만
   const [searchParams, setSearchParams] = useSearchParams();
@@ -109,6 +111,11 @@ export function InterviewPage() {
 
   const wantTutorial = searchParams.get("tutorial") === "1";
   const wantDemo = searchParams.get("demo") === "1";
+
+  // AWS 장애 체험에서는 외부 Realtime/LiveAvatar 연결 대신 기존 안전한 미디어 데모를 사용한다.
+  useEffect(() => {
+    if (dataMode === "outage-demo" && mode === "off") startDemo();
+  }, [dataMode, mode, startDemo]);
 
   // 데모/튜토리얼 모드에서는 실제 세션 없이도 더미 세션으로 흐름을 보여준다.
   const effectiveSession = mockActive ? (activeSession ?? dummySession) : activeSession;

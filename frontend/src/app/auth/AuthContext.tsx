@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api } from "../lib/api";
 import { apiBase } from "../lib/apiBase";
 import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
+import { isOutageFallbackActive, isSocialOAuthBlocked } from "../lib/outageFallback";
 import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "../lib/tokenStore";
 
 export interface MeUser {
@@ -83,7 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshMe]);
 
   const completeLogin = useCallback((token: TokenResponse) => {
-    setTokens({ accessToken: token.accessToken, refreshToken: token.refreshToken });
+    // 장애 체험용 mock 토큰으로 기존 운영 세션을 덮어쓰지 않는다. 복구 reload 후 실제 토큰을 다시 사용한다.
+    if (!isOutageFallbackActive()) {
+      setTokens({ accessToken: token.accessToken, refreshToken: token.refreshToken });
+    }
     setUser(token.user);
   }, []);
 
@@ -120,11 +124,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       { method: "POST", body: JSON.stringify({ loginId, email, password, name, ...consents }) },
       { auth: false },
     );
-    setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+    if (!isOutageFallbackActive()) {
+      setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+    }
     setUser(res.user);
   }, []);
 
   const socialLogin = useCallback((provider: SocialProvider) => {
+    if (isSocialOAuthBlocked()) return;
     // 전체 페이지 이동 → 백엔드가 제공자로 리다이렉트
     window.location.href = `${apiBase()}/auth/oauth/${provider}`;
   }, []);
