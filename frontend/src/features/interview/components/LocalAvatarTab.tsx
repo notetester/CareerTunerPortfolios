@@ -39,7 +39,12 @@ import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
 import interviewerPlaceholder from "../assets/interviewer-placeholder.png";
-import { useAppLockCleanup } from "@/platform/appLockEvents";
+import {
+  captureAppLockGeneration,
+  isAppLockGenerationCurrent,
+  keepStreamForAppLock,
+  useAppLockCleanup,
+} from "@/platform/appLockEvents";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
@@ -153,12 +158,15 @@ export function LocalAvatarTab({
 
   useAppLockCleanup(() => {
     cleanup();
+    chunksRef.current = [];
     setStatus("idle");
     setNote("앱 잠금으로 진행 중이던 화상 녹화를 종료했습니다.");
   });
 
   const start = async () => {
     if (!session) return;
+    const lockGeneration = captureAppLockGeneration();
+    if (lockGeneration === null) return;
     setStatus("connecting");
     setError(null);
     setNote(null);
@@ -177,6 +185,7 @@ export function LocalAvatarTab({
     try {
       // 1) 준비된 본질문 목록을 텍스트 배열로 로드 (베이직: 전체 질문, 최대 6 · 체험판: 1).
       const qs = await listSessionQuestions(session.id);
+      if (!isAppLockGenerationCurrent(lockGeneration)) return;
       const mainQuestions = qs
         .filter((q) => q.parentQuestionId == null)
         .slice(0, trial ? 1 : 6)
@@ -188,6 +197,7 @@ export function LocalAvatarTab({
       const webcam = remoteCam
         ? remoteCam.clone()
         : await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      if (!keepStreamForAppLock(webcam, lockGeneration)) return;
       webcamRef.current = webcam;
       if (selfVideoRef.current) selfVideoRef.current.srcObject = webcam;
 
@@ -205,7 +215,7 @@ export function LocalAvatarTab({
       const { recorder, format } = createNegotiatedRecorder(webcam, "video");
       recordFormatRef.current = format;
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (isAppLockGenerationCurrent(lockGeneration) && e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.start();
       recorderRef.current = recorder;
@@ -214,15 +224,21 @@ export function LocalAvatarTab({
       const visualTracker = new VisualMetricsTracker();
       visualTrackerRef.current = visualTracker;
       if (selfVideoRef.current) {
-        visualTracker.start(selfVideoRef.current).catch(() => {
-          visualTrackerRef.current = null;
-          setNote((prev) => prev ?? "표정/자세 분석 모델을 불러오지 못해 음성 지표만으로 채점합니다.");
-        });
+        visualTracker.start(selfVideoRef.current)
+          .then(() => {
+            if (!isAppLockGenerationCurrent(lockGeneration)) visualTracker.dispose();
+          })
+          .catch(() => {
+            visualTrackerRef.current = null;
+            if (isAppLockGenerationCurrent(lockGeneration))
+              setNote((prev) => prev ?? "표정/자세 분석 모델을 불러오지 못해 음성 지표만으로 채점합니다.");
+          });
       }
 
       setStatus("live");
     } catch (err) {
       cleanup();
+      if (!isAppLockGenerationCurrent(lockGeneration)) return;
       setError(err instanceof Error ? err.message : "화상 면접 시작에 실패했습니다.");
       setStatus("error");
     }

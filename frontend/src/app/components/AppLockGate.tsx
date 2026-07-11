@@ -20,7 +20,11 @@ export function AppLockGate({ children }: { children: ReactNode }) {
 
   const attemptBiometric = useCallback(async () => {
     if (biometricAvailable() && biometricEnabled()) {
-      if (await tryBiometric()) setLocked(false);
+      if (await tryBiometric()) {
+        // React가 잠금/해제를 한 번에 배치해도 외부 세대 상태가 잠긴 채 남지 않게 동기화한다.
+        emitAppLockState(false);
+        setLocked(false);
+      }
     }
   }, []);
 
@@ -40,6 +44,8 @@ export function AppLockGate({ children }: { children: ReactNode }) {
       if (document.visibilityState === "hidden") {
         hiddenAt.current = Date.now();
       } else if (hasPin() && hiddenAt.current && Date.now() - hiddenAt.current > AUTOLOCK_GRACE) {
+        // 비동기 미디어 작업이 React effect보다 먼저 재개되지 않도록 동기적으로 세대를 닫는다.
+        emitAppLockState(true);
         setLocked(true);
         setPin("");
         void attemptBiometric();
@@ -54,6 +60,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     const ok = await verifyPin(value);
     setChecking(false);
     if (ok) {
+      emitAppLockState(false);
       setLocked(false);
       setPin("");
       setError(false);

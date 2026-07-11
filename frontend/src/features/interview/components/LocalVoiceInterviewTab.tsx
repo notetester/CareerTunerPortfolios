@@ -31,7 +31,12 @@ import type {
 import { getScoreColor } from "../types/interview";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
-import { useAppLockCleanup } from "@/platform/appLockEvents";
+import {
+  captureAppLockGeneration,
+  isAppLockGenerationCurrent,
+  keepStreamForAppLock,
+  useAppLockCleanup,
+} from "@/platform/appLockEvents";
 
 type Status = "idle" | "recording" | "scoring" | "done";
 
@@ -138,6 +143,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
 
   useAppLockCleanup(() => {
     cleanup();
+    chunksRef.current = [];
     window.speechSynthesis?.cancel();
     setStatus("idle");
     setNote("앱 잠금으로 진행 중이던 녹음을 종료했습니다.");
@@ -167,6 +173,8 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
 
   const startRecording = async () => {
     if (recorderRef.current) return; // 이미 녹음 중 (자동/수동 중복 방지)
+    const lockGeneration = captureAppLockGeneration();
+    if (lockGeneration === null) return;
     window.speechSynthesis?.cancel();
     setSpeaking(false);
     try {
@@ -174,6 +182,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       const mic = remoteMic
         ? remoteMic.clone()
         : await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!keepStreamForAppLock(mic, lockGeneration)) return;
       micRef.current = mic;
       setMicStream(mic);
       chunksRef.current = [];
@@ -190,7 +199,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       const { recorder, format } = createNegotiatedRecorder(mic, "audio");
       formatRef.current = format;
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (isAppLockGenerationCurrent(lockGeneration) && e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.start();
       recorderRef.current = recorder;
@@ -198,6 +207,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
       setStatus("recording");
       beep(); // 녹음 시작 신호음
     } catch {
+      if (!isAppLockGenerationCurrent(lockGeneration)) return;
       setError("마이크 접근에 실패했습니다.");
     }
   };
@@ -205,6 +215,7 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
   // 질문이 뜨면 면접관이 읽어주고(TTS), 다 읽으면 자동으로 녹음을 시작한다.
   useEffect(() => {
     if (questionIdx < 0 || status !== "idle" || !questions?.[questionIdx]) return;
+    if (captureAppLockGeneration() === null) return;
     if (typeof window === "undefined" || !window.speechSynthesis) {
       void startRecording(); // TTS 미지원이면 바로 녹음
       return;
