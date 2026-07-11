@@ -48,4 +48,39 @@ assert(server.resolveServerOverride("custom", "https://example.com/api?token=val
 assert(!server.serverOverrideChanged("https://example.com/api/", "https://example.com/api"), "끝 슬래시만 다른 주소는 동일해야 한다");
 assert(server.serverOverrideChanged(null, aws.override), "빌드 기본값과 AWS 오버라이드는 변경으로 판단해야 한다");
 
+const apiBaseSource = await readFile(resolve("src/app/lib/apiBase.ts"), "utf8");
+assert(apiBaseSource.includes('resolveServerOverride("custom", stored'), "저장된 override도 읽을 때 정책 검증해야 한다");
+assert(apiBaseSource.includes("clearTokens();"), "안전하지 않은 기존 override는 토큰과 함께 폐기해야 한다");
+
+const appLock = await importTypeScriptModule("src/platform/appLockState.ts");
+const initialGeneration = appLock.captureAppLockGeneration();
+assert(initialGeneration !== null, "초기 해제 상태에서는 민감 작업 세대를 발급해야 한다");
+assert(appLock.updateAppLockState(true), "잠금 전환은 세대를 변경해야 한다");
+assert(!appLock.updateAppLockState(true), "동일 잠금 상태를 중복 적용해 세대를 흔들면 안 된다");
+assert(!appLock.isAppLockGenerationCurrent(initialGeneration), "잠금 전 작업은 즉시 무효화해야 한다");
+let discardedResources = 0;
+assert(!appLock.guardAppLockGeneration(initialGeneration, () => { discardedResources += 1; }), "만료 세대 자원은 유지하면 안 된다");
+assert(discardedResources === 1, "만료 세대 자원은 즉시 한 번 폐기해야 한다");
+assert(appLock.captureAppLockGeneration() === null, "잠금 중에는 새 민감 작업을 시작하면 안 된다");
+assert(appLock.updateAppLockState(false), "잠금 해제도 새 세대를 만들어야 한다");
+const resumedGeneration = appLock.captureAppLockGeneration();
+assert(resumedGeneration !== null && resumedGeneration !== initialGeneration, "해제 후 작업은 새 세대를 사용해야 한다");
+
+const directMediaFiles = [
+  "src/features/interview/components/AvatarTab.tsx",
+  "src/features/interview/components/LocalAvatarTab.tsx",
+  "src/features/interview/components/LocalVoiceInterviewTab.tsx",
+  "src/features/interview/components/RealtimeInterviewTab.tsx",
+  "src/features/interview/components/mobile/ImmersiveAvatarOverlay.tsx",
+  "src/features/interview/components/mobile/ImmersiveVoiceOverlay.tsx",
+  "src/features/interview/pages/MicRemotePage.tsx",
+];
+for (const mediaFile of directMediaFiles) {
+  const source = await readFile(resolve(mediaFile), "utf8");
+  assert(source.includes("captureAppLockGeneration"), `${mediaFile}는 시작 시 앱 잠금 세대를 캡처해야 한다`);
+  assert(source.includes("keepStreamForAppLock"), `${mediaFile}는 획득한 스트림을 잠금 세대로 검증해야 한다`);
+}
+const remoteMediaSource = await readFile(resolve("src/features/interview/components/RemoteMicConnectCard.tsx"), "utf8");
+assert(remoteMediaSource.includes("useAppLockCleanup"), "원격 WebRTC 수신 연결도 앱 잠금 시 종료해야 한다");
+
 console.log("PASS mobile platform tests");

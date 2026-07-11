@@ -11,6 +11,12 @@ import {
   waitIceGatheringComplete,
 } from "../api/micHandoffApi";
 import { MicLevelMeter } from "../components/MicLevelMeter";
+import {
+  captureAppLockGeneration,
+  isAppLockGenerationCurrent,
+  keepStreamForAppLock,
+  useAppLockCleanup,
+} from "@/platform/appLockEvents";
 
 type Phase = "idle" | "joining" | "connecting" | "connected" | "ended" | "error";
 
@@ -60,6 +66,8 @@ export function MicRemotePage() {
       setError("데스크탑 화면에 표시된 6자리 코드를 입력해 주세요.");
       return;
     }
+    const lockGeneration = captureAppLockGeneration();
+    if (lockGeneration === null) return;
     setPhase("joining");
     setError(null);
     codeRef.current = trimmed;
@@ -68,11 +76,13 @@ export function MicRemotePage() {
       let offerSdp: string | null = null;
       for (let i = 0; i < 30; i++) {
         const state = await getMicHandoffState(trimmed, "phone");
+        if (!isAppLockGenerationCurrent(lockGeneration)) return;
         if (state.offerSdp) {
           offerSdp = state.offerSdp;
           break;
         }
         await new Promise((r) => setTimeout(r, 1000));
+        if (!isAppLockGenerationCurrent(lockGeneration)) return;
       }
       if (!offerSdp) throw new Error("데스크탑의 연결 준비를 기다리다 시간이 지났습니다. 다시 시도해 주세요.");
 
@@ -81,44 +91,59 @@ export function MicRemotePage() {
       const useVideo = /\r?\nm=video\b/.test(offerSdp) || offerSdp.startsWith("m=video");
       setWantVideo(useVideo);
       setPhase("connecting");
-      const [mic, iceServers] = await Promise.all([
-        navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
-          video: useVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
-        }),
-        fetchIceServers(),
-      ]);
+      const mic = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+        video: useVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
+      });
+      if (!keepStreamForAppLock(mic, lockGeneration)) return;
       micRef.current = mic;
       if (useVideo && localVideoRef.current) localVideoRef.current.srcObject = mic;
       setMicStream(mic);
+      const iceServers = await fetchIceServers();
+      if (!isAppLockGenerationCurrent(lockGeneration)) { mic.getTracks().forEach((t) => t.stop()); return; }
 
       const pc = new RTCPeerConnection({ iceServers });
       pcRef.current = pc;
       pc.onconnectionstatechange = () => {
+        if (!isAppLockGenerationCurrent(lockGeneration)) return;
         if (pc.connectionState === "connected") setPhase("connected");
         if (pc.connectionState === "failed") {
           setError("연결에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.");
+          end();
           setPhase("error");
+          return;
         }
-        if (pc.connectionState === "disconnected") setPhase("ended");
+        if (pc.connectionState === "disconnected" || pc.connectionState === "closed") end();
       };
       await pc.setRemoteDescription({ type: "offer", sdp: offerSdp });
+      if (!isAppLockGenerationCurrent(lockGeneration)) { end(); return; }
       mic.getTracks().forEach((t) => pc.addTrack(t, mic));
       const answer = await pc.createAnswer();
+      if (!isAppLockGenerationCurrent(lockGeneration)) { end(); return; }
       await pc.setLocalDescription(answer);
+      if (!isAppLockGenerationCurrent(lockGeneration)) { end(); return; }
       await waitIceGatheringComplete(pc);
+      if (!isAppLockGenerationCurrent(lockGeneration)) { end(); return; }
       await postMicHandoffAnswer(trimmed, pc.localDescription?.sdp ?? answer.sdp ?? "");
+      if (!isAppLockGenerationCurrent(lockGeneration)) { end(); return; }
 
       // 전송 중 화면 꺼짐 방지 (지원 기기 한정, 실패 무시).
       try {
         const nav = navigator as Navigator & {
           wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> };
         };
-        wakeLockRef.current = (await nav.wakeLock?.request("screen")) ?? null;
+        const wakeLock = (await nav.wakeLock?.request("screen")) ?? null;
+        if (!isAppLockGenerationCurrent(lockGeneration)) {
+          await wakeLock?.release().catch(() => undefined);
+          end();
+          return;
+        }
+        wakeLockRef.current = wakeLock;
       } catch {
         // wake lock 미지원/거부 — 치명적이지 않다.
       }
     } catch (err) {
+      if (!isAppLockGenerationCurrent(lockGeneration)) { end(); return; }
       setError(err instanceof Error ? err.message : "연결에 실패했습니다.");
       setPhase("error");
       pcRef.current?.close();
@@ -134,13 +159,26 @@ export function MicRemotePage() {
   };
 
   const end = () => {
-    void wakeLockRef.current?.release().catch(() => undefined);
-    pcRef.current?.close();
+    const wakeLock = wakeLockRef.current;
+    wakeLockRef.current = null;
+    void wakeLock?.release().catch(() => undefined);
+    const pc = pcRef.current;
+    pcRef.current = null;
+    pc?.getSenders().forEach((sender) => sender.track?.stop());
+    pc?.getReceivers().forEach((receiver) => receiver.track?.stop());
+    pc?.close();
     micRef.current?.getTracks().forEach((t) => t.stop());
+    micRef.current = null;
     setMicStream(null);
-    if (codeRef.current) void closeMicHandoff(codeRef.current).catch(() => undefined);
+    const handoffCode = codeRef.current;
+    codeRef.current = "";
+    if (handoffCode) {
+      void closeMicHandoff(handoffCode).catch(() => undefined);
+    }
     setPhase("ended");
   };
+
+  useAppLockCleanup(end);
 
   // QR로 열었는데 이 폰 브라우저에 로그인 세션이 없으면 API(같은계정 검증)가 막힌다 → 로그인 유도.
   if (!isAuthenticated) {
