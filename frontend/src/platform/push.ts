@@ -1,7 +1,7 @@
 /**
  * 푸시 알림 등록 어댑터 (docs/planning/모바일 고려.md §5.3, §8.3).
  * - 웹/PWA: 서비스워커 pushManager + VAPID 공개키(VITE_VAPID_PUBLIC_KEY) → web push 구독
- * - 네이티브: 런타임 Capacitor PushNotifications 플러그인(있으면) → FCM/APNs 토큰
+ * - 네이티브: Firebase가 구성된 Android에서 Capacitor PushNotifications → FCM 토큰
  * - 키/플러그인 미설정: 브라우저/OS 권한 요청까지는 동작하고, 구독 생성은 건너뛴다(무해).
  */
 import { api } from "@/app/lib/api";
@@ -16,6 +16,7 @@ import { useNotificationStore } from "@/features/notification/hooks/useNotificat
 import { safeInternalAppPath } from "@/features/notification/lib/navigationLink";
 import { isNativeApp, platformName } from "./capacitor";
 import { toAppPath } from "./deepLink";
+import { isNativePushRegistrationConfigured } from "./nativePushConfiguration";
 
 // 개발용 기본 VAPID 공개키(비밀 아님) — 백엔드 careertuner.push.vapid.public-key 기본값과 반드시 동일.
 // 운영/배포는 VITE_VAPID_PUBLIC_KEY 로 교체하면 코드 변경 없이 적용된다(.env.example 참고).
@@ -56,6 +57,9 @@ async function registerNative(): Promise<PushRegisterResult> {
   const plugin = PushNotifications;
   const perm = await plugin.requestPermissions();
   if (perm.receive !== "granted") return "denied";
+  // Android는 google-services.json이 없으면 register() 내부에서 네이티브 예외로 종료된다.
+  // iOS 원시 APNs 토큰도 현재 FCM 발송기에 등록할 수 없다. 권한은 유지하되 등록만 건너뛴다.
+  if (!(await isNativePushRegistrationConfigured())) return "permission-only";
   return await new Promise<PushRegisterResult>((resolve) => {
     // FCM 미설정(google-services 부재) 기기에서는 registration 이벤트가 영원히 오지 않아 호출부 버튼이
     // 영구 busy 로 잠긴다 — registrationError 와 타임아웃으로 반드시 결착시킨다.

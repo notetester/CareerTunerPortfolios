@@ -17,6 +17,11 @@ async function importTypeScriptModule(relativePath) {
 }
 
 const submission = await importTypeScriptModule("src/features/interview/lib/mobileSubmission.ts");
+const nativePushConfiguration = await importTypeScriptModule("src/platform/nativePushConfigurationCore.ts");
+assert(!nativePushConfiguration.shouldRegisterNativePush("android", false), "Firebase 미구성 Android는 네이티브 토큰 등록을 호출하면 안 된다");
+assert(nativePushConfiguration.shouldRegisterNativePush("android", true), "Firebase가 초기화된 Android는 기존 FCM 등록을 유지해야 한다");
+assert(!nativePushConfiguration.shouldRegisterNativePush("ios", true), "원시 APNs 토큰을 FCM 토큰으로 오등록하면 안 된다");
+assert(!nativePushConfiguration.shouldRegisterNativePush("web", true), "네이티브 플랫폼 판별 실패를 토큰 등록 허용으로 처리하면 안 된다");
 const original = { kind: "question", id: 1 };
 const pendingAnswer = { kind: "answer", submissionId: "pending-1" };
 const pendingScoring = { kind: "scoring", submissionId: "pending-1" };

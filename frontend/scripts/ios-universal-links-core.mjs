@@ -3,6 +3,14 @@ export const IOS_APP_LINK_HOST = "careertuner.kro.kr";
 export const IOS_ASSOCIATED_DOMAINS_ENTITLEMENT = `applinks:${IOS_APP_LINK_HOST}`;
 export const IOS_ENTITLEMENTS_PROJECT_PATH = "App/App.entitlements";
 export const IOS_CUSTOM_URL_SCHEME = "careertuner";
+export const IOS_USAGE_DESCRIPTIONS = Object.freeze({
+  NSCameraUsageDescription:
+    "화상 면접 촬영과 공고·이력서 등록에 카메라를 사용합니다. 면접 원본 영상은 답변 기록에 저장되며 사용자가 삭제할 수 있습니다.",
+  NSMicrophoneUsageDescription:
+    "음성·화상 면접 답변을 녹음하고 전달력을 분석하는 데 마이크를 사용합니다. 원본은 답변 기록에 저장되며 사용자가 삭제할 수 있습니다.",
+  NSPhotoLibraryUsageDescription:
+    "공고·이력서 사진을 선택해 지원 건으로 등록할 때 사진 보관함에 접근합니다.",
+});
 
 const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/;
 const UNIVERSAL_LINK_COMPONENTS = Object.freeze([
@@ -50,17 +58,13 @@ export function createAppleAppSiteAssociation(rawTeamIds, { allowEmpty = false }
 }
 
 export function createAssociatedDomainsEntitlements() {
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  return patchAssociatedDomainsEntitlements(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-\t<key>com.apple.developer.associated-domains</key>
-\t<array>
-\t\t<string>${IOS_ASSOCIATED_DOMAINS_ENTITLEMENT}</string>
-\t</array>
 </dict>
 </plist>
-`;
+`);
 }
 
 function findMatchingArrayClose(source, arrayOpenIndex) {
@@ -94,10 +98,77 @@ function urlTypesContainScheme(urlTypesBlock, scheme) {
   return false;
 }
 
-export function patchInfoPlistCustomScheme(infoPlistSource) {
-  if (typeof infoPlistSource !== "string" || !infoPlistSource.includes("<plist") || !infoPlistSource.includes("<dict>")) {
-    throw new Error("iOS Info.plist 형식이 올바르지 않습니다.");
+function assertPlistSource(source, label) {
+  if (typeof source !== "string" || !source.includes("<plist") || !source.includes("<dict>")) {
+    throw new Error(`${label} 형식이 올바르지 않습니다.`);
   }
+}
+
+/** 기존 push/keychain 등의 entitlement를 보존하면서 Associated Domains만 추가한다. */
+export function patchAssociatedDomainsEntitlements(entitlementsSource) {
+  assertPlistSource(entitlementsSource, "iOS entitlements plist");
+  const newline = entitlementsSource.includes("\r\n") ? "\r\n" : "\n";
+  const keyPattern = /<key>com\.apple\.developer\.associated-domains<\/key>/g;
+  const matches = [...entitlementsSource.matchAll(keyPattern)];
+  if (matches.length > 1) throw new Error("iOS entitlements에 Associated Domains 키가 중복되어 있습니다.");
+
+  if (matches.length === 1) {
+    const keyEnd = matches[0].index + matches[0][0].length;
+    const arrayOpenIndex = entitlementsSource.indexOf("<array>", keyEnd);
+    if (arrayOpenIndex < 0) throw new Error("Associated Domains entitlement의 array를 찾지 못했습니다.");
+    const arrayCloseIndex = findMatchingArrayClose(entitlementsSource, arrayOpenIndex);
+    if (arrayCloseIndex < 0) throw new Error("Associated Domains entitlement의 닫는 array를 찾지 못했습니다.");
+    const arrayBlock = entitlementsSource.slice(arrayOpenIndex, arrayCloseIndex);
+    if (arrayBlock.includes(`<string>${IOS_ASSOCIATED_DOMAINS_ENTITLEMENT}</string>`)) {
+      return entitlementsSource;
+    }
+    return `${entitlementsSource.slice(0, arrayCloseIndex)}\t\t<string>${IOS_ASSOCIATED_DOMAINS_ENTITLEMENT}</string>${newline}${entitlementsSource.slice(arrayCloseIndex)}`;
+  }
+
+  const rootDictClose = entitlementsSource.lastIndexOf("</dict>");
+  if (rootDictClose < 0) throw new Error("iOS entitlements의 최상위 dict를 찾지 못했습니다.");
+  const entry = [
+    "\t<key>com.apple.developer.associated-domains</key>",
+    "\t<array>",
+    `\t\t<string>${IOS_ASSOCIATED_DOMAINS_ENTITLEMENT}</string>`,
+    "\t</array>",
+  ].join(newline);
+  return `${entitlementsSource.slice(0, rootDictClose)}${entry}${newline}${entitlementsSource.slice(rootDictClose)}`;
+}
+
+function patchPlistStringValue(source, key, value) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const keyPattern = new RegExp(`<key>${escapedKey}<\\/key>`, "g");
+  const matches = [...source.matchAll(keyPattern)];
+  if (matches.length > 1) throw new Error(`Info.plist에 ${key}가 중복되어 있습니다.`);
+
+  if (matches.length === 1) {
+    const keyEnd = matches[0].index + matches[0][0].length;
+    const stringMatch = source.slice(keyEnd).match(/^\s*<string>[\s\S]*?<\/string>/);
+    if (!stringMatch) throw new Error(`Info.plist의 ${key} 문자열 값을 찾지 못했습니다.`);
+    const stringStart = keyEnd + stringMatch.index;
+    const leadingWhitespace = stringMatch[0].match(/^\s*/)?.[0] ?? "";
+    return `${source.slice(0, stringStart)}${leadingWhitespace}<string>${value}</string>${source.slice(stringStart + stringMatch[0].length)}`;
+  }
+
+  const rootDictClose = source.lastIndexOf("</dict>");
+  if (rootDictClose < 0) throw new Error("Info.plist의 최상위 dict를 찾지 못했습니다.");
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const entry = `\t<key>${key}</key>${newline}\t<string>${value}</string>${newline}`;
+  return `${source.slice(0, rootDictClose)}${entry}${source.slice(rootDictClose)}`;
+}
+
+/** 카메라·마이크·사진 선택 기능이 iOS 권한 요청 전에 필요한 설명을 멱등 보장한다. */
+export function patchInfoPlistUsageDescriptions(infoPlistSource) {
+  assertPlistSource(infoPlistSource, "iOS Info.plist");
+  return Object.entries(IOS_USAGE_DESCRIPTIONS).reduce(
+    (source, [key, value]) => patchPlistStringValue(source, key, value),
+    infoPlistSource,
+  );
+}
+
+export function patchInfoPlistCustomScheme(infoPlistSource) {
+  assertPlistSource(infoPlistSource, "iOS Info.plist");
 
   const newline = infoPlistSource.includes("\r\n") ? "\r\n" : "\n";
   const urlTypesKeyPattern = /<key>CFBundleURLTypes<\/key>/g;

@@ -4,12 +4,14 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
 
+import com.careertuner.app.configuration.NativeConfigurationPlugin;
 import com.careertuner.app.planner.PlannerNativePlugin;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(NativeConfigurationPlugin.class);
         registerPlugin(PlannerNativePlugin.class);
         super.onCreate(savedInstanceState);
 

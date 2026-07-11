@@ -52,6 +52,9 @@ jobs:
           grep -Fq 'applinks:careertuner.kro.kr' ios/App/App/App.entitlements
           test "$(grep -Fc 'CODE_SIGN_ENTITLEMENTS = App/App.entitlements;' ios/App/App.xcodeproj/project.pbxproj)" -eq 2
           /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes' ios/App/App/Info.plist | grep -Fq 'careertuner'
+          /usr/libexec/PlistBuddy -c 'Print :NSCameraUsageDescription' ios/App/App/Info.plist | grep -Fq '사용자가 삭제'
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' ios/App/App/Info.plist | grep -Fq '사용자가 삭제'
+          /usr/libexec/PlistBuddy -c 'Print :NSPhotoLibraryUsageDescription' ios/App/App/Info.plist | grep -Fq '사진 보관함'
 
       - name: Build for iOS Simulator (unsigned)
         run: |
