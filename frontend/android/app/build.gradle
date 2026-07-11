@@ -78,6 +78,9 @@ def verifyReleaseNetworkSecurity = tasks.register('verifyReleaseNetworkSecurity'
         if (androidConfig.allowMixedContent != false) {
             throw new GradleException('Release WebView allowMixedContent must be false.')
         }
+        if (androidConfig.webContentsDebuggingEnabled != false) {
+            throw new GradleException('Release WebView remote debugging must be disabled.')
+        }
         if (server.containsKey('url')) {
             throw new GradleException('Release WebView must not contain an external server.url.')
         }

@@ -128,6 +128,9 @@ function createCapacitorConfig(env = process.env) {
     android: {
       // HTTPS 문서가 HTTP 리소스를 조용히 불러오는 경로는 debug에서도 열지 않는다.
       allowMixedContent: false,
+      // 릴리스 WebView의 DOM·토큰을 USB/ADB 디버거에 노출하지 않는다.
+      // 개발 프로필에서만 명시적으로 열어 Capacitor의 빌드 유형 추론에 의존하지 않는다.
+      webContentsDebuggingEnabled: mode === "debug",
     },
   };
 }
@@ -151,6 +154,13 @@ function assertGeneratedCapacitorConfig(config, options = {}) {
   }
   if (android.allowMixedContent !== false) {
     throw new Error("Android WebView mixed content는 false여야 합니다.");
+  }
+  if (android.webContentsDebuggingEnabled !== (mode === "debug")) {
+    throw new Error(
+      mode === "release"
+        ? "release Android WebView 원격 디버깅은 false여야 합니다."
+        : "debug Android WebView 원격 디버깅은 true여야 합니다.",
+    );
   }
   if (Object.hasOwn(server, "allowNavigation")
     && (!Array.isArray(server.allowNavigation) || server.allowNavigation.length > 0)) {
