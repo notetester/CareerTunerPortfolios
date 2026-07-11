@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 import {
   Bell,
   CalendarClock,
+  CalendarArrowDown,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -38,6 +39,7 @@ import {
   getPlannerDashboard,
   updatePlannerMemo,
   updatePlannerScheduleItem,
+  exportPlannerIcs,
 } from "../api/plannerApi";
 import type {
   PlannerDashboard,
@@ -165,6 +167,15 @@ export function PlannerPage() {
   // 뷰/기준점이 바뀌면 그 범위로 재조회(백엔드 from/to 겹침 필터 재사용).
   useEffect(() => { void load(); }, [scheduleView, calendarAnchor]);
 
+  const exportCalendar = async () => {
+    try {
+      await exportPlannerIcs();
+      toast.success(".ics 파일을 내려받았습니다. 구글/애플/아웃룩 캘린더에서 '가져오기'로 추가하세요.");
+    } catch (requestError) {
+      toast.error(requestError instanceof Error ? requestError.message : "캘린더 내보내기에 실패했습니다.");
+    }
+  };
+
   useEffect(() => {
     const requested = searchParams.get("tab");
     if (requestedItemId != null) {
@@ -290,7 +301,13 @@ export function PlannerPage() {
               수동 일정, C 전략 추천 일정, 고정 메모와 알림을 한 곳에서 관리합니다.
             </p>
           </div>
-          <Badge className="bg-blue-100 text-blue-700">오버레이 {overlayCount}개 표시 중</Badge>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => void exportCalendar()}>
+              <CalendarArrowDown className="size-4" />
+              캘린더로 내보내기
+            </Button>
+            <Badge className="bg-blue-100 text-blue-700">오버레이 {overlayCount}개 표시 중</Badge>
+          </div>
         </div>
 
         <div className="flex overflow-x-auto rounded-lg border border-slate-200 bg-card p-1">
