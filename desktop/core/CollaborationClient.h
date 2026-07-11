@@ -109,6 +109,8 @@ private:
     static QSet<qint64> missingAttachmentIds(
         const QSet<qint64>& candidateIds, const QVariantList& attachments);
     void setLoading(bool loading);
+    void beginLoading();
+    void finishLoading(quint64 accountGeneration);
     void loadFriends();
     void loadRequests();
     void loadConversations();
@@ -133,6 +135,15 @@ private:
     QVariantList m_messages;
     QVariantList m_pendingAttachments;
     quint64 m_pendingGeneration = 0;
+    quint64 m_requestGeneration = 0;
+    quint64 m_searchRequestGeneration = 0;
+    quint64 m_discoverRequestGeneration = 0;
+    quint64 m_openConversationRequestGeneration = 0;
+    quint64 m_messagesRequestGeneration = 0;
+    quint64 m_friendsRequestGeneration = 0;
+    quint64 m_requestsRequestGeneration = 0;
+    quint64 m_conversationsRequestGeneration = 0;
+    quint64 m_muteRequestGeneration = 0;
     quint64 m_nextMessageRequestId = 0;
     InFlightMessage m_inFlightMessage;
     qint64 m_currentConversationId = -1;
@@ -140,4 +151,5 @@ private:
     QString m_currentConversationType;
     bool m_currentConversationMuted = false;
     bool m_loading = false;
+    int m_activeLoadingRequests = 0;
 };

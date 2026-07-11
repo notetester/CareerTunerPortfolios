@@ -30,9 +30,7 @@ CameraRecorder::CameraRecorder(QObject* parent) : QObject(parent)
     });
     connect(&m_recorder, &QMediaRecorder::errorOccurred, this,
         [this](QMediaRecorder::Error, const QString& msg) {
-            m_recording = false;
-            emit recordingChanged();
-            emit errorOccurred(msg);
+            handleRecorderError(msg);
         });
     connect(&m_recorder, &QMediaRecorder::recorderStateChanged, this,
         [this](QMediaRecorder::RecorderState st) {
@@ -47,6 +45,19 @@ CameraRecorder::CameraRecorder(QObject* parent) : QObject(parent)
     // 카메라/마이크 연결·해제 → 버튼/기기 카드 상태 갱신
     connect(&m_devices, &QMediaDevices::videoInputsChanged, this, &CameraRecorder::devicesChanged);
     connect(&m_devices, &QMediaDevices::audioInputsChanged, this, &CameraRecorder::devicesChanged);
+}
+
+void CameraRecorder::handleRecorderError(const QString& message)
+{
+    const QString failedPath = m_outPath;
+    const bool wasRecording = m_recording;
+    m_recording = false;
+    m_cancelled = true;
+    if (wasRecording) emit recordingChanged();
+    // error 뒤에는 StoppedState가 와도 finishRecording()이 early-return한다. 여기서 직접
+    // recorder 소유권과 부분 mp4를 정리해야 로그아웃 후 임시 파일이 남지 않는다.
+    discard(failedPath);
+    emit errorOccurred(message.isEmpty() ? QStringLiteral("영상 녹화에 실패했습니다") : message);
 }
 
 void CameraRecorder::finishRecording()
@@ -126,9 +137,11 @@ void CameraRecorder::start()
     emit secondsChanged();
 
     m_recorder.setOutputLocation(QUrl::fromLocalFile(m_outPath));
-    m_recorder.record();
     m_recording = true;
     emit recordingChanged();
+    // record()가 동기 errorOccurred를 내도 handler가 부분 파일과 recording 상태를 정리할 수 있게
+    // 상태를 먼저 전환한다.
+    m_recorder.record();
 }
 
 void CameraRecorder::stop()
@@ -146,6 +159,27 @@ void CameraRecorder::cancel()
     m_recorder.stop();
     if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
         finishRecording();
+}
+
+void CameraRecorder::reset()
+{
+    const bool wasRecording = m_recording;
+    if (wasRecording) {
+        cancel();
+    } else if (!m_outPath.isEmpty()) {
+        discard(m_outPath);
+    }
+    if (m_previewing) {
+        m_camera.stop();
+        m_previewing = false;
+        emit previewingChanged();
+    }
+    // 비동기 StoppedState가 아직 남아 있으면 finishRecording()이 취소 파일로 처리하도록 유지한다.
+    if (!wasRecording) m_cancelled = false;
+    if (m_seconds != 0) {
+        m_seconds = 0;
+        emit secondsChanged();
+    }
 }
 
 bool CameraRecorder::discard(const QString& filePath)

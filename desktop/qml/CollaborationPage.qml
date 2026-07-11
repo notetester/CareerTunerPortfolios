@@ -38,14 +38,14 @@ Item {
 
     function shareModeLabel(mode) {
         if (mode === "CLOUD") return "클라우드"
-        if (mode === "LOCAL") return "로컬"
+        if (mode === "LOCAL") return "온라인 제한 서버 공유"
         return "임시"
     }
 
     function availabilityLabel(value) {
         if (value === "EXPIRED") return "만료"
         if (value === "PLAN_INACTIVE") return "플랜 중지"
-        if (value === "LOCAL_ONLY") return "로컬"
+        if (value === "LOCAL_ONLY") return "데스크톱 온라인 필요"
         return "저장"
     }
 
@@ -723,12 +723,12 @@ Item {
                                     model: [
                                         { label: "임시", mode: "TEMPORARY", hint: "" },
                                         { label: "클라우드", mode: "CLOUD", hint: "" },
-                                        // LOCAL 은 데스크톱 전용 공유 모드 — 웹/모바일 선택지에는 없다
-                                        { label: "로컬", mode: "LOCAL", hint: "데스크톱 전용 (웹/모바일에는 안 보임)" }
+                                        // 실제 파일은 서버에 업로드되고 소유자 데스크톱 presence로 다운로드를 제한한다.
+                                        { label: "온라인 제한", mode: "LOCAL", hint: "서버를 통해 전달되며 소유자 데스크톱이 온라인일 때만 받을 수 있습니다" }
                                     ]
                                     delegate: Rectangle {
                                         required property var modelData
-                                        width: modelData.mode === "CLOUD" ? 62 : 48
+                                        width: modelData.mode === "LOCAL" ? 82 : (modelData.mode === "CLOUD" ? 62 : 48)
                                         height: 28
                                         radius: 7
                                         color: root.selectedShareMode === modelData.mode ? Theme.accent : Theme.raised
@@ -748,7 +748,7 @@ Item {
                             }
                             Text {
                                 visible: root.selectedShareMode === "LOCAL"
-                                text: "웹/모바일에는 안 보임"
+                                text: "서버 경유 · 소유자 데스크톱 온라인 필요"
                                 color: Theme.muted; font.pixelSize: 9
                             }
                             TextField {

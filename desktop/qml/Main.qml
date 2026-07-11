@@ -124,7 +124,7 @@ ApplicationWindow {
         // 웹 전용 화면(지원 건, 결제, 고객센터 등)과 세션 ID 없는 면접 링크.
         // 알림 링크는 서버가 생성한 내부 경로 또는 http(s) URL만 허용한다.
         if (url.indexOf("/") === 0) {
-            Qt.openUrlExternally(appSettings.awsServerUrl + url)
+            Qt.openUrlExternally(appSettings.webAppUrl + url)
         } else if (/^https?:\/\//i.test(url)) {
             Qt.openUrlExternally(url)
         }
@@ -132,13 +132,25 @@ ApplicationWindow {
 
     Connections {
         target: auth
+        function onAboutToLogout() {
+            sessionInputBar.cancelSessionMedia()
+            newJobDialog.close()
+            newJobDialog.resetWizard()
+            win.loggedIn = false
+            win.view = "home"
+        }
         function onLoggedIn(token) {
             win.loggedIn = true
             win.autoLoginPending = false
             jobModel.reload()
         }
         function onAutoLoginFailed() { win.autoLoginPending = false }
+        function onAuthenticationExpired(message) {
+            win.autoLoginPending = false
+            win.showToast("로그인 만료", message)
+        }
         function onLoggedOut() {
+            sessionInputBar.cancelSessionMedia()
             win.loggedIn = false
             win.view = "home"
         }
@@ -147,6 +159,7 @@ ApplicationWindow {
     Connections {
         target: jobModel
         function onSessionCreated(sessionId, caseId, modeLabel, title) {
+            if (!win.loggedIn) return
             win.openSession(sessionId, title, modeLabel, caseId)
             session.generateQuestions()   // 새 세션은 질문부터 생성
             win.showToast("세션 생성됨", title + " · " + modeLabel + " — 질문을 생성합니다")
@@ -165,7 +178,9 @@ ApplicationWindow {
         }
         function onExported(path, what) { win.showToast(what + " 저장됨", path) }
         function onErrorOccurred(message) { win.showToast("오류", message) }
-        function onSessionFinished() { win.showToast("세션 완료", "모든 질문에 답변했습니다 — 리포트를 확인하세요") }
+        function onSessionFinished() {
+            win.showToast("세션 완료", "모든 질문에 답변했습니다 — 리포트 버튼을 누르면 이용 안내 후 생성합니다")
+        }
     }
 
     Connections {
@@ -202,7 +217,45 @@ ApplicationWindow {
         function onErrorOccurred(message) { win.showToast("자동 준비 오류", message) }
     }
 
+    Connections {
+        target: aiCharge
+        function onNotice(message) { win.showToast("AI 이용 안내", message) }
+        function onErrorOccurred(message) { win.showToast("AI 실행 불가", message) }
+    }
+
     NewJobDialog { id: newJobDialog }
+
+    Rectangle {
+        visible: win.loggedIn && consentStatus.loaded && consentStatus.requiredConsentsMissing
+        z: 90
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: 12
+        width: Math.min(parent.width - 32, 720)
+        height: consentBannerRow.implicitHeight + 20
+        radius: 10
+        color: Theme.surface; border.color: Theme.warn
+        RowLayout {
+            id: consentBannerRow
+            x: 14; y: 10; width: parent.width - 28
+            Text {
+                Layout.fillWidth: true
+                text: "필수 이용약관 또는 개인정보 동의가 없어 기능이 제한됩니다. 웹에서 동의를 복구해 주세요."
+                color: Theme.text; font.pixelSize: 12; wrapMode: Text.WordWrap
+            }
+            Button {
+                text: "동의 관리 ↗"
+                Accessible.name: "웹에서 필수 동의 복구"
+                onClicked: Qt.openUrlExternally(appSettings.webAppUrl + "/settings?tab=privacy")
+            }
+            Button {
+                text: consentStatus.loading ? "확인 중…" : "다시 확인"
+                enabled: !consentStatus.loading
+                Accessible.name: "필수 동의 상태 다시 확인"
+                onClicked: consentStatus.refresh()
+            }
+        }
+    }
 
     // ── 앰비언트 라이트 (상단 인디고 워시 — Linear Modern 레이어드 배경) ──
     Canvas {
@@ -296,6 +349,21 @@ ApplicationWindow {
                         id: bellButton
                         width: 26; height: 22; radius: 7
                         color: bellHover.containsMouse || notificationCenter.opened ? Theme.hover : "transparent"
+                        border.color: activeFocus ? Theme.accent : "transparent"
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: notifications.unread > 0
+                                         ? "알림 센터, 읽지 않은 알림 " + notifications.unread + "개"
+                                         : "알림 센터"
+                        function toggleNotificationCenter() {
+                            notificationCenter.opened ? notificationCenter.close() : notificationCenter.open()
+                        }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                toggleNotificationCenter()
+                            }
+                        }
                         Icon { anchors.centerIn: parent; name: "bell"; size: 12; color: Theme.text }
                         Rectangle {
                             visible: notifications.unread > 0
@@ -308,7 +376,7 @@ ApplicationWindow {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: notificationCenter.opened ? notificationCenter.close() : notificationCenter.open()
+                            onClicked: parent.toggleNotificationCenter()
                         }
                         NotificationCenter {
                             id: notificationCenter
@@ -323,6 +391,17 @@ ApplicationWindow {
                 Rectangle {
                     Layout.fillWidth: true
                     height: 36; radius: 9
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "새 면접 준비"
+                    Keys.onPressed: (event) => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                            event.accepted = true
+                            newJobDialog.open()
+                        }
+                    }
+                    border.color: activeFocus ? Theme.accentText : "transparent"
+                    border.width: activeFocus ? 2 : 0
                     gradient: Gradient {
                         GradientStop { position: 0.0; color: Theme.accent2 }
                         GradientStop { position: 1.0; color: Theme.accent }
@@ -336,6 +415,16 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     height: 34; radius: 8
                     color: win.view === "home" ? Theme.accentSoft : "transparent"
+                    border.color: activeFocus ? Theme.accent : "transparent"
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "AI 자동 준비 홈"
+                    Keys.onPressed: (event) => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                            event.accepted = true
+                            win.view = "home"
+                        }
+                    }
                     Row {
                         x: 12; anchors.verticalCenter: parent.verticalCenter
                         spacing: 7
@@ -377,12 +466,31 @@ ApplicationWindow {
                         required property string mode
                         required property string status
                         required property int progress
+                        readonly property bool currentSessionBusy: session.sessionId === jobId
+                            && (session.loading || session.scoring || session.transcribing || session.reportLoading
+                                || session.followUpPendingQuestionIds.length > 0
+                                || session.modelAnswerPendingQuestionIds.length > 0)
                         width: ListView.view.width
                         height: 52
                         radius: 8
                         color: (win.view === "thread" || win.view === "report") && session.sessionId === jobId
                                ? Theme.accentSoft
                                : hoverArea.containsMouse ? Theme.hover : "transparent"
+                        border.color: activeFocus ? Theme.accent : "transparent"
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "면접 세션 열기: " + title + ", " + mode
+                        Accessible.description: currentSessionBusy ? "현재 세션 작업 처리 중" : ""
+                        opacity: currentSessionBusy ? 0.65 : 1
+                        function openThisSession() {
+                            if (!currentSessionBusy) win.openSession(jobId, title, mode, caseId)
+                        }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                openThisSession()
+                            }
+                        }
 
                         ColumnLayout {
                             anchors.fill: parent
@@ -417,8 +525,9 @@ ApplicationWindow {
                             id: hoverArea
                             anchors.fill: parent
                             hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: win.openSession(jobId, title, mode, caseId)
+                            enabled: !parent.currentSessionBusy
+                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: parent.openThisSession()
                         }
                     }
                 }
@@ -465,6 +574,21 @@ ApplicationWindow {
                             height: 32; radius: 8
                             color: (modelData.key === "phone" && win.phoneOpen)
                                    || win.view === modelData.key ? Theme.accentSoft : "transparent"
+                            border.color: activeFocus ? Theme.accent : "transparent"
+                            activeFocusOnTab: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: modelData.tip
+                            function activateSidebarItem() {
+                                if (modelData.key === "phone") win.phoneOpen = !win.phoneOpen
+                                else if (modelData.key === "plannerOverlay") plannerOverlayController.enabled = !plannerOverlayController.enabled
+                                else win.view = modelData.key
+                            }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    activateSidebarItem()
+                                }
+                            }
                             Icon {
                                 anchors.centerIn: parent
                                 name: modelData.icon; size: 15
@@ -474,11 +598,7 @@ ApplicationWindow {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (modelData.key === "phone") win.phoneOpen = !win.phoneOpen
-                                    else if (modelData.key === "plannerOverlay") plannerOverlayController.enabled = !plannerOverlayController.enabled
-                                    else win.view = modelData.key
-                                }
+                                onClicked: parent.activateSidebarItem()
                             }
                             ToolTip.visible: iconHover.containsMouse
                             ToolTip.text: modelData.tip
@@ -549,7 +669,17 @@ ApplicationWindow {
                         spacing: 8
                         Rectangle {
                             width: dispatchRow.implicitWidth + 24; height: 30; radius: 8
-                            color: Theme.raised; border.color: Theme.border
+                            color: Theme.raised; border.color: activeFocus ? Theme.accent : Theme.border
+                            activeFocusOnTab: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "현재 면접 세션을 폰으로 보내기"
+                            function dispatchSession() { jobModel.dispatchToPhone(session.sessionId); win.phoneOpen = true }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    dispatchSession()
+                                }
+                            }
                             Row {
                                 id: dispatchRow
                                 anchors.centerIn: parent
@@ -559,12 +689,21 @@ ApplicationWindow {
                             }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: { jobModel.dispatchToPhone(session.sessionId); win.phoneOpen = true }
+                                onClicked: parent.dispatchSession()
                             }
                         }
                         Rectangle {
                             width: saveRow.implicitWidth + 24; height: 30; radius: 8
-                            color: Theme.raised; border.color: Theme.border
+                            color: Theme.raised; border.color: activeFocus ? Theme.accent : Theme.border
+                            activeFocusOnTab: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "현재 면접 자료 모두 저장"
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    session.exportAll()
+                                }
+                            }
                             Row {
                                 id: saveRow
                                 anchors.centerIn: parent
@@ -580,6 +719,23 @@ ApplicationWindow {
                         Rectangle {
                             visible: win.view === "thread"
                             width: repLbl.implicitWidth + 22; height: 30; radius: 8
+                            border.color: activeFocus ? Theme.accentText : "transparent"
+                            activeFocusOnTab: visible
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "현재 면접 리포트 열기"
+                            Accessible.description: session.reportLoading ? "리포트 생성 중" : "이용 안내 후 리포트 생성"
+                            opacity: session.reportLoading ? 0.65 : 1
+                            function openReport() {
+                                if (session.reportLoading) return
+                                session.loadReport()
+                                win.view = "report"
+                            }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    openReport()
+                                }
+                            }
                             gradient: Gradient {
                                 GradientStop { position: 0.0; color: Theme.accent2 }
                                 GradientStop { position: 1.0; color: Theme.accent }
@@ -587,13 +743,23 @@ ApplicationWindow {
                             Text { id: repLbl; anchors.centerIn: parent; text: "리포트"; color: "white"; font.pixelSize: 12; font.bold: true }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: { session.loadReport(); win.view = "report" }
+                                enabled: !session.reportLoading
+                                onClicked: parent.openReport()
                             }
                         }
                         Rectangle {
                             visible: win.view === "report"
                             width: backLbl.implicitWidth + 22; height: 30; radius: 8
-                            color: Theme.raised; border.color: Theme.border
+                            color: Theme.raised; border.color: activeFocus ? Theme.accent : Theme.border
+                            activeFocusOnTab: visible
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "면접 스레드로 돌아가기"
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    win.view = "thread"
+                                }
+                            }
                             Text { id: backLbl; anchors.centerIn: parent; text: "← 스레드"; color: Theme.text; font.pixelSize: 12 }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -610,8 +776,18 @@ ApplicationWindow {
                 height: desktopAds.visible && win.loggedIn ? (desktopAds.body.length > 0 ? 62 : 46) : 0
                 visible: height > 0
                 color: Theme.surface
-                border.color: Theme.border
                 clip: true
+                activeFocusOnTab: desktopAds.targetUrl.length > 0
+                Accessible.role: Accessible.Button
+                Accessible.name: desktopAds.title.length > 0 ? "광고 열기: " + desktopAds.title : "광고 열기"
+                Accessible.description: desktopAds.body
+                border.color: activeFocus ? Theme.accent : Theme.border
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                        event.accepted = true
+                        if (desktopAds.targetUrl.length > 0) desktopAds.openTarget()
+                    }
+                }
 
                 RowLayout {
                     anchors.fill: parent

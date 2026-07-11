@@ -9,6 +9,7 @@ class ApiClient;
 class QDateTime;
 class QJsonArray;
 class QJsonObject;
+class DesktopCoreTests;
 
 class PlannerClient : public QObject
 {
@@ -26,6 +27,7 @@ public:
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void refreshNow();
+    void setAccountScope(const QString& accountScope);
 
 signals:
     void itemsChanged();
@@ -35,10 +37,12 @@ signals:
                          bool desktopToast, bool desktopTaskbar, bool desktopSound);
 
 private:
+    friend class DesktopCoreTests;
     void setActive(bool active);
     void setStatusText(const QString& text);
     void loadFiredReminderIds();
     void storeFiredReminderIds() const;
+    QString firedReminderSettingsKey() const;
     void applyDashboard(const QJsonObject& dashboard);
     QVariantMap scheduleItemToOverlay(const QJsonObject& item) const;
     QVariantMap memoToOverlay(const QJsonObject& memo) const;
@@ -53,4 +57,6 @@ private:
     QString m_statusText;
     bool m_active = false;
     QSet<qint64> m_firedReminderIds;
+    QString m_accountScope;
+    quint64 m_refreshGeneration = 0;
 };

@@ -11,6 +11,7 @@ class SettingsStore : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString baseUrl    READ baseUrl    WRITE setBaseUrl    NOTIFY changed)
+    Q_PROPERTY(QString webAppUrl  READ webAppUrl  NOTIFY changed)
     Q_PROPERTY(QString saveDir    READ saveDir    WRITE setSaveDir    NOTIFY changed)
     Q_PROPERTY(bool    autoSave   READ autoSave   WRITE setAutoSave   NOTIFY changed)
     Q_PROPERTY(bool    autoLogin  READ autoLogin  WRITE setAutoLogin  NOTIFY changed)
@@ -40,6 +41,7 @@ public:
     QString settingsPath() const { return settingsPathForCurrentMode(); }
 
     QString baseUrl() const;
+    QString webAppUrl() const;
     void setBaseUrl(const QString& v);
     Q_INVOKABLE bool applyBaseUrl(const QString& v);
     static QString normalizedBaseUrl(const QString& v);

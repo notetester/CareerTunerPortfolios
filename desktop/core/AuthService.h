@@ -19,8 +19,10 @@ class AuthService : public QObject
     Q_PROPERTY(bool mfaChallengeActive READ mfaChallengeActive NOTIFY mfaChallengeChanged)
     Q_PROPERTY(QString mfaChallengeMethod READ mfaChallengeMethod NOTIFY mfaChallengeChanged)
     Q_PROPERTY(QString mfaStatusText READ mfaStatusText NOTIFY mfaStatusChanged)
+    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
 public:
     explicit AuthService(ApiClient* api, SettingsStore* store, QObject* parent = nullptr);
+    ~AuthService() override;
 
     Q_INVOKABLE void login(const QString& email, const QString& password);
     Q_INVOKABLE void verifyMfa(const QString& value, bool useBackupCode);
@@ -36,6 +38,7 @@ public:
     bool mfaChallengeActive() const { return !m_mfaChallengeToken.isEmpty(); }
     QString mfaChallengeMethod() const { return m_mfaChallengeMethod; }
     QString mfaStatusText() const { return m_mfaStatusText; }
+    bool busy() const { return m_busy; }
 
 signals:
     void loggedIn(const QString& token);
@@ -46,21 +49,34 @@ signals:
     void profileChanged();
     void mfaChallengeChanged();
     void mfaStatusChanged();
+    void busyChanged();
+    void authenticationExpired(const QString& message);
 
 private:
-    void applyTokenResponse(const QJsonObject& data); // TokenResponse 파싱 + 영속화
+    void applyTokenResponse(const QJsonObject& data, bool identityChange); // TokenResponse 파싱 + 영속화
     bool completeLoginResponse(const QJsonObject& data);
+    void handleAuthenticationExpired(const QString& message);
     void beginMfaChallenge(const QJsonObject& data);
     void clearMfaChallenge();
     void setMfaStatusText(const QString& text);
+    quint64 beginAuthenticationRequest();
+    bool isCurrentAuthenticationRequest(quint64 generation) const;
+    void invalidateAuthenticationRequests();
+    void setBusy(bool busy);
+    void persistCurrentSessionIfRequested();
+    void finishLocalLogout();
 
     ApiClient*     m_api;
     SettingsStore* m_store;
     QString m_token;
+    QString m_refreshToken; // 자동 로그인 설정과 무관하게 현재 실행 중 access token 갱신에 사용
     QString m_userName;
     QString m_userEmail;
     QString m_userPlan;
     QString m_mfaChallengeToken;
     QString m_mfaChallengeMethod;
     QString m_mfaStatusText;
+    quint64 m_authRequestGeneration = 0;
+    bool m_busy = false;
+    bool m_logoutInProgress = false;
 };

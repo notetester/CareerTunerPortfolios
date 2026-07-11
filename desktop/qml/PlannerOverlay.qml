@@ -30,7 +30,11 @@ Window {
         id: shell
         anchors.fill: parent
         radius: 10
-        color: Qt.rgba(0.04, 0.04, 0.05, 0.92)
+        // 오버레이 배경도 현재 테마와 함께 전환한다. 라이트 테마의 어두운 텍스트가
+        // 고정 다크 배경 위에 올라가던 저대비 조합을 만들지 않는다.
+        color: Theme.darkMode
+            ? Qt.rgba(0.04, 0.04, 0.05, 0.92)
+            : Qt.rgba(0.985, 0.985, 0.99, 0.96)
         border.color: Theme.borderHover
         clip: true
 

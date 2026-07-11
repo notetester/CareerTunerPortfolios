@@ -44,6 +44,8 @@ public:
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void cancel();
+    /** 로그아웃/세션 전환 시 녹화 여부와 무관하게 recorder 소유 임시 파일까지 폐기한다. */
+    Q_INVOKABLE void reset();
     Q_INVOKABLE bool discard(const QString& filePath);
     /** 제출 완료 파일의 소유권을 InterviewSession으로 넘겨 다음 녹화가 지우지 않게 한다. */
     Q_INVOKABLE bool release(const QString& filePath);
@@ -63,6 +65,7 @@ private:
     static constexpr int kMaxSeconds = 180; // 영상 답변 최대 3분
     static QString recordingDir();
     void finishRecording();
+    void handleRecorderError(const QString& message);
 
     QMediaCaptureSession m_session;
     QCamera              m_camera;

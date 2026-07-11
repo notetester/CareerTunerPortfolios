@@ -59,7 +59,37 @@ QSet<qint64> CollaborationClient::missingAttachmentIds(
 
 void CollaborationClient::clear()
 {
-    discardPendingAttachments();
+    ++m_requestGeneration;
+    ++m_searchRequestGeneration;
+    ++m_discoverRequestGeneration;
+    ++m_openConversationRequestGeneration;
+    ++m_messagesRequestGeneration;
+    ++m_friendsRequestGeneration;
+    ++m_requestsRequestGeneration;
+    ++m_conversationsRequestGeneration;
+    ++m_muteRequestGeneration;
+    ++m_pendingGeneration;
+
+    // 로그아웃 시 ApiClient가 곧 이전 인증 callback을 폐기하므로, 전송 callback에만
+    // 미연결 첨부 정리를 맡기지 않는다. 현재 pending 및 전송 snapshot을 old origin/token으로
+    // best-effort 정리한다(이미 메시지에 연결된 파일은 서버가 삭제를 거부한다).
+    QSet<qint64> cleanupIds = attachmentIds(m_pendingAttachments);
+    cleanupIds.unite(m_inFlightMessage.attachmentIds);
+    const QString cleanupToken = m_api->token();
+    const QString cleanupBaseUrl = m_api->baseUrl();
+    const bool hadPendingAttachments = !m_pendingAttachments.isEmpty();
+    const bool wasSending = sendingMessage();
+    m_pendingAttachments.clear();
+    m_inFlightMessage = InFlightMessage{};
+    if (hadPendingAttachments) emit pendingAttachmentsChanged();
+    if (wasSending) emit sendingMessageChanged();
+    for (qint64 fileId : cleanupIds) {
+        m_api->deleteResourceWithToken(
+            QStringLiteral("/api/file/%1").arg(fileId), cleanupBaseUrl,
+            cleanupToken, nullptr);
+    }
+    m_activeLoadingRequests = 0;
+    setLoading(false);
     m_searchResults.clear();
     m_friends.clear();
     m_incomingRequests.clear();
@@ -92,15 +122,20 @@ void CollaborationClient::searchUsers(const QString& keyword)
 {
     const QString q = keyword.trimmed();
     if (q.length() < 2) {
+        ++m_searchRequestGeneration;
         m_searchResults.clear();
         emit searchResultsChanged();
         return;
     }
-    setLoading(true);
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 searchGeneration = ++m_searchRequestGeneration;
+    beginLoading();
     m_api->get(QStringLiteral("/api/collaboration/users/search?keyword=%1&limit=20")
                    .arg(QString::fromUtf8(QUrl::toPercentEncoding(q))),
-        [this](bool ok, const QJsonValue& data, const QString& message) {
-            setLoading(false);
+        [this, q, accountGeneration, searchGeneration](bool ok, const QJsonValue& data, const QString& message) {
+            if (accountGeneration != m_requestGeneration) return;
+            finishLoading(accountGeneration);
+            if (searchGeneration != m_searchRequestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("사용자 검색에 실패했습니다") : message);
                 return;
@@ -112,10 +147,12 @@ void CollaborationClient::searchUsers(const QString& keyword)
 
 void CollaborationClient::sendFriendRequest(qint64 userId)
 {
+    const quint64 accountGeneration = m_requestGeneration;
     QJsonObject body;
     body["targetUserId"] = userId;
     m_api->post(QStringLiteral("/api/collaboration/friend-requests"), body,
-        [this](bool ok, const QJsonValue&, const QString& message) {
+        [this, accountGeneration](bool ok, const QJsonValue&, const QString& message) {
+            if (accountGeneration != m_requestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("친구 요청을 보내지 못했습니다") : message);
                 return;
@@ -127,8 +164,10 @@ void CollaborationClient::sendFriendRequest(qint64 userId)
 
 void CollaborationClient::acceptRequest(qint64 requestId)
 {
+    const quint64 accountGeneration = m_requestGeneration;
     m_api->post(QStringLiteral("/api/collaboration/friend-requests/%1/accept").arg(requestId), QJsonObject(),
-        [this](bool ok, const QJsonValue&, const QString& message) {
+        [this, accountGeneration](bool ok, const QJsonValue&, const QString& message) {
+            if (accountGeneration != m_requestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("친구 요청을 수락하지 못했습니다") : message);
                 return;
@@ -140,8 +179,10 @@ void CollaborationClient::acceptRequest(qint64 requestId)
 
 void CollaborationClient::declineRequest(qint64 requestId)
 {
+    const quint64 accountGeneration = m_requestGeneration;
     m_api->post(QStringLiteral("/api/collaboration/friend-requests/%1/decline").arg(requestId), QJsonObject(),
-        [this](bool ok, const QJsonValue&, const QString& message) {
+        [this, accountGeneration](bool ok, const QJsonValue&, const QString& message) {
+            if (accountGeneration != m_requestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("친구 요청을 거절하지 못했습니다") : message);
                 return;
@@ -152,8 +193,10 @@ void CollaborationClient::declineRequest(qint64 requestId)
 
 void CollaborationClient::removeFriend(qint64 userId)
 {
+    const quint64 accountGeneration = m_requestGeneration;
     m_api->deleteResource(QStringLiteral("/api/collaboration/friends/%1").arg(userId),
-        [this](bool ok, const QJsonValue&, const QString& message) {
+        [this, accountGeneration](bool ok, const QJsonValue&, const QString& message) {
+            if (accountGeneration != m_requestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("친구를 삭제하지 못했습니다") : message);
                 return;
@@ -166,8 +209,12 @@ void CollaborationClient::openConversation(qint64 userId, const QString& peerNam
 {
     QJsonObject body;
     body["targetUserId"] = userId;
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 openGeneration = ++m_openConversationRequestGeneration;
     m_api->post(QStringLiteral("/api/collaboration/conversations/direct"), body,
-        [this, peerName](bool ok, const QJsonValue& data, const QString& message) {
+        [this, userId, peerName, accountGeneration, openGeneration](bool ok, const QJsonValue& data, const QString& message) {
+            if (accountGeneration != m_requestGeneration
+                || openGeneration != m_openConversationRequestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("대화방을 열지 못했습니다") : message);
                 return;
@@ -180,6 +227,7 @@ void CollaborationClient::openConversation(qint64 userId, const QString& peerNam
 void CollaborationClient::openConversationById(qint64 conversationId, const QString& peerName,
                                                const QString& type, bool muted)
 {
+    ++m_openConversationRequestGeneration;
     if (m_currentConversationId > 0 && m_currentConversationId != conversationId)
         discardPendingAttachments();
     m_currentConversationId = conversationId;
@@ -193,10 +241,14 @@ void CollaborationClient::openConversationById(qint64 conversationId, const QStr
 void CollaborationClient::setConversationMuted(qint64 conversationId, bool muted)
 {
     if (conversationId <= 0) return;
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 muteGeneration = ++m_muteRequestGeneration;
     QJsonObject body;
     body["muted"] = muted;
     m_api->patch(QStringLiteral("/api/collaboration/conversations/%1/mute").arg(conversationId), body,
-        [this, conversationId](bool ok, const QJsonValue& data, const QString& message) {
+        [this, conversationId, accountGeneration, muteGeneration](bool ok, const QJsonValue& data, const QString& message) {
+            if (accountGeneration != m_requestGeneration
+                || muteGeneration != m_muteRequestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("음소거 설정을 변경하지 못했습니다") : message);
                 return;
@@ -214,9 +266,13 @@ void CollaborationClient::setConversationMuted(qint64 conversationId, bool muted
 void CollaborationClient::discoverRooms(const QString& keyword)
 {
     const QString q = keyword.trimmed();
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 discoverGeneration = ++m_discoverRequestGeneration;
     m_api->get(QStringLiteral("/api/collaboration/conversations/discover?keyword=%1&limit=30")
                    .arg(QString::fromUtf8(QUrl::toPercentEncoding(q))),
-        [this](bool ok, const QJsonValue& data, const QString&) {
+        [this, q, accountGeneration, discoverGeneration](bool ok, const QJsonValue& data, const QString&) {
+            if (accountGeneration != m_requestGeneration
+                || discoverGeneration != m_discoverRequestGeneration) return;
             if (!ok) return;
             m_discoverableRooms = toVariantList(data.toArray(), &CollaborationClient::conversationMap);
             emit discoverableRoomsChanged();
@@ -225,6 +281,8 @@ void CollaborationClient::discoverRooms(const QString& keyword)
 
 void CollaborationClient::createRoom(const QString& type, const QString& title, const QString& password)
 {
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 openGeneration = ++m_openConversationRequestGeneration;
     QJsonObject body;
     body["type"] = type;
     body["title"] = title;
@@ -233,7 +291,9 @@ void CollaborationClient::createRoom(const QString& type, const QString& title, 
     body["memberUserIds"] = QJsonArray();
 
     m_api->post(QStringLiteral("/api/collaboration/conversations"), body,
-        [this, title](bool ok, const QJsonValue& data, const QString& message) {
+        [this, title, accountGeneration, openGeneration](bool ok, const QJsonValue& data, const QString& message) {
+            if (accountGeneration != m_requestGeneration
+                || openGeneration != m_openConversationRequestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("채팅방을 만들지 못했습니다") : message);
                 return;
@@ -246,12 +306,16 @@ void CollaborationClient::createRoom(const QString& type, const QString& title, 
 
 void CollaborationClient::joinRoom(qint64 conversationId, const QString& password)
 {
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 openGeneration = ++m_openConversationRequestGeneration;
     QJsonObject body;
     if (!password.trimmed().isEmpty())
         body["password"] = password;
 
     m_api->post(QStringLiteral("/api/collaboration/conversations/%1/join").arg(conversationId), body,
-        [this](bool ok, const QJsonValue& data, const QString& message) {
+        [this, accountGeneration, openGeneration](bool ok, const QJsonValue& data, const QString& message) {
+            if (accountGeneration != m_requestGeneration
+                || openGeneration != m_openConversationRequestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("채팅방에 참가하지 못했습니다") : message);
                 return;
@@ -265,13 +329,15 @@ void CollaborationClient::joinRoom(qint64 conversationId, const QString& passwor
 void CollaborationClient::inviteFriendToCurrentRoom(qint64 userId)
 {
     if (m_currentConversationId <= 0 || m_currentConversationType == QStringLiteral("DIRECT")) return;
+    const quint64 accountGeneration = m_requestGeneration;
     QJsonObject body;
     QJsonArray ids;
     ids.append(userId);
     body["userIds"] = ids;
 
     m_api->post(QStringLiteral("/api/collaboration/conversations/%1/invites").arg(m_currentConversationId), body,
-        [this](bool ok, const QJsonValue&, const QString& message) {
+        [this, accountGeneration](bool ok, const QJsonValue&, const QString& message) {
+            if (accountGeneration != m_requestGeneration) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("초대하지 못했습니다") : message);
                 return;
@@ -283,11 +349,15 @@ void CollaborationClient::inviteFriendToCurrentRoom(qint64 userId)
 void CollaborationClient::loadMessages(qint64 conversationId)
 {
     if (conversationId <= 0) return;
-    setLoading(true);
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 messagesGeneration = ++m_messagesRequestGeneration;
+    beginLoading();
     m_api->get(QStringLiteral("/api/collaboration/conversations/%1/messages?limit=100").arg(conversationId),
-        [this, conversationId](bool ok, const QJsonValue& data, const QString& message) {
-            setLoading(false);
-            if (conversationId != m_currentConversationId) return;
+        [this, conversationId, accountGeneration, messagesGeneration](bool ok, const QJsonValue& data, const QString& message) {
+            if (accountGeneration != m_requestGeneration) return;
+            finishLoading(accountGeneration);
+            if (messagesGeneration != m_messagesRequestGeneration
+                || conversationId != m_currentConversationId) return;
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("메시지를 불러오지 못했습니다") : message);
                 return;
@@ -389,8 +459,9 @@ void CollaborationClient::uploadAttachment(const QString& localUrl)
     QList<ApiClient::FilePart> files{filePart};
     const quint64 uploadGeneration = m_pendingGeneration;
     const QString uploadToken = m_api->token();
+    const QString uploadBaseUrl = m_api->baseUrl();
     m_api->postMultipart(QStringLiteral("/api/file/upload"), fields, files,
-        [this, name = info.fileName(), uploadGeneration, uploadToken](
+        [this, name = info.fileName(), uploadGeneration, uploadToken, uploadBaseUrl](
             bool ok, const QJsonValue& data, const QString& message) {
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("첨부 업로드에 실패했습니다") : message);
@@ -401,7 +472,8 @@ void CollaborationClient::uploadAttachment(const QString& localUrl)
             if (uploadGeneration != m_pendingGeneration) {
                 // clear/logout 중 완료된 업로드는 UI에 되살리지 않고 업로드 때의 토큰으로 즉시 정리한다.
                 m_api->deleteResourceWithToken(
-                    QStringLiteral("/api/file/%1").arg(fileId), uploadToken, nullptr);
+                    QStringLiteral("/api/file/%1").arg(fileId), uploadBaseUrl,
+                    uploadToken, nullptr);
                 return;
             }
             m_pendingAttachments.push_back(QVariantMap{
@@ -490,10 +562,27 @@ void CollaborationClient::setLoading(bool loading)
     emit loadingChanged();
 }
 
+void CollaborationClient::beginLoading()
+{
+    ++m_activeLoadingRequests;
+    setLoading(true);
+}
+
+void CollaborationClient::finishLoading(quint64 accountGeneration)
+{
+    if (accountGeneration != m_requestGeneration) return;
+    if (m_activeLoadingRequests > 0) --m_activeLoadingRequests;
+    setLoading(m_activeLoadingRequests > 0);
+}
+
 void CollaborationClient::loadFriends()
 {
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 requestGeneration = ++m_friendsRequestGeneration;
     m_api->get(QStringLiteral("/api/collaboration/friends"),
-        [this](bool ok, const QJsonValue& data, const QString&) {
+        [this, accountGeneration, requestGeneration](bool ok, const QJsonValue& data, const QString&) {
+            if (accountGeneration != m_requestGeneration
+                || requestGeneration != m_friendsRequestGeneration) return;
             if (!ok) return;
             QVariantList out;
             for (const QJsonValue& value : data.toArray()) {
@@ -509,8 +598,12 @@ void CollaborationClient::loadFriends()
 
 void CollaborationClient::loadRequests()
 {
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 requestGeneration = ++m_requestsRequestGeneration;
     m_api->get(QStringLiteral("/api/collaboration/friend-requests/incoming"),
-        [this](bool ok, const QJsonValue& data, const QString&) {
+        [this, accountGeneration, requestGeneration](bool ok, const QJsonValue& data, const QString&) {
+            if (accountGeneration != m_requestGeneration
+                || requestGeneration != m_requestsRequestGeneration) return;
             if (!ok) return;
             QVariantList out;
             for (const QJsonValue& value : data.toArray()) {
@@ -525,7 +618,9 @@ void CollaborationClient::loadRequests()
             emit requestsChanged();
         });
     m_api->get(QStringLiteral("/api/collaboration/friend-requests/outgoing"),
-        [this](bool ok, const QJsonValue& data, const QString&) {
+        [this, accountGeneration, requestGeneration](bool ok, const QJsonValue& data, const QString&) {
+            if (accountGeneration != m_requestGeneration
+                || requestGeneration != m_requestsRequestGeneration) return;
             if (!ok) return;
             QVariantList out;
             for (const QJsonValue& value : data.toArray()) {
@@ -543,8 +638,12 @@ void CollaborationClient::loadRequests()
 
 void CollaborationClient::loadConversations()
 {
+    const quint64 accountGeneration = m_requestGeneration;
+    const quint64 requestGeneration = ++m_conversationsRequestGeneration;
     m_api->get(QStringLiteral("/api/collaboration/conversations"),
-        [this](bool ok, const QJsonValue& data, const QString&) {
+        [this, accountGeneration, requestGeneration](bool ok, const QJsonValue& data, const QString&) {
+            if (accountGeneration != m_requestGeneration
+                || requestGeneration != m_conversationsRequestGeneration) return;
             if (!ok) return;
             m_conversations = toVariantList(data.toArray(), &CollaborationClient::conversationMap);
             emit conversationsChanged();

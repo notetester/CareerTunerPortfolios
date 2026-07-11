@@ -6,8 +6,10 @@
 #include <QStringList>
 #include <QHash>
 #include <QJsonObject>
+#include <QSet>
 
 class ApiClient;
+class AiChargeCoordinator;
 class SettingsStore;
 class DesktopCoreTests;
 
@@ -30,13 +32,20 @@ class InterviewSession : public QObject
     Q_PROPERTY(QVariantList agentSteps  READ agentSteps  NOTIFY agentStepsChanged)
     Q_PROPERTY(QVariantMap  progress    READ progress    NOTIFY progressChanged)
     Q_PROPERTY(QVariantMap  report      READ report      NOTIFY reportChanged)
+    Q_PROPERTY(QString      reportError READ reportError NOTIFY reportChanged)
     Q_PROPERTY(bool         loading     READ loading     NOTIFY busyChanged)
     Q_PROPERTY(bool         scoring     READ scoring     NOTIFY busyChanged)
     Q_PROPERTY(bool         transcribing READ transcribing NOTIFY busyChanged)
+    Q_PROPERTY(bool         reportLoading READ reportLoading NOTIFY busyChanged)
+    Q_PROPERTY(bool         threadLoadFailed READ threadLoadFailed NOTIFY busyChanged)
     Q_PROPERTY(qint64       currentQid  READ currentQid  NOTIFY progressChanged)
     Q_PROPERTY(QString      currentQuestionText READ currentQuestionText NOTIFY progressChanged)
+    Q_PROPERTY(QVariantList followUpPendingQuestionIds READ followUpPendingQuestionIds NOTIFY followUpPendingChanged)
+    Q_PROPERTY(QVariantList modelAnswerPendingQuestionIds READ modelAnswerPendingQuestionIds NOTIFY modelAnswerPendingChanged)
 public:
-    explicit InterviewSession(ApiClient* api, SettingsStore* store, QObject* parent = nullptr);
+    explicit InterviewSession(ApiClient* api, SettingsStore* store,
+                              AiChargeCoordinator* aiCharge = nullptr,
+                              QObject* parent = nullptr);
     ~InterviewSession() override;
 
     int sessionId() const { return m_sessionId; }
@@ -46,18 +55,27 @@ public:
     QVariantList agentSteps() const { return m_agentSteps; }
     QVariantMap progress() const { return m_progress; }
     QVariantMap report() const { return m_report; }
+    QString reportError() const { return m_reportError; }
     bool loading() const { return m_loading; }
     bool scoring() const { return m_scoring; }
     bool transcribing() const { return m_transcribing; }
+    bool reportLoading() const { return m_reportLoadInFlight; }
+    bool threadLoadFailed() const { return m_threadLoadFailed; }
     qint64 currentQid() const { return m_currentQid; }
     QString currentQuestionText() const { return m_currentQText; }
+    QVariantList followUpPendingQuestionIds() const;
+    QVariantList modelAnswerPendingQuestionIds() const;
 
     // ── 세션 열기/연습 흐름 ──
     Q_INVOKABLE void open(int sessionId, const QString& title, const QString& mode, int caseId);
+    Q_INVOKABLE void clear();                        // 로그아웃/계정 전환 시 이전 사용자 세션 폐기
     Q_INVOKABLE void generateQuestions();            // 질문이 아직 없을 때
+    Q_INVOKABLE void retryLoadThread();               // review/questions 실패 뒤 안전한 재조회
     Q_INVOKABLE void submitAnswer(const QString& text);
-    Q_INVOKABLE void requestFollowUp();              // 마지막 답변 질문에 꼬리질문 1개
+    Q_INVOKABLE void requestFollowUp(qint64 questionId);
     Q_INVOKABLE void requestModelAnswer(qint64 questionId);
+    Q_INVOKABLE bool followUpPending(qint64 questionId) const;
+    Q_INVOKABLE bool modelAnswerPending(qint64 questionId) const;
 
     // ── 음성 ──
     Q_INVOKABLE void transcribeAudio(const QString& filePath); // base64 → voice-transcribe
@@ -81,6 +99,8 @@ signals:
     void progressChanged();
     void reportChanged();
     void busyChanged();
+    void followUpPendingChanged();
+    void modelAnswerPendingChanged();
     void answerScored(int score);                 // 토스트용
     void answerSubmissionStarted();               // 입력창은 실제 제출 시작 뒤에만 비운다
     void answerSubmissionFailed(const QString& text); // 실패한 텍스트를 입력창에 복원
@@ -92,13 +112,22 @@ signals:
     void exported(const QString& path, const QString& what);
     void errorOccurred(const QString& message);
     void sessionFinished();                       // 마지막 답변 완료
+    void sidebarRefreshRequested();                // 답변/리포트 저장 뒤 세션 목록 상태 동기화
 
 private:
     friend class DesktopCoreTests;
 
     static QString managedLocalMediaPath(const QString& filePath);
     void cleanupLocalMediaFiles();
-    void reloadThread();                          // questions+review 병합 → thread 구성
+    void reloadThread(bool completesQuestionGeneration = false); // questions+review 병합 → thread 구성
+    void startQuestionGeneration();
+    void reconcileQuestionGeneration(int sessionId, quint64 generation,
+                                     const QString& message, int attempt = 0);
+    void reconcileFollowUp(int sessionId, quint64 generation, qint64 questionId,
+                           const QString& message, int attempt = 0);
+    static bool isAmbiguousOperationStatus(int httpStatus);
+    void updateLoading();
+    bool isCurrentSession(int sessionId, quint64 generation) const;
     void refreshProgress();
     void loadAgentSteps();
     void appendQuestionItem(const QJsonObject& q);
@@ -114,19 +143,31 @@ private:
                             bool videoAnswer, int voiceScore = -1,
                             int visualScore = -1, int videoCombined = -1,
                             const QJsonObject& avatarResult = QJsonObject(),
-                            const QString& nonverbalWarning = QString());
+                            const QString& nonverbalWarning = QString(),
+                            const QString& clientSubmissionId = QString());
+    QString ensureClientSubmissionId(qint64 qid, const QString& answerText,
+                                     const QString& mediaKey);
+    void clearClientSubmissionId(const QString& clientSubmissionId = QString());
+    static bool shouldPreserveClientSubmissionId(int httpStatus);
     void advanceAfterAnswer();
     void finishCompletedSession();
     void recordVoiceScore(qint64 questionId, int score);
-    void saveVideoAnalysis(const QString& transcript, const QJsonObject& avatarResult);
+    void saveVoiceAnalysis(qint64 questionId, qint64 answerId, int score);
+    void saveVideoAnalysis(qint64 questionId, qint64 answerId,
+                           const QString& transcript, const QJsonObject& avatarResult);
+    void finishFollowUpRequest(qint64 questionId);
+    void finishModelAnswerRequest(qint64 questionId);
     void deleteUnlinkedUpload(qint64 fileId);
     QString sessionFolder() const;                // 저장 폴더\<세션 제목-id>
     QString reportMarkdown() const;
     void writeFile(const QString& path, const QByteArray& bytes, const QString& what);
     void maybeAutoSave();
+    void exportServerMedia(const QString& dir);
+    QString authenticatedMediaPath(const QString& mediaUrl) const;
 
     ApiClient*     m_api;
     SettingsStore* m_store;
+    AiChargeCoordinator* m_aiCharge;
 
     int     m_sessionId = -1;
     int     m_caseId = -1;
@@ -137,11 +178,18 @@ private:
     QVariantList m_agentSteps;
     QVariantMap  m_progress;
     QVariantMap  m_report;
+    QString m_reportError;
     QVariantMap  m_review;      // 원본 review 응답 (내보내기용)
 
     bool m_loading = false;
     bool m_scoring = false;
     bool m_transcribing = false;
+    bool m_threadLoadFailed = false;
+    bool m_threadLoadInFlight = false;
+    bool m_questionGenerationInFlight = false;
+    bool m_questionGenerationQueued = false;
+    bool m_reportLoadInFlight = false;
+    quint64 m_sessionGeneration = 0;
 
     qint64  m_currentQid = -1;
     QString m_currentQText;
@@ -149,7 +197,15 @@ private:
     qint64 m_pendingAudioQuestionId = -1;
     QHash<qint64, QString> m_audioSourceByQuestion; // 재녹음 시 이전 비동기 점수 무시
     QHash<qint64, int> m_voiceScoreByQuestion; // 답변 카드보다 먼저 도착한 전달력 점수
+    QSet<qint64> m_followUpPendingQuestions;
+    QSet<qint64> m_modelAnswerPendingQuestions;
     QStringList m_audioFiles;     // 이 세션에서 만든 녹음들 (일괄 내보내기 대상)
     QStringList m_videoFiles;     // 저장 성공한 영상들 (일괄 내보내기 대상)
     QHash<QString, QString> m_localMediaPathByAnswerKind; // "answerId:KIND" -> 로컬 원본
+    qint64 m_pendingSubmissionQuestionId = -1;
+    QString m_pendingSubmissionText;
+    QString m_pendingSubmissionMediaKey;
+    QString m_pendingClientSubmissionId;
+    QString m_questionGenerationActionKey;
+    QHash<qint64, QString> m_followUpActionKeys;
 };

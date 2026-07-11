@@ -134,7 +134,7 @@ Item {
                 Text { text: "세션을 불러오는 중…"; color: Theme.muted; font.pixelSize: 12 }
             }
             Rectangle {
-                visible: !session.loading && session.thread.length === 0
+                visible: !session.loading && !session.threadLoadFailed && session.thread.length === 0
                 width: parent.width
                 radius: Theme.radius
                 color: Theme.surface
@@ -158,6 +158,18 @@ Item {
                     Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         width: genLbl.implicitWidth + 28; height: 32; radius: 8
+                        activeFocusOnTab: visible
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "예상 질문 생성"
+                        border.color: activeFocus ? Theme.accentText : "transparent"
+                        border.width: activeFocus ? 2 : 0
+                        function generateExpectedQuestions() { session.generateQuestions() }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                generateExpectedQuestions()
+                            }
+                        }
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: Theme.accent2 }
                             GradientStop { position: 1.0; color: Theme.accent }
@@ -165,8 +177,49 @@ Item {
                         Text { id: genLbl; anchors.centerIn: parent; text: "예상 질문 생성"; color: "white"; font.pixelSize: 12; font.bold: true }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: session.generateQuestions()
+                            onClicked: parent.generateExpectedQuestions()
                         }
+                    }
+                }
+            }
+            Rectangle {
+                visible: !session.loading && session.threadLoadFailed
+                width: parent.width
+                radius: Theme.radius
+                color: Theme.surface
+                border.color: Theme.danger
+                height: reloadFailureCol.implicitHeight + 36
+                ColumnLayout {
+                    id: reloadFailureCol
+                    anchors.centerIn: parent
+                    width: parent.width - 48
+                    spacing: 10
+                    Text {
+                        text: "세션 질문과 복기 정보를 불러오지 못했습니다"
+                        color: Theme.text; font.pixelSize: 14; font.bold: true
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                    Text {
+                        text: "중복 답변을 막기 위해 입력을 잠갔습니다. 다시 불러온 뒤 계속하세요."
+                        color: Theme.muted; font.pixelSize: 12
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                    Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        width: retryLoadLabel.implicitWidth + 28; height: 32; radius: 8
+                        color: Theme.raised
+                        border.color: activeFocus ? Theme.accent : Theme.border
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "면접 세션 다시 불러오기"
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                session.retryLoadThread()
+                            }
+                        }
+                        Text { id: retryLoadLabel; anchors.centerIn: parent; text: "다시 불러오기"; color: Theme.text; font.pixelSize: 12; font.bold: true }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: session.retryLoadThread() }
                     }
                 }
             }
@@ -310,6 +363,8 @@ Item {
             property var data_: ({})
             property bool showModel: false
             property bool showImproved: false
+            property bool modelAnswerPending_: session.modelAnswerPendingQuestionIds.indexOf(data_.qid) >= 0
+            property bool followUpPending_: session.followUpPendingQuestionIds.indexOf(data_.qid) >= 0
             width: list.width
             height: card.implicitHeight + 16
 
@@ -470,19 +525,36 @@ Item {
                         spacing: 8
                         Rectangle {
                             width: modelBtnLbl.implicitWidth + 20; height: 28; radius: 7
-                            color: Theme.raised; border.color: Theme.border
+                            color: Theme.raised
+                            border.color: activeFocus ? Theme.accent : Theme.border
+                            activeFocusOnTab: !scoreRoot.modelAnswerPending_
+                            Accessible.role: Accessible.Button
+                            Accessible.name: scoreRoot.modelAnswerPending_
+                                             ? "모범답안 생성 중" : "모범답안 보기"
+                            opacity: scoreRoot.modelAnswerPending_ ? 0.55 : 1
+                            function activateModelAnswer() {
+                                if (scoreRoot.modelAnswerPending_) return
+                                if ((scoreRoot.data_.modelAnswer || "") === "")
+                                    session.requestModelAnswer(scoreRoot.data_.qid)
+                                scoreRoot.showModel = !scoreRoot.showModel
+                            }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    activateModelAnswer()
+                                }
+                            }
                             Text {
                                 id: modelBtnLbl; anchors.centerIn: parent
-                                text: scoreRoot.showModel ? "모범답안 접기" : "모범답안 보기"
+                                text: scoreRoot.modelAnswerPending_
+                                      ? "생성 중…"
+                                      : (scoreRoot.showModel ? "모범답안 접기" : "모범답안 보기")
                                 color: Theme.text; font.pixelSize: 11
                             }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if ((scoreRoot.data_.modelAnswer || "") === "")
-                                        session.requestModelAnswer(scoreRoot.data_.qid)
-                                    scoreRoot.showModel = !scoreRoot.showModel
-                                }
+                                enabled: !scoreRoot.modelAnswerPending_
+                                onClicked: parent.activateModelAnswer()
                             }
                         }
                         Rectangle {
@@ -500,12 +572,34 @@ Item {
                             }
                         }
                         Rectangle {
+                            visible: session.mode === "PRESSURE" || session.mode === "압박 면접"
                             width: fuBtnLbl.implicitWidth + 20; height: 28; radius: 7
-                            color: Theme.raised; border.color: Theme.border
-                            Text { id: fuBtnLbl; anchors.centerIn: parent; text: "꼬리질문 받기"; color: Theme.text; font.pixelSize: 11 }
+                            color: Theme.raised
+                            border.color: activeFocus ? Theme.accent : Theme.border
+                            activeFocusOnTab: visible && !scoreRoot.followUpPending_
+                            Accessible.role: Accessible.Button
+                            Accessible.name: scoreRoot.followUpPending_
+                                             ? "꼬리질문 생성 중" : "이 답변의 꼬리질문 받기"
+                            opacity: scoreRoot.followUpPending_ ? 0.55 : 1
+                            function activateFollowUp() {
+                                if (!scoreRoot.followUpPending_)
+                                    session.requestFollowUp(scoreRoot.data_.qid)
+                            }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    activateFollowUp()
+                                }
+                            }
+                            Text {
+                                id: fuBtnLbl; anchors.centerIn: parent
+                                text: scoreRoot.followUpPending_ ? "생성 중…" : "꼬리질문 받기"
+                                color: Theme.text; font.pixelSize: 11
+                            }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: session.requestFollowUp()
+                                enabled: !scoreRoot.followUpPending_
+                                onClicked: parent.activateFollowUp()
                             }
                         }
                         Rectangle {

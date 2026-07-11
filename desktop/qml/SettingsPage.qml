@@ -7,6 +7,11 @@ import CareerTuner
 Item {
     id: root
 
+    function openWebSettings(tab) {
+        // 브라우저 세션은 웹에서 별도로 인증한다. 토큰은 URL에 절대 넣지 않는다.
+        Qt.openUrlExternally(appSettings.webAppUrl + "/settings?tab=" + encodeURIComponent(tab))
+    }
+
     component SettingCard: Rectangle {
         property alias title: titleText.text
         property alias desc: descText.text
@@ -39,10 +44,22 @@ Item {
 
     component Toggle: Rectangle {
         property bool checked: false
+        property string accessibleName: "설정 전환"
         signal toggled(bool value)
+        activeFocusOnTab: true
+        Accessible.role: Accessible.CheckBox
+        Accessible.name: accessibleName
+        Accessible.checked: checked
         width: 38; height: 21; radius: 10.5
         color: checked ? Theme.accent : Theme.raised
-        border.color: checked ? Theme.accent : Theme.border
+        border.color: activeFocus ? Theme.accentText : (checked ? Theme.accent : Theme.border)
+        border.width: activeFocus ? 2 : 1
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                event.accepted = true
+                toggled(!checked)
+            }
+        }
         Rectangle {
             width: 15; height: 15; radius: 7.5
             y: 3; x: parent.checked ? 20 : 3
@@ -84,8 +101,9 @@ Item {
 
             SettingCard {
                 title: "완료 시 자동 저장"
-                desc: "세션의 모든 답변이 끝나면 리포트를 저장 폴더에 자동 저장"
+                desc: "세션 완료 후 사용자가 리포트를 생성하면 저장 폴더에 자동 저장"
                 Toggle {
+                    accessibleName: "완료 시 자동 저장"
                     checked: appSettings.autoSave
                     onToggled: (v) => appSettings.autoSave = v
                 }
@@ -97,6 +115,7 @@ Item {
                 title: "자동 로그인"
                 desc: "토큰을 이 컴퓨터에 보관하고 시작 시 자동 갱신 (끄면 보관 토큰 삭제)"
                 Toggle {
+                    accessibleName: "자동 로그인"
                     checked: appSettings.autoLogin
                     onToggled: (v) => appSettings.autoLogin = v
                 }
@@ -236,6 +255,73 @@ Item {
             }
 
             SettingCard {
+                title: "개인정보 동의 복구"
+                desc: consentStatus.loading ? "서버에서 현재 계정의 동의 상태를 확인하고 있습니다"
+                    : consentStatus.errorText.length > 0 ? consentStatus.errorText
+                    : !consentStatus.loaded ? "동의 상태를 아직 확인하지 못했습니다"
+                    : consentStatus.requiredConsentsMissing
+                        ? "이용약관 또는 개인정보 필수 동의가 없어 일부 기능이 제한됩니다"
+                        : "필수 동의 정상 · AI 데이터 " + (consentStatus.aiDataAgreed ? "동의" : "미동의")
+                          + " · 이력서 분석 " + (consentStatus.resumeAnalysisAgreed ? "동의" : "미동의")
+                Row {
+                    spacing: 6
+                    Rectangle {
+                        width: recheckConsentLabel.implicitWidth + 22; height: 30; radius: 8
+                        color: Theme.raised; border.color: activeFocus ? Theme.accent : Theme.border
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "개인정보 동의 상태 다시 확인"
+                        function refreshConsent() { consentStatus.refresh() }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                refreshConsent()
+                            }
+                        }
+                        Text { id: recheckConsentLabel; anchors.centerIn: parent; text: consentStatus.loading ? "확인 중…" : "다시 확인"; color: Theme.text; font.pixelSize: 12 }
+                        MouseArea { anchors.fill: parent; enabled: !consentStatus.loading; cursorShape: Qt.PointingHandCursor; onClicked: parent.refreshConsent() }
+                    }
+                    Rectangle {
+                        width: privacyWebLabel.implicitWidth + 22; height: 30; radius: 8
+                        color: Theme.raised
+                        border.color: activeFocus ? Theme.accent : Theme.border
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "웹에서 개인정보 동의 관리 열기"
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                root.openWebSettings("privacy")
+                            }
+                        }
+                        Text { id: privacyWebLabel; anchors.centerIn: parent; text: "웹에서 동의 관리 ↗"; color: Theme.accentText; font.pixelSize: 12 }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openWebSettings("privacy") }
+                    }
+                }
+            }
+
+            SettingCard {
+                title: "계정 삭제"
+                desc: "본인 확인과 삭제 범위 안내가 필요한 작업입니다. 웹 계정 설정에서 안전하게 진행하세요"
+                Rectangle {
+                    width: deleteWebLabel.implicitWidth + 22; height: 30; radius: 8
+                    color: Theme.raised
+                    border.color: activeFocus ? Theme.accent : Theme.border
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "웹 계정 삭제 설정 열기"
+                    Keys.onPressed: (event) => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                            event.accepted = true
+                            root.openWebSettings("account")
+                        }
+                    }
+                    Text { id: deleteWebLabel; anchors.centerIn: parent; text: "웹 계정 설정 ↗"; color: Theme.danger; font.pixelSize: 12 }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openWebSettings("account") }
+                }
+            }
+
+            SettingCard {
                 title: "로그아웃"
                 desc: auth.userEmail !== "" ? auth.userEmail + " 계정에서 로그아웃" : "현재 계정에서 로그아웃"
                 Rectangle {
@@ -249,9 +335,10 @@ Item {
             Text { text: "알림 · 화면"; color: Theme.muted; font.pixelSize: 11; font.bold: true; Layout.leftMargin: 2; Layout.topMargin: 10 }
 
             SettingCard {
-                title: "트레이 알림"
-                desc: "폰 답변 도착·채점 완료 등을 Windows 토스트로 표시 (30초 폴링)"
+                title: "Windows 토스트"
+                desc: "새 알림을 Windows 토스트로 표시합니다. 웹 계정의 전체 끄기·카테고리·방해금지 시간·유형별 설정도 함께 따릅니다"
                 Toggle {
+                    accessibleName: "Windows 토스트"
                     checked: appSettings.trayNotify
                     onToggled: (v) => appSettings.trayNotify = v
                 }
@@ -263,6 +350,7 @@ Item {
                       ? "다크 · 딥 블랙 + 인디고"
                       : "라이트 · 오프화이트 + 인디고"
                 Toggle {
+                    accessibleName: "다크 테마"
                     checked: appSettings.darkTheme
                     onToggled: (v) => appSettings.darkTheme = v
                 }
