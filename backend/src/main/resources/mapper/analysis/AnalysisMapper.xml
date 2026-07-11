@@ -73,6 +73,7 @@
                 INNER JOIN interview_session answer_session ON answer_session.id = answer_question.interview_session_id
                 WHERE answer_session.application_case_id = ac.id
                   AND answer_session.deleted_at IS NULL
+                  AND answer_count_source.submission_status = 'COMPLETED'
             ) AS interview_answer_count,
             (
                 SELECT ROUND(AVG(answer_score_source.score))
@@ -81,6 +82,7 @@
                 INNER JOIN interview_session score_session ON score_session.id = score_question.interview_session_id
                 WHERE score_session.application_case_id = ac.id
                   AND score_session.deleted_at IS NULL
+                  AND answer_score_source.submission_status = 'COMPLETED'
             ) AS average_interview_answer_score,
             (
                 SELECT COUNT(*)
@@ -89,6 +91,7 @@
                 INNER JOIN interview_session scored_answer_session ON scored_answer_session.id = scored_answer_question.interview_session_id
                 WHERE scored_answer_session.application_case_id = ac.id
                   AND scored_answer_session.deleted_at IS NULL
+                  AND scored_answer_count_source.submission_status = 'COMPLETED'
                   AND scored_answer_count_source.score IS NOT NULL
             ) AS scored_interview_answer_count
             ,
@@ -99,6 +102,7 @@
                 INNER JOIN interview_session corrected_session ON corrected_session.id = corrected_question.interview_session_id
                 WHERE corrected_session.application_case_id = ac.id
                   AND corrected_session.deleted_at IS NULL
+                  AND corrected_answer_source.submission_status = 'COMPLETED'
                   AND corrected_answer_source.improved_answer IS NOT NULL
                   AND corrected_answer_source.improved_answer != ''
             ) AS corrected_answer_count
@@ -202,6 +206,7 @@
           AND ac.archived_at IS NULL
           AND ac.deleted_at IS NULL
           AND s.deleted_at IS NULL
+          AND ia.submission_status = 'COMPLETED'
           AND ia.score IS NOT NULL
         ORDER BY ia.score ASC, ia.id DESC
     </select>

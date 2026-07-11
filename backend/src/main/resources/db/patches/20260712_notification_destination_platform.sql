@@ -1,4 +1,4 @@
--- 공통 알림함의 레코드가 실제 수신 플랫폼(ALL/MOBILE/DESKTOP)을 보존하도록 확장한다.
+-- 공통 알림함의 레코드가 실제 수신 플랫폼(ALL/WEB/MOBILE/DESKTOP)을 보존하도록 확장한다.
 -- 기존 행과 destination_platform이 null인 선행 배포 후보 행은 ALL로 호환한다.
 
 SET @ct_notification_destination_column_exists := (
@@ -10,7 +10,7 @@ SET @ct_notification_destination_column_exists := (
 );
 SET @ct_notification_destination_ddl := IF(
     @ct_notification_destination_column_exists = 0,
-    'ALTER TABLE notification ADD COLUMN destination_platform ENUM(''ALL'', ''MOBILE'', ''DESKTOP'') NOT NULL DEFAULT ''ALL'' COMMENT ''알림 노출 플랫폼. ALL은 모든 플랫폼'' AFTER sender_relation',
+    'ALTER TABLE notification ADD COLUMN destination_platform ENUM(''ALL'', ''MOBILE'', ''DESKTOP'', ''WEB'') NOT NULL DEFAULT ''ALL'' COMMENT ''알림 노출 플랫폼. ALL은 모든 플랫폼'' AFTER sender_relation',
     'SELECT 1'
 );
 PREPARE ct_notification_destination_stmt FROM @ct_notification_destination_ddl;
@@ -21,7 +21,7 @@ DEALLOCATE PREPARE ct_notification_destination_stmt;
 UPDATE notification
    SET destination_platform = 'ALL'
  WHERE destination_platform IS NULL
-    OR destination_platform NOT IN ('ALL', 'MOBILE', 'DESKTOP');
+    OR destination_platform NOT IN ('ALL', 'MOBILE', 'DESKTOP', 'WEB');
 
 SET @ct_notification_destination_column_canonical := (
     SELECT COUNT(*)
@@ -29,13 +29,13 @@ SET @ct_notification_destination_column_canonical := (
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 'notification'
        AND COLUMN_NAME = 'destination_platform'
-       AND LOWER(COLUMN_TYPE) = 'enum(''all'',''mobile'',''desktop'')'
+       AND LOWER(COLUMN_TYPE) = 'enum(''all'',''mobile'',''desktop'',''web'')'
        AND IS_NULLABLE = 'NO'
        AND COLUMN_DEFAULT = 'ALL'
 );
 SET @ct_notification_destination_ddl := IF(
     @ct_notification_destination_column_canonical = 0,
-    'ALTER TABLE notification MODIFY COLUMN destination_platform ENUM(''ALL'', ''MOBILE'', ''DESKTOP'') NOT NULL DEFAULT ''ALL'' COMMENT ''알림 노출 플랫폼. ALL은 모든 플랫폼'' AFTER sender_relation',
+    'ALTER TABLE notification MODIFY COLUMN destination_platform ENUM(''ALL'', ''MOBILE'', ''DESKTOP'', ''WEB'') NOT NULL DEFAULT ''ALL'' COMMENT ''알림 노출 플랫폼. ALL은 모든 플랫폼'' AFTER sender_relation',
     'SELECT 1'
 );
 PREPARE ct_notification_destination_stmt FROM @ct_notification_destination_ddl;
@@ -64,7 +64,7 @@ SET @ct_notification_destination_column_valid := (
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 'notification'
        AND COLUMN_NAME = 'destination_platform'
-       AND LOWER(COLUMN_TYPE) = 'enum(''all'',''mobile'',''desktop'')'
+       AND LOWER(COLUMN_TYPE) = 'enum(''all'',''mobile'',''desktop'',''web'')'
        AND IS_NULLABLE = 'NO'
        AND COLUMN_DEFAULT = 'ALL'
 );
@@ -84,7 +84,7 @@ SET @ct_notification_destination_invalid_rows := (
     SELECT COUNT(*)
       FROM notification
      WHERE destination_platform IS NULL
-        OR destination_platform NOT IN ('ALL', 'MOBILE', 'DESKTOP')
+        OR destination_platform NOT IN ('ALL', 'MOBILE', 'DESKTOP', 'WEB')
 );
 SET @ct_notification_destination_verification_ok := IF(
        @ct_notification_destination_column_valid = 1

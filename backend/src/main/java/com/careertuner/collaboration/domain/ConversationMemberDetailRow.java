@@ -20,6 +20,7 @@ public class ConversationMemberDetailRow {
     private Long userId;
     private String name;
     private String email;
+    private String userStatus;
     private String role;
     private String status;
     private Boolean anonymous;

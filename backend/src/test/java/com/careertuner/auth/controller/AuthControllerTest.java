@@ -14,6 +14,7 @@ import com.careertuner.auth.dto.OAuthCallbackContext;
 import com.careertuner.auth.dto.NativeOAuthExchangeRequest;
 import com.careertuner.auth.dto.NativeOAuthStartRequest;
 import com.careertuner.auth.dto.OAuthCallbackResult;
+import com.careertuner.auth.dto.RefreshRequest;
 import com.careertuner.auth.dto.TokenResponse;
 import com.careertuner.auth.service.AuthService;
 import com.careertuner.auth.service.MfaService;
@@ -270,5 +271,24 @@ class AuthControllerTest {
         assertThat(response.getHeaders().getLocation()).hasToString(
                 "https://careertuner.career-tuner-4654.chatgpt.site/profile/social-callback"
                         + "?socialLinkError=social_login_failed");
+    }
+
+    @Test
+    void logoutUsesRefreshTokenWithoutRequiringAnAccessPrincipal() {
+        controller.logout(new RefreshRequest("refresh-one"), request);
+
+        verify(authService).logout(
+                org.mockito.ArgumentMatchers.eq("refresh-one"),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void logoutAllUsesRefreshTokenWhenAccessTokenIsExpired() {
+        controller.logoutAll(null, new RefreshRequest("refresh-all"), request);
+
+        verify(authService).logoutAllByRefreshToken(
+                org.mockito.ArgumentMatchers.eq("refresh-all"),
+                org.mockito.ArgumentMatchers.any());
+        verify(authService, never()).logoutAll(org.mockito.ArgumentMatchers.anyLong());
     }
 }

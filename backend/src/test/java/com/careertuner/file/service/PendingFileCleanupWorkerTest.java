@@ -27,14 +27,26 @@ class PendingFileCleanupWorkerTest {
                 "cleanupStalePendingCollaborationAttachments", int.class, int.class)
                 .getAnnotation(Transactional.class)).isNull();
         assertThat(FileService.class.getMethod(
+                "cleanupStalePendingAutoPrepAttachments", int.class, int.class)
+                .getAnnotation(Transactional.class)).isNull();
+        assertThat(FileService.class.getMethod(
                 "cleanupStalePendingInterviewMedia", int.class, int.class)
+                .getAnnotation(Transactional.class)).isNull();
+        assertThat(FileService.class.getMethod(
+                "cleanupStaleOrphanedInterviewMedia", int.class, int.class)
                 .getAnnotation(Transactional.class)).isNull();
 
         assertThat(PendingFileCleanupWorker.class.getMethod(
                 "deleteStaleCollaborationAttachment", FileAsset.class, LocalDateTime.class)
                 .getAnnotation(Transactional.class).propagation()).isEqualTo(Propagation.REQUIRES_NEW);
         assertThat(PendingFileCleanupWorker.class.getMethod(
+                "deleteStaleAutoPrepAttachment", FileAsset.class, LocalDateTime.class)
+                .getAnnotation(Transactional.class).propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+        assertThat(PendingFileCleanupWorker.class.getMethod(
                 "deleteStaleInterviewMedia", FileAsset.class, LocalDateTime.class)
+                .getAnnotation(Transactional.class).propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+        assertThat(PendingFileCleanupWorker.class.getMethod(
+                "deleteStaleOrphanedInterviewMedia", FileAsset.class, LocalDateTime.class)
                 .getAnnotation(Transactional.class).propagation()).isEqualTo(Propagation.REQUIRES_NEW);
     }
 
@@ -51,6 +63,18 @@ class PendingFileCleanupWorkerTest {
     }
 
     @Test
+    void autoPrepDeleteRemovesStoredBytesOnlyAfterAtomicRowDelete() {
+        FileAsset asset = asset(24L, "ATTACHMENT");
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
+        when(mapper.deleteStalePendingAutoPrepAttachment(24L, 7L, cutoff)).thenReturn(1);
+
+        assertThat(worker.deleteStaleAutoPrepAttachment(asset, cutoff)).isTrue();
+
+        verify(storage).snapshotIfExists("7/file-24");
+        verify(storage).delete("7/file-24");
+    }
+
+    @Test
     void lostClaimDoesNotTouchStoredBytes() {
         FileAsset asset = asset(22L, "VIDEO");
         LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
@@ -60,6 +84,18 @@ class PendingFileCleanupWorkerTest {
 
         verify(storage, never()).snapshotIfExists("7/file-22");
         verify(storage, never()).delete("7/file-22");
+    }
+
+    @Test
+    void orphanDeleteRemovesMetadataBeforeStoredBytes() {
+        FileAsset asset = asset(23L, "AUDIO");
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
+        when(mapper.deleteStaleOrphanedInterviewMedia(23L, 7L, cutoff)).thenReturn(1);
+
+        assertThat(worker.deleteStaleOrphanedInterviewMedia(asset, cutoff)).isTrue();
+
+        verify(storage).snapshotIfExists("7/file-23");
+        verify(storage).delete("7/file-23");
     }
 
     private FileAsset asset(Long id, String kind) {

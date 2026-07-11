@@ -75,6 +75,9 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class CollaborationServiceImpl implements CollaborationService {
 
+    private static final String DELETED_USER_STATUS = "DELETED";
+    private static final String DELETED_USER_LABEL = "탈퇴한 사용자";
+
     private static final int MAX_SEARCH_LIMIT = 30;
     private static final int MAX_ROOM_SEARCH_LIMIT = 50;
     private static final int MAX_MESSAGE_LIMIT = 120;
@@ -1011,15 +1014,17 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     private FriendResponse toFriendResponse(FriendRow row) {
         return new FriendResponse(
-                new UserBriefResponse(row.getUserId(), row.getName(), row.getEmail()),
+                publicUserBrief(row.getUserId(), row.getName(), row.getEmail(), row.getUserStatus()),
                 row.getCreatedAt());
     }
 
     private FriendRequestResponse toRequestResponse(FriendRequestRow row) {
         return new FriendRequestResponse(
                 row.getId(),
-                new UserBriefResponse(row.getRequesterId(), row.getRequesterName(), row.getRequesterEmail()),
-                new UserBriefResponse(row.getReceiverId(), row.getReceiverName(), row.getReceiverEmail()),
+                publicUserBrief(row.getRequesterId(), row.getRequesterName(), row.getRequesterEmail(),
+                        row.getRequesterStatus()),
+                publicUserBrief(row.getReceiverId(), row.getReceiverName(), row.getReceiverEmail(),
+                        row.getReceiverStatus()),
                 row.getStatus(),
                 row.getCreatedAt(),
                 row.getRespondedAt());
@@ -1033,9 +1038,9 @@ public class CollaborationServiceImpl implements CollaborationService {
                         row.getLatestContent(),
                         row.getLatestCreatedAt());
         UserBriefResponse peer = row.getPeerUserId() == null ? null
-                : new UserBriefResponse(row.getPeerUserId(), row.getPeerName(), row.getPeerEmail());
+                : publicUserBrief(row.getPeerUserId(), row.getPeerName(), row.getPeerEmail(), row.getPeerStatus());
         String displayName = "DIRECT".equals(row.getType())
-                ? (row.getPeerName() == null ? "1:1 대화" : row.getPeerName())
+                ? (peer == null || peer.name() == null ? "1:1 대화" : peer.name())
                 : row.getTitle();
         // 방 설정 진입 버튼 노출 힌트 — OWNER/MANAGER 면 노출하고, 실제 권한은 시트 조회에서 재검사한다.
         String myRole = row.getMyRole();
@@ -1122,10 +1127,14 @@ public class CollaborationServiceImpl implements CollaborationService {
                     ? message.getSenderRoomNickname() : ANONYMOUS_LABEL;
             return new UserBriefResponse(null, label, null);
         }
+        if (DELETED_USER_STATUS.equals(message.getSenderStatus())) {
+            return new UserBriefResponse(null, DELETED_USER_LABEL, null);
+        }
         DisplayNameResponse dn = resolvedSenders.get(
                 new DisplayNameQuery(message.getSenderId(), message.getSenderNicknameProfileId()));
         String name = dn != null ? dn.displayName() : message.getSenderName();
-        return new UserBriefResponse(message.getSenderId(), name, message.getSenderEmail());
+        Long accountId = dn != null ? dn.accountId() : message.getSenderId();
+        return new UserBriefResponse(accountId, name, accountId == null ? null : message.getSenderEmail());
     }
 
     /** 목록의 비익명 발신자 (senderId, roomNicknameProfileId) 를 모아 표시명을 한 번에 해석한다. */
@@ -1401,10 +1410,11 @@ public class CollaborationServiceImpl implements CollaborationService {
     }
 
     private ConversationMemberDetailResponse toMemberDetailResponse(ConversationMemberDetailRow row) {
+        boolean deletedUser = DELETED_USER_STATUS.equals(row.getUserStatus());
         boolean owner = "OWNER".equals(row.getRole());
         boolean anonymous = Boolean.TRUE.equals(row.getAnonymous());
         // 익명 멤버는 실명·이메일 대신 방 전용 닉네임(없으면 익명 라벨)만 노출한다.
-        String displayName = anonymous
+        String displayName = deletedUser ? DELETED_USER_LABEL : anonymous
                 ? (hasText(row.getRoomNickname()) ? row.getRoomNickname() : ANONYMOUS_LABEL)
                 : (hasText(row.getName()) ? row.getName() : row.getEmail());
         ConversationPermissionResponse permission = new ConversationPermissionResponse(
@@ -1416,21 +1426,22 @@ public class CollaborationServiceImpl implements CollaborationService {
                 owner || Boolean.TRUE.equals(row.getCanEditRoom()),
                 owner || Boolean.TRUE.equals(row.getCanManageMembers()));
         return new ConversationMemberDetailResponse(
-                row.getUserId(),
+                deletedUser ? null : row.getUserId(),
                 displayName,
-                anonymous ? null : row.getEmail(),
+                anonymous || deletedUser ? null : row.getEmail(),
                 row.getRole(),
                 anonymous,
-                row.getRoomProfileFileId(),
+                deletedUser ? null : row.getRoomProfileFileId(),
                 row.getJoinedAt(),
                 permission,
                 Boolean.TRUE.equals(row.getBanned()));
     }
 
     private ConversationBanResponse toBanResponse(ConversationBanRow row) {
+        boolean deletedUser = DELETED_USER_STATUS.equals(row.getUserStatus());
         return new ConversationBanResponse(
-                row.getUserId(),
-                hasText(row.getName()) ? row.getName() : row.getEmail(),
+                deletedUser ? null : row.getUserId(),
+                deletedUser ? DELETED_USER_LABEL : hasText(row.getName()) ? row.getName() : row.getEmail(),
                 row.getReason(),
                 row.getBannedBy(),
                 row.getCreatedAt());
@@ -1439,13 +1450,20 @@ public class CollaborationServiceImpl implements CollaborationService {
     private ConversationAuditResponse toAuditResponse(ConversationAuditRow row) {
         return new ConversationAuditResponse(
                 row.getId(),
-                row.getActorId(),
-                row.getActorName(),
-                row.getTargetUserId(),
-                row.getTargetName(),
+                DELETED_USER_STATUS.equals(row.getActorStatus()) ? null : row.getActorId(),
+                DELETED_USER_STATUS.equals(row.getActorStatus()) ? DELETED_USER_LABEL : row.getActorName(),
+                DELETED_USER_STATUS.equals(row.getTargetStatus()) ? null : row.getTargetUserId(),
+                DELETED_USER_STATUS.equals(row.getTargetStatus()) ? DELETED_USER_LABEL : row.getTargetName(),
                 row.getAction(),
                 row.getDetail(),
                 row.getCreatedAt());
+    }
+
+    private static UserBriefResponse publicUserBrief(Long id, String name, String email, String status) {
+        if (DELETED_USER_STATUS.equals(status)) {
+            return new UserBriefResponse(null, DELETED_USER_LABEL, null);
+        }
+        return new UserBriefResponse(id, name, email);
     }
 
     /** 방 활동 로그 기록 — best-effort. 로그 실패가 본 작업을 막지 않는다. */

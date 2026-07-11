@@ -19,6 +19,10 @@ public class InterviewMediaAnalysis {
 
     private Long id;
     private Long interviewSessionId;
+    /** 답변 단위 분석일 때 연결되는 질문. 기존 세션 단위 분석은 null이다. */
+    private Long questionId;
+    /** 답변 단위 분석일 때 연결되는 답변. 기존 세션 단위 분석은 null이다. */
+    private Long answerId;
     /** VOICE(음성 모의면접) / AVATAR(아바타 화상 면접) */
     private String kind;
     /** 대화 트랜스크립트 JSON 문자열: [{"role":"ai|user","text":"..."}] */

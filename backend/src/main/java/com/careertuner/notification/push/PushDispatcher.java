@@ -68,6 +68,10 @@ public class PushDispatcher {
                         && "WEB".equalsIgnoreCase(subscription.getKind())) {
                     continue;
                 }
+                if (destination == NotificationDestinationPlatform.WEB
+                        && !"WEB".equalsIgnoreCase(subscription.getKind())) {
+                    continue;
+                }
                 String channel = pushChannel(subscription.getKind());
                 if (!pref.channelEnabled(type, channel)) {
                     continue;

@@ -37,6 +37,9 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class ReactionServiceImpl implements ReactionService {
 
+    private static final String DELETED_USER_STATUS = "DELETED";
+    private static final String DELETED_USER_LABEL = "탈퇴한 사용자";
+
     private final ReactionMapper reactionMapper;
     private final CommunityPostMapper postMapper;
     private final CommunityCommentMapper commentMapper;
@@ -157,11 +160,12 @@ public class ReactionServiceImpl implements ReactionService {
         List<PostReactorResponse> result = new ArrayList<>();
         for (PostReaction r : reactionMapper.findPostReactors(postId, viewerId)) {
             boolean mine = viewerId != null && viewerId.equals(r.getUserId());
+            boolean deletedUser = DELETED_USER_STATUS.equals(r.getUserStatus());
             // 익명 리액션은 쿼리에서 본인 것만 남는다 — 표시명도 익명 유지(본인은 mine 으로 구분)
             result.add(new PostReactorResponse(
                     r.getReactionType(),
-                    r.isAnonymous() ? null : r.getUserId(),
-                    r.isAnonymous() ? "익명" : userNameOf(r),
+                    r.isAnonymous() || deletedUser ? null : r.getUserId(),
+                    r.isAnonymous() ? "익명" : deletedUser ? DELETED_USER_LABEL : userNameOf(r),
                     r.isAnonymous(),
                     mine,
                     r.getCreatedAt()));

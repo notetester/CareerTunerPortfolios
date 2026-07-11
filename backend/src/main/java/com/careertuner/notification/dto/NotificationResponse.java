@@ -19,6 +19,7 @@ public record NotificationResponse(
         ActorDto actor
 ) {
     public record ActorDto(
+            /** 탈퇴한 발신자는 공개 프로필 링크를 만들지 않도록 null. */
             Long id,
             String name,
             String avatarUrl

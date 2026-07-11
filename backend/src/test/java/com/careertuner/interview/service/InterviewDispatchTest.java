@@ -13,6 +13,7 @@ import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.dto.InterviewDispatchTarget;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.media.InterviewMediaMapper;
 import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.domain.NotificationDestinationPlatform;
@@ -37,7 +38,8 @@ class InterviewDispatchTest {
                 mock(ObjectMapper.class),
                 mock(InterviewBackgroundExecutor.class),
                 notificationService,
-                mock(FileService.class));
+                mock(FileService.class),
+                mock(InterviewMediaMapper.class));
     }
 
     @Test

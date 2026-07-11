@@ -39,11 +39,37 @@ class NotificationControllerPlatformTest {
     }
 
     @Test
+    void desktopPlatformIsForwardedForBulkMutations() {
+        controller.markAllAsRead(NotificationDestinationPlatform.DESKTOP, user);
+        controller.deleteAll(NotificationDestinationPlatform.DESKTOP, user);
+
+        verify(service).markAllAsRead(17L, NotificationDestinationPlatform.DESKTOP);
+        verify(service).deleteAll(17L, NotificationDestinationPlatform.DESKTOP);
+    }
+
+    @Test
+    void webPlatformIsForwardedForAllNotificationOperations() {
+        controller.getNotifications(0, 20, NotificationDestinationPlatform.WEB, user);
+        controller.getUnreadCount(NotificationDestinationPlatform.WEB, user);
+        controller.markAllAsRead(NotificationDestinationPlatform.WEB, user);
+        controller.deleteAll(NotificationDestinationPlatform.WEB, user);
+
+        verify(service).getNotifications(17L, 0, 20, NotificationDestinationPlatform.WEB);
+        verify(service).getUnreadCount(17L, NotificationDestinationPlatform.WEB);
+        verify(service).markAllAsRead(17L, NotificationDestinationPlatform.WEB);
+        verify(service).deleteAll(17L, NotificationDestinationPlatform.WEB);
+    }
+
+    @Test
     void omittedPlatformKeepsUnfilteredWebBehavior() {
         controller.getNotifications(1, 10, null, user);
         controller.getUnreadCount(null, user);
+        controller.markAllAsRead(null, user);
+        controller.deleteAll(null, user);
 
         verify(service).getNotifications(17L, 1, 10, null);
         verify(service).getUnreadCount(17L, null);
+        verify(service).markAllAsRead(17L, null);
+        verify(service).deleteAll(17L, null);
     }
 }

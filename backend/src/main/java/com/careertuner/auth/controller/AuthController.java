@@ -120,8 +120,15 @@ public class AuthController {
     }
 
     @PostMapping("/logout-all")
-    public ApiResponse<Void> logoutAll(@AuthenticationPrincipal AuthUser authUser) {
-        authService.logoutAll(authUser.id());
+    public ApiResponse<Void> logoutAll(@AuthenticationPrincipal AuthUser authUser,
+                                       @RequestBody(required = false) RefreshRequest request,
+                                       HttpServletRequest servletRequest) {
+        if (request != null && request.refreshToken() != null && !request.refreshToken().isBlank()) {
+            authService.logoutAllByRefreshToken(
+                    request.refreshToken(), LoginRequestContext.from(servletRequest));
+        } else if (authUser != null) {
+            authService.logoutAll(authUser.id());
+        }
         return ApiResponse.ok();
     }
 

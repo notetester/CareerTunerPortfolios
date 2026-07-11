@@ -45,6 +45,9 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional(readOnly = true)
 public class CommunityCommentServiceImpl implements CommunityCommentService {
 
+    private static final String DELETED_USER_STATUS = "DELETED";
+    private static final String DELETED_USER_LABEL = "탈퇴한 사용자";
+
     /** 차단 작성자 댓글 톰스톤 문구 (docs/PERSONAL_BLOCK_POLICY.md §4 — silent deny). */
     private static final String BLOCKED_COMMENT_TOMBSTONE = "차단한 사용자의 댓글입니다.";
 
@@ -296,12 +299,18 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
 
     /** 벌크 해석 결과에서 이 댓글의 비익명 표시명을 꺼낸다(미해석 시 users.name 폴백). */
     private String resolvedName(CommunityComment c, Map<DisplayNameQuery, DisplayNameResponse> resolvedNames) {
+        if (DELETED_USER_STATUS.equals(c.getUserStatus())) {
+            return DELETED_USER_LABEL;
+        }
         DisplayNameResponse dn = resolvedNames.get(new DisplayNameQuery(c.getUserId(), c.getNicknameProfileId()));
         return dn != null ? dn.displayName() : c.getUserName();
     }
 
     /** 비익명 댓글의 표시용 프로필 id(해석 성공 시) — AuthorDto 에 실어 보낸다. */
     private Long resolvedProfileId(CommunityComment c, Map<DisplayNameQuery, DisplayNameResponse> resolvedNames) {
+        if (DELETED_USER_STATUS.equals(c.getUserStatus())) {
+            return null;
+        }
         DisplayNameResponse dn = resolvedNames.get(new DisplayNameQuery(c.getUserId(), c.getNicknameProfileId()));
         return dn != null ? dn.nicknameProfileId() : c.getNicknameProfileId();
     }
@@ -561,9 +570,9 @@ public class CommunityCommentServiceImpl implements CommunityCommentService {
                 c.getParentId(),
                 mentionLabel,
                 new PostListResponse.AuthorDto(
-                        c.isAnonymous() ? null : c.getUserId(),
-                        authorName,
-                        c.isAnonymous() ? null : nicknameProfileId,
+                        c.isAnonymous() || DELETED_USER_STATUS.equals(c.getUserStatus()) ? null : c.getUserId(),
+                        DELETED_USER_STATUS.equals(c.getUserStatus()) ? DELETED_USER_LABEL : authorName,
+                        c.isAnonymous() || DELETED_USER_STATUS.equals(c.getUserStatus()) ? null : nicknameProfileId,
                         c.isAnonymous()),
                 c.getContent(),
                 c.getLikeCount(),

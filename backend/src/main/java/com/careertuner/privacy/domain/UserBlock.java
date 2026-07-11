@@ -28,4 +28,5 @@ public class UserBlock {
     // JOIN 표시용
     private String blockedUserName;
     private String blockedUserEmail;
+    private String blockedUserStatus;
 }

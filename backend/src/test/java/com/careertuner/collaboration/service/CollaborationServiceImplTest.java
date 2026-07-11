@@ -375,6 +375,26 @@ class CollaborationServiceImplTest {
         verify(mapper, never()).findPostingsByMessageId(21L);
     }
 
+    @Test
+    void listMessages_keepsDeletedUsersMessageButRemovesSenderIdentityLinks() {
+        when(mapper.countConversationMember(5L, 1L)).thenReturn(1);
+        when(mapper.findMessages(eq(5L), anyInt())).thenReturn(List.of(
+                CollaborationMessage.builder()
+                        .id(90L).conversationId(5L).senderId(2L)
+                        .senderName("탈퇴한 사용자").senderEmail(null).senderStatus("DELETED")
+                        .kind("CHAT").content("보존된 메시지")
+                        .build()));
+        when(mapper.findAttachmentsByMessageId(90L)).thenReturn(List.of());
+        when(mapper.findPostingsByMessageId(90L)).thenReturn(List.of());
+
+        var response = service.listMessages(1L, 5L, 50).getFirst();
+
+        assertThat(response.content()).isEqualTo("보존된 메시지");
+        assertThat(response.sender().name()).isEqualTo("탈퇴한 사용자");
+        assertThat(response.sender().id()).isNull();
+        assertThat(response.sender().email()).isNull();
+    }
+
     // ══════════════ LOCAL 파일 공유 — 데스크톱 presence 게이트 ══════════════
 
     // ── 소유자 데스크톱 온라인(heartbeat 90초 이내) → 다운로드 허용 ──

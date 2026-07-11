@@ -62,6 +62,9 @@ import tools.jackson.databind.ObjectMapper;
 @Transactional(readOnly = true)
 public class CommunityPostServiceImpl implements CommunityPostService {
 
+    private static final String DELETED_USER_STATUS = "DELETED";
+    private static final String DELETED_USER_LABEL = "탈퇴한 사용자";
+
     /** 차단 작성자 게시글 톰스톤 문구 (docs/PERSONAL_BLOCK_POLICY.md §4 — silent deny). */
     private static final String BLOCKED_POST_TOMBSTONE = "차단한 사용자의 게시글입니다.";
 
@@ -170,10 +173,14 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (post.isAnonymous()) {
             return new PostListResponse.AuthorDto(null, "익명", null, true);
         }
+        if (DELETED_USER_STATUS.equals(post.getUserStatus())) {
+            return new PostListResponse.AuthorDto(null, DELETED_USER_LABEL, null, false);
+        }
         DisplayNameResponse dn = resolved.get(new DisplayNameQuery(post.getUserId(), post.getNicknameProfileId()));
         String name = dn != null ? dn.displayName() : post.getUserName();
         Long profileId = dn != null ? dn.nicknameProfileId() : post.getNicknameProfileId();
-        return new PostListResponse.AuthorDto(post.getUserId(), name, profileId, false);
+        Long accountId = dn != null ? dn.accountId() : post.getUserId();
+        return new PostListResponse.AuthorDto(accountId, name, profileId, false);
     }
 
     /**
@@ -428,11 +435,15 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (post.isAnonymous()) {
             return new PostListResponse.AuthorDto(null, "익명", null, true);
         }
+        if (DELETED_USER_STATUS.equals(post.getUserStatus())) {
+            return new PostListResponse.AuthorDto(null, DELETED_USER_LABEL, null, false);
+        }
         DisplayNameResponse dn =
                 nicknameProfileService.resolveDisplayName(post.getUserId(), post.getNicknameProfileId());
         String name = dn != null ? dn.displayName() : post.getUserName();
         Long profileId = dn != null ? dn.nicknameProfileId() : post.getNicknameProfileId();
-        return new PostListResponse.AuthorDto(post.getUserId(), name, profileId, false);
+        Long accountId = dn != null ? dn.accountId() : post.getUserId();
+        return new PostListResponse.AuthorDto(accountId, name, profileId, false);
     }
 
     private static PostListResponse.StatsDto toStatsDto(CommunityPost post) {

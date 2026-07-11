@@ -51,11 +51,29 @@ public interface FileAssetMapper {
             @Param("ownerUserId") Long ownerUserId,
             @Param("cutoff") LocalDateTime cutoff);
 
+    List<FileAsset> findStalePendingAutoPrepAttachments(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("limit") int limit);
+
+    int deleteStalePendingAutoPrepAttachment(
+            @Param("id") Long id,
+            @Param("ownerUserId") Long ownerUserId,
+            @Param("cutoff") LocalDateTime cutoff);
+
     List<FileAsset> findStalePendingInterviewMedia(
             @Param("cutoff") LocalDateTime cutoff,
             @Param("limit") int limit);
 
     int deleteStalePendingInterviewMedia(
+            @Param("id") Long id,
+            @Param("ownerUserId") Long ownerUserId,
+            @Param("cutoff") LocalDateTime cutoff);
+
+    List<FileAsset> findStaleOrphanedInterviewMedia(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("limit") int limit);
+
+    int deleteStaleOrphanedInterviewMedia(
             @Param("id") Long id,
             @Param("ownerUserId") Long ownerUserId,
             @Param("cutoff") LocalDateTime cutoff);

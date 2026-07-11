@@ -8,6 +8,8 @@ import tools.jackson.databind.JsonNode;
 public record MediaAnalysisResponse(
         Long id,
         Long interviewSessionId,
+        Long questionId,
+        Long answerId,
         String kind,
         JsonNode transcript,
         JsonNode metrics,

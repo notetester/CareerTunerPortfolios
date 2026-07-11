@@ -33,6 +33,7 @@ public class Notification {
     // JOIN으로 가져오는 actor 정보
     private String actorName;
     private String actorAvatarUrl;
+    private String actorStatus;
 
     public NotificationDestinationPlatform resolvedDestinationPlatform() {
         return NotificationDestinationPlatform.resolve(destinationPlatform);

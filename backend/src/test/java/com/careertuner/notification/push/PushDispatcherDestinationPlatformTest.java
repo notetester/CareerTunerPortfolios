@@ -86,4 +86,27 @@ class PushDispatcherDestinationPlatformTest {
                 org.mockito.ArgumentMatchers.any(PushMessage.class));
         verifyNoMoreInteractions(pushSender);
     }
+
+    @Test
+    void webOnlyNotificationSkipsNativePushAndUsesWebSubscription() {
+        NotificationPreferenceResponse preference = new NotificationPreferenceResponse(
+                true, false, Map.of(), Map.of(), List.of(), null, null, true);
+        PushSubscription web = PushSubscription.builder()
+                .userId(4L).kind("WEB").token("web-token").build();
+        PushSubscription fcm = PushSubscription.builder()
+                .userId(4L).kind("FCM").token("fcm-token").build();
+        when(preferenceService.get(4L)).thenReturn(preference);
+        when(subscriptionMapper.findByUserId(4L)).thenReturn(List.of(web, fcm));
+
+        dispatcher.dispatch(Notification.builder()
+                .userId(4L)
+                .type("NOTICE")
+                .destinationPlatform(NotificationDestinationPlatform.WEB)
+                .title("웹 전용 공지")
+                .build());
+
+        verify(pushSender).send(org.mockito.ArgumentMatchers.eq(web),
+                org.mockito.ArgumentMatchers.any(PushMessage.class));
+        verifyNoMoreInteractions(pushSender);
+    }
 }

@@ -16,5 +16,7 @@ public interface PushSubscriptionMapper {
 
     int deleteByToken(@Param("userId") Long userId, @Param("token") String token);
 
+    int deleteAllByUserId(@Param("userId") Long userId);
+
     int countByUserId(@Param("userId") Long userId);
 }

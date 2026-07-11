@@ -1,6 +1,7 @@
 package com.careertuner.interview.service;
 
 import java.util.List;
+import java.util.UUID;
 
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
 import com.careertuner.interview.dto.GenerateFollowUpsRequest;
@@ -33,12 +34,24 @@ public interface InterviewService {
     /** 면접 세션을 지정한 플랫폼에서 이어받도록 사용자에게 알림을 남긴다. */
     void dispatchSession(Long userId, Long sessionId, InterviewDispatchTarget target);
 
-    List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId, GenerateQuestionsRequest request);
+    default List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId,
+                                                              GenerateQuestionsRequest request) {
+        return generateQuestions(userId, sessionId, request, "INTERNAL:" + UUID.randomUUID());
+    }
+
+    List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId,
+                                                      GenerateQuestionsRequest request, String operationKey);
 
     List<InterviewQuestionResponse> listQuestions(Long userId, Long sessionId);
 
     /** 특정 질문에 대한 지원자 답변을 바탕으로 꼬리 질문을 생성해 세션 질문 목록에 이어 붙인다. */
-    List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId, GenerateFollowUpsRequest request);
+    default List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId,
+                                                              GenerateFollowUpsRequest request) {
+        return generateFollowUps(userId, questionId, request, "INTERNAL:" + UUID.randomUUID());
+    }
+
+    List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId,
+                                                      GenerateFollowUpsRequest request, String operationKey);
 
     InterviewAnswerResponse submitAnswer(Long userId, Long questionId, SubmitAnswerRequest request);
 

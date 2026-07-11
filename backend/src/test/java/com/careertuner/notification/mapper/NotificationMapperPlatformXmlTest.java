@@ -23,24 +23,44 @@ class NotificationMapperPlatformXmlTest {
                 .contains("COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})");
         assertThat(selectBody(xml, "countUnreadByUserId"))
                 .contains("COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})");
+        assertThat(statementBody(xml, "update", "markAllAsRead"))
+                .contains("COALESCE(destination_platform, 'ALL') IN ('ALL', #{platform})")
+                .contains("platform != null");
+        assertThat(statementBody(xml, "delete", "deleteAllByUser"))
+                .contains("COALESCE(destination_platform, 'ALL') IN ('ALL', #{platform})")
+                .contains("platform != null");
     }
 
     @Test
-    void insertSchemaAndIdempotentPatchPersistCanonicalDestination() throws Exception {
+    void insertSchemaAndIdempotentPatchesPersistCanonicalDestination() throws Exception {
         String xml = Files.readString(MAPPER);
         String schema = Files.readString(Path.of("src/main/resources/db/schema.sql"));
-        String patch = Files.readString(Path.of(
+        String initialPatch = Files.readString(Path.of(
                 "src/main/resources/db/patches/20260712_notification_destination_platform.sql"));
+        String webPatch = Files.readString(Path.of(
+                "src/main/resources/db/patches/20260712_notification_web_destination.sql"));
 
         assertThat(xml).contains("destination_platform, title, message, link")
                 .contains("COALESCE(#{destinationPlatform}, 'ALL')");
+        assertThat(statementBody(xml, "insert", "insert"))
+                .contains("FROM users recipient")
+                .contains("recipient.id = #{userId}")
+                .contains("recipient.status = 'ACTIVE'");
         assertThat(schema)
-                .contains("destination_platform ENUM('ALL', 'MOBILE', 'DESKTOP') NOT NULL DEFAULT 'ALL'")
+                .contains("destination_platform ENUM('ALL', 'MOBILE', 'DESKTOP', 'WEB') NOT NULL DEFAULT 'ALL'")
                 .contains("idx_notification_user_platform_unread");
-        assertThat(patch)
+        assertThat(initialPatch)
                 .contains("COLUMN_NAME = 'destination_platform'")
                 .contains("@ct_notification_destination_column_exists = 0")
+                .contains("ENUM(''ALL'', ''MOBILE'', ''DESKTOP'', ''WEB'')")
+                .contains("destination_platform NOT IN ('ALL', 'MOBILE', 'DESKTOP', 'WEB')")
                 .contains("idx_notification_user_platform_unread")
+                .contains("'PASS', 'FAIL'");
+        assertThat(webPatch)
+                .contains("ENUM(''ALL'', ''MOBILE'', ''DESKTOP'', ''WEB'')")
+                .contains("LOWER(COLUMN_TYPE) = 'enum(''all'',''mobile'',''desktop'',''web'')'")
+                .contains("destination_platform NOT IN ('ALL', 'MOBILE', 'DESKTOP', 'WEB')")
+                .contains("ct_notification_destination_web_guard")
                 .contains("'PASS', 'FAIL'");
     }
 
@@ -48,5 +68,11 @@ class NotificationMapperPlatformXmlTest {
         int start = xml.indexOf("<select id=\"" + selectId + "\"");
         assertThat(start).as(selectId + " 존재").isGreaterThanOrEqualTo(0);
         return xml.substring(start, xml.indexOf("</select>", start));
+    }
+
+    private static String statementBody(String xml, String tag, String id) {
+        int start = xml.indexOf("<" + tag + " id=\"" + id + "\"");
+        assertThat(start).as(id + " 존재").isGreaterThanOrEqualTo(0);
+        return xml.substring(start, xml.indexOf("</" + tag + ">", start));
     }
 }

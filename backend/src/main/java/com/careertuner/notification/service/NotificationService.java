@@ -24,9 +24,17 @@ public interface NotificationService {
 
     void markAsRead(Long notificationId, Long userId);
 
-    void markAllAsRead(Long userId);
+    void markAllAsRead(Long userId, NotificationDestinationPlatform platform);
+
+    default void markAllAsRead(Long userId) {
+        markAllAsRead(userId, null);
+    }
 
     void delete(Long notificationId, Long userId);
 
-    void deleteAll(Long userId);
+    void deleteAll(Long userId, NotificationDestinationPlatform platform);
+
+    default void deleteAll(Long userId) {
+        deleteAll(userId, null);
+    }
 }

@@ -15,6 +15,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.common.exception.BusinessException;
@@ -24,6 +25,7 @@ import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.media.InterviewMediaMapper;
 import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
@@ -55,7 +57,8 @@ class InterviewServiceSoftDeleteTest {
                 objectMapper,
                 backgroundExecutor,
                 notificationService,
-                fileService);
+                fileService,
+                mock(InterviewMediaMapper.class));
     }
 
     @Test
@@ -136,7 +139,7 @@ class InterviewServiceSoftDeleteTest {
                 List.of("핵심 경험을 더 구체화하세요."),
                 new InterviewOpenAiClient.Usage("test-model", 1, 1, 2));
 
-        when(interviewMapper.findSessionByIdAndUserId(sessionId, userId)).thenReturn(session);
+        when(interviewMapper.lockSessionByIdAndUserId(sessionId, userId)).thenReturn(session);
         when(interviewMapper.findQuestionsBySessionId(sessionId)).thenReturn(List.of(question));
         when(interviewMapper.findAnswersBySessionId(sessionId)).thenReturn(List.of(answer));
         when(interviewMapper.findLatestScoredSessionScore(session.getApplicationCaseId(), sessionId))
@@ -152,5 +155,55 @@ class InterviewServiceSoftDeleteTest {
 
         assertThat(error.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND);
         verify(notificationService, never()).notify(any(Notification.class));
+    }
+
+    @Test
+    void reportReadyNotificationOpensTheGeneratedReportTab() throws Exception {
+        long userId = 1L;
+        long sessionId = 10L;
+        InterviewSession session = InterviewSession.builder()
+                .id(sessionId)
+                .applicationCaseId(100L)
+                .mode("BASIC")
+                .startedAt(LocalDateTime.now().minusMinutes(5))
+                .build();
+        InterviewQuestion question = InterviewQuestion.builder()
+                .id(20L)
+                .interviewSessionId(sessionId)
+                .question("자기소개를 해 주세요.")
+                .questionType("EXPECTED")
+                .sortOrder(0)
+                .build();
+        InterviewAnswer answer = InterviewAnswer.builder()
+                .id(30L)
+                .questionId(question.getId())
+                .answerText("경험을 바탕으로 작성한 답변입니다.")
+                .score(80)
+                .feedback("구체적인 성과를 보완하세요.")
+                .build();
+        InterviewOpenAiClient.ReportPayload payload = new InterviewOpenAiClient.ReportPayload(
+                80,
+                List.of(new InterviewOpenAiClient.ReportCategory("직무 역량", 80)),
+                List.of("핵심 경험을 더 구체화하세요."),
+                new InterviewOpenAiClient.Usage("test-model", 1, 1, 2));
+
+        when(interviewMapper.lockSessionByIdAndUserId(sessionId, userId)).thenReturn(session);
+        when(interviewMapper.findQuestionsBySessionId(sessionId)).thenReturn(List.of(question));
+        when(interviewMapper.findAnswersBySessionId(sessionId)).thenReturn(List.of(answer));
+        when(interviewMapper.findLatestScoredSessionScore(session.getApplicationCaseId(), sessionId))
+                .thenReturn(70);
+        when(aiClient.generateReport(anyString())).thenReturn(payload);
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(interviewMapper.updateSessionResult(
+                eq(sessionId), eq(payload.totalScore()), anyString(), any(LocalDateTime.class)))
+                .thenReturn(1);
+        ArgumentCaptor<Notification> notification = ArgumentCaptor.forClass(Notification.class);
+
+        service.getReport(userId, sessionId);
+
+        verify(notificationService).notify(notification.capture());
+        assertThat(notification.getValue().getType()).isEqualTo("INTERVIEW_REPORT_READY");
+        assertThat(notification.getValue().getLink())
+                .isEqualTo("/interview?session=10&tab=report");
     }
 }

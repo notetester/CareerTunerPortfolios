@@ -182,6 +182,24 @@ public class FileService {
         return deleted;
     }
 
+    /** 강제 종료 등으로 실행에 소비되지 못한 AutoPrep 입력 첨부를 제한 배치로 회수한다. */
+    public int cleanupStalePendingAutoPrepAttachments(int olderThanHours, int requestedLimit) {
+        int safeHours = Math.max(24, olderThanHours);
+        int limit = Math.max(1, Math.min(100, requestedLimit));
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(safeHours);
+        int deleted = 0;
+        for (FileAsset asset : fileAssetMapper.findStalePendingAutoPrepAttachments(cutoff, limit)) {
+            try {
+                if (pendingFileCleanupWorker.deleteStaleAutoPrepAttachment(asset, cutoff)) {
+                    deleted++;
+                }
+            } catch (RuntimeException ex) {
+                log.warn("전송 대기 AutoPrep 첨부 정리에 실패했습니다. fileId={}", asset.getId(), ex);
+            }
+        }
+        return deleted;
+    }
+
     /** 앱 강제 종료 등으로 답변에 연결되지 못한 음성·영상 원본만 제한 배치로 회수한다. */
     public int cleanupStalePendingInterviewMedia(int olderThanHours, int requestedLimit) {
         int safeHours = Math.max(24, olderThanHours);
@@ -195,6 +213,24 @@ public class FileService {
                 }
             } catch (RuntimeException ex) {
                 log.warn("전송 대기 면접 원본 정리에 실패했습니다. fileId={}", asset.getId(), ex);
+            }
+        }
+        return deleted;
+    }
+
+    /** cascade 삭제된 답변을 계속 가리키는 과거 음성·영상 원본의 DB 행과 실제 바이트를 함께 회수한다. */
+    public int cleanupStaleOrphanedInterviewMedia(int olderThanHours, int requestedLimit) {
+        int safeHours = Math.max(24, olderThanHours);
+        int limit = Math.max(1, Math.min(100, requestedLimit));
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(safeHours);
+        int deleted = 0;
+        for (FileAsset asset : fileAssetMapper.findStaleOrphanedInterviewMedia(cutoff, limit)) {
+            try {
+                if (pendingFileCleanupWorker.deleteStaleOrphanedInterviewMedia(asset, cutoff)) {
+                    deleted++;
+                }
+            } catch (RuntimeException ex) {
+                log.warn("고아 면접 원본 정리에 실패했습니다. fileId={}", asset.getId(), ex);
             }
         }
         return deleted;

@@ -32,8 +32,28 @@ public class PendingFileCleanupWorker {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean deleteStaleAutoPrepAttachment(FileAsset asset, LocalDateTime cutoff) {
+        if (fileAssetMapper.deleteStalePendingAutoPrepAttachment(
+                asset.getId(), asset.getOwnerUserId(), cutoff) != 1) {
+            return false;
+        }
+        deleteStored(asset);
+        return true;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean deleteStaleInterviewMedia(FileAsset asset, LocalDateTime cutoff) {
         if (fileAssetMapper.deleteStalePendingInterviewMedia(
+                asset.getId(), asset.getOwnerUserId(), cutoff) != 1) {
+            return false;
+        }
+        deleteStored(asset);
+        return true;
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean deleteStaleOrphanedInterviewMedia(FileAsset asset, LocalDateTime cutoff) {
+        if (fileAssetMapper.deleteStaleOrphanedInterviewMedia(
                 asset.getId(), asset.getOwnerUserId(), cutoff) != 1) {
             return false;
         }

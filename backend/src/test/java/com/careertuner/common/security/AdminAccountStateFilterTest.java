@@ -72,11 +72,23 @@ class AdminAccountStateFilterTest {
     }
 
     @Test
-    void nonAdminPathDoesNotQueryCurrentAdminState() throws Exception {
-        authenticate(new AuthUser(7L, "admin@test.dev", "ADMIN"));
+    void activeUserOnNonAdminPathAlsoUsesCurrentAccountState() throws Exception {
+        authenticate(new AuthUser(7L, "user@test.dev", "USER"));
+        when(userMapper.findById(7L)).thenReturn(user(7L, "USER", "ACTIVE"));
         MockHttpServletResponse response = invoke("/api/profile/me");
 
         assertThat(response.getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void deletedUserAccessTokenIsRejectedOutsideAdminToo() throws Exception {
+        authenticate(new AuthUser(7L, "user@test.dev", "USER"));
+        when(userMapper.findById(7L)).thenReturn(user(7L, "USER", "DELETED"));
+
+        MockHttpServletResponse response = invoke("/api/interview/sessions");
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        assertThat(response.getContentAsString()).contains("\"code\":\"UNAUTHORIZED\"");
     }
 
     private MockHttpServletResponse invoke(String uri) throws Exception {

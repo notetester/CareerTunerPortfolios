@@ -20,6 +20,8 @@ class SecurityConfigNativeOAuthContractTest {
         assertThat(postBlock)
                 .contains("\"/api/auth/oauth/*/native/start\"")
                 .contains("\"/api/auth/oauth/native/exchange\"")
+                .contains("\"/api/auth/logout\"")
+                .contains("\"/api/auth/logout-all\"")
                 .contains(".permitAll()");
     }
 }

@@ -16,7 +16,10 @@
 
     <insert id="insertSocial" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_social (user_id, provider, provider_user_id)
-        VALUES (#{userId}, #{provider}, #{providerUserId})
+        SELECT u.id, #{provider}, #{providerUserId}
+          FROM users u
+         WHERE u.id = #{userId}
+           AND u.status = 'ACTIVE'
     </insert>
 
     <delete id="deleteSocial">
@@ -27,7 +30,10 @@
     <!-- 이메일 인증 토큰 -->
     <insert id="insertEmailVerification" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO email_verification (user_id, email, token, purpose, frontend_client, expired_at)
-        VALUES (#{userId}, #{email}, #{token}, #{purpose}, COALESCE(#{frontendClient}, 'primary'), #{expiredAt})
+        SELECT u.id, #{email}, #{token}, #{purpose}, COALESCE(#{frontendClient}, 'primary'), #{expiredAt}
+          FROM users u
+         WHERE u.id = #{userId}
+           AND u.status = 'ACTIVE'
     </insert>
 
     <select id="findEmailVerificationByToken" resultType="com.careertuner.auth.domain.EmailVerification">
@@ -49,7 +55,10 @@
     <!-- 리프레시 토큰 -->
     <insert id="insertRefreshToken" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO refresh_token (user_id, token, expired_at, ip_address, user_agent)
-        VALUES (#{userId}, #{token}, #{expiredAt}, #{ipAddress}, #{userAgent})
+        SELECT u.id, #{token}, #{expiredAt}, #{ipAddress}, #{userAgent}
+          FROM users u
+         WHERE u.id = #{userId}
+           AND u.status = 'ACTIVE'
     </insert>
 
     <select id="findRefreshToken" resultType="com.careertuner.auth.domain.RefreshToken">

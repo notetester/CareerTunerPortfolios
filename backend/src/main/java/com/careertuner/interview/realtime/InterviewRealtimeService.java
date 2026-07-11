@@ -22,6 +22,8 @@ import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.dto.RealtimeSessionResponse;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.service.InterviewAiUsageLogService;
+import com.careertuner.interview.service.InterviewOpenAiClient;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -44,6 +46,7 @@ public class InterviewRealtimeService {
     private final InterviewRealtimeProperties realtimeProperties;
     private final InterviewMapper interviewMapper;
     private final ApplicationCaseAccessService accessService;
+    private final InterviewAiUsageLogService usageLogService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
@@ -51,11 +54,13 @@ public class InterviewRealtimeService {
                                     InterviewRealtimeProperties realtimeProperties,
                                     InterviewMapper interviewMapper,
                                     ApplicationCaseAccessService accessService,
+                                    InterviewAiUsageLogService usageLogService,
                                     ObjectMapper objectMapper) {
         this.openAiProperties = openAiProperties;
         this.realtimeProperties = realtimeProperties;
         this.interviewMapper = interviewMapper;
         this.accessService = accessService;
+        this.usageLogService = usageLogService;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
@@ -86,6 +91,11 @@ public class InterviewRealtimeService {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Realtime 세션 발급에 실패했습니다.");
         }
         Long expiresAt = root.path("expires_at").isMissingNode() ? null : root.path("expires_at").asLong();
+        usageLogService.recordSuccess(
+                userId,
+                session.getApplicationCaseId(),
+                "INTERVIEW_VOICE_SESSION",
+                new InterviewOpenAiClient.Usage(realtimeProperties.getModel(), 0, 0, 0));
         return new RealtimeSessionResponse(value, expiresAt, realtimeProperties.getModel(),
                 realtimeProperties.getVoice(), realtimeUrl());
     }

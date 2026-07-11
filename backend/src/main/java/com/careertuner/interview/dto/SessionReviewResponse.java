@@ -25,9 +25,12 @@ public record SessionReviewResponse(Long sessionId, String mode, List<Item> item
             String videoUrl,
             Integer score,
             String feedback,
-            String improvedAnswer) {
+            String improvedAnswer,
+            Integer voiceScore,
+            Integer visualScore) {
 
-        public static Item of(InterviewQuestion q, InterviewAnswer a) {
+        public static Item of(InterviewQuestion q, InterviewAnswer a,
+                              Integer voiceScore, Integer visualScore) {
             return new Item(
                     q.getId(),
                     q.getQuestion(),
@@ -39,7 +42,9 @@ public record SessionReviewResponse(Long sessionId, String mode, List<Item> item
                     a == null ? null : a.getVideoUrl(),
                     a == null ? null : a.getScore(),
                     a == null ? null : a.getFeedback(),
-                    a == null ? null : a.getImprovedAnswer());
+                    a == null ? null : a.getImprovedAnswer(),
+                    voiceScore,
+                    visualScore);
         }
     }
 

@@ -99,6 +99,28 @@
            AND created_at &lt; #{cutoff}
     </delete>
 
+    <select id="findStalePendingAutoPrepAttachments"
+            resultType="com.careertuner.file.domain.FileAsset">
+        SELECT *
+          FROM file_asset
+         WHERE kind = 'ATTACHMENT'
+           AND ref_type = 'AUTO_PREP_PENDING'
+           AND ref_id IS NULL
+           AND created_at &lt; #{cutoff}
+         ORDER BY created_at, id
+         LIMIT #{limit}
+    </select>
+
+    <delete id="deleteStalePendingAutoPrepAttachment">
+        DELETE FROM file_asset
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND kind = 'ATTACHMENT'
+           AND ref_type = 'AUTO_PREP_PENDING'
+           AND ref_id IS NULL
+           AND created_at &lt; #{cutoff}
+    </delete>
+
     <select id="findStalePendingInterviewMedia"
             resultType="com.careertuner.file.domain.FileAsset">
         SELECT *
@@ -119,6 +141,41 @@
            AND ref_type = 'INTERVIEW_ANSWER'
            AND ref_id IS NULL
            AND created_at &lt; #{cutoff}
+    </delete>
+
+    <!-- 과거 질문 cascade 삭제 등으로 이미 사라진 answer를 가리키는 원본도 회수한다. -->
+    <select id="findStaleOrphanedInterviewMedia"
+            resultType="com.careertuner.file.domain.FileAsset">
+        SELECT f.*
+          FROM file_asset f
+         WHERE f.kind IN ('AUDIO', 'VIDEO')
+           AND f.ref_type = 'INTERVIEW_ANSWER'
+           AND f.ref_id IS NOT NULL
+           AND f.created_at &lt; #{cutoff}
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM interview_answer a
+                WHERE a.id = f.ref_id
+           )
+         ORDER BY f.created_at, f.id
+         LIMIT #{limit}
+    </select>
+
+    <!-- 조회 뒤 참조가 복구되는 경합까지 막도록 삭제 순간에도 orphan 조건을 재검사한다. -->
+    <delete id="deleteStaleOrphanedInterviewMedia">
+        DELETE f
+          FROM file_asset f
+         WHERE f.id = #{id}
+           AND f.owner_user_id = #{ownerUserId}
+           AND f.kind IN ('AUDIO', 'VIDEO')
+           AND f.ref_type = 'INTERVIEW_ANSWER'
+           AND f.ref_id IS NOT NULL
+           AND f.created_at &lt; #{cutoff}
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM interview_answer a
+                WHERE a.id = f.ref_id
+           )
     </delete>
 
     <delete id="deleteByIdAndOwnerAndRef">

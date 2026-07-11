@@ -22,6 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.careertuner.auth.domain.EmailVerification;
 import com.careertuner.auth.domain.NativeAuthHandoff;
+import com.careertuner.auth.domain.RefreshToken;
 import com.careertuner.auth.domain.UserSocial;
 import com.careertuner.activitylog.service.SecurityHistoryService;
 import com.careertuner.auth.dto.LoginRequest;
@@ -39,6 +40,7 @@ import com.careertuner.common.security.JwtTokenProvider.OauthState;
 import com.careertuner.common.web.FrontendReturnTarget;
 import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.loginrisk.service.LoginRiskPolicyService;
+import com.careertuner.notification.mapper.PushSubscriptionMapper;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
 
@@ -63,11 +65,12 @@ class AuthServiceImplTest {
     private final LoginRiskPolicyService loginRiskPolicyService = mock(LoginRiskPolicyService.class);
     private final com.careertuner.reward.service.RewardService rewardService =
             mock(com.careertuner.reward.service.RewardService.class);
+    private final PushSubscriptionMapper pushSubscriptionMapper = mock(PushSubscriptionMapper.class);
 
     private final AuthServiceImpl service = new AuthServiceImpl(
             userMapper, authMapper, passwordEncoder, jwtTokenProvider, emailService,
             socialOAuthService, mfaService, props, frontendReturnUrlResolver,
-            securityHistoryService, loginRiskPolicyService, rewardService);
+            securityHistoryService, loginRiskPolicyService, rewardService, pushSubscriptionMapper);
 
     private static final String EMAIL = "user@test.com";
     private static final String HANDOFF_VERIFIER = "v".repeat(43);
@@ -669,6 +672,41 @@ class AuthServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.UNAUTHORIZED);
         verify(authMapper, never()).insertRefreshToken(any());
+    }
+
+    @Test
+    void logoutAllByRefreshTokenRevokesEverySessionWithoutAccessToken() {
+        RefreshToken token = RefreshToken.builder()
+                .userId(42L)
+                .token("refresh-all")
+                .expiredAt(LocalDateTime.now().plusHours(1))
+                .revoked(false)
+                .build();
+        when(authMapper.findRefreshToken("refresh-all")).thenReturn(token);
+
+        service.logoutAllByRefreshToken("refresh-all", null);
+
+        verify(authMapper).revokeAllForUser(42L);
+        verify(pushSubscriptionMapper).deleteAllByUserId(42L);
+        verify(authMapper).insertLoginHistory(org.mockito.ArgumentMatchers.argThat(history ->
+                history.getUserId().equals(42L)
+                        && history.getEventType().equals("LOGOUT_ALL")
+                        && history.isSuccess()));
+    }
+
+    @Test
+    void logoutAllByRefreshTokenRejectsAlreadyRevokedToken() {
+        RefreshToken token = RefreshToken.builder()
+                .userId(42L)
+                .token("revoked")
+                .expiredAt(LocalDateTime.now().plusHours(1))
+                .revoked(true)
+                .build();
+        when(authMapper.findRefreshToken("revoked")).thenReturn(token);
+
+        service.logoutAllByRefreshToken("revoked", null);
+
+        verify(authMapper, never()).revokeAllForUser(anyLong());
     }
 
     private static NativeAuthHandoff validHandoff(String challenge) {

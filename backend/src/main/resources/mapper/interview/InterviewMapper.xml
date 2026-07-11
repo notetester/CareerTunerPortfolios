@@ -24,6 +24,7 @@
                   FROM interview_answer a
                   JOIN interview_question q ON q.id = a.question_id
                  WHERE q.interview_session_id = s.id
+                   AND a.submission_status = 'COMPLETED'
                    AND a.score IS NOT NULL) AS avg_answer_score,
                (SELECT ROUND(AVG(m.score))
                   FROM interview_media_analysis m
@@ -37,6 +38,7 @@
                    COUNT(DISTINCT CASE WHEN a.id IS NOT NULL THEN q.id END) AS answered_questions
             FROM interview_question q
             LEFT JOIN interview_answer a ON a.question_id = q.id
+                                        AND a.submission_status = 'COMPLETED'
             GROUP BY q.interview_session_id
         ) progress ON progress.interview_session_id = s.id
         WHERE ac.user_id = #{userId}
@@ -85,6 +87,17 @@
           AND s.deleted_at IS NULL
     </select>
 
+    <select id="lockSessionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewSession">
+        SELECT s.*
+        FROM interview_session s
+        JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE s.id = #{id}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+          AND s.deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
     <update id="updateSessionResult">
         UPDATE interview_session
         SET total_score = #{totalScore},
@@ -92,6 +105,16 @@
             ended_at = #{endedAt}
         WHERE id = #{id}
           AND deleted_at IS NULL
+    </update>
+
+    <update id="invalidateSessionResult">
+        UPDATE interview_session
+        SET total_score = NULL,
+            report = NULL,
+            ended_at = NULL
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+          AND (total_score IS NOT NULL OR report IS NOT NULL OR ended_at IS NOT NULL)
     </update>
 
     <select id="findLatestScoredSessionScore" resultType="java.lang.Integer">
@@ -145,6 +168,13 @@
                  q.sort_order, q.id
     </select>
 
+    <insert id="insertAiOperationReservation">
+        INSERT IGNORE INTO interview_ai_operation
+            (user_id, feature_type, target_id, operation_key)
+        VALUES
+            (#{userId}, #{featureType}, #{targetId}, #{operationKey})
+    </insert>
+
     <select id="findQuestionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewQuestion">
         SELECT q.*
         FROM interview_question q
@@ -156,19 +186,97 @@
           AND s.deleted_at IS NULL
     </select>
 
+    <select id="lockQuestionByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewQuestion">
+        SELECT q.*
+        FROM interview_question q
+        JOIN interview_session s ON s.id = q.interview_session_id
+        JOIN application_case ac ON ac.id = s.application_case_id
+        WHERE q.id = #{id}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+          AND s.deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
+    <select id="hasQuestionRegenerationBlockers" resultType="boolean">
+        SELECT CASE WHEN
+            EXISTS (
+                SELECT 1
+                FROM interview_answer a
+                JOIN interview_question q ON q.id = a.question_id
+                WHERE q.interview_session_id = #{sessionId}
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM file_asset f
+                JOIN interview_answer a ON a.id = f.ref_id
+                JOIN interview_question q ON q.id = a.question_id
+                WHERE f.ref_type = 'INTERVIEW_ANSWER'
+                  AND q.interview_session_id = #{sessionId}
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM interview_media_analysis m
+                WHERE m.interview_session_id = #{sessionId}
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM interview_agent_step step
+                WHERE step.interview_session_id = #{sessionId}
+            )
+        THEN 1 ELSE 0 END
+    </select>
+
     <!-- ── 답변 ── -->
     <insert id="insertAnswer" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO interview_answer
-            (question_id, answer_text, audio_url, video_url, score, feedback, improved_answer)
+            (question_id, client_submission_id, submission_status,
+             answer_text, audio_url, video_url, score, feedback, improved_answer)
         VALUES
-            (#{questionId}, #{answerText}, #{audioUrl}, #{videoUrl}, #{score}, #{feedback}, #{improvedAnswer})
+            (#{questionId}, #{clientSubmissionId}, 'COMPLETED',
+             #{answerText}, #{audioUrl}, #{videoUrl}, #{score}, #{feedback}, #{improvedAnswer})
     </insert>
+
+    <insert id="insertAnswerReservation" useGeneratedKeys="true" keyProperty="id" timeout="3">
+        INSERT IGNORE INTO interview_answer
+            (question_id, client_submission_id, submission_status)
+        VALUES
+            (#{questionId}, #{clientSubmissionId}, 'PENDING')
+    </insert>
+
+    <select id="findAnswerByQuestionIdAndClientSubmissionId"
+            resultType="com.careertuner.interview.domain.InterviewAnswer">
+        SELECT *
+        FROM interview_answer
+        WHERE question_id = #{questionId}
+          AND client_submission_id = #{clientSubmissionId}
+        LIMIT 1
+    </select>
+
+    <update id="completeAnswerReservation">
+        UPDATE interview_answer a
+        JOIN interview_question q ON q.id = a.question_id
+        JOIN interview_session s ON s.id = q.interview_session_id
+        JOIN application_case ac ON ac.id = s.application_case_id
+        SET a.answer_text = #{answerText},
+            a.audio_url = #{audioUrl},
+            a.video_url = #{videoUrl},
+            a.score = #{score},
+            a.feedback = #{feedback},
+            a.improved_answer = #{improvedAnswer},
+            a.submission_status = 'COMPLETED'
+        WHERE a.id = #{id}
+          AND a.submission_status = 'PENDING'
+          AND s.deleted_at IS NULL
+          AND ac.deleted_at IS NULL
+    </update>
 
     <select id="findAnswersBySessionId" resultType="com.careertuner.interview.domain.InterviewAnswer">
         SELECT a.*
         FROM interview_answer a
         JOIN interview_question q ON q.id = a.question_id
         WHERE q.interview_session_id = #{sessionId}
+          AND a.submission_status = 'COMPLETED'
         ORDER BY q.sort_order, a.id
     </select>
 
@@ -176,6 +284,7 @@
         SELECT *
         FROM interview_answer
         WHERE question_id = #{questionId}
+          AND submission_status = 'COMPLETED'
         ORDER BY id DESC
         LIMIT 1
     </select>
@@ -190,6 +299,7 @@
            AND ac.user_id = #{userId}
            AND ac.deleted_at IS NULL
            AND s.deleted_at IS NULL
+           AND a.submission_status = 'COMPLETED'
     </select>
 
     <update id="updateAnswerMediaUrls">

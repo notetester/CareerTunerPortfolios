@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.billing.policy.RequiresAiCharge;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.consent.policy.RequiresConsent;
@@ -54,6 +55,7 @@ public class InterviewMediaController {
 
     /** 음성 답변 → 자체 추론 서버 점수 (ADR-006). 이 분석 요청의 base64 사본은 산출 후 보관하지 않는다. */
     @PostMapping("/sessions/{sessionId}/voice-score")
+    @RequiresAiCharge("INTERVIEW_VOICE_SCORING")
     public ApiResponse<VoiceScoreResponse> scoreVoice(@AuthenticationPrincipal AuthUser authUser,
                                                       @PathVariable Long sessionId,
                                                       @Valid @RequestBody VoiceScoreRequest request) {
@@ -62,6 +64,7 @@ public class InterviewMediaController {
 
     /** 아바타 화상면접 → 자체 추론 서버 음성+영상 점수. 이 분석 요청의 base64 사본은 산출 후 보관하지 않는다. */
     @PostMapping("/sessions/{sessionId}/avatar-score")
+    @RequiresAiCharge("INTERVIEW_VIDEO_ANALYSIS")
     public ApiResponse<AvatarScoreResponse> scoreAvatar(@AuthenticationPrincipal AuthUser authUser,
                                                         @PathVariable Long sessionId,
                                                         @Valid @RequestBody AvatarScoreRequest request) {
@@ -78,6 +81,7 @@ public class InterviewMediaController {
 
     /** 아바타 화상 면접 세션 토큰 발급 (LiveAvatar, API 키는 서버측 보관). */
     @PostMapping("/sessions/{sessionId}/avatar-token")
+    @RequiresAiCharge("INTERVIEW_AVATAR_SESSION")
     public ApiResponse<AvatarSessionResponse> createAvatarSession(@AuthenticationPrincipal AuthUser authUser,
                                                                   @PathVariable Long sessionId) {
         return ApiResponse.ok(avatarService.createSession(authUser.id(), sessionId));

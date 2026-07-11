@@ -68,9 +68,10 @@ public class NotificationController {
 
     @PostMapping("/read-all")
     public ApiResponse<Void> markAllAsRead(
+            @RequestParam(required = false) NotificationDestinationPlatform platform,
             @AuthenticationPrincipal AuthUser authUser
     ) {
-        notificationService.markAllAsRead(authUser.id());
+        notificationService.markAllAsRead(authUser.id(), platform);
         return ApiResponse.ok();
     }
 
@@ -85,9 +86,10 @@ public class NotificationController {
 
     @DeleteMapping
     public ApiResponse<Void> deleteAll(
+            @RequestParam(required = false) NotificationDestinationPlatform platform,
             @AuthenticationPrincipal AuthUser authUser
     ) {
-        notificationService.deleteAll(authUser.id());
+        notificationService.deleteAll(authUser.id(), platform);
         return ApiResponse.ok();
     }
 

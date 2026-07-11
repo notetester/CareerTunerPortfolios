@@ -7,6 +7,7 @@ package com.careertuner.notification.domain;
  */
 public enum NotificationDestinationPlatform {
     ALL,
+    WEB,
     MOBILE,
     DESKTOP;
 

@@ -16,5 +16,6 @@ class PendingInterviewMediaCleanupSchedulerTest {
         scheduler.cleanup();
 
         verify(fileService).cleanupStalePendingInterviewMedia(24, 100);
+        verify(fileService).cleanupStaleOrphanedInterviewMedia(24, 100);
     }
 }

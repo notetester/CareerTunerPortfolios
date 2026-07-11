@@ -133,6 +133,24 @@ class FileServiceTest {
     }
 
     @Test
+    void staleAutoPrepCleanupUsesBoundedTtlAndAtomicWorkerDelete() {
+        FileAsset pending = asset(25L, 7L, "AUTO_PREP_PENDING", null, "ATTACHMENT");
+        when(mapper.findStalePendingAutoPrepAttachments(
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100)))
+                .thenReturn(List.of(pending));
+        when(cleanupWorker.deleteStaleAutoPrepAttachment(
+                org.mockito.ArgumentMatchers.same(pending),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(true);
+
+        int deleted = service.cleanupStalePendingAutoPrepAttachments(1, 1000);
+
+        org.assertj.core.api.Assertions.assertThat(deleted).isEqualTo(1);
+        verify(cleanupWorker).deleteStaleAutoPrepAttachment(
+                org.mockito.ArgumentMatchers.same(pending),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class));
+    }
+
+    @Test
     void claimsPendingInterviewMediaWithPurposeAndOwnerGuard() {
         FileAsset linked = asset(31L, 7L, "INTERVIEW_ANSWER", 51L, "AUDIO");
         when(mapper.claimOwnedPendingFile(
@@ -167,6 +185,31 @@ class FileServiceTest {
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class));
         verify(cleanupWorker).deleteStaleInterviewMedia(
                 org.mockito.ArgumentMatchers.same(claimed),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class));
+    }
+
+    @Test
+    void staleInterviewOrphanCleanupDeletesDatabaseAndStoredBytesTogether() {
+        FileAsset orphan = asset(34L, 7L, "INTERVIEW_ANSWER", 901L, "AUDIO");
+        FileAsset restoredDuringCleanup = asset(35L, 7L, "INTERVIEW_ANSWER", 902L, "VIDEO");
+        when(mapper.findStaleOrphanedInterviewMedia(
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100)))
+                .thenReturn(List.of(orphan, restoredDuringCleanup));
+        when(cleanupWorker.deleteStaleOrphanedInterviewMedia(
+                org.mockito.ArgumentMatchers.same(orphan),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(true);
+        when(cleanupWorker.deleteStaleOrphanedInterviewMedia(
+                org.mockito.ArgumentMatchers.same(restoredDuringCleanup),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(false);
+
+        int deleted = service.cleanupStaleOrphanedInterviewMedia(2, 500);
+
+        org.assertj.core.api.Assertions.assertThat(deleted).isEqualTo(1);
+        verify(cleanupWorker).deleteStaleOrphanedInterviewMedia(
+                org.mockito.ArgumentMatchers.same(orphan),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class));
+        verify(cleanupWorker).deleteStaleOrphanedInterviewMedia(
+                org.mockito.ArgumentMatchers.same(restoredDuringCleanup),
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class));
     }
 

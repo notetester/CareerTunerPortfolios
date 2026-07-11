@@ -13,17 +13,20 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.interview.domain.InterviewAnswer;
+import com.careertuner.interview.domain.InterviewMediaAnalysis;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.dto.InterviewAnswerResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.media.InterviewMediaMapper;
 import com.careertuner.notification.service.NotificationService;
 
 import tools.jackson.databind.ObjectMapper;
@@ -34,6 +37,7 @@ class InterviewAnswerMediaTest {
     private final ApplicationCaseAccessService accessService = mock(ApplicationCaseAccessService.class);
     private final InterviewAgentOrchestrator orchestrator = mock(InterviewAgentOrchestrator.class);
     private final FileService fileService = mock(FileService.class);
+    private final InterviewMediaMapper mediaMapper = mock(InterviewMediaMapper.class);
     private InterviewServiceImpl service;
 
     @BeforeEach
@@ -47,7 +51,8 @@ class InterviewAnswerMediaTest {
                 mock(ObjectMapper.class),
                 mock(InterviewBackgroundExecutor.class),
                 mock(NotificationService.class),
-                fileService);
+                fileService,
+                mediaMapper);
     }
 
     @Test
@@ -72,12 +77,21 @@ class InterviewAnswerMediaTest {
         InterviewAnswerResponse result = service.submitAnswer(userId, questionId,
                 new SubmitAnswerRequest(
                         "성과를 수치로 설명한 답변입니다.",
-                        "https://attacker.invalid/audio", null, 91L, null, "모범답안"));
+                        "https://attacker.invalid/audio", null, 91L, null, "모범답안", null,
+                        77, null));
 
         assertThat(result.audioUrl()).isEqualTo("/api/file/91/content");
         verify(fileService).claimOwnedPendingFile(
                 userId, 91L, "AUDIO", "INTERVIEW_ANSWER", 501L);
         verify(interviewMapper).updateAnswerMediaUrls(501L, "/api/file/91/content", null);
+        ArgumentCaptor<InterviewMediaAnalysis> analysis = ArgumentCaptor.forClass(InterviewMediaAnalysis.class);
+        verify(mediaMapper).insertMediaAnalysis(analysis.capture());
+        assertThat(analysis.getValue().getInterviewSessionId()).isEqualTo(31L);
+        assertThat(analysis.getValue().getQuestionId()).isEqualTo(questionId);
+        assertThat(analysis.getValue().getAnswerId()).isEqualTo(501L);
+        assertThat(analysis.getValue().getKind()).isEqualTo("VOICE");
+        assertThat(analysis.getValue().getScore()).isEqualTo(77);
+        assertThat(analysis.getValue().getScoreDetail()).isEqualTo("{\"voiceScore\":77}");
     }
 
     @Test
@@ -110,7 +124,9 @@ class InterviewAnswerMediaTest {
         ApplicationCase applicationCase = ApplicationCase.builder()
                 .id(41L).userId(userId).companyName("커리어튜너").build();
         when(interviewMapper.findQuestionByIdAndUserId(questionId, userId)).thenReturn(question);
+        when(interviewMapper.lockQuestionByIdAndUserId(questionId, userId)).thenReturn(question);
         when(interviewMapper.findSessionByIdAndUserId(31L, userId)).thenReturn(session);
+        when(interviewMapper.lockSessionByIdAndUserId(31L, userId)).thenReturn(session);
         when(accessService.requireOwned(userId, 41L)).thenReturn(applicationCase);
     }
 }

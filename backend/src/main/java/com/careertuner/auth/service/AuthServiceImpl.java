@@ -48,6 +48,7 @@ import com.careertuner.common.web.FrontendReturnTarget;
 import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.reward.service.RewardService;
+import com.careertuner.notification.mapper.PushSubscriptionMapper;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
 
@@ -87,6 +88,7 @@ public class AuthServiceImpl implements AuthService {
     private final com.careertuner.loginrisk.service.LoginRiskPolicyService loginRiskPolicyService;
     /** 활동 리워드 적립(하루 첫 로그인 시 DAILY_LOGIN, 일일 캡 1회). 규칙 off 면 미적립. */
     private final RewardService rewardService;
+    private final PushSubscriptionMapper pushSubscriptionMapper;
 
     /** 리워드 적립은 로그인 처리 실패로 이어지지 않도록 예외를 흡수한다. */
     private void grantDailyLoginRewardSafely(Long userId) {
@@ -277,6 +279,23 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public void logoutAll(Long userId) {
         authMapper.revokeAllForUser(userId);
+        pushSubscriptionMapper.deleteAllByUserId(userId);
+    }
+
+    @Override
+    @Transactional
+    public void logoutAllByRefreshToken(String refreshToken, LoginRequestContext context) {
+        if (refreshToken == null || refreshToken.isBlank()) return;
+        RefreshToken stored = authMapper.findRefreshToken(refreshToken);
+        if (stored == null || stored.isRevoked()
+                || stored.getExpiredAt() == null || stored.getExpiredAt().isBefore(java.time.LocalDateTime.now())) {
+            return;
+        }
+        authMapper.revokeAllForUser(stored.getUserId());
+        pushSubscriptionMapper.deleteAllByUserId(stored.getUserId());
+        User user = userMapper.findById(stored.getUserId());
+        recordLoginHistory(stored.getUserId(), "LOGOUT_ALL", "LOCAL", "REFRESH_TOKEN",
+                user != null ? user.getEmail() : null, true, null, context);
     }
 
     @Override

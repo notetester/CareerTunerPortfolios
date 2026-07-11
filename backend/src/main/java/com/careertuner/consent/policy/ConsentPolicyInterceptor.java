@@ -77,7 +77,6 @@ public class ConsentPolicyInterceptor implements HandlerInterceptor {
                 || uri.startsWith("/api/legal/")
                 || uri.startsWith("/api/health")
                 || uri.startsWith("/api/support/")
-                || uri.startsWith("/api/chatbot/")
                 || uri.startsWith("/api/admin/")) {
             return true;
         }
