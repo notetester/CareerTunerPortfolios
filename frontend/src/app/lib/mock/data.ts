@@ -402,6 +402,26 @@ const fitAnalyses: FitAnalysisDetail[] = [
     model: "mock-demo", status: "FALLBACK", errorMessage: null, createdAt: iso(3),
     application: { id: 101, companyName: "카카오", jobTitle: "프론트엔드 개발자", postingDate: iso(5), status: "READY", favorite: false, updatedAt: iso(2) },
     learningTasks: learningTasks(201),
+    // 자격증 근거 snapshot — 실제 백엔드(CertificateEvidenceService) 출력과 동일한 형태·문구(공식 일정 확인 해피패스).
+    certificateEvidence: {
+      generatedAt: iso(3),
+      strategyStatus: "RECOMMENDED",
+      triggeredSignals: ["GAP_CERTIFIABLE"],
+      items: [
+        {
+          certName: "정보처리기사",
+          kind: "NATIONAL_TECHNICAL",
+          scheduleStatus: "VERIFIED_CURRENT",
+          registrationStatus: null,
+          message: "Q-Net 공식 확인 기준 시험일정입니다. 시험 일정은 변경될 수 있으니 접수 전 공식 페이지 재확인이 필요합니다.",
+          sourceName: "한국산업인력공단 큐넷(Q-Net) 국가기술자격 시험정보",
+          sourceUrl: "https://www.q-net.or.kr/",
+          scheduleRounds: [
+            { round: "기사(2026년도 제2회)", docRegStart: "20260413", docRegEnd: "20260416", docExam: "20260517", docPass: "20260611", pracExamStart: "20260719", pracExamEnd: "20260801", pracPass: "20260828" },
+          ],
+        },
+      ],
+    },
   },
   {
     id: 202, applicationCaseId: 102, fitScore: 84,
@@ -440,6 +460,24 @@ const fitAnalyses: FitAnalysisDetail[] = [
     model: "mock-demo", status: "FALLBACK", errorMessage: null, createdAt: iso(2),
     application: { id: 102, companyName: "네이버", jobTitle: "프론트엔드 개발자", postingDate: iso(8), status: "APPLIED", favorite: true, updatedAt: iso(1) },
     learningTasks: learningTasks(202),
+    // 벤더 자격(AWS)은 국내 공공데이터 밖 — '후순위 + 주관기관 확인 필요'의 솔직한 degrade 상태를 보여준다.
+    certificateEvidence: {
+      generatedAt: iso(2),
+      strategyStatus: "OPTIONAL_LOW_PRIORITY",
+      triggeredSignals: ["USER_REQUESTED"],
+      items: [
+        {
+          certName: "AWS Cloud Practitioner",
+          kind: "PRIVATE_OR_OTHER",
+          scheduleStatus: "MANUAL_REQUIRED",
+          registrationStatus: "NOT_FOUND",
+          message: "공식 민간자격 등록정보에서 확인되지 않았습니다 — 자격명을 재확인하세요. 시험일정은 주관기관(AWS) 공식 페이지 확인이 필요합니다.",
+          sourceName: "한국직업능력연구원 민간자격등록정보(민간자격정보서비스)",
+          sourceUrl: "https://www.pqi.or.kr/",
+          scheduleRounds: [],
+        },
+      ],
+    },
   },
 ].map((analysis) => ({
   ...analysis,
@@ -460,6 +498,17 @@ const fitAnalyses: FitAnalysisDetail[] = [
 }));
 
 export const demoFitAnalyses = fitAnalyses;
+
+// 장기 커리어 자격증 전략(사용자 단위, 데모 프로필 '프론트엔드 개발자' 기준) — 백엔드 careerCertificateStrategy 와 동일 형태.
+export const demoCareerCertificateStrategy = {
+  desiredJob: "프론트엔드 개발자",
+  heldStrengths: [],
+  longTermCandidates: [
+    { name: "정보처리기사", reason: "프론트엔드 개발자 직군에서 장기적으로 취득 가치가 있는 후보입니다. 이번 지원 건과는 별개로, 학습 여유가 있을 때 준비하세요." },
+    { name: "SQLD", reason: "프론트엔드 개발자 직군에서 장기적으로 취득 가치가 있는 후보입니다. 이번 지원 건과는 별개로, 학습 여유가 있을 때 준비하세요." },
+  ],
+  note: "자격증은 보조 전략입니다. 실무 프로젝트·배포 경험 보완이 우선이며, 시험 일정은 공식 출처(Q-Net 등) 확인 후 계획하세요.",
+};
 
 export function findFitByApplicationCase(applicationCaseId: number): FitAnalysisDetail | undefined {
   return fitAnalyses.find((f) => f.applicationCaseId === applicationCaseId);

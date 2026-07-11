@@ -36,8 +36,8 @@ public record FitAnalysisDetailResponse(
         List<FitAnalysisLearningTaskResponse> learningTasks,
         // review-first evidence gate 안전 블록(R3). 과거 분석엔 없으므로 null 가능(하위호환).
         FitSafetyResponse safety,
-        // 자격증 근거 snapshot(생성 시 1회 수집, 읽기는 DB만). 게이트 OFF/과거 분석/미연동이면 빈 목록(하위호환).
-        List<CertificateEvidenceResponse> certificateEvidence
+        // 자격증 근거 snapshot(생성 시 1회 수집, 읽기는 DB만). 게이트 OFF/과거 분석/미연동이면 null(하위호환).
+        CertificateEvidenceSnapshot certificateEvidence
 ) {
     public static FitAnalysisDetailResponse of(FitAnalysisResult result,
                                                List<FitAnalysisLearningTaskResponse> learningTasks,
@@ -47,7 +47,7 @@ public record FitAnalysisDetailResponse(
                                                List<String> next24HourActions,
                                                List<FitToneStrategyResponse> toneStrategies,
                                                FitSafetyResponse safety,
-                                               List<CertificateEvidenceResponse> certificateEvidence) {
+                                               CertificateEvidenceSnapshot certificateEvidence) {
         return new FitAnalysisDetailResponse(
                 result.getId(),
                 result.getApplicationCaseId(),

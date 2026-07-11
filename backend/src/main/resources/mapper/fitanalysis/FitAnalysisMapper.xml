@@ -113,6 +113,16 @@
         <result property="interviewPoints" column="interview_points"/>
     </resultMap>
 
+    <!-- 장기 커리어 전략용 사용자 프로필(A user_profile, 읽기 전용). 특정 지원 건과 무관한 사용자 단위 조회. -->
+    <select id="findCareerProfile" resultType="com.careertuner.fitanalysis.domain.CareerProfileSource">
+        SELECT
+            desired_job  AS desiredJob,
+            skills       AS profileSkills,
+            certificates AS profileCertificates
+        FROM user_profile
+        WHERE user_id = #{userId}
+    </select>
+
     <!-- 적합도 생성 입력: application_case(B) + 최신 job_analysis(B) + user_profile(A) + 최신 company_analysis(B, 선택)
          읽기 전용 조인. company_analysis 는 기업 맥락(설명 참고용)일 뿐 판단값 계산엔 미사용. user_id로 소유권 검증. -->
     <select id="findGenerationSource" resultMap="FitAnalysisGenerationSourceMap">

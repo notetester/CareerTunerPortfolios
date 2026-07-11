@@ -21,13 +21,26 @@ public record FitAnalysisAiCommand(
         List<String> profileSkills,
         List<String> profileCertificates,
         String desiredJob,
-        String companyContext
+        String companyContext,
+        boolean userRequested
 ) {
-    /** 기업 맥락 없는 하위호환 생성자(기존 호출부·규칙엔진 테스트용). */
+    /** 사용자가 자격증 전략을 명시 요청했는지(학습/자격증 탭 등). true 여도 무조건 추천이 아니라 '평가'다 —
+     * cert-need-gate 는 여전히 NOT_NEEDED/OPTIONAL_LOW_PRIORITY 를 낼 수 있다. */
+
+    /** userRequested 없는 하위호환 생성자(기업 맥락까지). */
+    public FitAnalysisAiCommand(String companyName, String jobTitle,
+                                List<String> requiredSkills, List<String> preferredSkills, String duties,
+                                List<String> profileSkills, List<String> profileCertificates, String desiredJob,
+                                String companyContext) {
+        this(companyName, jobTitle, requiredSkills, preferredSkills, duties,
+                profileSkills, profileCertificates, desiredJob, companyContext, false);
+    }
+
+    /** 기업 맥락·요청 플래그 없는 하위호환 생성자(규칙엔진 테스트용). */
     public FitAnalysisAiCommand(String companyName, String jobTitle,
                                 List<String> requiredSkills, List<String> preferredSkills, String duties,
                                 List<String> profileSkills, List<String> profileCertificates, String desiredJob) {
         this(companyName, jobTitle, requiredSkills, preferredSkills, duties,
-                profileSkills, profileCertificates, desiredJob, null);
+                profileSkills, profileCertificates, desiredJob, null, false);
     }
 }
