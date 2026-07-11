@@ -32,7 +32,7 @@ public final class WafSyncModels {
         private Integer retryCount;
         private Integer retryBackoffMs;
         private Integer failOpen;       // 1=fail-open(대기), else fail-closed
-        private String apiKeyRef;       // ENV:/PROP: 또는 평문
+        private String apiKeyRef;       // 허용된 WAF 전용 ENV:/PROP: 참조만 사용
         private String requestMethod;   // POST/PUT/PATCH/DELETE
         private String requestHeadersJson;
     }

@@ -4,5 +4,5 @@ import com.careertuner.admin.dashboard.dto.AdminDashboardOverviewResponse;
 
 public interface AdminDashboardService {
 
-    AdminDashboardOverviewResponse getOverview();
+    AdminDashboardOverviewResponse getOverview(boolean includeUserMetrics, boolean includeAiMetrics);
 }

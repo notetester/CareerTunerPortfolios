@@ -1,5 +1,11 @@
 export type AdminUserStatus = "ACTIVE" | "DORMANT" | "BLOCKED" | "DELETED";
 
+export interface AdminUserCreateRequest {
+  email: string;
+  password: string;
+  name: string;
+}
+
 export interface AdminUserRow {
   id: number;
   email: string;

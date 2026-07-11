@@ -6,23 +6,26 @@
     <select id="findPublishedWithoutEmbedding" resultType="com.careertuner.support.domain.Faq">
         SELECT id, question, answer, category, sort_order, is_published AS published,
                admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
-          FROM faq
+         FROM faq
          WHERE is_published = 1
+           AND deleted_at IS NULL
            AND embedding IS NULL
     </select>
 
     <select id="findPublishedAll" resultType="com.careertuner.support.domain.Faq">
         SELECT id, question, answer, category, sort_order, is_published AS published,
                admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
-          FROM faq
+         FROM faq
          WHERE is_published = 1
+           AND deleted_at IS NULL
     </select>
 
     <select id="findPublishedWithEmbedding" resultType="com.careertuner.support.domain.Faq">
         SELECT id, question, answer, category, sort_order, is_published AS published,
                admin_id, view_count, link_url, link_label, embedding, created_at, updated_at
-          FROM faq
+         FROM faq
          WHERE is_published = 1
+           AND deleted_at IS NULL
            AND embedding IS NOT NULL
     </select>
 
@@ -30,6 +33,7 @@
         UPDATE faq
            SET embedding = #{embedding}
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </update>
 
 </mapper>

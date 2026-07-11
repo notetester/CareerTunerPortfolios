@@ -22,11 +22,11 @@ import com.careertuner.common.web.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
 
-/** 알림 모니터링/캠페인 발송 콘솔. 세부 권한: 콘텐츠/고객지원 관리(CONTENT_MANAGE) 또는 대표 권한(CONTENT_ADMIN). */
+/** 알림 모니터링/캠페인 발송 콘솔. 조회와 캠페인 생성을 분리해 집행한다. */
 @RestController
 @RequestMapping("/api/admin/notifications")
 @RequiredArgsConstructor
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 public class AdminNotificationController {
 
     private final AdminNotificationService notificationService;
@@ -47,6 +47,7 @@ public class AdminNotificationController {
 
     /** 캠페인(공지/광고/추천) 알림을 ACTIVE 사용자 전원에게 발송한다. */
     @PostMapping("/campaign")
+    @RequireAdminPermission({"CONTENT_CREATE"})
     public ApiResponse<AdminCampaignResponse> sendCampaign(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminCampaignRequest request) {

@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { CircleHelp, ArrowLeft, Eye, Check, CornerDownRight } from "lucide-react";
+import { CircleHelp, ArrowLeft, CornerDownRight } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
+import { sanitizePostHtml } from "@/app/lib/postContent";
 import { FAQ_CATEGORIES, type FaqCategory } from "../data/faqData";
 import * as adminFaqApi from "../api/adminFaqApi";
 import "./faq-compose.css";
@@ -23,6 +25,7 @@ const COMPOSE_TO_DB: Record<string, FaqCategory> = {
 };
 
 export default function FaqCompose() {
+  const { canCreate } = useAdminDomainAuthorization("CONTENT");
   const navigate = useNavigate();
   const [cat, setCat] = useState<string>("결제·크레딧");
   const [q, setQ] = useState("");
@@ -40,13 +43,13 @@ export default function FaqCompose() {
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit || saving) return;
+    if (!canCreate || !canSubmit || saving) return;
     setSaving(true);
     try {
       await adminFaqApi.createFaq({
         cat: COMPOSE_TO_DB[cat] ?? "일반",
         q,
-        a,
+        a: sanitizePostHtml(a),
         on: visible,
       });
       flash("FAQ가 등록되었습니다.", "green");
@@ -79,6 +82,7 @@ export default function FaqCompose() {
             <div className="fc-cat">
               {COMPOSE_CATS.map((c) => (
                 <button
+                  type="button"
                   key={c}
                   className={`fc-pill${cat === c ? " on" : ""}`}
                   onClick={() => setCat(c)}
@@ -104,9 +108,9 @@ export default function FaqCompose() {
               <div className="fc-dup">
                 <div className="fc-dup__h">비슷한 FAQ가 이미 있어요 — 중복이면 기존 항목을 수정하세요</div>
                 {SIMILAR_SAMPLES.map((s) => (
-                  <a key={s.q} href="#" onClick={(e) => e.preventDefault()}>
+                  <span key={s.q} className="fc-dup__item">
                     <CornerDownRight />{s.q}<span className="v num">{s.v}</span>
-                  </a>
+                  </span>
                 ))}
               </div>
             )}
@@ -129,8 +133,12 @@ export default function FaqCompose() {
           <section className="av-panel">
             <div className="av-mod__h"><span className="av-mod__t">노출 설정</span></div>
             <div style={{ padding: "12px 14px 14px" }}>
-              <div
+              <button
+                type="button"
                 className={`av-switchrow${visible ? " on" : ""}`}
+                style={{ width: "100%", background: "transparent", color: "inherit", textAlign: "left" }}
+                role="switch"
+                aria-checked={visible}
                 onClick={() => setVisible(!visible)}
               >
                 <span className="av-switch" />
@@ -140,7 +148,7 @@ export default function FaqCompose() {
                     끄면 저장만 되고 사용자에게 보이지 않아요
                   </span>
                 </span>
-              </div>
+              </button>
             </div>
           </section>
           <section className="av-panel">
@@ -156,20 +164,17 @@ export default function FaqCompose() {
       {/* 스티키 푸터 */}
       <div className="av-composefoot">
         <div className="av-composefoot__in">
-          <span className="av-composefoot__draft num">
-            <Check /> 임시저장됨 · 방금
-          </span>
           <div className="av-composefoot__r">
-            <button className="av-btn"><Eye /> 미리보기</button>
-            <button className="av-btn">임시저장</button>
-            <button
-              className="av-btn av-btn--ink"
-              disabled={!canSubmit || saving}
-              style={!canSubmit ? { opacity: 0.45, cursor: "default" } : undefined}
-              onClick={handleSubmit}
-            >
-              등록
-            </button>
+            {canCreate && (
+              <button
+                className="av-btn av-btn--ink"
+                disabled={!canSubmit || saving}
+                style={!canSubmit ? { opacity: 0.45, cursor: "default" } : undefined}
+                onClick={handleSubmit}
+              >
+                등록
+              </button>
+            )}
           </div>
         </div>
       </div>

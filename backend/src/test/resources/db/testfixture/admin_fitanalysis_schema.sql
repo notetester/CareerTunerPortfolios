@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS admin_fit_analysis_memo (
     admin_user_id   BIGINT NOT NULL,
     memo_type       VARCHAR(30) NOT NULL DEFAULT 'GENERAL',
     content         CLOB NOT NULL,
+    deleted_at      TIMESTAMP NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

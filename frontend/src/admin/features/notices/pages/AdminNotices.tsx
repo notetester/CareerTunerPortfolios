@@ -16,6 +16,7 @@ import * as adminNoticeApi from "../api/adminNoticeApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import NoticeBodyEditor from "../components/NoticeBodyEditor";
 import { sanitizePostHtml } from "@/app/lib/postContent";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import "./admin-notices.css";
 import "./notice-compose.css";
 
@@ -46,18 +47,21 @@ type DialogState =
 const CATS = ["일반", "점검", "기능 업데이트", "프로모션", "정책·약관"];
 
 function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | null; onBack: () => void; onSaved: () => void }) {
+  const contentAuthorization = useAdminDomainAuthorization("CONTENT");
+  const canSaveNotice = editing ? contentAuthorization.canUpdate : contentAuthorization.canCreate;
   const [cat, setCat] = useState(editing?.category ?? "일반");
   const [title, setTitle] = useState(editing?.title ?? "");
   const [body, setBody] = useState("");        // 본문 HTML (TipTap 출력)
   const [bodyLen, setBodyLen] = useState(0);   // 본문 평문 길이(검증용)
   const [pin, setPin] = useState(editing?.pinned ?? false);
-  const [push, setPush] = useState(true);
   const [when, setWhen] = useState<"즉시" | "예약">(editing?.status === "scheduled" ? "예약" : "즉시");
   const [scheduleAt, setScheduleAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; tone: string } | null>(null);
 
-  const canSubmit = title.trim().length > 1 && bodyLen > 4;
+  const canSubmit = title.trim().length > 1
+    && bodyLen > 4
+    && (Boolean(editing) || when === "즉시" || Boolean(scheduleAt));
 
   const flash = (msg: string, tone: string) => {
     setToast({ msg, tone });
@@ -65,7 +69,7 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit || saving) return;
+    if (!canSaveNotice || !canSubmit || saving) return;
     setSaving(true);
     try {
       if (editing) {
@@ -85,6 +89,7 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
           isPinned: pin,
           category: cat,
           thumbnailUrl: null,
+          scheduledAt: when === "예약" ? scheduleAt : null,
         });
         flash("공지가 게시되었습니다.", "green");
       }
@@ -99,7 +104,7 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
   return (
     <AdminShell
       active="notices" breadcrumb={editing ? "공지 수정" : "공지 작성"} title={editing ? "공지 수정" : "공지 작성"} icon={Megaphone}
-      desc={editing ? "내용을 수정하고 저장하면 즉시 반영됩니다" : "게시하면 공지사항 목록과 (선택 시) 전체 알림으로 발송됩니다"}
+      desc={editing ? "내용을 수정하고 저장하면 즉시 반영됩니다" : "공지사항을 즉시 게시하거나 지정한 시각에 예약 게시합니다"}
       actions={<button className="av-btn" onClick={onBack}><ArrowLeft /> 목록으로</button>}
     >
       <div className="av-form">
@@ -129,14 +134,17 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
           <section className="av-panel">
             <div className="av-mod__h"><span className="av-mod__t">게시 설정</span></div>
             <div style={{ padding: "12px 14px 14px" }}>
-              <div className={`av-switchrow${pin ? " on" : ""}`} onClick={() => setPin(!pin)}>
+              <button
+                type="button"
+                className={`av-switchrow${pin ? " on" : ""}`}
+                style={{ width: "100%", background: "transparent", color: "inherit", textAlign: "left" }}
+                role="switch"
+                aria-checked={pin}
+                onClick={() => setPin(!pin)}
+              >
                 <span className="av-switch" />
                 <span><span className="t">상단 고정</span><span className="s" style={{ display: "block" }}>목록 최상단에 핀 고정 (최대 3개)</span></span>
-              </div>
-              <div className={`av-switchrow${push ? " on" : ""}`} onClick={() => setPush(!push)}>
-                <span className="av-switch" />
-                <span><span className="t">전체 알림 발송</span><span className="s" style={{ display: "block" }}>모든 회원에게 NOTICE 타입 알림이 갑니다 — 점검·정책 변경 등 중요 공지에만 사용하세요</span></span>
-              </div>
+              </button>
             </div>
           </section>
           {!editing && (
@@ -144,12 +152,14 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
             <div className="av-mod__h"><span className="av-mod__t">게시 시점</span></div>
             <div style={{ padding: "12px 14px 14px" }}>
               <div className="av-choices">
-                <div className={`av-choice${when === "즉시" ? " on" : ""}`} onClick={() => setWhen("즉시")}>
-                  <div className="t">즉시</div><div className="s">게시 버튼 클릭 시</div>
-                </div>
-                <div className={`av-choice${when === "예약" ? " on" : ""}`} onClick={() => setWhen("예약")}>
-                  <div className="t">예약</div><div className="s">일시 지정</div>
-                </div>
+                <button type="button" className={`av-choice${when === "즉시" ? " on" : ""}`}
+                  style={{ color: "inherit", textAlign: "left" }} aria-pressed={when === "즉시"} onClick={() => setWhen("즉시")}>
+                  <span className="t" style={{ display: "block" }}>즉시</span><span className="s" style={{ display: "block" }}>게시 버튼 클릭 시</span>
+                </button>
+                <button type="button" className={`av-choice${when === "예약" ? " on" : ""}`}
+                  style={{ color: "inherit", textAlign: "left" }} aria-pressed={when === "예약"} onClick={() => setWhen("예약")}>
+                  <span className="t" style={{ display: "block" }}>예약</span><span className="s" style={{ display: "block" }}>일시 지정</span>
+                </button>
               </div>
               {when === "예약" && <input className="av-input num" style={{ marginTop: 8 }} type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} />}
             </div>
@@ -161,11 +171,11 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
       <div className="av-composefoot">
         <div className="av-composefoot__in">
           <div className="av-composefoot__r">
-            <button className="av-btn av-btn--ink" disabled={!canSubmit || saving}
+            {canSaveNotice && <button className="av-btn av-btn--ink" disabled={!canSubmit || saving}
               style={!canSubmit ? { opacity: 0.45, cursor: "default" } : undefined} onClick={handleSubmit}>
               {!editing && when === "예약" && <CalendarClock />}
               {editing ? "수정 저장" : when === "예약" ? "게시 예약" : "게시"}
-            </button>
+            </button>}
           </div>
         </div>
       </div>
@@ -176,6 +186,7 @@ function NoticeComposeView({ editing, onBack, onSaved }: { editing: Notice | nul
 
 /* ═══ 메인 (목록 + 작성 토글) ═══ */
 export default function AdminNotices() {
+  const contentAuthorization = useAdminDomainAuthorization("CONTENT");
   const [view, setView] = useState<"list" | "compose">("list");
   const [editing, setEditing] = useState<Notice | null>(null);   // null=새 공지, Notice=수정
   const [items, setItems] = useState<Notice[]>([]);
@@ -197,6 +208,13 @@ export default function AdminNotices() {
 
   const handleConfirm = async () => {
     if (!dialog) return;
+    if (
+      (dialog.type === "delete" && !contentAuthorization.canDelete)
+      || (dialog.type !== "delete" && !contentAuthorization.canUpdate)
+    ) {
+      setDialog(null);
+      return;
+    }
     try {
       if (dialog.type === "delete") {
         await adminNoticeApi.deleteNotice(dialog.notice.id);
@@ -233,7 +251,7 @@ export default function AdminNotices() {
     defaultSortDir: "desc",
   });
 
-  if (view === "compose") {
+  if (view === "compose" && (editing ? contentAuthorization.canUpdate : contentAuthorization.canCreate)) {
     return <NoticeComposeView
       editing={editing}
       onBack={() => { setView("list"); setEditing(null); }}
@@ -245,7 +263,9 @@ export default function AdminNotices() {
     <AdminShell
       active="notices" breadcrumb="공지사항" title="공지사항" icon={Megaphone}
       desc="서비스 공지 작성·게시 관리"
-      actions={<button className="av-btn av-btn--ink" onClick={() => { setEditing(null); setView("compose"); }}><Plus /> 새 공지</button>}
+      actions={contentAuthorization.canCreate ? (
+        <button className="av-btn av-btn--ink" onClick={() => { setEditing(null); setView("compose"); }}><Plus /> 새 공지</button>
+      ) : undefined}
     >
       <section className="av-panel">
         <div className="av-filters">
@@ -287,21 +307,24 @@ export default function AdminNotices() {
                 <td className="r av-muted num">{n.date}</td>
                 <td className="r">
                   <div className="nv-actions">
-                    <button className="av-btn" title="수정"
-                      onClick={() => { setEditing(n); setView("compose"); }}>
-                      <Pencil />
-                    </button>
-                    <button className="av-btn" title={n.pinned ? "고정 해제" : "상단 고정"}
-                      onClick={() => setDialog({ type: "pin", notice: n })}>
-                      {n.pinned ? <PinOff /> : <Pin />}
-                    </button>
-                    {n.status === "published" && (
-                      <button className="av-btn" title="내림" onClick={() => setDialog({ type: "status", notice: n, target: "draft" })}><ArrowDownCircle /></button>
+                    {contentAuthorization.canUpdate && (
+                      <>
+                        <button className="av-btn" title="수정" onClick={() => { setEditing(n); setView("compose"); }}><Pencil /></button>
+                        <button className="av-btn" title={n.pinned ? "고정 해제" : "상단 고정"}
+                          onClick={() => setDialog({ type: "pin", notice: n })}>
+                          {n.pinned ? <PinOff /> : <Pin />}
+                        </button>
+                        {n.status === "published" && (
+                          <button className="av-btn" title="내림" onClick={() => setDialog({ type: "status", notice: n, target: "draft" })}><ArrowDownCircle /></button>
+                        )}
+                        {n.status === "draft" && (
+                          <button className="av-btn" title="게시" onClick={() => setDialog({ type: "status", notice: n, target: "published" })}><ArrowUpCircle /></button>
+                        )}
+                      </>
                     )}
-                    {n.status === "draft" && (
-                      <button className="av-btn" title="게시" onClick={() => setDialog({ type: "status", notice: n, target: "published" })}><ArrowUpCircle /></button>
+                    {contentAuthorization.canDelete && (
+                      <button className="av-btn" title="삭제" onClick={() => setDialog({ type: "delete", notice: n })}><Trash2 /></button>
                     )}
-                    <button className="av-btn" title="삭제" onClick={() => setDialog({ type: "delete", notice: n })}><Trash2 /></button>
                   </div>
                 </td>
               </tr>

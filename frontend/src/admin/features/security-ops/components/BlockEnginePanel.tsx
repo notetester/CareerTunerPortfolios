@@ -9,6 +9,7 @@ import {
   uploadPolicyFeed,
 } from "../api";
 import type { BlockCacheStatus, IpBlockBatch, PolicyFeedImportResult } from "../types";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
@@ -21,6 +22,7 @@ function formatDate(value: string | null): string {
  * 규칙은 이 캐시를 기준으로 실제 요청 차단에 적용된다(DB 직접 조회 아님).
  */
 export function BlockEnginePanel({ flash }: { flash: (message: string) => void }) {
+  const { canCreate, canUpdate } = useAdminDomainAuthorization("SECURITY");
   const [cache, setCache] = useState<BlockCacheStatus | null>(null);
   const [batches, setBatches] = useState<IpBlockBatch[]>([]);
   const [busy, setBusy] = useState(false);
@@ -39,6 +41,7 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
   }, [reload, flash]);
 
   const onSync = async () => {
+    if (!canUpdate) return;
     setBusy(true);
     try {
       const status = await syncBlockCache();
@@ -50,6 +53,7 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
   };
 
   const onUpload = async () => {
+    if (!canCreate) return;
     const file = fileRef.current?.files?.[0];
     if (!file) {
       flash("업로드할 CSV/JSON 파일을 선택해 주세요.");
@@ -68,6 +72,7 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
   };
 
   const onToggleBatch = async (batch: IpBlockBatch) => {
+    if (!canUpdate) return;
     const strategy = batch.active ? "CASCADE_ACTIVE_RULES" : "FORCE_ENABLE_ALL";
     const updated = await toggleBlockBatch(batch.id, !batch.active, strategy);
     setBatches((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
@@ -84,9 +89,11 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
             <DatabaseZap className="h-5 w-5 text-slate-500" />
             <h3 className="text-sm font-semibold text-slate-800">런타임 차단 캐시</h3>
           </div>
-          <button type="button" className="av-btn" onClick={onSync} disabled={busy}>
-            <RefreshCw className="mr-1 inline h-4 w-4" /> 지금 동기화
-          </button>
+          {canUpdate && (
+            <button type="button" className="av-btn" onClick={onSync} disabled={busy}>
+              <RefreshCw className="mr-1 inline h-4 w-4" /> 지금 동기화
+            </button>
+          )}
         </div>
         <p className="mt-1 text-xs text-slate-500">
           요청 차단은 DB 직접 조회가 아니라 이 메모리·파일 캐시를 기준으로 처리됩니다. 규칙 변경 시 자동 동기화되며, 필요 시 수동 동기화할 수 있습니다.
@@ -108,7 +115,7 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
       </section>
 
       {/* 정책 피드 업로드 */}
-      <section className="rounded-xl border border-slate-200 bg-card p-4">
+      {canCreate && <section className="rounded-xl border border-slate-200 bg-card p-4">
         <div className="flex items-center gap-2">
           <Upload className="h-5 w-5 text-slate-500" />
           <h3 className="text-sm font-semibold text-slate-800">정책기관 피드 업로드 (CSV / JSON)</h3>
@@ -144,7 +151,7 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
             )}
           </div>
         )}
-      </section>
+      </section>}
 
       {/* IP 정책 배치 */}
       <section className="rounded-xl border border-slate-200 bg-card p-4">
@@ -187,9 +194,11 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
                   </td>
                   <td className="py-2 pr-3 text-xs text-slate-500">{formatDate(b.createdAt)}</td>
                   <td className="py-2">
-                    <button type="button" className="av-btn text-xs" onClick={() => onToggleBatch(b)} disabled={busy}>
-                      {b.active ? "끄기" : "켜기"}
-                    </button>
+                    {canUpdate && (
+                      <button type="button" className="av-btn text-xs" onClick={() => onToggleBatch(b)} disabled={busy}>
+                        {b.active ? "끄기" : "켜기"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

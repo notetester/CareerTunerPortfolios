@@ -43,7 +43,7 @@ import com.careertuner.community.moderation.service.PostModerationService;
 @RestController
 @RequestMapping("/api/admin/ai")
 @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN", "AI_OPERATION_MANAGE", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 public class AdminModerationController {
 
     private final PostModerationService moderationService;
@@ -68,6 +68,7 @@ public class AdminModerationController {
      * ?force=true  → 이미 COMPLETED인 글도 재검열
      */
     @PostMapping("/moderation/backfill")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<Map<String, Object>> backfill(
             @RequestParam(defaultValue = "false") boolean dryRun,
             @RequestParam(defaultValue = "false") boolean force
@@ -108,6 +109,7 @@ public class AdminModerationController {
      * ?force=true → 이미 COMPLETED인 글도 재검열
      */
     @PostMapping("/moderation/{postId}/run")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<Map<String, Object>> moderateSingle(
             @PathVariable Long postId,
             @RequestParam(defaultValue = "false") boolean force
@@ -121,6 +123,7 @@ public class AdminModerationController {
 
     /** 검열 테스트 (DB 기록 없이 judge()만 호출) */
     @PostMapping("/moderation-test")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<ModerationTestResponse> test(
             @Validated @RequestBody ModerationTestRequest request
     ) {
@@ -168,6 +171,7 @@ public class AdminModerationController {
 
     /** 수동 검토 결정. HIDE는 PUBLISHED→HIDDEN, KEEP은 게시 상태를 유지한다. */
     @PatchMapping("/moderation/review-queue/{postId}")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<Void> decideReviewQueue(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long postId,
@@ -179,6 +183,7 @@ public class AdminModerationController {
 
     /** HIDDEN → PUBLISHED 복원 */
     @PostMapping("/moderation/{postId}/restore")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<Void> restore(@PathVariable Long postId) {
         adminModerationService.restore(postId);
         return ApiResponse.ok(null);
@@ -186,6 +191,7 @@ public class AdminModerationController {
 
     /** HIDDEN → DELETED 확정 삭제 */
     @PostMapping("/moderation/{postId}/delete")
+    @RequireAdminPermission({"CONTENT_DELETE"})
     public ApiResponse<Void> delete(@PathVariable Long postId) {
         adminModerationService.delete(postId);
         return ApiResponse.ok(null);
@@ -225,6 +231,7 @@ public class AdminModerationController {
 
     /** 댓글 HIDDEN → PUBLISHED 복원 */
     @PostMapping("/moderation/comments/{commentId}/restore")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<Void> restoreComment(@PathVariable Long commentId) {
         adminModerationService.restoreComment(commentId);
         return ApiResponse.ok(null);
@@ -232,6 +239,7 @@ public class AdminModerationController {
 
     /** 댓글 → DELETED 확정 삭제 */
     @PostMapping("/moderation/comments/{commentId}/delete")
+    @RequireAdminPermission({"CONTENT_DELETE"})
     public ApiResponse<Void> deleteComment(@PathVariable Long commentId) {
         adminModerationService.deleteComment(commentId);
         return ApiResponse.ok(null);
@@ -245,6 +253,7 @@ public class AdminModerationController {
 
     /** 검열 설정 변경 */
     @PatchMapping("/moderation/settings")
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<ModerationSettingResponse> updateSettings(
             @RequestBody ModerationSettingUpdateRequest request
     ) {

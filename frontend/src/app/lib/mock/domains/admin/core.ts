@@ -7,6 +7,8 @@ import { iso } from "../../registry";
 import type { AdminDashboardOverview } from "@/admin/features/dashboard/types/adminDashboard";
 import type { AdminHomeSummary } from "@/admin/features/home/types/adminHome";
 import type { AdminAiUsageLogRow } from "@/admin/features/system-logs/api";
+import type { EmailAuditRow } from "@/admin/features/email-audit/api";
+import type { AdminLoginAuditRow } from "@/admin/features/audit/types";
 
 // ── 운영 종합 대시보드: 도메인 횡단 운영 현황 카운트 ──
 // 회원 7명(활성 5) · 지원 건 4건(카카오/네이버/토스/라인) · 누적 적합도 분석/면접 세션/이번 달 AI 호출.
@@ -164,6 +166,77 @@ const aiUsageLogs: AdminAiUsageLogRow[] = [
   },
 ];
 
+const emailAuditRows: EmailAuditRow[] = [
+  {
+    id: 9301,
+    userId: 9001,
+    email: "demo@careertuner.dev",
+    purpose: "VERIFY",
+    status: "USED",
+    used: true,
+    createdAt: iso(12),
+    expiredAt: iso(11),
+    usedAt: iso(12),
+  },
+  {
+    id: 9302,
+    userId: 9002,
+    email: "jiwon.park@example.com",
+    purpose: "RESET_PW",
+    status: "PENDING",
+    used: false,
+    createdAt: iso(1),
+    expiredAt: iso(-1),
+    usedAt: null,
+  },
+  {
+    id: 9303,
+    userId: null,
+    email: "unknown@example.com",
+    purpose: "RESET_PW",
+    status: "EXPIRED",
+    used: false,
+    createdAt: iso(48),
+    expiredAt: iso(47),
+    usedAt: null,
+  },
+];
+
+const loginAuditRows: AdminLoginAuditRow[] = [
+  {
+    id: 9401,
+    userId: 9001,
+    userEmail: "demo@careertuner.dev",
+    userName: "김데모",
+    eventType: "LOGIN",
+    authProvider: "LOCAL",
+    loginMethod: "PASSWORD",
+    loginIdentifier: "demo@careertuner.dev",
+    success: true,
+    failReason: null,
+    ipAddress: "211.234.12.45",
+    userAgent: "CareerTuner static demo",
+    requestUri: "/api/auth/login",
+    createdAt: iso(1),
+  },
+  {
+    id: 9402,
+    userId: 9004,
+    userEmail: "junho.choi@example.com",
+    userName: "최준호",
+    eventType: "LOGIN",
+    authProvider: "LOCAL",
+    loginMethod: "PASSWORD",
+    loginIdentifier: "junho.choi@example.com",
+    success: false,
+    failReason: "비밀번호 불일치",
+    ipAddress: "118.45.201.7",
+    userAgent: "CareerTuner static demo",
+    requestUri: "/api/auth/login",
+    createdAt: iso(5),
+  },
+];
+
 export const adminCoreRoutes: MockRoute[] = [
   // ── 운영 종합 대시보드 현황 카운트 ──
   { method: "GET", pattern: /^\/admin\/dashboard\/overview$/, handler: () => ({ ...dashboardOverview }) },
@@ -180,6 +253,54 @@ export const adminCoreRoutes: MockRoute[] = [
       const limit = Number(query.get("limit") ?? 100) || 100;
       const filtered = status ? aiUsageLogs.filter((row) => row.status === status) : aiUsageLogs;
       return filtered.slice(0, limit).map((row) => ({ ...row }));
+    },
+  },
+
+  // ── 이메일 인증/비밀번호 재설정 발급 감사 ──
+  {
+    method: "GET",
+    pattern: /^\/admin\/email-audit$/,
+    handler: ({ query }: MockContext) => {
+      const email = (query.get("email") ?? "").trim().toLowerCase();
+      const purpose = (query.get("purpose") ?? "").trim();
+      const status = (query.get("status") ?? "").trim();
+      const limit = Number(query.get("limit") ?? 200) || 200;
+      return emailAuditRows
+        .filter((row) => !email || row.email.toLowerCase().includes(email))
+        .filter((row) => !purpose || row.purpose === purpose)
+        .filter((row) => !status || row.status === status)
+        .slice(0, limit)
+        .map((row) => ({ ...row }));
+    },
+  },
+
+  // ── 로그인 감사 공통 그리드 계약 ──
+  {
+    method: "GET",
+    pattern: /^\/admin\/audit\/logins$/,
+    handler: ({ query }: MockContext) => {
+      const keyword = (query.get("keyword") ?? "").trim().toLowerCase();
+      const eventType = query.get("filters[eventType]") ?? "";
+      const provider = query.get("filters[authProvider]") ?? "";
+      const result = query.get("filters[result]") ?? "";
+      const page = Math.max(1, Number(query.get("page") ?? 1) || 1);
+      const size = Math.max(1, Number(query.get("size") ?? 20) || 20);
+      const filtered = loginAuditRows
+        .filter((row) => !keyword || [row.userEmail, row.loginIdentifier, row.ipAddress]
+          .some((value) => value?.toLowerCase().includes(keyword)))
+        .filter((row) => !eventType || row.eventType === eventType)
+        .filter((row) => !provider || row.authProvider === provider)
+        .filter((row) => result !== "SUCCESS" || row.success)
+        .filter((row) => result !== "FAIL" || !row.success);
+      const totalPages = Math.max(1, Math.ceil(filtered.length / size));
+      const safePage = Math.min(page, totalPages);
+      return {
+        items: filtered.slice((safePage - 1) * size, safePage * size).map((row) => ({ ...row })),
+        total: filtered.length,
+        page: safePage,
+        size,
+        totalPages,
+      };
     },
   },
 ];

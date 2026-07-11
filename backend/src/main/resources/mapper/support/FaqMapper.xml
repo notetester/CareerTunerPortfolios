@@ -5,8 +5,9 @@
 
     <select id="findAll" resultType="com.careertuner.support.domain.Faq">
         SELECT *
-          FROM faq
+         FROM faq
          WHERE is_published = 1
+           AND deleted_at IS NULL
         <if test="category != null">
            AND category = #{category}
         </if>

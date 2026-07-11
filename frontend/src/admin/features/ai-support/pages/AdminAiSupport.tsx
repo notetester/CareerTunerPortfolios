@@ -13,6 +13,7 @@ import ThresholdStrip from "../components/ThresholdStrip";
 import ReferenceTable from "../components/ReferenceTable";
 import ConversationDrill from "../components/ConversationDrill";
 import { PERIOD_TABS, rangeOf, type PeriodKey } from "../components/period";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 import "./admin-ai-support.css";
 
 const STATUS_TABS: { key: UnansweredStatus; label: string }[] = [
@@ -60,6 +61,8 @@ type Toast = { msg: string; tone: "ok" | "err" | "info" };
 type MainTab = "gap" | "ref";
 
 export default function AdminAiSupport() {
+  const aiAuthorization = useAdminDomainAuthorization("AI");
+  const contentAuthorization = useAdminDomainAuthorization("CONTENT");
   const [status, setStatus] = useState<UnansweredStatus>("NEW");
   const [clusters, setClusters] = useState<UnansweredCluster[]>([]);
   const [loading, setLoading] = useState(false);
@@ -148,7 +151,7 @@ export default function AdminAiSupport() {
   }
 
   async function genDraft() {
-    if (!cluster) return;
+    if (!aiAuthorization.canCreate || !cluster) return;
     setDraftState("loading");
     try {
       const d = await api.generateDraft(cluster.id);
@@ -165,7 +168,7 @@ export default function AdminAiSupport() {
   }
 
   async function registerFaq() {
-    if (!cluster || !draftEdit) return;
+    if (!contentAuthorization.canCreate || !cluster || !draftEdit) return;
     if (draftEdit.q.trim().length < 5 || draftEdit.a.trim().length < 10) {
       flash("질문·답변을 조금 더 작성해 주세요.", "err");
       return;
@@ -187,7 +190,7 @@ export default function AdminAiSupport() {
   }
 
   async function changeStatus(next: "REVIEWED" | "DISMISSED") {
-    if (!cluster) return;
+    if (!aiAuthorization.canUpdate || !cluster) return;
     try {
       await api.updateStatus(cluster.id, next);
       flash(next === "REVIEWED" ? "검토중으로 표시했습니다." : "무시 처리했습니다.", "info");
@@ -198,6 +201,7 @@ export default function AdminAiSupport() {
   }
 
   async function refreshEmbeddings() {
+    if (!contentAuthorization.canUpdate) return;
     setEmbedBusy(true);
     try {
       const r = await api.embedAllFaqs(false);
@@ -218,10 +222,10 @@ export default function AdminAiSupport() {
           </button>
         ))}
       </div>
-      <button className="ais-btn ais-btn--ink" onClick={refreshEmbeddings} disabled={embedBusy}>
+      {contentAuthorization.canUpdate && <button className="ais-btn ais-btn--ink" onClick={refreshEmbeddings} disabled={embedBusy}>
         <RefreshCw className={embedBusy ? "ais-spin" : ""} />
         {embedBusy ? "갱신 중…" : "임베딩 갱신"}
-      </button>
+      </button>}
     </>
   );
 
@@ -370,13 +374,13 @@ export default function AdminAiSupport() {
                         {draftState === "idle" || draftState === "error" ? (
                           <>
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                              <button className="ais-btn ais-btn--ink" onClick={genDraft}>
+                              {aiAuthorization.canCreate && <button className="ais-btn ais-btn--ink" onClick={genDraft}>
                                 <Sparkles />이 질문으로 FAQ 초안 작성
-                              </button>
-                              {cluster.status === "NEW" && (
+                              </button>}
+                              {aiAuthorization.canUpdate && cluster.status === "NEW" && (
                                 <button className="ais-btn" onClick={() => changeStatus("REVIEWED")}>검토중으로</button>
                               )}
-                              <button className="ais-btn" onClick={() => changeStatus("DISMISSED")}>무시</button>
+                              {aiAuthorization.canUpdate && <button className="ais-btn" onClick={() => changeStatus("DISMISSED")}>무시</button>}
                             </div>
                             <div className="ais-cta__hint">묶인 질문과 참고 FAQ를 바탕으로 답변 초안을 생성합니다. 검토 후 등록하세요.</div>
                           </>
@@ -393,36 +397,48 @@ export default function AdminAiSupport() {
                               </div>
                               <div className="ais-draft__body">
                                 <p className="ais-dl"><Tag style={{ width: 12, height: 12, verticalAlign: "-1px" }} /> 카테고리</p>
-                                <select
-                                  className="ais-in"
-                                  value={draftEdit.cat}
-                                  onChange={(e) => setDraftEdit({ ...draftEdit, cat: e.target.value })}
-                                  style={{ maxWidth: 220 }}
-                                >
-                                  {CAT_KR.map((k) => <option key={k} value={k}>{k}</option>)}
-                                </select>
-                                <p className="ais-dl" style={{ marginTop: 14 }}>질문</p>
-                                <input
-                                  className="ais-in"
-                                  value={draftEdit.q}
-                                  onChange={(e) => setDraftEdit({ ...draftEdit, q: e.target.value })}
-                                />
-                                <p className="ais-dl" style={{ marginTop: 14 }}>답변</p>
-                                <textarea
-                                  className="ais-in ais-ta"
-                                  value={draftEdit.a}
-                                  onChange={(e) => setDraftEdit({ ...draftEdit, a: e.target.value })}
-                                />
+                                {contentAuthorization.canCreate ? (
+                                  <>
+                                    <select
+                                      className="ais-in"
+                                      value={draftEdit.cat}
+                                      onChange={(e) => setDraftEdit({ ...draftEdit, cat: e.target.value })}
+                                      style={{ maxWidth: 220 }}
+                                    >
+                                      {CAT_KR.map((k) => <option key={k} value={k}>{k}</option>)}
+                                    </select>
+                                    <p className="ais-dl" style={{ marginTop: 14 }}>질문</p>
+                                    <input
+                                      className="ais-in"
+                                      value={draftEdit.q}
+                                      onChange={(e) => setDraftEdit({ ...draftEdit, q: e.target.value })}
+                                    />
+                                    <p className="ais-dl" style={{ marginTop: 14 }}>답변</p>
+                                    <textarea
+                                      className="ais-in ais-ta"
+                                      value={draftEdit.a}
+                                      onChange={(e) => setDraftEdit({ ...draftEdit, a: e.target.value })}
+                                    />
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="ais-in">{draftEdit.cat}</p>
+                                    <p className="ais-dl" style={{ marginTop: 14 }}>질문</p>
+                                    <p className="ais-in">{draftEdit.q}</p>
+                                    <p className="ais-dl" style={{ marginTop: 14 }}>답변</p>
+                                    <p className="ais-in ais-ta">{draftEdit.a}</p>
+                                  </>
+                                )}
                               </div>
                               <div className="ais-draft__foot">
-                                <button className="ais-btn" onClick={genDraft} disabled={saving}>
+                                {aiAuthorization.canCreate && <button className="ais-btn" onClick={genDraft} disabled={saving}>
                                   <RefreshCw />다시 생성
-                                </button>
-                                <div style={{ marginLeft: "auto" }}>
+                                </button>}
+                                {contentAuthorization.canCreate && <div style={{ marginLeft: "auto" }}>
                                   <button className="ais-btn ais-btn--ink" onClick={registerFaq} disabled={saving}>
                                     <Check />{saving ? "등록 중…" : "FAQ로 등록"}
                                   </button>
-                                </div>
+                                </div>}
                               </div>
                             </div>
                             <div className="ais-cta__hint" style={{ marginTop: 10 }}>

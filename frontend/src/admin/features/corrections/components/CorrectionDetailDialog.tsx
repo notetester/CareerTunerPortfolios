@@ -21,6 +21,7 @@ interface CorrectionDetailDialogProps {
   onOpenChange: (open: boolean) => void;
   onRetry: () => void;
   onSaveMemo: (memo: string | null) => Promise<void>;
+  canUpdate: boolean;
 }
 
 export function CorrectionDetailDialog({
@@ -31,6 +32,7 @@ export function CorrectionDetailDialog({
   onOpenChange,
   onRetry,
   onSaveMemo,
+  canUpdate,
 }: CorrectionDetailDialogProps) {
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
@@ -48,7 +50,7 @@ export function CorrectionDetailDialog({
   };
 
   const saveMemo = async () => {
-    if (!detail || saving) return;
+    if (!canUpdate || !detail || saving) return;
     setSaving(true);
     setMemoError(null);
     try {
@@ -118,7 +120,7 @@ export function CorrectionDetailDialog({
               </section>
             )}
 
-            <section>
+            {canUpdate ? <section>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <label htmlFor="correction-admin-memo" className="text-sm font-bold">운영 메모</label>
                 <span className="text-xs text-muted-foreground">{memo.length}/2000</span>
@@ -133,15 +135,22 @@ export function CorrectionDetailDialog({
                 className="min-h-28 resize-y"
               />
               {memoError && <p className="mt-2 text-sm text-red-600">{memoError}</p>}
-            </section>
+            </section> : detail.adminMemo && (
+              <section>
+                <h3 className="text-sm font-bold">운영 메모</h3>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{detail.adminMemo}</p>
+              </section>
+            )}
           </div>
         )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => close(false)} disabled={saving}>닫기</Button>
-          <Button onClick={() => void saveMemo()} disabled={!detail || loading || !!error || saving || !memoChanged}>
-            {saving ? "저장 중..." : "메모 저장"}
-          </Button>
+          {canUpdate && (
+            <Button onClick={() => void saveMemo()} disabled={!detail || loading || !!error || saving || !memoChanged}>
+              {saving ? "저장 중..." : "메모 저장"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

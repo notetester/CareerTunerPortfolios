@@ -43,9 +43,11 @@
     <select id="findVersionsByDocType" resultMap="versionRowResult">
         SELECT v.id, v.doc_type, v.version_label, v.status, v.summary, v.is_adverse,
                v.effective_date, v.published_at, v.created_at, v.updated_at,
-               (SELECT COUNT(*) FROM legal_clause c WHERE c.version_id = v.id) AS clause_count
+               (SELECT COUNT(*) FROM legal_clause c
+                 WHERE c.version_id = v.id AND c.deleted_at IS NULL) AS clause_count
           FROM legal_document_version v
          WHERE v.doc_type = #{docType}
+           AND v.deleted_at IS NULL
          ORDER BY v.effective_date DESC, v.published_at DESC, v.id DESC
     </select>
 
@@ -54,12 +56,14 @@
                effective_date, published_at, admin_id, created_at, updated_at
           FROM legal_document_version
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </select>
 
     <select id="findClausesByVersionId" resultMap="clauseResult">
         SELECT id, version_id, seq, title, body
           FROM legal_clause
          WHERE version_id = #{versionId}
+           AND deleted_at IS NULL
          ORDER BY seq ASC, id ASC
     </select>
 
@@ -71,6 +75,7 @@
           FROM legal_document_version
          WHERE doc_type = #{docType}
            AND status = 'PUBLISHED'
+           AND deleted_at IS NULL
            AND effective_date &lt;= (UTC_TIMESTAMP() + INTERVAL 9 HOUR)
          ORDER BY effective_date DESC, published_at DESC, id DESC
          LIMIT 1
@@ -81,12 +86,14 @@
           FROM legal_document_version
          WHERE doc_type = #{docType}
            AND status = 'DRAFT'
+           AND deleted_at IS NULL
     </select>
 
     <select id="countClauses" resultType="int">
         SELECT COUNT(*)
-          FROM legal_clause
+         FROM legal_clause
          WHERE version_id = #{versionId}
+           AND deleted_at IS NULL
     </select>
 
     <insert id="insertVersion" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
@@ -106,6 +113,7 @@
                updated_at     = CURRENT_TIMESTAMP
          WHERE id = #{id}
            AND status = 'DRAFT'
+           AND deleted_at IS NULL
     </update>
 
     <update id="publishVersion">
@@ -118,18 +126,24 @@
                updated_at      = CURRENT_TIMESTAMP
          WHERE id = #{id}
            AND status = 'DRAFT'
+           AND deleted_at IS NULL
     </update>
 
-    <delete id="deleteVersion">
-        DELETE FROM legal_document_version
+    <update id="deleteVersion">
+        UPDATE legal_document_version
+           SET deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP),
+               updated_at = CURRENT_TIMESTAMP
          WHERE id = #{id}
            AND status = 'DRAFT'
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
-    <delete id="deleteClausesByVersionId">
-        DELETE FROM legal_clause
+    <update id="deleteClausesByVersionId">
+        UPDATE legal_clause
+           SET deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP)
          WHERE version_id = #{versionId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <insert id="insertClauses">
         INSERT INTO legal_clause (version_id, seq, title, body)

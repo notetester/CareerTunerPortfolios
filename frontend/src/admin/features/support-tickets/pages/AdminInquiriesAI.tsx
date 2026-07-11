@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  Mail, Inbox, Send, Timer, Smile, Sparkles, Settings2, Paperclip,
+  Mail, Inbox, Send, Timer, Smile, Sparkles, Paperclip,
   ChevronDown, Flame, User, Crown, CalendarDays, MessageSquare,
   ArrowUpRight, StickyNote, AlertTriangle, CornerDownLeft,
   CornerDownRight, RefreshCw, FileSearch, Zap, Info, WifiOff,
@@ -17,6 +17,7 @@ import {
 import { type Inquiry, type InquiryStatus, type InquiryMessage, TEMPLATES, ASSIGNEES, INQUIRIES } from "../data/inquiriesData";
 import * as adminTicketApi from "../api/adminTicketApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 import "./admin-inquiries.css";
 
 type ListFilter = "미답변" | "처리중" | "완료" | "전체";
@@ -46,6 +47,8 @@ const INQUIRY_LIST_COLUMNS: AdminListColumn<Inquiry>[] = [
 
 
 export default function AdminInquiriesAI() {
+  const { canCreate: canCreateAi } = useAdminDomainAuthorization("AI");
+  const { canCreate: canCreateContent, canUpdate: canUpdateContent } = useAdminDomainAuthorization("CONTENT");
   const [items, setItems] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<ListFilter>("미답변");
   const [selected, setSelected] = useState<Inquiry | null>(null);
@@ -93,7 +96,7 @@ export default function AdminInquiriesAI() {
   };
 
   const generateSummary = useCallback(() => {
-    if (!selected) return;
+    if (!canCreateAi || !selected) return;
     setAiSummary("loading");
     adminTicketApi.generateMemberSummary(selected.id)
       .then((text) => {
@@ -109,10 +112,10 @@ export default function AdminInquiriesAI() {
         setAiSummary("none");
         flash("AI 회원 요약 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", "red");
       });
-  }, [selected]);
+  }, [canCreateAi, selected]);
 
   const generateDraft = useCallback(() => {
-    if (!selected) return;
+    if (!canCreateAi || !selected) return;
     setAiDraft("loading");
     adminTicketApi.generateDraft(selected.id)
       .then((draft) => {
@@ -124,7 +127,7 @@ export default function AdminInquiriesAI() {
         setAiDraft("error");
         flash("AI 초안 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.", "red");
       });
-  }, [selected]);
+  }, [canCreateAi, selected]);
 
   const useDraft = () => {
     // generateDraft()에서 이미 replyText에 실제 초안이 들어있음 — 확정만 처리
@@ -132,7 +135,7 @@ export default function AdminInquiriesAI() {
   };
 
   const regenerateDraft = () => {
-    if (!selected) return;
+    if (!canCreateAi || !selected) return;
     setAiDraft("loading");
     adminTicketApi.generateDraft(selected.id)
       .then((draft) => {
@@ -147,7 +150,7 @@ export default function AdminInquiriesAI() {
   };
 
   const handleSendReply = async () => {
-    if (!selected || !replyText.trim()) return;
+    if (!canCreateContent || !selected || !replyText.trim()) return;
     try {
       const updated = await adminTicketApi.reply(selected.id, replyText);
       setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
@@ -163,7 +166,7 @@ export default function AdminInquiriesAI() {
 
   // 상태 변경: BE PATCH /admin/tickets/{id}(status) 호출(BE 완비) → 목록·상세 동기화. priority/담당자는 별도(미배선).
   const changeStatus = async (status: string) => {
-    if (!selected || status === selected.status) return;
+    if (!canUpdateContent || !selected || status === selected.status) return;
     try {
       const updated = await adminTicketApi.updateTicket(selected.id, { status });
       setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
@@ -175,7 +178,7 @@ export default function AdminInquiriesAI() {
   };
 
   const handleBulkStatusChange = async () => {
-    if (!bulkStatus) return;
+    if (!canUpdateContent || !bulkStatus) return;
     const targets = list.selectedRows.filter((item) => item.status !== bulkStatus);
     if (targets.length === 0) {
       flash("상태를 변경할 문의가 없습니다.", "slate");
@@ -199,7 +202,7 @@ export default function AdminInquiriesAI() {
 
   // 내부 메모 저장: BE 는 is_internal 메시지로 저장(reply internal=true) → 상태변경·회원알림 없음. 상세는 최신 내부메모를 보여줌.
   const saveMemo = async () => {
-    if (!selected || !memo.trim()) return;
+    if (!canCreateContent || !selected || !memo.trim()) return;
     try {
       const updated = await adminTicketApi.reply(selected.id, memo.trim(), true);
       setSelected(updated);
@@ -234,19 +237,15 @@ export default function AdminInquiriesAI() {
       title="문의 관리"
       icon={Mail}
       desc="회원 1:1 문의를 확인하고 상태·담당자를 관리하며 답변합니다"
-      actions={
+      actions={canCreateAi ? (
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg text-[12.5px] font-bold"
             style={{ background: "var(--accent-soft)", border: "1px solid rgba(79,70,229,0.2)", color: "var(--accent-2)" }}>
             <Sparkles size={14} className="text-indigo-600" />
             AI 보조 켜짐
           </span>
-          <button className="av-btn" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Settings2 size={15} />
-            자동응답 설정
-          </button>
         </div>
-      }
+      ) : undefined}
     >
       {/* ── Stats ── */}
       <div className="grid grid-cols-4 gap-3.5 mb-5">
@@ -299,7 +298,7 @@ export default function AdminInquiriesAI() {
           <AdminListToolbar
             state={list}
             fileName="admin_inquiries"
-            extraActions={(
+            extraActions={canUpdateContent ? (
               <>
                 <button type="button" onClick={() => setBulkStatus("progress")}>
                   <CornerDownRight /> 처리중
@@ -311,7 +310,7 @@ export default function AdminInquiriesAI() {
                   <CornerDownLeft /> 종료
                 </button>
               </>
-            )}
+            ) : undefined}
           />
 
           {/* items */}
@@ -383,17 +382,21 @@ export default function AdminInquiriesAI() {
             {/* Controls bar */}
             <div className="flex items-center gap-2 flex-wrap px-5 py-3 border-b border-border" style={{ background: "var(--muted)" }}>
               <span className="text-[11px] font-semibold text-[var(--muted-foreground)]">상태</span>
-              <select
-                value={selected.status}
-                onChange={(e) => changeStatus(e.target.value)}
-                className="h-8 px-2.5 rounded-md border border-border bg-card text-[12.5px] font-semibold cursor-pointer"
-              >
-                <option value="pending">미답변</option>
-                <option value="progress">처리중</option>
-                <option value="hold">보류</option>
-                <option value="answered">답변완료</option>
-                <option value="closed">종료</option>
-              </select>
+              {canUpdateContent ? (
+                <select
+                  value={selected.status}
+                  onChange={(e) => changeStatus(e.target.value)}
+                  className="h-8 px-2.5 rounded-md border border-border bg-card text-[12.5px] font-semibold cursor-pointer"
+                >
+                  <option value="pending">미답변</option>
+                  <option value="progress">처리중</option>
+                  <option value="hold">보류</option>
+                  <option value="answered">답변완료</option>
+                  <option value="closed">종료</option>
+                </select>
+              ) : (
+                <span className="text-xs font-semibold">{STATUS_META[selected.status].label}</span>
+              )}
               <span className="text-[11px] font-semibold text-[var(--muted-foreground)] ml-1">담당자</span>
               <span className="inline-flex items-center gap-2 h-8 px-2.5 rounded-md border border-border bg-card text-[12.5px] font-semibold">
                 {selected.assignee || "미지정"}
@@ -419,7 +422,7 @@ export default function AdminInquiriesAI() {
               </div>
 
               {/* AI Summary */}
-              {!aiAvailable ? (
+              {canCreateAi && (!aiAvailable ? (
                 <AiDisconnectedBox onRetry={() => setAiAvailable(true)} />
               ) : aiSummary === "none" ? (
                 <AiCallCard
@@ -435,7 +438,7 @@ export default function AdminInquiriesAI() {
                 <AiNewUserBox />
               ) : aiSummary === "ready" ? (
                 <AiSummaryReady summary={summaryText} />
-              ) : null}
+              ) : null)}
             </div>
 
             {/* Conversation */}
@@ -446,7 +449,7 @@ export default function AdminInquiriesAI() {
             </div>
 
             {/* Internal memo */}
-            <div className="px-5 py-3.5 border-t border-border inq-memo">
+            {canCreateContent && <div className="px-5 py-3.5 border-t border-border inq-memo">
               <div className="text-xs font-bold mb-2 flex items-center gap-1.5 inq-amber-ink">
                 <StickyNote size={14} />
                 내부 메모
@@ -469,10 +472,10 @@ export default function AdminInquiriesAI() {
                   메모 저장
                 </button>
               </div>
-            </div>
+            </div>}
 
             {/* AI Draft */}
-            <div className="px-5 py-4 border-t border-border">
+            {canCreateAi && <div className="px-5 py-4 border-t border-border">
               {!aiAvailable ? null : aiDraft === "none" ? (
                 <AiCallCard
                   icon={<PenLine size={18} />}
@@ -486,10 +489,10 @@ export default function AdminInquiriesAI() {
               ) : aiDraft === "ready" ? (
                 <AiDraftReady draft={replyText} onUseDraft={useDraft} onRegenerate={regenerateDraft} />
               ) : null}
-            </div>
+            </div>}
 
             {/* Reply composer */}
-            <div className="px-5 py-4 border-t border-border" style={{ background: "var(--muted)" }}>
+            {canCreateContent && <div className="px-5 py-4 border-t border-border" style={{ background: "var(--muted)" }}>
               <div className="text-xs font-bold mb-2.5 flex items-center gap-1.5">
                 <CornerDownRight size={14} className="text-blue-600" />
                 답변 작성
@@ -526,7 +529,7 @@ export default function AdminInquiriesAI() {
                   <SendIcon size={15} />
                 </button>
               </div>
-            </div>
+            </div>}
           </div>
         ) : (
           <div className="bg-card border border-border rounded-xl shadow-sm p-12 text-center text-muted-foreground">
@@ -536,7 +539,7 @@ export default function AdminInquiriesAI() {
       </div>
 
       {toast && <div className={`inq-toast inq-toast--${toast.tone}`}>{toast.msg}</div>}
-      {bulkStatus && (
+      {canUpdateContent && bulkStatus && (
         <ConfirmDialog
           variant={bulkStatus === "closed" ? "warning" : "success"}
           icon={bulkStatus === "answered" ? <CheckCircle2 /> : <CornerDownRight />}

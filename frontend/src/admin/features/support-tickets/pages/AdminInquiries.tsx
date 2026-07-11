@@ -4,6 +4,7 @@ import AdminShell from "../../../components/AdminShell";
 import { type Inquiry } from "../data/inquiriesData";
 import * as adminTicketApi from "../api/adminTicketApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 import "./admin-inquiries.css";
 
 type FilterKey = "전체" | "대기" | "답변 완료";
@@ -13,6 +14,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function AdminInquiries() {
+  const { canUpdate } = useAdminDomainAuthorization("CONTENT");
   const [items, setItems] = useState<Inquiry[]>([]);
   const [filter, setFilter] = useState<FilterKey>("전체");
   const [query, setQuery] = useState("");
@@ -30,7 +32,7 @@ export default function AdminInquiries() {
   };
 
   const handleConfirm = async () => {
-    if (!dialog) return;
+    if (!canUpdate || !dialog) return;
     try {
       const updated = await adminTicketApi.updateTicket(dialog.inquiry.id, { status: dialog.target });
       setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
@@ -108,7 +110,7 @@ export default function AdminInquiries() {
               <th>분류</th>
               <th>상태</th>
               <th className="r">접수</th>
-              <th className="r">조치</th>
+              {canUpdate && <th className="r">조치</th>}
             </tr>
           </thead>
           <tbody>
@@ -132,7 +134,7 @@ export default function AdminInquiries() {
                     : <span className="av-st av-st--warn">대기</span>}
                 </td>
                 <td className="r av-muted num">{i.date}</td>
-                <td className="r">
+                {canUpdate && <td className="r">
                   <div className="inq-actions">
                     {i.status !== "answered" && (
                       <button
@@ -153,7 +155,7 @@ export default function AdminInquiries() {
                       </button>
                     )}
                   </div>
-                </td>
+                </td>}
               </tr>
             ))}
           </tbody>
@@ -168,7 +170,7 @@ export default function AdminInquiries() {
         </div>
       </section>
 
-      {dialog && (() => {
+      {canUpdate && dialog && (() => {
         const isClose = dialog.target === "answered";
         return (
           <ConfirmDialog

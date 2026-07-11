@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/email-audit")
-@RequireAdminPermission({"EMAIL_AUDIT_READ", "AUDIT_ADMIN"})
+@RequireAdminPermission({"AUDIT_READ"})
 @RequiredArgsConstructor
 public class AdminEmailAuditController {
 

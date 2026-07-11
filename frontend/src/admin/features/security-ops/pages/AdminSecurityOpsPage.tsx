@@ -30,6 +30,7 @@ import type {
   SecurityReview,
   WafSyncEvent,
 } from "../types";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 type TabKey = "blocks" | "engine" | "reviews" | "providers" | "providerHealth" | "appeals" | "waf";
 
@@ -114,6 +115,8 @@ const NEW_REVIEW = {
 };
 
 export function AdminSecurityOpsPage() {
+  const { role, canCreate, canUpdate } = useAdminDomainAuthorization("SECURITY");
+  const canManageProviders = role === "SUPER_ADMIN";
   const [tab, setTab] = useState<TabKey>("blocks");
   const [summary, setSummary] = useState<SecurityOpsSummary | null>(null);
   const [blocks, setBlocks] = useState<SecurityBlockRule[]>([]);
@@ -141,7 +144,9 @@ export function AdminSecurityOpsPage() {
         securityApi.getSecuritySummary(),
         securityApi.getBlockRules(),
         securityApi.getReviews(),
-        securityApi.getProviders().catch(() => [] as SecurityProviderConfig[]),
+        canManageProviders
+          ? securityApi.getProviders().catch(() => [] as SecurityProviderConfig[])
+          : Promise.resolve([] as SecurityProviderConfig[]),
         securityApi.getProviderHealthHistory(),
         securityApi.getAppeals(),
         securityApi.getAppealPolicy().catch(() => null),
@@ -164,7 +169,14 @@ export function AdminSecurityOpsPage() {
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [canManageProviders]);
+
+  useEffect(() => {
+    if (!canManageProviders) {
+      setProviders([]);
+      if (tab === "providers") setTab("blocks");
+    }
+  }, [canManageProviders, tab]);
 
   return (
     <AdminShell
@@ -192,7 +204,7 @@ export function AdminSecurityOpsPage() {
           ["blocks", "차단 규칙"],
           ["engine", "차단 엔진"],
           ["reviews", "위험 검토"],
-          ["providers", "Provider 설정"],
+          ...(canManageProviders ? [["providers", "Provider 설정"]] : []),
           ["providerHealth", "헬스체크 이력"],
           ["appeals", "이의제기"],
           ["waf", "WAF 동기화"],
@@ -210,6 +222,7 @@ export function AdminSecurityOpsPage() {
             form={blockForm}
             onFormChange={setBlockForm}
             onCreate={async () => {
+              if (!canCreate) return;
               const created = await securityApi.createBlockRule(blockForm);
               setBlocks((prev) => [created, ...prev]);
               setBlockForm({ ...NEW_BLOCK });
@@ -217,11 +230,13 @@ export function AdminSecurityOpsPage() {
               flash("차단 규칙을 추가했습니다.");
             }}
             onToggle={async (row) => {
+              if (!canUpdate) return;
               const updated = await securityApi.updateBlockRule(row.id, { ...row, active: !row.active });
               setBlocks((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
               flash(updated.active ? "차단 규칙을 활성화했습니다." : "차단 규칙을 비활성화했습니다.");
             }}
             onQueueWaf={async (row) => {
+              if (!canUpdate) return;
               const updated = await securityApi.queueWafSync(row.id);
               setBlocks((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
               await load();
@@ -235,6 +250,7 @@ export function AdminSecurityOpsPage() {
             form={reviewForm}
             onFormChange={setReviewForm}
             onCreate={async () => {
+              if (!canCreate) return;
               const created = await securityApi.createReview(reviewForm);
               setReviews((prev) => [created, ...prev]);
               setReviewForm({ ...NEW_REVIEW });
@@ -242,6 +258,7 @@ export function AdminSecurityOpsPage() {
               flash("검토 항목을 추가했습니다.");
             }}
             onDecision={async (row, status, decisionAction) => {
+              if (!canUpdate) return;
               const updated = await securityApi.updateReview(row.id, { ...row, status, decisionAction });
               setReviews((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
               await load();
@@ -249,16 +266,18 @@ export function AdminSecurityOpsPage() {
             }}
           />
         )}
-        {tab === "providers" && (
+        {tab === "providers" && canManageProviders && (
           <ProvidersPanel
             rows={providers}
             onToggle={async (row) => {
+              if (!canManageProviders) return;
               const updated = await securityApi.updateProvider(row.providerCode, { ...row, enabled: !row.enabled });
               setProviders((prev) => prev.map((item) => (item.providerCode === updated.providerCode ? updated : item)));
               await load();
               flash(updated.enabled ? "Provider를 사용 설정했습니다." : "Provider를 중지했습니다.");
             }}
             onHealth={async (row) => {
+              if (!canManageProviders) return;
               const updated = await securityApi.runProviderHealthCheck(row.providerCode);
               setProviders((prev) => prev.map((item) => (item.providerCode === updated.providerCode ? updated : item)));
               await load();
@@ -275,13 +294,14 @@ export function AdminSecurityOpsPage() {
             onReasonChange={setPolicyReason}
             onPolicyChange={setAppealPolicy}
             onSavePolicy={async () => {
-              if (!appealPolicy) return;
+              if (!canUpdate || !appealPolicy) return;
               const updated = await securityApi.updateAppealPolicy({ ...appealPolicy, reason: policyReason });
               setAppealPolicy(updated);
               setPolicyReason("");
               flash("이의제기 정책을 저장했습니다.");
             }}
             onDecision={async (row, status) => {
+              if (!canUpdate) return;
               const updated = await securityApi.decideAppeal(row.id, { status, decisionReason: `${status} 처리` });
               setAppeals((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
               await load();
@@ -296,17 +316,20 @@ export function AdminSecurityOpsPage() {
               <p className="text-xs text-slate-500">
                 대기(QUEUED/PENDING) 이벤트는 스케줄러가 주기적으로 처리합니다. 활성 WAF Provider(endpoint)가 있으면 실제 HTTP 동기화, 없으면 Mock으로 즉시 SYNCED 처리합니다.
               </p>
-              <button
-                type="button"
-                className="av-btn bg-slate-900 text-white whitespace-nowrap"
-                onClick={async () => {
-                  const n = await securityApi.processWafSync();
-                  flash(`WAF 큐를 처리했습니다. (${n}건)`);
-                  await load();
-                }}
-              >
-                지금 처리
-              </button>
+              {canUpdate && (
+                <button
+                  type="button"
+                  className="av-btn bg-slate-900 text-white whitespace-nowrap"
+                  onClick={async () => {
+                    if (!canUpdate) return;
+                    const n = await securityApi.processWafSync();
+                    flash(`WAF 큐를 처리했습니다. (${n}건)`);
+                    await load();
+                  }}
+                >
+                  지금 처리
+                </button>
+              )}
             </div>
             <WafEventsPanel rows={wafEvents} />
           </div>
@@ -344,10 +367,11 @@ function BlockRulesPanel({
   onToggle: (row: SecurityBlockRule) => Promise<void>;
   onQueueWaf: (row: SecurityBlockRule) => Promise<void>;
 }) {
+  const { canCreate, canUpdate } = useAdminDomainAuthorization("SECURITY");
   const list = useAdminListTools(rows, { columns: BLOCK_COLUMNS, getRowId: (row) => row.id, defaultSortId: "updated", defaultSortDir: "desc" });
   return (
-    <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className={canCreate ? "grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]" : "grid gap-5"}>
+      {canCreate && <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
         <h2 className="text-sm font-bold">차단 규칙 추가</h2>
         <div className="mt-3 grid gap-2">
           <Select value={form.ruleType} onChange={(ruleType) => onFormChange({ ...form, ruleType })} options={["USER", "EMAIL", "EMAIL_DOMAIN", "IP", "CIDR", "IP_RANGE", "COUNTRY", "ASN"]} />
@@ -363,7 +387,7 @@ function BlockRulesPanel({
             <Save /> 저장
           </button>
         </div>
-      </section>
+      </section>}
 
       <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
         <AdminListToolbar state={list} fileName="security_block_rules" />
@@ -389,10 +413,12 @@ function BlockRulesPanel({
                 <td><StatusPill tone={row.active ? "green" : "slate"} label={row.active ? "활성" : "비활성"} /></td>
                 <td><StatusPill tone={row.wafSyncStatus === "PENDING" ? "amber" : "slate"} label={row.wafSyncStatus} /></td>
                 <td className="r">
-                  <div className="rv-actions">
-                    <button className="av-btn" onClick={() => void onToggle(row)}>{row.active ? "중지" : "활성"}</button>
-                    <button className="av-btn" onClick={() => void onQueueWaf(row)}>WAF</button>
-                  </div>
+                  {canUpdate && (
+                    <div className="rv-actions">
+                      <button className="av-btn" onClick={() => void onToggle(row)}>{row.active ? "중지" : "활성"}</button>
+                      <button className="av-btn" onClick={() => void onQueueWaf(row)}>WAF</button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -417,10 +443,11 @@ function ReviewsPanel({
   onCreate: () => Promise<void>;
   onDecision: (row: SecurityReview, status: string, decisionAction: string) => Promise<void>;
 }) {
+  const { canCreate, canUpdate } = useAdminDomainAuthorization("SECURITY");
   const list = useAdminListTools(rows, { columns: REVIEW_COLUMNS, getRowId: (row) => row.id, defaultSortId: "created", defaultSortDir: "desc" });
   return (
-    <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <div className={canCreate ? "grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]" : "grid gap-5"}>
+      {canCreate && <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
         <h2 className="text-sm font-bold">검토 큐 추가</h2>
         <div className="mt-3 grid gap-2">
           <Select value={form.reviewType} onChange={(reviewType) => onFormChange({ ...form, reviewType })} options={["LOGIN_RISK", "EXTERNAL_RISK", "SECURITY_RISK", "GENERAL"]} />
@@ -432,7 +459,7 @@ function ReviewsPanel({
             <Save /> 저장
           </button>
         </div>
-      </section>
+      </section>}
       <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
         <AdminListToolbar state={list} fileName="security_reviews" />
         <table className="av-table">
@@ -455,10 +482,12 @@ function ReviewsPanel({
                 <td><StatusPill tone={riskTone(row.riskLevel)} label={row.riskLevel} /></td>
                 <td>{row.status}</td>
                 <td className="r">
-                  <div className="rv-actions">
-                    <button className="av-btn" onClick={() => void onDecision(row, "APPROVED", "BLOCK")}>차단</button>
-                    <button className="av-btn" onClick={() => void onDecision(row, "DISMISSED", "ALLOW")}>기각</button>
-                  </div>
+                  {canUpdate && (
+                    <div className="rv-actions">
+                      <button className="av-btn" onClick={() => void onDecision(row, "APPROVED", "BLOCK")}>차단</button>
+                      <button className="av-btn" onClick={() => void onDecision(row, "DISMISSED", "ALLOW")}>기각</button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -479,7 +508,9 @@ function ProvidersPanel({
   onToggle: (row: SecurityProviderConfig) => Promise<void>;
   onHealth: (row: SecurityProviderConfig) => Promise<void>;
 }) {
+  const { role } = useAdminDomainAuthorization("SECURITY");
   const list = useAdminListTools(rows, { columns: PROVIDER_COLUMNS, getRowId: (row) => row.providerCode });
+  if (role !== "SUPER_ADMIN") return null;
   return (
     <section className="overflow-hidden rounded-lg border border-border bg-card shadow-sm">
       <AdminListToolbar state={list} fileName="security_providers" />
@@ -575,6 +606,7 @@ function AppealsPanel({
   onSavePolicy: () => Promise<void>;
   onDecision: (row: SecurityAppeal, status: string) => Promise<void>;
 }) {
+  const { canUpdate } = useAdminDomainAuthorization("SECURITY");
   const list = useAdminListTools(rows, { columns: APPEAL_COLUMNS, getRowId: (row) => row.id, defaultSortId: "created", defaultSortDir: "desc" });
   return (
     <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -582,18 +614,20 @@ function AppealsPanel({
         <h2 className="text-sm font-bold">이의제기 정책</h2>
         {policy ? (
           <div className="mt-3 grid gap-2">
-            <Input value={policy.displayName} onChange={(displayName) => onPolicyChange({ ...policy, displayName })} />
-            <Input value={String(policy.maxOpenPerSubject)} onChange={(value) => onPolicyChange({ ...policy, maxOpenPerSubject: Number(value) || 1 })} />
-            <Input value={String(policy.submitterDailyLimit)} onChange={(value) => onPolicyChange({ ...policy, submitterDailyLimit: Number(value) || 1 })} />
-            <Input value={String(policy.tokenTtlHours)} onChange={(value) => onPolicyChange({ ...policy, tokenTtlHours: Number(value) || 1 })} />
-            <Input value={reason} onChange={onReasonChange} placeholder="변경 사유" />
+            <Input value={policy.displayName} disabled={!canUpdate} onChange={(displayName) => onPolicyChange({ ...policy, displayName })} />
+            <Input value={String(policy.maxOpenPerSubject)} disabled={!canUpdate} onChange={(value) => onPolicyChange({ ...policy, maxOpenPerSubject: Number(value) || 1 })} />
+            <Input value={String(policy.submitterDailyLimit)} disabled={!canUpdate} onChange={(value) => onPolicyChange({ ...policy, submitterDailyLimit: Number(value) || 1 })} />
+            <Input value={String(policy.tokenTtlHours)} disabled={!canUpdate} onChange={(value) => onPolicyChange({ ...policy, tokenTtlHours: Number(value) || 1 })} />
+            {canUpdate && <Input value={reason} onChange={onReasonChange} placeholder="변경 사유" />}
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={policy.enabled} onChange={(event) => onPolicyChange({ ...policy, enabled: event.target.checked })} />
+              <input type="checkbox" checked={policy.enabled} disabled={!canUpdate} onChange={(event) => onPolicyChange({ ...policy, enabled: event.target.checked })} />
               정책 사용
             </label>
-            <button type="button" className="av-btn justify-center bg-slate-900 text-white" onClick={() => void onSavePolicy()}>
-              <Save /> 저장
-            </button>
+            {canUpdate && (
+              <button type="button" className="av-btn justify-center bg-slate-900 text-white" onClick={() => void onSavePolicy()}>
+                <Save /> 저장
+              </button>
+            )}
           </div>
         ) : (
           <div className="mt-3 text-sm text-muted-foreground">정책 데이터에 접근할 수 없습니다.</div>
@@ -619,10 +653,12 @@ function AppealsPanel({
                 <td>{row.submitterEmail}</td>
                 <td>{row.status}</td>
                 <td className="r">
-                  <div className="rv-actions">
-                    <button className="av-btn" onClick={() => void onDecision(row, "APPROVED")}>승인</button>
-                    <button className="av-btn" onClick={() => void onDecision(row, "REJECTED")}>거절</button>
-                  </div>
+                  {canUpdate && (
+                    <div className="rv-actions">
+                      <button className="av-btn" onClick={() => void onDecision(row, "APPROVED")}>승인</button>
+                      <button className="av-btn" onClick={() => void onDecision(row, "REJECTED")}>거절</button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -668,12 +704,13 @@ function WafEventsPanel({ rows }: { rows: WafSyncEvent[] }) {
   );
 }
 
-function Input({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
+function Input({ value, onChange, placeholder, disabled = false }: { value: string; onChange: (value: string) => void; placeholder?: string; disabled?: boolean }) {
   return (
     <input
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
+      disabled={disabled}
       className="h-10 rounded-md border border-border bg-card px-3 text-sm"
     />
   );

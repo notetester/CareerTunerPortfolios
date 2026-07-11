@@ -34,6 +34,12 @@
             ca.refresh_recommended_at,
             ca.confirmed_at,
             ca.admin_memo,
+            ca.requested_provider,
+            ca.actual_provider,
+            ca.actual_model,
+            ca.fallback_used,
+            ca.attempt_path,
+            ca.run_mode,
             ca.created_at
         FROM company_analysis ca
         JOIN application_case ac ON ca.application_case_id = ac.id

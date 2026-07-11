@@ -26,6 +26,7 @@
                AND apg.active = 1
               JOIN admin_permission_group_item agi
                 ON agi.group_code = aug.group_code
+               AND agi.deleted_at IS NULL
               JOIN admin_permission_policy app2
                 ON app2.permission_code = agi.permission_code
                AND app2.active = 1

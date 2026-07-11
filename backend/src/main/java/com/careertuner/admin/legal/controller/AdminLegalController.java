@@ -31,7 +31,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/legal")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN", "POLICY_MANAGE", "POLICY_ADMIN"})
+@RequireAdminPermission({"POLICY_READ"})
 @RequiredArgsConstructor
 public class AdminLegalController {
 
@@ -52,6 +52,7 @@ public class AdminLegalController {
     }
 
     @PostMapping("/{docType}/versions")
+    @RequireAdminPermission({"POLICY_CREATE"})
     public ApiResponse<AdminLegalVersionDetail> createDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable String docType,
@@ -60,6 +61,7 @@ public class AdminLegalController {
     }
 
     @PutMapping("/versions/{id}")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<AdminLegalVersionDetail> saveDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -68,6 +70,7 @@ public class AdminLegalController {
     }
 
     @PostMapping("/versions/{id}/publish")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<PublishLegalResponse> publish(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -76,6 +79,7 @@ public class AdminLegalController {
     }
 
     @DeleteMapping("/versions/{id}")
+    @RequireAdminPermission({"POLICY_DELETE"})
     public ApiResponse<Void> deleteVersion(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/consents")
-@RequireAdminPermission({"CONSENT_READ", "MEMBER_ADMIN"})
+@RequireAdminPermission({"USER_READ"})
 @RequiredArgsConstructor
 public class AdminConsentController {
 

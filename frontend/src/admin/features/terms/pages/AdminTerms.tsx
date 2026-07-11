@@ -10,6 +10,7 @@ import {
   type LegalDocType, type AdminLegalVersionSummary, type AdminLegalClause,
 } from "../api/adminLegalApi";
 import "./admin-terms.css";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 
 const DOC_TABS: { key: LegalDocType; label: string }[] = [
   { key: "terms", label: "이용약관" },
@@ -53,6 +54,7 @@ function nextVersionLabel(versions: AdminLegalVersionSummary[]): string {
 }
 
 export default function AdminTerms() {
+  const { canCreate, canUpdate, canDelete } = useAdminDomainAuthorization("POLICY");
   const [docType, setDocType] = useState<LegalDocType>("terms");
   const [versions, setVersions] = useState<AdminLegalVersionSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,12 +125,14 @@ export default function AdminTerms() {
   }, [docType, loadVersions]);
 
   // ── 조항 편집 ──
-  const update = (i: number, k: keyof ClauseRow, v: string) =>
-    setClauses((p) => p.map((c, j) => (j === i ? { ...c, [k]: v } : c)));
-  const add = () => setClauses((p) => [...p, { title: "", body: "" }]);
-  const remove = (i: number) => setClauses((p) => p.filter((_, j) => j !== i));
+  const canEditDraft = editId == null ? canCreate && canUpdate : canUpdate;
+  const update = (i: number, k: keyof ClauseRow, v: string) => {
+    if (canEditDraft) setClauses((p) => p.map((c, j) => (j === i ? { ...c, [k]: v } : c)));
+  };
+  const add = () => { if (canEditDraft) setClauses((p) => [...p, { title: "", body: "" }]); };
+  const remove = (i: number) => { if (canEditDraft) setClauses((p) => p.filter((_, j) => j !== i)); };
   const moveUp = (i: number) => {
-    if (i === 0) return;
+    if (!canEditDraft || i === 0) return;
     setClauses((p) => {
       const next = [...p];
       [next[i - 1], next[i]] = [next[i], next[i - 1]];
@@ -137,6 +141,7 @@ export default function AdminTerms() {
   };
   const moveDown = (i: number) =>
     setClauses((p) => {
+      if (!canEditDraft) return p;
       if (i >= p.length - 1) return p;
       const next = [...p];
       [next[i], next[i + 1]] = [next[i + 1], next[i]];
@@ -160,16 +165,18 @@ export default function AdminTerms() {
   const persistDraft = async (): Promise<number> => {
     let id = editId;
     if (id == null) {
+      if (!canCreate) throw new Error("약관 초안을 생성할 권한이 없습니다.");
       const created = await createDraft(docType, { cloneFromCurrent: false });
       id = created.id;
       setEditId(id);
     }
+    if (!canUpdate) throw new Error("약관 초안을 수정할 권한이 없습니다.");
     await saveDraft(id, buildDraftPayload());
     return id;
   };
 
   const handleSave = async () => {
-    if (saving) return;
+    if (saving || !canEditDraft) return;
     setSaving(true);
     try {
       await persistDraft();
@@ -184,7 +191,7 @@ export default function AdminTerms() {
   };
 
   const handleCloneCurrent = async () => {
-    if (saving || editId != null) return;
+    if (saving || editId != null || !canCreate) return;
     setSaving(true);
     try {
       const created = await createDraft(docType, { cloneFromCurrent: true });
@@ -199,7 +206,7 @@ export default function AdminTerms() {
   };
 
   const handlePublish = async () => {
-    if (saving) return;
+    if (saving || !canEditDraft) return;
     if (clauses.length === 0) {
       flash("조항이 없는 버전은 게시할 수 없습니다.", "red");
       return;
@@ -232,7 +239,7 @@ export default function AdminTerms() {
   };
 
   const handleDelete = async () => {
-    if (saving || editId == null) return;
+    if (saving || editId == null || !canDelete) return;
     setSaving(true);
     try {
       await deleteVersion(editId);
@@ -297,6 +304,7 @@ export default function AdminTerms() {
                 <div className="av-flabel">버전 라벨</div>
                 <input
                   className="av-input"
+                  readOnly={!canEditDraft}
                   value={versionLabel}
                   onChange={(e) => setVersionLabel(e.target.value)}
                   placeholder="예: v2.4"
@@ -310,6 +318,7 @@ export default function AdminTerms() {
                 </div>
                 <input
                   className="av-input"
+                  readOnly={!canEditDraft}
                   value={summary}
                   onChange={(e) => setSummary(e.target.value)}
                   placeholder="예: 크레딧 환불 규정 명확화 (제12조)"
@@ -320,6 +329,7 @@ export default function AdminTerms() {
                 <label className="av-flabel" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                   <input
                     type="checkbox"
+                    disabled={!canEditDraft}
                     checked={isAdverse}
                     onChange={(e) => setIsAdverse(e.target.checked)}
                   />
@@ -340,29 +350,31 @@ export default function AdminTerms() {
                       <span className="tv-clause__no num">제{i + 1}조</span>
                       <input
                         className="tv-clause__t"
+                        readOnly={!canEditDraft}
                         value={c.title}
                         onChange={(e) => update(i, "title", e.target.value)}
                         placeholder="조항 제목"
                       />
-                      <div className="tv-clause__tools">
+                      {canEditDraft && <div className="tv-clause__tools">
                         <button aria-label="위로" onClick={() => moveUp(i)}><ChevronUp /></button>
                         <button aria-label="아래로" onClick={() => moveDown(i)}><ChevronDown /></button>
                         <button aria-label="삭제" onClick={() => remove(i)}><X /></button>
-                      </div>
+                      </div>}
                     </div>
                     <textarea
                       className="tv-clause__b"
+                      readOnly={!canEditDraft}
                       value={c.body}
                       onChange={(e) => update(i, "body", e.target.value)}
                       placeholder="조항 본문 — 줄바꿈으로 항(1. 2. 3.)을 구분하세요"
                     />
                   </div>
                 ))}
-                <button className="tv-add" onClick={add}>
+                {canEditDraft && <button type="button" className="tv-add" onClick={add}>
                   <Plus /> 조항 추가
-                </button>
-                {editId == null && publishedVersion && (
-                  <button className="tv-add" onClick={handleCloneCurrent} disabled={saving} style={{ marginTop: 8 }}>
+                </button>}
+                {editId == null && publishedVersion && canCreate && (
+                  <button type="button" className="tv-add" onClick={handleCloneCurrent} disabled={saving} style={{ marginTop: 8 }}>
                     <Plus /> 현행 조항 복제해서 시작
                   </button>
                 )}
@@ -373,14 +385,14 @@ export default function AdminTerms() {
                 <div className="av-choices">
                   <div
                     className={`av-choice${when === "즉시" ? " on" : ""}`}
-                    onClick={() => setWhen("즉시")}
+                    onClick={() => { if (canEditDraft) setWhen("즉시"); }}
                   >
                     <div className="t">즉시 시행</div>
                     <div className="s">게시와 동시에 효력</div>
                   </div>
                   <div
                     className={`av-choice${when === "예약" ? " on" : ""}`}
-                    onClick={() => setWhen("예약")}
+                    onClick={() => { if (canEditDraft) setWhen("예약"); }}
                   >
                     <div className="t">예약 시행</div>
                     <div className="s">시행일 지정</div>
@@ -389,6 +401,7 @@ export default function AdminTerms() {
                 {when === "예약" && (
                   <input
                     type="date"
+                    disabled={!canEditDraft}
                     className="av-input"
                     value={effectiveDate}
                     onChange={(e) => setEffectiveDate(e.target.value)}
@@ -462,7 +475,7 @@ export default function AdminTerms() {
               <b>법무 검토</b> 완료 후 게시하세요. 게시하면 <b>전 회원 NOTICE 알림</b>이 발송되고,
               미동의 회원은 다음 로그인 시 동의 절차를 거칩니다.
             </div>
-            {editId != null && (
+            {editId != null && canDelete && (
               <button
                 className="av-btn"
                 onClick={handleDelete}
@@ -486,12 +499,12 @@ export default function AdminTerms() {
             <a className="av-btn" href={publicAppPath(`/legal/${docType}`)} target="_blank" rel="noopener noreferrer">
               <Eye /> 미리보기
             </a>
-            <button className="av-btn" onClick={handleSave} disabled={saving || loading}>
+            {canEditDraft && <button type="button" className="av-btn" onClick={handleSave} disabled={saving || loading}>
               <Save /> {saving ? "저장 중…" : "임시저장"}
-            </button>
-            <button className="av-btn av-btn--ink" onClick={handlePublish} disabled={saving || loading}>
+            </button>}
+            {canEditDraft && <button type="button" className="av-btn av-btn--ink" onClick={handlePublish} disabled={saving || loading}>
               <CalendarClock /> {when === "예약" ? "게시 예약" : "게시"}
-            </button>
+            </button>}
           </div>
         </div>
       </div>

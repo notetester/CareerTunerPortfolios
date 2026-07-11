@@ -22,9 +22,12 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 - 기존 DB를 갱신할 때는 배포 절차에 명시된 `src/main/resources/db/patches/*.sql`을 적용한다. Sites 반환
   주소 연동에는 `20260711_auth_frontend_return_client.sql`이 필요하며, 기존 이메일 토큰은 `primary`로 호환된다.
 - 관리자 경계 정합 보정은 애플리케이션 쓰기를 멈춘 뒤
-  `20260711_admin_active_assignment_unique.sql` → `20260711_admin_seed_role_reconciliation.sql` 순서로 적용한다.
+  `20260711_admin_active_assignment_unique.sql` → `20260711_admin_soft_delete_columns.sql` →
+  `20260711_admin_permission_crud_catalog.sql` 순서로 준비한다.
+  개발자별 관리자 발급·회수와 quorum 검증은 [`db/maintenance/README.md`](src/main/resources/db/maintenance/README.md)를 따른다.
+  안전한 비seed ACTIVE `SUPER_ADMIN` 3명 이상을 확인한 뒤 필요하면 `20260711_admin_seed_role_reconciliation.sql`을 적용한다.
   후자는 고정 id+email 검증을 통과한 공유 DB seed 5개를 모두 `USER`로 복구한다.
-  seed 외 ACTIVE `SUPER_ADMIN`이 최소 1명 없으면 실패하며 seed 외 관리자 계정은 수정하지 않는다.
+  검증된 seed 외 ACTIVE `SUPER_ADMIN`이 최소 3명 없으면 실패하며 seed 외 관리자 계정은 수정하지 않는다.
 
 ## 실행
 
@@ -306,6 +309,20 @@ MySQL `JSON` 컬럼은 초기에는 Java `String`으로 매핑한다. 예를 들
 `USER`이고 활성 권한·그룹이 모두 0인지 확인한다. 로컬/demo의 `data.sql`은 이와 달리
 독립 시연을 위해 admin을 `SUPER_ADMIN`으로 최초 생성하며 공유·운영 DB에는 적용하지 않는다. 역할 보정 패치는 활성 refresh token도
 최초 1회 회수하므로 적용 후 다시 로그인해야 한다.
+
+공유·운영용 `SUPER_ADMIN`은 알려진 seed가 아니라 강한 개별 비밀번호의 A~F 전용 계정을 생성하거나
+이메일 인증을 마친 기존 개인 개발자 계정에 발급한다. 발급·회수는
+[`db/maintenance/README.md`](src/main/resources/db/maintenance/README.md)의 멱등 SQL을 사용하고,
+안전한 ACTIVE `SUPER_ADMIN`을 항상 3명 이상 유지한다. USER/SECURITY/BILLING/CONTENT/AI/POLICY/ADMIN_PERMISSION 각각
+READ/CREATE/UPDATE/DELETE와 `AUDIT_READ`를 정본 코드로 사용한다. 일반 ADMIN 템플릿은 담당 영역의
+READ/CREATE/UPDATE만 기본 포함한다. DELETE는 기본 템플릿에서 제외하지만 슈퍼 관리자가 일반 ADMIN에게
+개별 부여할 수 있다. 정책·관리자 권한 CRUD 템플릿은 슈퍼 관리자 범위다.
+
+관리자 삭제 대상은 `20260711_admin_soft_delete_columns.sql`의 `deleted_at`으로 보존한다. 공지, FAQ,
+커뮤니티 가이드, 레벨 정책, 법적 문서·조항, 분석 메모, 챗봇 대화, 광고, 면접 지식,
+협업 ban, 권한 그룹 항목을 물리 삭제하지 않는다. 법적 문서와 조항은 감사·법적 이력을 유지하고,
+조항 FK도 `ON DELETE RESTRICT`로 보강한다. 협업 ban과 권한 그룹 항목은 재등록 시 기존 UNIQUE 행의
+`deleted_at`을 `NULL`로 복원한다.
 
 ## 패키지 구조
 

@@ -29,7 +29,7 @@ import lombok.RequiredArgsConstructor;
 @Validated
 @RestController
 @RequestMapping("/api/admin/corrections")
-@RequireAdminPermission({"ANALYSIS_READ", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminCorrectionController {
 
@@ -71,7 +71,7 @@ public class AdminCorrectionController {
     }
 
     @PutMapping("/{id}/memo")
-    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<Void> updateMemo(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,

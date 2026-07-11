@@ -17,18 +17,17 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.runtimesetting.domain.RuntimeSetting;
 import com.careertuner.runtimesetting.domain.RuntimeSettingHistory;
-import com.careertuner.runtimesetting.service.RuntimeSettingService;
 
 import lombok.RequiredArgsConstructor;
 
-/** 관리자 key-value 런타임 설정 콘솔 API. */
+/** SUPER_ADMIN 전용 key-value 런타임 설정 콘솔 API. */
 @RestController
 @RequestMapping("/api/admin/runtime-settings")
-@RequireAdminPermission({"POLICY_MANAGE", "POLICY_ADMIN"})
+@RequireAdminPermission({"POLICY_READ"})
 @RequiredArgsConstructor
 public class AdminRuntimeSettingController {
 
-    private final RuntimeSettingService service;
+    private final AdminRuntimeSettingService service;
 
     /** 설정 저장 요청. secret/editable/active 는 미지정 시 각각 false/true/true. */
     public record SaveRequest(
@@ -52,14 +51,15 @@ public class AdminRuntimeSettingController {
             @RequestParam(required = false) String group,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "false") boolean includeInactive) {
-        AdminAccess.requireAdmin(authUser);
-        return ApiResponse.ok(service.getRuntimeSettings(group, keyword, includeInactive));
+        AdminAccess.requireSuperAdmin(authUser);
+        return ApiResponse.ok(service.list(authUser, group, keyword, includeInactive));
     }
 
     @PostMapping
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<RuntimeSetting> save(@AuthenticationPrincipal AuthUser authUser,
                                             @RequestBody SaveRequest request) {
-        AdminAccess.requireAdmin(authUser);
+        AdminAccess.requireSuperAdmin(authUser);
         RuntimeSetting input = RuntimeSetting.builder()
                 .settingKey(request.settingKey())
                 .settingGroup(request.settingGroup())
@@ -73,7 +73,7 @@ public class AdminRuntimeSettingController {
                 .description(request.description())
                 .build();
         // reason: 요청에 담긴 변경 사유를 이력에 함께 전달
-        return ApiResponse.ok(service.saveRuntimeSetting(input, authUser.id(), request.reason()));
+        return ApiResponse.ok(service.save(authUser, input, request.reason()));
     }
 
     @GetMapping("/history")
@@ -81,7 +81,7 @@ public class AdminRuntimeSettingController {
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(required = false) String key,
             @RequestParam(defaultValue = "100") int limit) {
-        AdminAccess.requireAdmin(authUser);
-        return ApiResponse.ok(service.getHistories(key, limit));
+        AdminAccess.requireSuperAdmin(authUser);
+        return ApiResponse.ok(service.history(authUser, key, limit));
     }
 }

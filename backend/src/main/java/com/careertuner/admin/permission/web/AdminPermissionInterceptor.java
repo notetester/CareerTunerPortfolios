@@ -20,8 +20,9 @@ import lombok.RequiredArgsConstructor;
 /**
  * {@link RequireAdminPermission} 집행 인터셉터.
  *
- * <p>preHandle: 핸들러(메서드 우선 → 클래스)의 어노테이션을 읽어 실효 권한을 검사한다.
- * SUPER_ADMIN role 은 전체 통과, ADMIN role 은 나열된 코드 중 하나라도 실효 보유해야 한다.
+ * <p>preHandle: 클래스와 메서드의 어노테이션을 각각 읽어 실효 권한을 검사한다.
+ * SUPER_ADMIN role 은 전체 통과, ADMIN role 은 각 선언 집합에서 하나 이상씩 보유해야 한다.
+ * 따라서 클래스의 READ와 메서드의 CREATE/UPDATE/DELETE가 함께 선언되면 둘 다 필요하다.
  * 미보유 시 {@code BusinessException(FORBIDDEN)} — 전역 예외 처리기가 ApiResponse 403 으로 변환한다.</p>
  *
  * <p>afterCompletion: 권한/그룹 변경 API(/api/admin/super/** 의 쓰기 요청)가 성공하면
@@ -54,15 +55,15 @@ public class AdminPermissionInterceptor implements HandlerInterceptor {
         if (isRoleOnly(handlerMethod)) {
             return true;
         }
-        RequireAdminPermission required = resolveAnnotation(handlerMethod);
-        if (required == null || required.value().length == 0) {
+        RequireAdminPermission onClass = handlerMethod.getBeanType().getAnnotation(RequireAdminPermission.class);
+        RequireAdminPermission onMethod = handlerMethod.getMethodAnnotation(RequireAdminPermission.class);
+        if ((onClass == null || onClass.value().length == 0)
+                && (onMethod == null || onMethod.value().length == 0)) {
             throw new BusinessException(ErrorCode.FORBIDDEN,
                     "관리자 API에 필요한 세부 권한 정책이 선언되지 않았습니다.");
         }
-        if (!effectivePermissionService.hasAny(authUser.id(), required.value())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN,
-                    "이 기능을 수행할 관리자 세부 권한이 없습니다. (필요 권한: " + String.join(", ", required.value()) + ")");
-        }
+        requireAny(authUser, onClass);
+        requireAny(authUser, onMethod);
         return true;
     }
 
@@ -78,12 +79,15 @@ public class AdminPermissionInterceptor implements HandlerInterceptor {
         }
     }
 
-    private RequireAdminPermission resolveAnnotation(HandlerMethod handlerMethod) {
-        RequireAdminPermission onMethod = handlerMethod.getMethodAnnotation(RequireAdminPermission.class);
-        if (onMethod != null) {
-            return onMethod;
+    private void requireAny(AuthUser authUser, RequireAdminPermission required) {
+        if (required == null || required.value().length == 0) {
+            return;
         }
-        return handlerMethod.getBeanType().getAnnotation(RequireAdminPermission.class);
+        if (!effectivePermissionService.hasAny(authUser.id(), required.value())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "이 기능을 수행할 관리자 세부 권한이 없습니다. (필요 권한: "
+                            + String.join(", ", required.value()) + ")");
+        }
     }
 
     private boolean isRoleOnly(HandlerMethod handlerMethod) {

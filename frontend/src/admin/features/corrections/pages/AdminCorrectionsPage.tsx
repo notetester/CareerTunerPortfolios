@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Eye, FilePenLine, RefreshCw, Search } from "lucide-react";
 import AdminShell from "@/admin/components/AdminShell";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
@@ -26,6 +27,7 @@ import type {
 const EMPTY_PAGE: AdminCorrectionPage = { items: [], total: 0, page: 1, size: 20 };
 
 export function AdminCorrectionsPage() {
+  const { canUpdate } = useAdminDomainAuthorization("AI");
   const [tab, setTab] = useState<"success" | "failure">("success");
   const [pageData, setPageData] = useState<AdminCorrectionPage>(EMPTY_PAGE);
   const [failures, setFailures] = useState<AdminCorrectionFailureRow[]>([]);
@@ -135,6 +137,7 @@ export function AdminCorrectionsPage() {
   };
 
   const saveMemo = async (memo: string | null) => {
+    if (!canUpdate) throw new Error("운영 메모 수정 권한이 없습니다.");
     if (!detail) throw new Error("첨삭 상세 정보가 없습니다.");
     await updateAdminCorrectionMemo(detail.id, memo);
     setDetail({ ...detail, adminMemo: memo });
@@ -214,6 +217,7 @@ export function AdminCorrectionsPage() {
         onOpenChange={closeDetail}
         onRetry={() => { if (detailId) void loadDetail(detailId); }}
         onSaveMemo={saveMemo}
+        canUpdate={canUpdate}
       />
     </AdminShell>
   );
