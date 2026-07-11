@@ -232,8 +232,7 @@ class JobPostingReextractionServiceTest {
 
         verify(f.extractionMapper, never()).insertApplicationCaseExtraction(any());
         verify(f.jobPostingService, never()).extractUploadedJobPostingStrict(any(), any(), any(), any(), any());
-        verify(f.initialRunMapper, never()).claimForRun(anyLong(), any());
-        verify(f.initialRunMapper, never()).markFailed(anyLong(), any(), any());
+        verify(f.initialRunMapper, never()).closePendingAsFailed(anyLong(), any());
     }
 
     @Test
@@ -249,8 +248,7 @@ class JobPostingReextractionServiceTest {
 
         verify(f.extractionMapper, never()).insertApplicationCaseExtraction(any());
         verify(f.jobPostingService, never()).extractUploadedJobPostingStrict(any(), any(), any(), any(), any());
-        verify(f.initialRunMapper, never()).claimForRun(anyLong(), any());
-        verify(f.initialRunMapper, never()).markFailed(anyLong(), any(), any());
+        verify(f.initialRunMapper, never()).closePendingAsFailed(anyLong(), any());
     }
 
     @Test
@@ -261,7 +259,7 @@ class JobPostingReextractionServiceTest {
         Fixture f = new Fixture();
         f.stubFailedPdfLatest();
         when(f.initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("PENDING"));
-        when(f.initialRunMapper.claimForRun(eq(10L), any())).thenReturn(1);
+        when(f.initialRunMapper.closePendingAsFailed(eq(10L), any())).thenReturn(1);
         JobPosting posting = JobPosting.builder()
                 .id(20L).applicationCaseId(10L).revision(1)
                 .uploadedFileUrl("local:x.pdf").sourceType("PDF").build();
@@ -275,10 +273,9 @@ class JobPostingReextractionServiceTest {
 
         f.service.reextract(1L, 10L, "CLAUDE");
 
-        // 프로필을 claim 한 토큰 그대로 FAILED 로 닫는다(재추출은 초기 자동 분석을 되살리지 않는다).
-        ArgumentCaptor<String> token = ArgumentCaptor.forClass(String.class);
-        verify(f.initialRunMapper).claimForRun(eq(10L), token.capture());
-        verify(f.initialRunMapper).markFailed(eq(10L), eq(token.getValue()), any());
+        // 프로필을 PENDING→FAILED 조건부 단일 UPDATE 로 원자적으로 닫는다(재추출은 초기 자동 분석을 되살리지 않는다).
+        verify(f.initialRunMapper).closePendingAsFailed(eq(10L), any());
+        verify(f.initialRunMapper, never()).claimForRun(anyLong(), any());
         // 재추출은 정상 진행: 새 추출 행 생성 + strict OCR + finalizeSucceeded(자동 분석 없음).
         verify(f.extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
         verify(f.jobPostingService).extractUploadedJobPostingStrict(1L, 10L, "PDF", posting.getUploadedFileUrl(), "CLAUDE");
@@ -292,7 +289,7 @@ class JobPostingReextractionServiceTest {
         Fixture f = new Fixture();
         f.stubFailedPdfLatest();
         when(f.initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("PENDING"));
-        when(f.initialRunMapper.claimForRun(eq(10L), any())).thenReturn(1);
+        when(f.initialRunMapper.closePendingAsFailed(eq(10L), any())).thenReturn(1);
         JobPosting posting = JobPosting.builder()
                 .id(20L).applicationCaseId(10L).revision(1)
                 .uploadedFileUrl("local:x.pdf").sourceType("PDF").build();
@@ -302,9 +299,7 @@ class JobPostingReextractionServiceTest {
 
         f.service.reextract(1L, 10L, "CLAUDE");
 
-        ArgumentCaptor<String> token = ArgumentCaptor.forClass(String.class);
-        verify(f.initialRunMapper).claimForRun(eq(10L), token.capture());
-        verify(f.initialRunMapper).markFailed(eq(10L), eq(token.getValue()), any());
+        verify(f.initialRunMapper).closePendingAsFailed(eq(10L), any());
         ArgumentCaptor<PostFailureAction> action = ArgumentCaptor.forClass(PostFailureAction.class);
         verify(f.processor).finalizeFailed(any(ApplicationCaseExtraction.class), eq(boom), action.capture());
         assertThat(action.getValue()).isSameAs(PostFailureAction.NONE);
@@ -312,12 +307,12 @@ class JobPostingReextractionServiceTest {
 
     @Test
     void rejectsWhenPendingProfileClaimLosesRaceWithoutSideEffect() {
-        // PENDING 을 읽었지만 그 사이 초기 파이프라인이 선점(claimForRun 0행) → 경합이므로 거절하고, 재추출은
-        // 시작하지 않는다(OCR·추출 행 없음). markFailed 도 없다(claim 에 실패했으므로).
+        // PENDING 을 읽었지만 그 사이 초기 파이프라인이 선점(closePendingAsFailed 0행) → 경합이므로 거절하고,
+        // 재추출은 시작하지 않는다(OCR·추출 행 없음).
         Fixture f = new Fixture();
         f.stubFailedPdfLatest();
         when(f.initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("PENDING"));
-        when(f.initialRunMapper.claimForRun(eq(10L), any())).thenReturn(0);
+        when(f.initialRunMapper.closePendingAsFailed(eq(10L), any())).thenReturn(0);
         when(f.jobPostingService.getJobPostingDomainForCase(1L, 10L, 20L)).thenReturn(JobPosting.builder()
                 .id(20L).applicationCaseId(10L).uploadedFileUrl("local:x.pdf").sourceType("PDF").build());
 
@@ -327,7 +322,6 @@ class JobPostingReextractionServiceTest {
 
         verify(f.extractionMapper, never()).insertApplicationCaseExtraction(any());
         verify(f.jobPostingService, never()).extractUploadedJobPostingStrict(any(), any(), any(), any(), any());
-        verify(f.initialRunMapper, never()).markFailed(anyLong(), any(), any());
     }
 
     // --- 실제 processor 결합 회귀 테스트: strict lifecycle(저장·상태 전이·REVIEW_REQUIRED·알림·보존)을

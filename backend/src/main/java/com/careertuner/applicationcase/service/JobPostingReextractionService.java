@@ -2,7 +2,6 @@ package com.careertuner.applicationcase.service;
 
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -175,13 +174,14 @@ public class JobPostingReextractionService {
             throw new BusinessException(ErrorCode.CONFLICT, "초기 분석이 진행 중입니다. 완료된 후 다시 시도해 주세요.");
         }
         if (INITIAL_RUN_PENDING.equals(state)) {
-            String executionToken = UUID.randomUUID().toString();
-            if (initialRunMapper.claimForRun(applicationCaseId, executionToken) != 1) {
-                // 그 사이 초기 파이프라인이 PENDING 을 선점(RUNNING) → 경합 패배로 거절.
+            // PENDING→FAILED 를 조건부 단일 UPDATE 로 원자적으로 닫는다 — claim(RUNNING) 후 markFailed 2단계
+            // 사이에 크래시가 나면 RUNNING 고착으로 reaper 전까지 수동 분석이 막히므로, 중간 RUNNING 을 아예 거치지
+            // 않는다. 0행이면 그 사이 초기 파이프라인이 PENDING 을 선점(RUNNING)/완료한 것이므로 경합으로 보고 거절.
+            int closed = initialRunMapper.closePendingAsFailed(applicationCaseId,
+                    truncate("사용자가 다른 OCR 모델로 재추출을 시작해 초기 자동 실행을 종료했습니다.", FAILURE_REASON_MAX_LENGTH));
+            if (closed != 1) {
                 throw new BusinessException(ErrorCode.CONFLICT, "초기 분석이 진행 중입니다. 완료된 후 다시 시도해 주세요.");
             }
-            initialRunMapper.markFailed(applicationCaseId, executionToken,
-                    truncate("사용자가 다른 OCR 모델로 재추출을 시작해 초기 자동 실행을 종료했습니다.", FAILURE_REASON_MAX_LENGTH));
         }
     }
 

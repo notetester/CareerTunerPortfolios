@@ -60,7 +60,8 @@ import tools.jackson.databind.ObjectMapper;
 public class ApplicationCaseAutoPipelineService {
 
     private static final String MODEL = "self-rules-v1";
-    // 초기 자동 파이프라인이 채우는 run_mode(수동 strict 재분석은 MANUAL). preferred 경로에서만 provenance 기록.
+    // 초기 자동 파이프라인이 채우는 run_mode(수동 strict 재분석은 MANUAL). preferred·AUTO 경로 모두 provenance 를
+    // 기록한다(#2 정책 A) — AUTO 는 requested=NULL 이되 actual provider·모델·attempt_path·fallback_used 를 남긴다.
     private static final String RUN_MODE_INITIAL = "INITIAL";
     // application_case_initial_run.failure_reason 컬럼 길이(VARCHAR 255)와 맞춘다. 초과 시 markFailed 가
     // Data truncation 으로 throw 되면 프로필이 FAILED 로 못 닫혀 RUNNING 에 고착되므로 반드시 컬럼 길이 이하로 자른다.
