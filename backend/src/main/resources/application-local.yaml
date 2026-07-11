@@ -27,3 +27,7 @@ langchain4j:
       base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
 
 # 프런트/리다이렉트 주소는 base(application.yaml) 기본값이 이미 localhost — 재정의 불필요.
+careertuner:
+  oauth:
+    # mock OAuth는 loopback API 주소를 쓰는 local 프로파일에서만 명시적으로 허용한다.
+    mock-enabled: ${OAUTH_MOCK_ENABLED:true}
