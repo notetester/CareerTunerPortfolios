@@ -11,6 +11,7 @@ import {
   waitIceGatheringComplete,
 } from "../api/micHandoffApi";
 import { MicLevelMeter } from "../components/MicLevelMeter";
+import { useAppLockCleanup } from "@/platform/appLockEvents";
 
 type Phase = "idle" | "joining" | "connecting" | "connected" | "ended" | "error";
 
@@ -141,6 +142,8 @@ export function MicRemotePage() {
     if (codeRef.current) void closeMicHandoff(codeRef.current).catch(() => undefined);
     setPhase("ended");
   };
+
+  useAppLockCleanup(end);
 
   // QR로 열었는데 이 폰 브라우저에 로그인 세션이 없으면 API(같은계정 검증)가 막힌다 → 로그인 유도.
   if (!isAuthenticated) {

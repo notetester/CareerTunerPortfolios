@@ -31,6 +31,7 @@ import type {
 import { getScoreColor } from "../types/interview";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
+import { useAppLockCleanup } from "@/platform/appLockEvents";
 
 type Status = "idle" | "recording" | "scoring" | "done";
 
@@ -134,6 +135,13 @@ export function LocalVoiceInterviewTab({ session }: { session: InterviewSession 
     sttRef.current?.dispose();
     sttRef.current = null;
   };
+
+  useAppLockCleanup(() => {
+    cleanup();
+    window.speechSynthesis?.cancel();
+    setStatus("idle");
+    setNote("앱 잠금으로 진행 중이던 녹음을 종료했습니다.");
+  });
 
   // 녹음 시작 신호음 (짧은 비프, Web Audio — API 0). 화면 안 봐도 답변 타이밍 캐치.
   const beep = () => {

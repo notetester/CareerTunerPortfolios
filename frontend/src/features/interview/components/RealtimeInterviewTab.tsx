@@ -37,6 +37,7 @@ import { getScoreColor } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
+import { useAppLockCleanup } from "@/platform/appLockEvents";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
@@ -122,6 +123,12 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     micRef.current = null;
     setMicStream(null);
   };
+
+  useAppLockCleanup(() => {
+    cleanup();
+    setStatus("idle");
+    setError("앱 잠금으로 실시간 면접 연결을 종료했습니다.");
+  });
 
   const pushLine = useCallback((line: TranscriptLine) => {
     if (!line.text.trim()) return;

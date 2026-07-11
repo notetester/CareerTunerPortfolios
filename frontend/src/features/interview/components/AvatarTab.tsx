@@ -39,6 +39,7 @@ import { getScoreColor } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
+import { useAppLockCleanup } from "@/platform/appLockEvents";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
@@ -152,6 +153,12 @@ export function AvatarTab({
     webcamRef.current?.getTracks().forEach((t) => t.stop());
     webcamRef.current = null;
   };
+
+  useAppLockCleanup(() => {
+    cleanup();
+    setStatus("idle");
+    setError("앱 잠금으로 화상 면접 연결을 종료했습니다.");
+  });
 
   const start = async () => {
     if (!session) return;

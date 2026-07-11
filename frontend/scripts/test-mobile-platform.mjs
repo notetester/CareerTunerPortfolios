@@ -48,4 +48,8 @@ assert(server.resolveServerOverride("custom", "https://example.com/api?token=val
 assert(!server.serverOverrideChanged("https://example.com/api/", "https://example.com/api"), "끝 슬래시만 다른 주소는 동일해야 한다");
 assert(server.serverOverrideChanged(null, aws.override), "빌드 기본값과 AWS 오버라이드는 변경으로 판단해야 한다");
 
+const apiBaseSource = await readFile(resolve("src/app/lib/apiBase.ts"), "utf8");
+assert(apiBaseSource.includes('resolveServerOverride("custom", stored'), "저장된 override도 읽을 때 정책 검증해야 한다");
+assert(apiBaseSource.includes("clearTokens();"), "안전하지 않은 기존 override는 토큰과 함께 폐기해야 한다");
+
 console.log("PASS mobile platform tests");

@@ -39,6 +39,7 @@ import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
 import interviewerPlaceholder from "../assets/interviewer-placeholder.png";
+import { useAppLockCleanup } from "@/platform/appLockEvents";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
@@ -149,6 +150,12 @@ export function LocalAvatarTab({
     webcamRef.current?.getTracks().forEach((t) => t.stop());
     webcamRef.current = null;
   };
+
+  useAppLockCleanup(() => {
+    cleanup();
+    setStatus("idle");
+    setNote("앱 잠금으로 진행 중이던 화상 녹화를 종료했습니다.");
+  });
 
   const start = async () => {
     if (!session) return;
