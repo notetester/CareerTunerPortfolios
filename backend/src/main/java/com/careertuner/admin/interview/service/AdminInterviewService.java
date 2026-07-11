@@ -13,6 +13,7 @@ import com.careertuner.admin.interview.dto.AdminInterviewSessionPage;
 import com.careertuner.admin.interview.dto.AdminInterviewSessionRow;
 import com.careertuner.admin.interview.dto.AdminInterviewSummary;
 import com.careertuner.admin.interview.mapper.AdminInterviewMapper;
+import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -33,6 +34,7 @@ public class AdminInterviewService {
     private final AdminInterviewMapper adminInterviewMapper;
     private final InterviewMapper interviewMapper;
     private final InterviewMediaService mediaService;
+    private final AdminActionLogService actionLogService;
 
     @Transactional(readOnly = true)
     public AdminInterviewSessionPage sessions(AuthUser authUser, String keyword, String mode, Boolean hasReport,
@@ -82,10 +84,23 @@ public class AdminInterviewService {
     @Transactional
     public void updateMemo(AuthUser authUser, Long id, String memo) {
         requireAdmin(authUser);
-        if (adminInterviewMapper.findSession(id) == null) {
+        AdminInterviewSessionRow session = adminInterviewMapper.findSession(id);
+        if (session == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "면접 세션을 찾을 수 없습니다.");
         }
-        adminInterviewMapper.updateAdminMemo(id, memo);
+        String beforeMemo = adminInterviewMapper.findAdminMemoForUpdate(id);
+        String normalizedMemo = blankToNull(memo);
+        if (adminInterviewMapper.updateAdminMemo(id, normalizedMemo) != 1) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 세션을 찾을 수 없습니다.");
+        }
+        actionLogService.record(
+                authUser,
+                session.getUserId(),
+                "INTERVIEW_MEMO_UPDATED",
+                "INTERVIEW_SESSION",
+                beforeMemo,
+                normalizedMemo,
+                "면접 운영 메모 수정");
     }
 
     private static void requireAdmin(AuthUser authUser) {

@@ -23,6 +23,7 @@ import com.careertuner.auth.dto.MeResponse;
 import com.careertuner.auth.dto.MfaLoginStatusResponse;
 import com.careertuner.auth.dto.MfaLoginVerifyRequest;
 import com.careertuner.auth.dto.OAuthCallbackResult;
+import com.careertuner.auth.dto.OAuthProviderAvailabilityResponse;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RegisterRequest;
@@ -523,6 +524,18 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없습니다.");
         }
         return buildMeResponse(user);
+    }
+
+    @Override
+    public OAuthProviderAvailabilityResponse oauthProviders() {
+        if (socialOAuthService.isMockEnabled()) {
+            return new OAuthProviderAvailabilityResponse(true, true, true);
+        }
+        return new OAuthProviderAvailabilityResponse(
+                socialOAuthService.isConfigured("GOOGLE"),
+                socialOAuthService.isConfigured("KAKAO"),
+                socialOAuthService.isConfigured("NAVER")
+        );
     }
 
     @Override

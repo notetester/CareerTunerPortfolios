@@ -5,6 +5,9 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { requestPasswordReset } from "@/app/auth/authApi";
+import type { SocialProvider } from "@/app/auth/AuthContext";
+import { useOAuthProviderAvailability } from "@/app/auth/useOAuthProviderAvailability";
+import { useOutageFallback } from "@/app/lib/outageFallback";
 import { getAccountInfo, getSocialLinkUrl, requestEmailRegistration, setLoginId, setPhone, unlinkSocial } from "../api/nicknameProfileApi";
 import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
 
@@ -14,6 +17,12 @@ import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
  * 아이디는 설정 후 변경 불가, 전화번호는 언제든 변경 가능(인증은 선택적·스텁).
  */
 export function AccountInfoCard() {
+  const { socialOAuthBlocked } = useOutageFallback();
+  const {
+    providers: oauthProviders,
+    loading: oauthProvidersLoading,
+    error: oauthProvidersError,
+  } = useOAuthProviderAvailability();
   const [info, setInfo] = useState<AccountInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -308,6 +317,8 @@ export function AccountInfoCard() {
           <div className="flex flex-wrap gap-2">
             {["GOOGLE", "KAKAO", "NAVER"].map((provider) => {
               const linked = info?.linkedProviders.includes(provider) ?? false;
+              const availabilityKey = provider.toLowerCase() as SocialProvider;
+              const providerAvailable = oauthProviders[availabilityKey];
               return (
                 <div key={provider} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-card px-2 py-1">
                   <Badge className={linked ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}>
@@ -318,8 +329,9 @@ export function AccountInfoCard() {
                       size="sm"
                       variant="ghost"
                       className="h-7 px-2 text-xs"
-                      disabled={socialBusy === provider}
+                      disabled={socialBusy !== null || socialOAuthBlocked}
                       onClick={() => void unlinkProvider(provider)}
+                      title={socialOAuthBlocked ? "운영 서비스 복구 후 연결을 해제할 수 있습니다." : undefined}
                     >
                       해제
                     </Button>
@@ -328,8 +340,13 @@ export function AccountInfoCard() {
                       size="sm"
                       variant="ghost"
                       className="h-7 px-2 text-xs"
-                      disabled={socialBusy === provider}
+                      disabled={socialBusy !== null || socialOAuthBlocked || oauthProvidersLoading || !providerAvailable}
                       onClick={() => void linkProvider(provider)}
+                      title={socialOAuthBlocked
+                        ? "운영 서비스 복구 후 새 소셜 계정을 연결할 수 있습니다."
+                        : !oauthProvidersLoading && !providerAvailable
+                          ? `${PROVIDER_LABELS[provider] ?? provider} 로그인 설정이 완료되지 않았습니다.`
+                          : undefined}
                     >
                       연결
                     </Button>
@@ -338,6 +355,22 @@ export function AccountInfoCard() {
               );
             })}
           </div>
+          {socialOAuthBlocked && (
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              장애 체험 중에는 소셜 계정 연결을 변경할 수 없습니다.
+            </p>
+          )}
+          {!socialOAuthBlocked && oauthProvidersError && (
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              소셜 로그인 상태를 확인하지 못해 새 계정 연결을 잠시 사용할 수 없습니다.
+            </p>
+          )}
+          {!socialOAuthBlocked && !oauthProvidersLoading && !oauthProvidersError
+            && ["GOOGLE", "KAKAO", "NAVER"].some((provider) => !oauthProviders[provider.toLowerCase() as SocialProvider]) && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                설정이 완료된 소셜 제공자만 새로 연결할 수 있습니다.
+              </p>
+            )}
           <p className="text-xs text-slate-400">
             남는 로그인 수단이 없으면 해제가 제한됩니다.
           </p>

@@ -109,6 +109,15 @@
          WHERE cr.id = #{id}
     </select>
 
+    <select id="findCorrectionForUpdate" resultType="com.careertuner.admin.correction.dto.AdminCorrectionDetail">
+        SELECT id,
+               user_id,
+               admin_memo
+          FROM correction_request
+         WHERE id = #{id}
+           FOR UPDATE
+    </select>
+
     <select id="findAiFailures" resultType="com.careertuner.admin.correction.dto.AdminCorrectionFailureRow">
         SELECT aul.id,
                aul.user_id,

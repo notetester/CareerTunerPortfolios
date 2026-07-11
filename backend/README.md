@@ -21,6 +21,7 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
   운영 관리자는 별도 one-time bootstrap 절차와 운영 비밀값으로 생성·승격한다.
 - 기존 DB를 갱신할 때는 배포 절차에 명시된 `src/main/resources/db/patches/*.sql`을 적용한다. Sites 반환
   주소 연동에는 `20260711_auth_frontend_return_client.sql`이 필요하며, 기존 이메일 토큰은 `primary`로 호환된다.
+  동일 사용자의 소셜 provider 중복 연결 방지는 `20260711_user_social_provider_unique.sql`을 적용한다.
 - 관리자 경계 정합 보정은 애플리케이션 쓰기를 멈춘 뒤
   `20260711_admin_active_assignment_unique.sql` → `20260711_admin_soft_delete_columns.sql` →
   `20260711_admin_permission_crud_catalog.sql` 순서로 준비한다.
@@ -106,6 +107,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | GET | `/api/auth/check/email?value=` | 이메일 중복 확인 | - |
 | GET | `/api/auth/verify-email?token=` | 이메일 인증 → 프런트로 리다이렉트 | - |
 | POST | `/api/auth/email/resend?email=` | 인증메일 재발송 | - |
+| GET | `/api/auth/oauth/providers` | 현재 환경에서 사용 가능한 소셜 로그인 제공자 조회 | - |
 | GET | `/api/auth/oauth/{provider}` | 소셜 로그인 시작(`kakao`/`naver`/`google`) | - |
 | GET | `/api/auth/oauth/{provider}/callback` | 소셜 콜백 → 프런트로 토큰 전달 | - |
 
@@ -227,11 +229,12 @@ revision으로 저장한다. `job_posting`은 `(application_case_id, revision)` 
 | PUT | `/api/admin/corrections/{id}/memo` | 첨삭 운영 메모 저장·삭제 | Bearer(ADMIN) |
 | GET | `/api/admin/credits` | 크레딧 변동 원장 검색·페이지 조회 | Bearer(ADMIN) |
 | GET | `/api/admin/credits/summary` | 크레딧 지급·차감·잔액 현황 집계 | Bearer(ADMIN) |
-| POST | `/api/admin/credits/adjust` | 관리자 크레딧 증감과 원장·감사 로그 기록 | Bearer(ADMIN) |
+| POST | `/api/admin/credits/adjust` | 관리자 크레딧 증감과 원장·감사 로그 기록(`requestId` 재시도 멱등 처리) | Bearer(ADMIN) |
 
 E 자체 모델은 버전이 고정된 3B F16 모델(`careertuner-e-correction-3b:delivery-s-f16-20260708`)과 Ollama의 JSON object 응답 모드를 사용한다. 서버가 JSON 키, 원문 분량, 문단 보존, `changes` 3개 이상 계약을 검증하며, 첫 응답이 계약을 어기면 같은 3B에 실패 사유와 이전 출력을 전달해 한 번 repair한다. 구조화 출력 편차를 줄이기 위해 자체 모델의 기본 temperature는 `0.0`이다. 첨삭 화면 진입 또는 AutoPrep에서 WRITE 사용이 예견되면 이 3B 모델만 비동기로 워밍하며, 워밍은 크레딧·사용권·AI 사용 로그를 차감하지 않는다. 자체 모델 실패 또는 시간 예산 소진 시 Anthropic을 호출하고, Anthropic도 실패하거나 미설정이면 OpenAI로 전환한다. 운영 연결 시 `CAREERTUNER_CORRECTION_AI_PROVIDER=self`, `CAREERTUNER_CORRECTION_AI_SELF_BASE_URL=http://localhost:11434/v1`을 설정한다. Anthropic에는 `ANTHROPIC_API_KEY`, OpenAI 최종 폴백에는 `OPENAI_API_KEY`가 필요하다.
 
 기존 DB에는 `db/patches/20260705_e_correction_admin_memo.sql`을 먼저 적용해야 첨삭 운영 메모 API를 사용할 수 있다. 첨삭 실패는 성공 결과 테이블이 아니라 `ai_usage_log`에 기록되므로 관리자 화면도 성공 이력과 실패 로그를 별도 데이터 소스로 조회한다.
+관리자 크레딧 조정 배포 전에는 `db/patches/20260711_e_admin_credit_idempotency.sql`을 적용해야 한다. 이 패치는 `request_key`와 재시도 방지 unique index를 추가하고 과거 DB의 `feature_type` 길이를 현재 스키마와 맞춘다.
 
 ## C 분석·대시보드 API
 

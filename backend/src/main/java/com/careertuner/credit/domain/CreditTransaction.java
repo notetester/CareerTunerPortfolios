@@ -22,5 +22,6 @@ public class CreditTransaction {
     private int balanceAfter;
     private String featureType;
     private String reason;
+    private String requestKey;
     private LocalDateTime createdAt;
 }

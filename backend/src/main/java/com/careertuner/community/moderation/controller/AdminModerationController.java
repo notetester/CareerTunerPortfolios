@@ -1,6 +1,7 @@
 package com.careertuner.community.moderation.controller;
 
 import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+import com.careertuner.admin.permission.service.EffectivePermissionService;
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.community.moderation.domain.ModerationSetting;
 import com.careertuner.community.moderation.domain.Strictness;
@@ -50,15 +53,18 @@ public class AdminModerationController {
     private final AdminModerationService adminModerationService;
     private final AdminModerationBackfillService backfillService;
     private final ModerationSettingService settingService;
+    private final EffectivePermissionService effectivePermissionService;
 
     public AdminModerationController(PostModerationService moderationService,
                                      AdminModerationService adminModerationService,
                                      AdminModerationBackfillService backfillService,
-                                     ModerationSettingService settingService) {
+                                     ModerationSettingService settingService,
+                                     EffectivePermissionService effectivePermissionService) {
         this.moderationService = moderationService;
         this.adminModerationService = adminModerationService;
         this.backfillService = backfillService;
         this.settingService = settingService;
+        this.effectivePermissionService = effectivePermissionService;
     }
 
     /**
@@ -171,13 +177,21 @@ public class AdminModerationController {
 
     /** 수동 검토 결정. HIDE는 PUBLISHED→HIDDEN, KEEP은 게시 상태를 유지한다. */
     @PatchMapping("/moderation/review-queue/{postId}")
-    @RequireAdminPermission({"CONTENT_UPDATE"})
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<Void> decideReviewQueue(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long postId,
             @RequestBody ModerationReviewDecisionRequest request
     ) {
-        adminModerationService.decideReviewQueue(authUser.id(), postId, request.action());
+        String action = request == null ? null : request.action();
+        if (action != null
+                && "HIDE".equalsIgnoreCase(action.trim())
+                && !"SUPER_ADMIN".equals(authUser.role())
+                && !effectivePermissionService.hasAny(authUser.id(), "CONTENT_UPDATE")) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "게시글을 숨기려면 콘텐츠 수정 권한이 추가로 필요합니다.");
+        }
+        adminModerationService.decideReviewQueue(authUser.id(), postId, action);
         return ApiResponse.ok(null);
     }
 

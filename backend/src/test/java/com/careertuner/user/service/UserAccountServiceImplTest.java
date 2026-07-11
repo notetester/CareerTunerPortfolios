@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,6 +14,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import com.careertuner.auth.domain.EmailVerification;
 import com.careertuner.auth.mapper.AuthMapper;
@@ -147,8 +149,7 @@ class UserAccountServiceImplTest {
     void unlinkSocial_rejectsWhenNoLoginMethodRemains() {
         User socialOnly = User.builder().id(1L).email("kakao_1@social.careertuner")
                 .name("소셜").passwordEnabled(false).emailVerified(false).build();
-        when(mapper.findById(1L)).thenReturn(socialOnly);
-        when(mapper.countLinkedProviders(1L)).thenReturn(1);
+        when(mapper.findByIdForUpdate(1L)).thenReturn(socialOnly);
         when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO"));
 
         assertThatThrownBy(() -> service.unlinkSocial(1L, "kakao"))
@@ -159,13 +160,30 @@ class UserAccountServiceImplTest {
     }
 
     @Test
+    void unlinkSocial_rejectsDuplicateRowsOfSameProviderAsRemainingMethod() {
+        User socialOnly = User.builder().id(1L).email("kakao_1@social.careertuner")
+                .name("소셜").passwordEnabled(false).emailVerified(false).build();
+        when(mapper.findByIdForUpdate(1L)).thenReturn(socialOnly);
+        when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO", "KAKAO"));
+
+        assertThatThrownBy(() -> service.unlinkSocial(1L, "kakao"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+        verify(mapper, never()).deleteSocial(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void unlinkSocial_allowsWhenPasswordLoginRemains() {
+        when(mapper.findByIdForUpdate(1L)).thenReturn(user(1L, "gildong", null));
         when(mapper.findById(1L)).thenReturn(user(1L, "gildong", null));
-        when(mapper.countLinkedProviders(1L)).thenReturn(1);
         when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO"));
 
         service.unlinkSocial(1L, "kakao");
 
-        verify(mapper).deleteSocial(1L, "KAKAO");
+        InOrder order = inOrder(mapper);
+        order.verify(mapper).findByIdForUpdate(1L);
+        order.verify(mapper).findLinkedProviders(1L);
+        order.verify(mapper).deleteSocial(1L, "KAKAO");
     }
 }

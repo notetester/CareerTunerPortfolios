@@ -83,7 +83,13 @@ public class AdminCorrectionService {
     @Transactional
     public void updateMemo(AuthUser authUser, Long id, String memo) {
         AdminAccess.requireAdmin(authUser);
-        AdminCorrectionDetail before = requireCorrection(id);
+        if (id == null || id <= 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "첨삭 요청 ID가 올바르지 않습니다.");
+        }
+        AdminCorrectionDetail before = mapper.findCorrectionForUpdate(id);
+        if (before == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "첨삭 요청을 찾을 수 없습니다.");
+        }
         String normalizedMemo = blankToNull(memo);
         if (normalizedMemo != null && normalizedMemo.length() > 2000) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "운영 메모는 2000자 이하여야 합니다.");

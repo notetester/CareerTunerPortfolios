@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS user_social (
     linked_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_user_social_provider (provider, provider_user_id),
+    UNIQUE KEY uk_user_social_user_provider (user_id, provider),
     KEY idx_user_social_user (user_id),
     CONSTRAINT fk_user_social_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
@@ -1522,9 +1523,11 @@ CREATE TABLE IF NOT EXISTS credit_transaction (
     balance_after   INT NOT NULL,
     feature_type    VARCHAR(80) NULL,
     reason          VARCHAR(255) NULL,
+    request_key     VARCHAR(120) NULL COMMENT '클라이언트 재시도 중복 반영 방지 키',
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_credit_transaction_ai_usage_type (ai_usage_log_id, type),
+    UNIQUE KEY uq_credit_transaction_user_type_request (user_id, type, request_key),
     KEY idx_credit_transaction_user (user_id),
     CONSTRAINT fk_credit_transaction_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_credit_transaction_ai_usage FOREIGN KEY (ai_usage_log_id) REFERENCES ai_usage_log (id) ON DELETE SET NULL
