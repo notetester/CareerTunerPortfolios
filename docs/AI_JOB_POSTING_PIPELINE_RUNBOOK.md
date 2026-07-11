@@ -114,6 +114,114 @@ User review:
 - Marks quality as `PASS`, `qualityScore=100`, and clears fallback flags.
 - Continues the same automatic self-AI analysis pipeline after confirmation.
 
+## Extraction Processing Timing and Status Polling
+
+### Overview
+
+`createFromJobPosting()` is **asynchronous**: it inserts an application case with default metadata and queues an extraction job, then returns immediately. The actual parsing and metadata extraction happen in the background via a scheduled polling worker.
+
+### Timing Breakdown
+
+#### 1. Case Creation (Synchronous)
+- **File**: `ApplicationCaseServiceImpl.java:99-119`
+- **Action**: Insert `application_case` with `companyName = "기업명 확인 필요"` (default)
+- **Returned immediately to client**
+- **Extraction job status**: `QUEUED`
+
+#### 2. Background Worker Scheduling
+- **Trigger**: `@Scheduled` polling (NOT @Async or event-driven)
+- **File**: `ApplicationCaseExtractionWorker.java:68-77`
+- **Schedule**:
+  - Initial delay: 5000ms (5 seconds, default)
+  - Fixed delay: 5000ms (5 seconds, default)
+  - Configurable via `careertuner.extraction.worker.initial-delay-ms` and `careertuner.extraction.worker.fixed-delay-ms`
+- **Batch size**: 5 jobs per poll cycle
+
+#### 3. Job Claim Mechanism
+- **File**: `ApplicationCaseExtractionMapper.xml:122-138`
+- **Action**: `QUEUED → RUNNING` state transition
+- **SQL**: Atomic update with `WHERE status = 'QUEUED'` to prevent race conditions
+- **Set**: `started_at = NOW()` to record processing start time
+
+#### 4. Extraction and Metadata Parsing
+- **File**: `ApplicationCaseExtractionWorker.java:123-160`
+- **Actions**:
+  - Extract posting text based on source type (TEXT, URL, PDF, IMAGE)
+  - Parse company name and job title via regex and labeled-line detection
+  - Run quality gate evaluation
+- **Output**: `ExtractionResult` with parsed metadata and quality status
+
+#### 5. Completion and Application Case Update
+- **File**: `ApplicationCaseExtractionWorker.java:162-226`
+- **Condition**: Only when `status == SUCCEEDED && qualityStatus == PASS`
+- **File**: `ApplicationCaseExtractionMapper.xml:140-155`
+- **Actions**:
+  - Set `status = SUCCEEDED`, `finished_at = NOW()`
+  - **Update `application_case.companyName` and `application_case.jobTitle`** only in this phase
+  - Continue automatic analysis pipeline
+
+### Status Polling for Onboarding Chatbot
+
+#### Extraction Status Values
+- **QUEUED**: Waiting to be processed by worker
+- **RUNNING**: Currently being processed (includes `startedAt` timestamp)
+- **SUCCEEDED**: Processing complete; check `qualityStatus`
+- **FAILED**: Processing failed; see `errorMessage`
+
+#### Quality Status Values (upon SUCCEEDED)
+- **PASS**: Extraction successful, automatic analysis will proceed, metadata ready
+- **REVIEW_REQUIRED**: Extraction successful but quality issues detected; user review required before automatic analysis
+- **FAILED**: Internal state (extraction marked as FAILED if quality gate fails)
+
+#### Polling Strategy for Chatbot
+1. Call createFromJobPosting() → returns extraction with status='QUEUED'
+2. Poll getLatestJobPostingExtraction(userId, caseId) in a loop:
+   - If status == 'QUEUED' || status == 'RUNNING' → continue polling
+   - If status == 'FAILED' → show error, allow retry
+   - If status == 'SUCCEEDED':
+     - If qualityStatus == 'PASS' → read companyName/jobTitle from ApplicationCase (metadata is now populated)
+     - If qualityStatus == 'REVIEW_REQUIRED' → prompt user to review; do NOT read companyName yet
+3. After user submits review (POST /api/application-cases/{id}/job-posting/extraction/review):
+   - qualityStatus transitions to 'PASS'
+   - companyName/jobTitle become available
+
+#### Response Fields Available for Polling
+- **File**: `ApplicationCaseExtractionResponse.java:7-26`
+- **Key fields**:
+  - `status`: Current extraction state (QUEUED, RUNNING, SUCCEEDED, FAILED)
+  - `qualityStatus`: Quality assessment result (PASS, REVIEW_REQUIRED, null until completion)
+  - `startedAt`: Timestamp when worker claimed the job
+  - `finishedAt`: Timestamp when extraction completed
+  - `errorMessage`: Populated if status == FAILED
+  - `qualityReportJson`: Detailed quality metrics
+
+### Guaranteed Timing Properties
+
+- **No synchronous guarantee**: Metadata is not available immediately after case creation
+- **Eventual consistency**: Within ~5 seconds (initial delay) + processing time
+- **Worst-case**: ~5 seconds initial wait + ~5 seconds polling interval + extraction duration
+- **Best-case**: Worker picks up job within 5 seconds of creation, metadata ready within 10 seconds total
+
+### When companyName/jobTitle Become Available
+
+**Only after**:
+1. `extraction.status == SUCCEEDED`
+2. `extraction.qualityStatus == PASS`
+3. `ApplicationCaseExtractionWorker.completeSucceeded()` has executed the `applicationCaseMapper.updateApplicationCase()` call
+
+**NOT available**:
+- Immediately after `createFromJobPosting()` returns
+- When `qualityStatus == REVIEW_REQUIRED` (user review required first)
+- When extraction is still QUEUED or RUNNING
+
+### Implications for Chatbot Onboarding
+
+1. After creating a case, **always poll** `getLatestJobPostingExtraction()` to confirm metadata is ready
+2. **Do not read** `application_case.companyName` until extraction completes with `PASS`
+3. If user sees prompt "기업명 확인 필요" in UI, it means extraction has not yet completed
+4. For REVIEW_REQUIRED results, guide user through the extraction review flow before proceeding
+
+
 ## Automatic Self-AI Pipeline
 
 When extraction quality is `PASS`, Spring continues the commercial service flow without calling OpenAI:
@@ -302,3 +410,4 @@ Generate the DB evidence with `22_verify_mysql_pipeline_schema.py` after applyin
 - Keep at least 43 real postings in the regression set and expand it when more owned samples are available.
 - Run worker unavailable, OCR model missing, malformed worker JSON, and long-file timeout drills in a staging environment.
 - Add production dashboards for quality status distribution and fallback count.
+
