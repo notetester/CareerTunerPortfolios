@@ -389,10 +389,13 @@
     </update>
 
     <!-- 면접 질문 추출 중복 방지: source 기준 InterviewKnowledge 삭제 -->
-    <delete id="deleteInterviewKnowledgeBySource">
-        DELETE FROM interview_knowledge
-         WHERE source = #{source}
-    </delete>
+    <update id="deleteInterviewKnowledgeBySource">
+        UPDATE interview_knowledge
+        SET deleted_at = COALESCE(deleted_at, NOW()),
+            indexed = 0
+        WHERE source = #{source}
+          AND deleted_at IS NULL
+    </update>
 
     <!-- ── 챗봇 에이전트 검색용 임베딩 (community_post_embedding) ── -->
 

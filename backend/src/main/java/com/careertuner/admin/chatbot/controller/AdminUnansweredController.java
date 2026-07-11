@@ -31,7 +31,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN", "AI_OPERATION_MANAGE", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminUnansweredController {
 
@@ -49,6 +49,7 @@ public class AdminUnansweredController {
 
     /** 그룹 상태변경(REVIEWED/DISMISSED). 대표 id 가 속한 토픽 전체를 옮긴다. */
     @PatchMapping("/unanswered/{id}/status")
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<Void> updateStatus(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -59,6 +60,7 @@ public class AdminUnansweredController {
 
     /** FAQ 답변 초안 생성(저장 안 함, 반환만). 운영자가 검토·수정 후 등록한다. */
     @PostMapping("/unanswered/{id}/draft")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<FaqDraftResponse> generateDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
@@ -67,6 +69,7 @@ public class AdminUnansweredController {
 
     /** 다듬은 초안을 FAQ로 등록하고 원 질문 그룹을 CONVERTED 로 표시. */
     @PostMapping("/unanswered/{id}/convert")
+    @RequireAdminPermission({"CONTENT_CREATE"})
     public ApiResponse<AdminFaqResponse> convert(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,

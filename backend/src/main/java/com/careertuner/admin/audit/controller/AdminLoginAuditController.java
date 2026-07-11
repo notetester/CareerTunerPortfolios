@@ -28,7 +28,7 @@ import lombok.RequiredArgsConstructor;
 /** 로그인 감사 그리드 API — 조회 전용(목록 + 내보내기). */
 @RestController
 @RequestMapping("/api/admin/audit/logins")
-@RequireAdminPermission({"SECURITY_LOG_READ", "AUDIT_ADMIN"})
+@RequireAdminPermission({"AUDIT_READ"})
 @RequiredArgsConstructor
 public class AdminLoginAuditController {
 

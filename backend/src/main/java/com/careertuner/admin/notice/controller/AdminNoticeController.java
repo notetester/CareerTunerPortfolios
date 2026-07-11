@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/notices")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 @RequiredArgsConstructor
 public class AdminNoticeController {
 
@@ -36,6 +36,7 @@ public class AdminNoticeController {
     }
 
     @PostMapping
+    @RequireAdminPermission({"CONTENT_CREATE"})
     public ApiResponse<AdminNoticeResponse> createNotice(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminNoticeRequest request) {
@@ -43,6 +44,7 @@ public class AdminNoticeController {
     }
 
     @PutMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminNoticeResponse> updateNotice(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -51,6 +53,7 @@ public class AdminNoticeController {
     }
 
     @DeleteMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_DELETE"})
     public ApiResponse<Void> deleteNotice(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

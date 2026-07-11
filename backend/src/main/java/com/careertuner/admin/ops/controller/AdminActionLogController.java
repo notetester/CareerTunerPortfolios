@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/action-logs")
-@RequireAdminPermission({"ADMIN_AUDIT_READ", "AUDIT_ADMIN", "POLICY_ADMIN"})
+@RequireAdminPermission({"AUDIT_READ"})
 @RequiredArgsConstructor
 public class AdminActionLogController {
 

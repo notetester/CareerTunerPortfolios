@@ -38,6 +38,7 @@
           FROM legal_document_version
          WHERE doc_type = #{docType}
            AND status = 'PUBLISHED'
+           AND deleted_at IS NULL
            AND effective_date &lt;= (UTC_TIMESTAMP() + INTERVAL 9 HOUR)
          ORDER BY effective_date DESC, published_at DESC, id DESC
          LIMIT 1
@@ -47,6 +48,7 @@
         SELECT id, version_id, seq, title, body
           FROM legal_clause
          WHERE version_id = #{versionId}
+           AND deleted_at IS NULL
          ORDER BY seq ASC, id ASC
     </select>
 

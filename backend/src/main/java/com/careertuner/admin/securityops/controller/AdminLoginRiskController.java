@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/security/login-risk-policy")
-@RequireAdminPermission({"SECURITY_LOG_READ", "AUDIT_ADMIN", "BLOCK_MANAGE"})
+@RequireAdminPermission({"SECURITY_READ"})
 @RequiredArgsConstructor
 public class AdminLoginRiskController {
 
@@ -41,7 +41,7 @@ public class AdminLoginRiskController {
     }
 
     @PatchMapping
-    @RequireAdminPermission({"BLOCK_MANAGE"})
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<LoginRiskPolicy> update(@AuthenticationPrincipal AuthUser authUser,
                                                @RequestBody LoginRiskPolicyRequest request) {
         AdminAccess.requireAdmin(authUser);

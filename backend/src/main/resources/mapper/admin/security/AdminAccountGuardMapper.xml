@@ -3,11 +3,24 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.admin.common.security.AdminAccountGuardMapper">
 
-    <select id="lockActiveSuperAdminIds" resultType="long">
+    <select id="lockSafeActiveSuperAdminIds" resultType="long">
         SELECT id
         FROM users
         WHERE role = 'SUPER_ADMIN'
           AND status = 'ACTIVE'
+          AND email_verified = 1
+          AND password_enabled = 1
+          AND password IS NOT NULL
+          AND CHAR_LENGTH(password) = 60
+          AND password REGEXP '^\\$2[aby]\\$1[0-4]\\$[./A-Za-z0-9]{53}$'
+          AND email NOT IN (
+              'admin@careertuner.dev',
+              'jiwon.kim@careertuner.dev',
+              'seoyeon.lee@careertuner.dev',
+              'minsu.park@careertuner.dev',
+              'pending@careertuner.dev'
+          )
+          AND password &lt;&gt; '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja'
         ORDER BY id
         FOR UPDATE
     </select>
@@ -18,5 +31,25 @@
         FROM users
         WHERE id = #{userId}
         FOR UPDATE
+    </select>
+
+    <select id="isSafeSuperAdminPromotionCandidate" resultType="boolean">
+        SELECT COUNT(*) = 1
+        FROM users
+        WHERE id = #{userId}
+          AND status = 'ACTIVE'
+          AND email_verified = 1
+          AND password_enabled = 1
+          AND password IS NOT NULL
+          AND CHAR_LENGTH(password) = 60
+          AND password REGEXP '^\\$2[aby]\\$1[0-4]\\$[./A-Za-z0-9]{53}$'
+          AND password &lt;&gt; '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja'
+          AND email NOT IN (
+              'admin@careertuner.dev',
+              'jiwon.kim@careertuner.dev',
+              'seoyeon.lee@careertuner.dev',
+              'minsu.park@careertuner.dev',
+              'pending@careertuner.dev'
+          )
     </select>
 </mapper>

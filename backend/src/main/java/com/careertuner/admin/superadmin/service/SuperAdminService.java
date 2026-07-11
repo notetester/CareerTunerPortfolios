@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +14,8 @@ import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.admin.common.security.AdminAccountMutationGuard;
 import com.careertuner.admin.common.security.AdminAccountState;
 import com.careertuner.admin.ops.service.AdminActionLogService;
+import com.careertuner.admin.permission.catalog.AdminPermissionCatalog;
+import com.careertuner.admin.permission.catalog.AdminPermissionCatalog.Action;
 import com.careertuner.admin.superadmin.dto.AdminAccountRow;
 import com.careertuner.admin.superadmin.dto.AdminGroupRequest;
 import com.careertuner.admin.superadmin.dto.AdminPermissionAuditRow;
@@ -35,31 +39,19 @@ public class SuperAdminService {
     private static final Set<String> ADMIN_ROLES = Set.of("USER", "ADMIN", "SUPER_ADMIN");
     private static final Map<String, List<String>> ROLE_PERMISSION_CODES = Map.of(
             "USER", List.of(),
-            "ADMIN", List.of(
-                    "MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN",
-                    "USER_READ", "PROFILE_READ", "CONSENT_READ", "AI_USAGE_READ", "SECURITY_LOG_READ",
-                    "USER_STATUS_WRITE", "BLOCK_MANAGE", "EMAIL_AUDIT_READ", "ADMIN_AUDIT_READ",
-                    "BILLING_READ", "BILLING_WRITE", "CONTENT_MANAGE", "AI_OPERATION_MANAGE",
-                    "ANALYSIS_READ", "INTERVIEW_READ"),
-            "SUPER_ADMIN", List.of("USER_READ", "PROFILE_READ", "CONSENT_READ", "AI_USAGE_READ", "SECURITY_LOG_READ",
-                    "USER_STATUS_WRITE", "BLOCK_MANAGE", "EMAIL_AUDIT_READ", "ADMIN_AUDIT_READ",
-                    "BILLING_READ", "BILLING_WRITE", "CONTENT_MANAGE", "AI_OPERATION_MANAGE",
-                    "ANALYSIS_READ", "INTERVIEW_READ", "MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN",
-                    "CONTENT_ADMIN", "AUDIT_ADMIN", "POLICY_ADMIN", "POLICY_MANAGE", "ADMIN_PERMISSION_MANAGE")
+            "ADMIN", AdminPermissionCatalog.adminAssignableCodes(),
+            "SUPER_ADMIN", AdminPermissionCatalog.allCodes()
     );
     private static final Map<String, List<String>> ROLE_GROUP_CODES = Map.of(
             "USER", List.of(),
-            "ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "MEMBER_ADMIN", "AI_ADMIN",
+            "ADMIN", List.of("SECURITY_OPERATOR", "MEMBER_ADMIN", "AI_ADMIN",
                     "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN"),
-            "SUPER_ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "MEMBER_ADMIN", "AI_ADMIN",
+            "SUPER_ADMIN", List.of("SECURITY_OPERATOR", "MEMBER_ADMIN", "AI_ADMIN",
                      "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN", "POLICY_ADMIN", "SUPER_ADMIN_GROUP")
     );
-    private static final Set<String> PERMISSION_CATALOG = ROLE_PERMISSION_CODES.values().stream()
-            .flatMap(List::stream)
-            .collect(java.util.stream.Collectors.toUnmodifiableSet());
     private static final Set<String> GROUP_CATALOG = ROLE_GROUP_CODES.values().stream()
             .flatMap(List::stream)
-            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            .collect(Collectors.toUnmodifiableSet());
     private static final Map<String, String> ACCOUNT_SORT_COLUMNS = Map.of(
             "id", "id",
             "email", "email",
@@ -111,13 +103,20 @@ public class SuperAdminService {
     @Transactional(readOnly = true)
     public List<AdminPermissionPolicyRow> permissions(AuthUser authUser) {
         AdminAccess.requireSuperAdmin(authUser);
-        return mapper.findPermissions();
+        Map<String, AdminPermissionPolicyRow> stored = mapper.findPermissions().stream()
+                .filter(row -> AdminPermissionCatalog.contains(row.getPermissionCode()))
+                .collect(Collectors.toMap(AdminPermissionPolicyRow::getPermissionCode, Function.identity()));
+        return AdminPermissionCatalog.definitions().stream()
+                .map(definition -> catalogRow(definition, stored.get(definition.code())))
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public List<AdminPermissionGroupRow> groups(AuthUser authUser) {
         AdminAccess.requireSuperAdmin(authUser);
-        List<AdminPermissionGroupRow> rows = mapper.findGroups();
+        List<AdminPermissionGroupRow> rows = mapper.findGroups().stream()
+                .filter(row -> GROUP_CATALOG.contains(row.getGroupCode()))
+                .toList();
         rows.forEach(this::hydrateGroupPermissions);
         return rows;
     }
@@ -152,9 +151,7 @@ public class SuperAdminService {
     public void createPermission(AuthUser authUser, AdminPermissionRequest request) {
         AdminAccess.requireSuperAdmin(authUser);
         String code = normalizeCode(request.code());
-        if (!PERMISSION_CATALOG.contains(code)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "정의되지 않은 관리자 권한 코드는 생성할 수 없습니다.");
-        }
+        requireCatalogPermission(code);
         if (mapper.updatePermissionMetadata(code, request.displayName().trim(),
                 blankToNull(request.description()), authUser.id()) == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "기본 관리자 권한 카탈로그 항목을 찾을 수 없습니다.");
@@ -168,7 +165,10 @@ public class SuperAdminService {
     public void togglePermission(AuthUser authUser, String code, boolean active) {
         AdminAccess.requireSuperAdmin(authUser);
         String normalized = normalizeCode(code);
-        mapper.togglePermission(normalized, active, authUser.id());
+        requireCatalogPermission(normalized);
+        if (mapper.togglePermission(normalized, active, authUser.id()) == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "기본 관리자 권한 카탈로그 항목을 찾을 수 없습니다.");
+        }
         mapper.insertAudit(authUser.id(), null, active ? "PERMISSION_POLICY_ENABLED" : "PERMISSION_POLICY_DISABLED",
                 normalized, null, null);
         actionLogService.record(authUser, null, active ? "PERMISSION_POLICY_ENABLED" : "PERMISSION_POLICY_DISABLED",
@@ -179,9 +179,7 @@ public class SuperAdminService {
     public void createGroup(AuthUser authUser, AdminGroupRequest request) {
         AdminAccess.requireSuperAdmin(authUser);
         String code = normalizeCode(request.code());
-        if (!GROUP_CATALOG.contains(code)) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "정의되지 않은 관리자 권한 그룹은 생성할 수 없습니다.");
-        }
+        requireCatalogGroup(code);
         if (mapper.updateGroupMetadata(code, request.displayName().trim(),
                 blankToNull(request.description()), authUser.id()) == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "기본 관리자 권한 그룹을 찾을 수 없습니다.");
@@ -195,7 +193,10 @@ public class SuperAdminService {
     public void toggleGroup(AuthUser authUser, String code, boolean active) {
         AdminAccess.requireSuperAdmin(authUser);
         String normalized = normalizeCode(code);
-        mapper.toggleGroup(normalized, active, authUser.id());
+        requireCatalogGroup(normalized);
+        if (mapper.toggleGroup(normalized, active, authUser.id()) == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "기본 관리자 권한 그룹을 찾을 수 없습니다.");
+        }
         mapper.insertAudit(authUser.id(), null, active ? "PERMISSION_GROUP_ENABLED" : "PERMISSION_GROUP_DISABLED",
                 null, normalized, null);
         actionLogService.record(authUser, null, active ? "PERMISSION_GROUP_ENABLED" : "PERMISSION_GROUP_DISABLED",
@@ -207,6 +208,9 @@ public class SuperAdminService {
         AdminAccess.requireSuperAdmin(authUser);
         String group = normalizeCode(groupCode);
         String permission = normalizeCode(permissionCode);
+        requireCatalogGroup(group);
+        requireCatalogPermission(permission);
+        validatePermissionAllowedForGroup(group, permission);
         mapper.addGroupItem(group, permission, authUser.id());
         mapper.insertAudit(authUser.id(), null, "GROUP_PERMISSION_ADDED", permission, group, null);
         actionLogService.record(authUser, null, "GROUP_PERMISSION_ADDED", "ADMIN_GROUP",
@@ -218,6 +222,8 @@ public class SuperAdminService {
         AdminAccess.requireSuperAdmin(authUser);
         String group = normalizeCode(groupCode);
         String permission = normalizeCode(permissionCode);
+        requireCatalogGroup(group);
+        requireCatalogPermission(permission);
         mapper.removeGroupItem(group, permission);
         mapper.insertAudit(authUser.id(), null, "GROUP_PERMISSION_REMOVED", permission, group, null);
         actionLogService.record(authUser, null, "GROUP_PERMISSION_REMOVED", "ADMIN_GROUP",
@@ -242,6 +248,7 @@ public class SuperAdminService {
         AdminAccess.requireSuperAdmin(authUser);
         findUser(userId);
         String permission = normalizeCode(permissionCode);
+        requireCatalogPermission(permission);
         mapper.revokePermission(userId, permission);
         mapper.insertAudit(authUser.id(), userId, "PERMISSION_REVOKED", permission, null, blankToNull(reason));
         actionLogService.record(authUser, userId, "PERMISSION_REVOKED", "ADMIN_USER",
@@ -267,6 +274,7 @@ public class SuperAdminService {
         AdminAccess.requireSuperAdmin(authUser);
         findUser(userId);
         String group = normalizeCode(groupCode);
+        requireCatalogGroup(group);
         mapper.revokeGroup(userId, group);
         mapper.insertAudit(authUser.id(), userId, "GROUP_REVOKED", null, group, blankToNull(reason));
         actionLogService.record(authUser, userId, "GROUP_REVOKED", "ADMIN_USER",
@@ -399,12 +407,20 @@ public class SuperAdminService {
     }
 
     private void hydrateAssignments(AdminAccountRow row) {
-        row.setPermissions(mapper.findUserPermissions(row.getId()));
-        row.setGroups(mapper.findUserGroups(row.getId()));
+        row.setPermissions(mapper.findUserPermissions(row.getId()).stream()
+                .filter(assignment -> AdminPermissionCatalog.contains(assignment.getPermissionCode()))
+                .toList());
+        row.setGroups(mapper.findUserGroups(row.getId()).stream()
+                .filter(assignment -> GROUP_CATALOG.contains(assignment.getGroupCode()))
+                .toList());
     }
 
     private void hydrateGroupPermissions(AdminPermissionGroupRow row) {
-        row.setPermissions(mapper.findGroupPermissions(row.getGroupCode()));
+        List<AdminPermissionPolicyRow> permissions = mapper.findGroupPermissions(row.getGroupCode()).stream()
+                .filter(permission -> AdminPermissionCatalog.contains(permission.getPermissionCode()))
+                .toList();
+        row.setPermissions(permissions);
+        row.setItemCount(permissions.size());
     }
 
     private void revokeAssignmentsOutsideRole(Long userId, String role) {
@@ -424,6 +440,7 @@ public class SuperAdminService {
     }
 
     private void validatePermissionAllowedForUser(Long userId, String permissionCode) {
+        requireCatalogPermission(permissionCode);
         AdminAccountRow user = findUser(userId);
         List<String> allowed = ROLE_PERMISSION_CODES.getOrDefault(user.getRole(), List.of());
         if (!allowed.contains(permissionCode)) {
@@ -432,6 +449,7 @@ public class SuperAdminService {
     }
 
     private void validateGroupAllowedForUser(Long userId, String groupCode) {
+        requireCatalogGroup(groupCode);
         AdminAccountRow user = findUser(userId);
         List<String> allowed = ROLE_GROUP_CODES.getOrDefault(user.getRole(), List.of());
         if (!allowed.contains(groupCode)) {
@@ -452,6 +470,52 @@ public class SuperAdminService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "권한 코드가 필요합니다.");
         }
         return code.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+    }
+
+    private void validatePermissionAllowedForGroup(String groupCode, String permissionCode) {
+        String roleScope = mapper.findGroupRoleScope(groupCode);
+        if (roleScope == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "기본 관리자 권한 그룹을 찾을 수 없습니다.");
+        }
+        AdminPermissionCatalog.Definition permission = AdminPermissionCatalog.find(permissionCode)
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.INVALID_INPUT, "정의되지 않은 관리자 권한 코드입니다."));
+        if (!"SUPER_ADMIN".equals(roleScope)
+                && (!permission.adminAssignable() || permission.action() == Action.DELETE)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "일반 관리자 그룹에는 슈퍼 관리자 또는 삭제 권한을 포함할 수 없습니다.");
+        }
+    }
+
+    private static void requireCatalogPermission(String code) {
+        if (!AdminPermissionCatalog.contains(code)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "정의되지 않은 관리자 권한 코드입니다.");
+        }
+    }
+
+    private static void requireCatalogGroup(String code) {
+        if (!GROUP_CATALOG.contains(code)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "정의되지 않은 관리자 권한 그룹입니다.");
+        }
+    }
+
+    private static AdminPermissionPolicyRow catalogRow(AdminPermissionCatalog.Definition definition,
+                                                        AdminPermissionPolicyRow stored) {
+        if (stored == null) {
+            AdminPermissionPolicyRow missing = new AdminPermissionPolicyRow();
+            missing.setPermissionCode(definition.code());
+            missing.setDisplayName(definition.displayName());
+            missing.setDescription(definition.description());
+            missing.setActive(false);
+            return missing;
+        }
+        if (stored.getDisplayName() == null || stored.getDisplayName().isBlank()) {
+            stored.setDisplayName(definition.displayName());
+        }
+        if (stored.getDescription() == null || stored.getDescription().isBlank()) {
+            stored.setDescription(definition.description());
+        }
+        return stored;
     }
 
     private static int normalizeLimit(int limit) {

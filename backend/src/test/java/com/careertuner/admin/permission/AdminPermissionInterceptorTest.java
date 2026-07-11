@@ -54,15 +54,31 @@ class AdminPermissionInterceptorTest {
     @Test
     void declaredPermissionRequiresEffectiveGrant() throws Exception {
         authenticate("ADMIN");
-        when(permissions.hasAny(9L, "BILLING_WRITE", "BILLING_ADMIN")).thenReturn(false, true);
+        when(permissions.hasAny(9L, "BILLING_UPDATE")).thenReturn(false, true);
 
         assertThatThrownBy(() -> invoke("billingWrite")).isInstanceOf(BusinessException.class);
         assertThat(invoke("billingWrite")).isTrue();
     }
 
+    @Test
+    void methodWritePermissionDoesNotReplaceClassReadPermission() throws Exception {
+        authenticate("ADMIN");
+        when(permissions.hasAny(9L, "BILLING_READ")).thenReturn(false, true);
+        when(permissions.hasAny(9L, "BILLING_UPDATE")).thenReturn(true);
+
+        assertThatThrownBy(() -> invoke(new ReadWriteProbeController(), "update"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("BILLING_READ");
+        assertThat(invoke(new ReadWriteProbeController(), "update")).isTrue();
+    }
+
     private boolean invoke(String methodName) throws Exception {
-        HandlerMethod handler = new HandlerMethod(new ProbeController(),
-                ProbeController.class.getMethod(methodName));
+        return invoke(new ProbeController(), methodName);
+    }
+
+    private boolean invoke(Object controller, String methodName) throws Exception {
+        HandlerMethod handler = new HandlerMethod(controller,
+                controller.getClass().getMethod(methodName));
         return interceptor.preHandle(new MockHttpServletRequest("GET", "/api/admin/probe"),
                 new MockHttpServletResponse(), handler);
     }
@@ -81,8 +97,15 @@ class AdminPermissionInterceptorTest {
         public void roleOnly() {
         }
 
-        @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
+        @RequireAdminPermission({"BILLING_UPDATE"})
         public void billingWrite() {
+        }
+    }
+
+    @RequireAdminPermission({"BILLING_READ"})
+    static class ReadWriteProbeController {
+        @RequireAdminPermission({"BILLING_UPDATE"})
+        public void update() {
         }
     }
 }

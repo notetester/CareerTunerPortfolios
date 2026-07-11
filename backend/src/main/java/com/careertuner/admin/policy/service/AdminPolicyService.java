@@ -28,13 +28,13 @@ public class AdminPolicyService {
 
     @Transactional(readOnly = true)
     public List<AdminSystemPolicyRow> policies(AuthUser authUser) {
-        AdminAccess.requireSuperAdmin(authUser);
+        AdminAccess.requireAdmin(authUser);
         return mapper.findAll();
     }
 
     @Transactional
     public AdminSystemPolicyRow update(AuthUser authUser, String policyCode, AdminPolicyUpdateRequest request) {
-        AdminAccess.requireSuperAdmin(authUser);
+        AdminAccess.requireAdmin(authUser);
         String code = normalizeCode(policyCode);
         AdminSystemPolicyRow before = requirePolicy(code);
         int updated = mapper.updatePolicy(code, request.configJson().trim(), normalizeSchedule(request.scheduleType()),
@@ -52,7 +52,7 @@ public class AdminPolicyService {
 
     @Transactional
     public AdminPolicyRunResult run(AuthUser authUser, String policyCode, String reason) {
-        AdminAccess.requireSuperAdmin(authUser);
+        AdminAccess.requireAdmin(authUser);
         String code = normalizeCode(policyCode);
         requirePolicy(code);
         String message = "정책 수동 실행 요청이 기록되었습니다. 실제 배치 작업은 별도 스케줄러가 처리합니다.";

@@ -4,7 +4,8 @@
 -- - 알려진 공통 비밀번호를 쓰는 seed는 공개 AWS가 연결된 공유 DB에서 관리자 역할이면 안 된다.
 -- - id와 email이 모두 예상값과 일치하지 않으면 CHECK guard가 실패하며 어떤 역할도 바꾸지 않는다.
 -- - seed 외 SUPER_ADMIN은 역할·권한·토큰을 수정하지 않고 현재 권한 현황 baseline만 1회 관측 기록한다.
--- - seed 외 ACTIVE SUPER_ADMIN이 최소 1명 있어야만 실행된다. 운영 관리자 부재 상태를 만들지 않는다.
+-- - seed/공용 비밀번호를 제외한 검증된 ACTIVE SUPER_ADMIN이 최소 3명 있어야만 실행된다.
+--   테스트·운영 관리자 quorum을 줄이지 않고 알려진 seed만 정리한다.
 -- - 역할/배정이 이미 목표 상태이고 baseline 감사가 있으면 재실행해도 로그·토큰을 다시 건드리지 않는다.
 
 START TRANSACTION;
@@ -56,6 +57,12 @@ SET @ct_nonseed_active_superadmin_count := (
        AND seed.email = privileged.email
      WHERE privileged.role = 'SUPER_ADMIN'
        AND privileged.status = 'ACTIVE'
+       AND privileged.email_verified = 1
+       AND privileged.password_enabled = 1
+       AND privileged.password IS NOT NULL
+       AND CHAR_LENGTH(privileged.password) = 60
+       AND privileged.password REGEXP '^\\$2[aby]\\$1[0-4]\\$[./A-Za-z0-9]{53}$'
+       AND privileged.password <> '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja'
        AND seed.expected_id IS NULL
 );
 SET @ct_seed_permission_duplicate_count := (
@@ -87,7 +94,7 @@ INSERT INTO ct_seed_role_guard (guard_ok)
 SELECT CASE
            WHEN @ct_seed_identity_match_count = 5
             AND @ct_seed_admin_active_count = 1
-            AND @ct_nonseed_active_superadmin_count >= 1
+            AND @ct_nonseed_active_superadmin_count >= 3
             AND @ct_seed_permission_duplicate_count = 0
             AND @ct_seed_group_duplicate_count = 0
            THEN 1 ELSE 0

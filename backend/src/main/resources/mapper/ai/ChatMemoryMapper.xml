@@ -5,20 +5,24 @@
 
     <select id="findMessages" resultType="java.lang.String">
         SELECT messages_json
-          FROM chatbot_conversation_memory
+         FROM chatbot_conversation_memory
          WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
     </select>
 
     <insert id="upsert">
         INSERT INTO chatbot_conversation_memory (conversation_id, messages_json)
         VALUES (#{conversationId}, #{messagesJson})
-        ON DUPLICATE KEY UPDATE messages_json = VALUES(messages_json)
+        ON DUPLICATE KEY UPDATE
+            messages_json = IF(deleted_at IS NULL, VALUES(messages_json), messages_json)
     </insert>
 
-    <delete id="delete">
-        DELETE FROM chatbot_conversation_memory
+    <update id="delete">
+        UPDATE chatbot_conversation_memory
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE conversation_id = #{conversationId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <insert id="createConversation" useGeneratedKeys="true" keyProperty="id" keyColumn="conversation_id">
         INSERT INTO chatbot_conversation_memory (user_id, messages_json)
@@ -27,8 +31,9 @@
 
     <select id="findRecentConversationByUser" resultType="java.lang.Long">
         SELECT conversation_id
-          FROM chatbot_conversation_memory
+         FROM chatbot_conversation_memory
          WHERE user_id = #{userId}
+           AND deleted_at IS NULL
          ORDER BY updated_at DESC
          LIMIT 1
     </select>
@@ -38,6 +43,7 @@
            SET application_case_id = #{applicationCaseId},
                title               = #{title}
          WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
     </update>
 
     <!-- 유저의 최근 대화 전체(사이드바 "대화 목록"). 인테이크(지원건)뿐 아니라 일반 상담 대화도 포함.
@@ -54,6 +60,7 @@
           FROM chatbot_conversation_memory m
           LEFT JOIN chatbot_intake_slot s ON s.conversation_id = m.conversation_id
          WHERE m.user_id = #{userId}
+           AND m.deleted_at IS NULL
            AND (m.title IS NOT NULL OR (m.messages_json IS NOT NULL AND m.messages_json != '[]'))
          ORDER BY m.updated_at DESC
          LIMIT 20
@@ -66,36 +73,42 @@
            SET title = #{title}
          WHERE conversation_id = #{conversationId}
            AND title IS NULL
+           AND deleted_at IS NULL
     </update>
 
     <select id="findOwnerUserId" resultType="java.lang.Long">
         SELECT user_id
-          FROM chatbot_conversation_memory
+         FROM chatbot_conversation_memory
          WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
     </select>
 
     <select id="findApplicationCaseId" resultType="java.lang.Long">
         SELECT application_case_id
-          FROM chatbot_conversation_memory
+         FROM chatbot_conversation_memory
          WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
     </select>
 
     <select id="findOnboardingDeclinedAt" resultType="java.time.LocalDateTime">
         SELECT onboarding_declined_at
-          FROM chatbot_conversation_memory
+         FROM chatbot_conversation_memory
          WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
     </select>
 
     <update id="markOnboardingDeclined">
         UPDATE chatbot_conversation_memory
            SET onboarding_declined_at = NOW()
          WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
     </update>
 
     <update id="clearOnboardingDeclined">
         UPDATE chatbot_conversation_memory
            SET onboarding_declined_at = NULL
          WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
     </update>
 
 </mapper>

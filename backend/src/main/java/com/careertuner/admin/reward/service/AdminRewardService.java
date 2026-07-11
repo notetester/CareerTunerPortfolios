@@ -2,6 +2,7 @@ package com.careertuner.admin.reward.service;
 
 import java.util.List;
 
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -80,8 +81,15 @@ public class AdminRewardService {
     @Transactional
     public UserLevelPolicy createLevel(AuthUser authUser, AdminLevelPolicyRequest req) {
         AdminAccess.requireAdmin(authUser);
+        if (mapper.countLevelByNumber(req.level()) > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 존재하거나 삭제된 레벨 번호입니다.");
+        }
         UserLevelPolicy level = toLevel(new UserLevelPolicy(), req);
-        mapper.insertLevel(level);
+        try {
+            mapper.insertLevel(level);
+        } catch (DuplicateKeyException e) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 존재하거나 삭제된 레벨 번호입니다.");
+        }
         return mapper.findLevelById(level.getId());
     }
 
@@ -101,7 +109,17 @@ public class AdminRewardService {
     @Transactional
     public void deleteLevel(AuthUser authUser, Long id) {
         AdminAccess.requireAdmin(authUser);
-        mapper.deleteLevel(id);
+        UserLevelPolicy existing = mapper.findLevelById(id);
+        if (existing == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "레벨 정책을 찾을 수 없습니다.");
+        }
+        if (mapper.countUsersByLevel(existing.getLevel()) > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "현재 회원이 사용하는 레벨은 먼저 다른 레벨로 이관해야 삭제할 수 있습니다.");
+        }
+        if (mapper.deleteLevel(id) == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "레벨 정책을 찾을 수 없습니다.");
+        }
     }
 
     private UserLevelPolicy toLevel(UserLevelPolicy target, AdminLevelPolicyRequest req) {

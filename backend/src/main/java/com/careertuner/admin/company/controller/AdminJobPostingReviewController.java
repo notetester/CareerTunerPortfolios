@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 /** 채용공고 검토 큐 콘솔 API — 신규 등록(PENDING_REVIEW)과 수정 변경본(revision PENDING)을 함께 다룬다. */
 @RestController
 @RequestMapping("/api/admin/company/job-postings")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 @RequiredArgsConstructor
 public class AdminJobPostingReviewController {
 
@@ -45,6 +45,7 @@ public class AdminJobPostingReviewController {
     }
 
     @PostMapping("/{id}/approve")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<Void> approve(@AuthenticationPrincipal AuthUser authUser, @PathVariable Long id) {
         AdminAccess.requireAdmin(authUser);
         jobPostingService.approveReview(authUser.id(), id);
@@ -52,6 +53,7 @@ public class AdminJobPostingReviewController {
     }
 
     @PostMapping("/{id}/reject")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<Void> reject(@AuthenticationPrincipal AuthUser authUser,
                                     @PathVariable Long id,
                                     @RequestBody AdminRejectRequest request) {

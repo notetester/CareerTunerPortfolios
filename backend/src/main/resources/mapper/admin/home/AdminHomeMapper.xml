@@ -38,6 +38,7 @@
         SELECT COUNT(DISTINCT memo.fit_analysis_id)
         FROM admin_fit_analysis_memo memo
         WHERE memo.memo_type = 'REANALYSIS'
+          AND memo.deleted_at IS NULL
     </select>
 
     <select id="countCareerRunFailures" resultType="int">

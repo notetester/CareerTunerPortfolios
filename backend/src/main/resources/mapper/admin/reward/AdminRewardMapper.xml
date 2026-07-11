@@ -42,6 +42,7 @@
         SELECT id, level, level_name, min_point, levelup_credit, levelup_coupon_code,
                benefit_note, active, created_at, updated_at
           FROM user_level_policy
+         WHERE deleted_at IS NULL
          ORDER BY level ASC
     </select>
 
@@ -50,6 +51,20 @@
                benefit_note, active, created_at, updated_at
           FROM user_level_policy
          WHERE id = #{id}
+           AND deleted_at IS NULL
+    </select>
+
+    <select id="countLevelByNumber" resultType="int">
+        SELECT COUNT(*)
+          FROM user_level_policy
+         WHERE level = #{level}
+    </select>
+
+    <select id="countUsersByLevel" resultType="int">
+        SELECT COUNT(*)
+          FROM users
+         WHERE user_level = #{level}
+           AND status &lt;&gt; 'DELETED'
     </select>
 
     <insert id="insertLevel" useGeneratedKeys="true" keyProperty="id">
@@ -69,11 +84,16 @@
                benefit_note = #{benefitNote},
                active = #{active}
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </update>
 
-    <delete id="deleteLevel">
-        DELETE FROM user_level_policy WHERE id = #{id}
-    </delete>
+    <update id="deleteLevel">
+        UPDATE user_level_policy
+           SET deleted_at = COALESCE(deleted_at, NOW()),
+               active = 0
+         WHERE id = #{id}
+           AND deleted_at IS NULL
+    </update>
 
     <!-- ── 쿠폰 ── -->
     <sql id="CouponWhere">

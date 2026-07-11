@@ -36,7 +36,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/super")
-@RequireAdminPermission({"ADMIN_PERMISSION_MANAGE", "POLICY_ADMIN"})
+@RequireAdminPermission({"ADMIN_PERMISSION_READ"})
 @RequiredArgsConstructor
 public class SuperAdminController {
 
@@ -67,6 +67,7 @@ public class SuperAdminController {
     }
 
     @PatchMapping("/admins/{userId}/role")
+    @RequireAdminPermission({"ADMIN_PERMISSION_UPDATE"})
     public ApiResponse<AdminAccountRow> updateRole(@AuthenticationPrincipal AuthUser authUser,
                                                    @PathVariable Long userId,
                                                    @Valid @RequestBody AdminRoleRequest request) {
@@ -74,6 +75,7 @@ public class SuperAdminController {
     }
 
     @PostMapping("/admins/{userId}/permissions")
+    @RequireAdminPermission({"ADMIN_PERMISSION_CREATE"})
     public ApiResponse<AdminAccountRow> grantPermission(@AuthenticationPrincipal AuthUser authUser,
                                                         @PathVariable Long userId,
                                                         @Valid @RequestBody AdminAssignmentRequest request) {
@@ -81,6 +83,7 @@ public class SuperAdminController {
     }
 
     @PatchMapping("/admins/{userId}/permissions/revoke")
+    @RequireAdminPermission({"ADMIN_PERMISSION_DELETE"})
     public ApiResponse<AdminAccountRow> revokePermission(@AuthenticationPrincipal AuthUser authUser,
                                                          @PathVariable Long userId,
                                                          @Valid @RequestBody AdminAssignmentRequest request) {
@@ -88,6 +91,7 @@ public class SuperAdminController {
     }
 
     @PostMapping("/admins/{userId}/groups")
+    @RequireAdminPermission({"ADMIN_PERMISSION_CREATE"})
     public ApiResponse<AdminAccountRow> assignGroup(@AuthenticationPrincipal AuthUser authUser,
                                                     @PathVariable Long userId,
                                                     @Valid @RequestBody AdminAssignmentRequest request) {
@@ -95,6 +99,7 @@ public class SuperAdminController {
     }
 
     @PatchMapping("/admins/{userId}/groups/revoke")
+    @RequireAdminPermission({"ADMIN_PERMISSION_DELETE"})
     public ApiResponse<AdminAccountRow> revokeGroup(@AuthenticationPrincipal AuthUser authUser,
                                                     @PathVariable Long userId,
                                                     @Valid @RequestBody AdminAssignmentRequest request) {
@@ -107,6 +112,7 @@ public class SuperAdminController {
     }
 
     @PostMapping("/permissions")
+    @RequireAdminPermission({"ADMIN_PERMISSION_CREATE"})
     public ApiResponse<Void> createPermission(@AuthenticationPrincipal AuthUser authUser,
                                               @Valid @RequestBody AdminPermissionRequest request) {
         service.createPermission(authUser, request);
@@ -114,6 +120,7 @@ public class SuperAdminController {
     }
 
     @PatchMapping("/permissions/{code}/toggle")
+    @RequireAdminPermission({"ADMIN_PERMISSION_UPDATE"})
     public ApiResponse<Void> togglePermission(@AuthenticationPrincipal AuthUser authUser,
                                               @PathVariable String code,
                                               @RequestParam boolean active) {
@@ -127,6 +134,7 @@ public class SuperAdminController {
     }
 
     @PostMapping("/groups")
+    @RequireAdminPermission({"ADMIN_PERMISSION_CREATE"})
     public ApiResponse<Void> createGroup(@AuthenticationPrincipal AuthUser authUser,
                                          @Valid @RequestBody AdminGroupRequest request) {
         service.createGroup(authUser, request);
@@ -134,6 +142,7 @@ public class SuperAdminController {
     }
 
     @PatchMapping("/groups/{code}/toggle")
+    @RequireAdminPermission({"ADMIN_PERMISSION_UPDATE"})
     public ApiResponse<Void> toggleGroup(@AuthenticationPrincipal AuthUser authUser,
                                          @PathVariable String code,
                                          @RequestParam boolean active) {
@@ -142,6 +151,7 @@ public class SuperAdminController {
     }
 
     @PostMapping("/groups/{groupCode}/permissions/{permissionCode}")
+    @RequireAdminPermission({"ADMIN_PERMISSION_CREATE"})
     public ApiResponse<Void> addGroupItem(@AuthenticationPrincipal AuthUser authUser,
                                           @PathVariable String groupCode,
                                           @PathVariable String permissionCode) {
@@ -150,6 +160,7 @@ public class SuperAdminController {
     }
 
     @PatchMapping("/groups/{groupCode}/permissions/{permissionCode}/remove")
+    @RequireAdminPermission({"ADMIN_PERMISSION_DELETE"})
     public ApiResponse<Void> removeGroupItem(@AuthenticationPrincipal AuthUser authUser,
                                              @PathVariable String groupCode,
                                              @PathVariable String permissionCode) {
@@ -185,12 +196,14 @@ public class SuperAdminController {
     }
 
     @PostMapping("/permission-requests/{id}/approve")
+    @RequireAdminPermission({"ADMIN_PERMISSION_UPDATE"})
     public ApiResponse<Void> approveRequest(@AuthenticationPrincipal AuthUser authUser, @PathVariable Long id) {
         service.approvePermissionRequest(authUser, id);
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/permission-requests/{id}/reject")
+    @RequireAdminPermission({"ADMIN_PERMISSION_UPDATE"})
     public ApiResponse<Void> rejectRequest(@AuthenticationPrincipal AuthUser authUser,
                                            @PathVariable Long id,
                                            @RequestBody(required = false) RejectRequest request) {
@@ -201,12 +214,14 @@ public class SuperAdminController {
     /* ── 일괄 처리 ── */
 
     @PostMapping("/bulk/grant-permissions")
+    @RequireAdminPermission({"ADMIN_PERMISSION_CREATE"})
     public ApiResponse<Integer> bulkGrant(@AuthenticationPrincipal AuthUser authUser,
                                           @RequestBody BulkGrantRequest request) {
         return ApiResponse.ok(service.bulkGrantPermissions(authUser, request.userIds(), request.permissionCodes(), request.reason()));
     }
 
     @PostMapping("/bulk/revoke-admins")
+    @RequireAdminPermission({"ADMIN_PERMISSION_DELETE"})
     public ApiResponse<Integer> bulkRevoke(@AuthenticationPrincipal AuthUser authUser,
                                            @RequestBody BulkRevokeRequest request) {
         return ApiResponse.ok(service.bulkRevokeAdmins(authUser, request.userIds(), request.reason()));

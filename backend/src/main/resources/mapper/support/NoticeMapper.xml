@@ -29,16 +29,18 @@
         SELECT id, title, content, category, status, is_pinned, thumbnail_url,
                admin_id, view_count, scheduled_at, published_at, created_at, updated_at
           FROM notice
-         WHERE status = 'PUBLISHED'
-            OR (status = 'SCHEDULED' AND scheduled_at &lt;= (UTC_TIMESTAMP() + INTERVAL 9 HOUR))
+         WHERE deleted_at IS NULL
+           AND (status = 'PUBLISHED'
+            OR (status = 'SCHEDULED' AND scheduled_at &lt;= (UTC_TIMESTAMP() + INTERVAL 9 HOUR)))
          ORDER BY is_pinned DESC, COALESCE(published_at, scheduled_at) DESC, created_at DESC
     </select>
 
     <select id="findById" resultMap="noticeResult">
         SELECT id, title, content, category, status, is_pinned, thumbnail_url,
                admin_id, view_count, scheduled_at, published_at, created_at, updated_at
-          FROM notice
+         FROM notice
          WHERE id = #{id}
+           AND deleted_at IS NULL
            AND (status = 'PUBLISHED'
                 OR (status = 'SCHEDULED' AND scheduled_at &lt;= (UTC_TIMESTAMP() + INTERVAL 9 HOUR)))
     </select>
@@ -47,6 +49,7 @@
         UPDATE notice
            SET view_count = view_count + 1
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </update>
 
 </mapper>

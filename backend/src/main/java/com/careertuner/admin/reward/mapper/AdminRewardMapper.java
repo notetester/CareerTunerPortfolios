@@ -29,6 +29,10 @@ public interface AdminRewardMapper {
 
     UserLevelPolicy findLevelById(@Param("id") Long id);
 
+    int countLevelByNumber(@Param("level") int level);
+
+    int countUsersByLevel(@Param("level") int level);
+
     void insertLevel(UserLevelPolicy level);
 
     int updateLevel(UserLevelPolicy level);
