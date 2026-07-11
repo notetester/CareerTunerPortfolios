@@ -1593,6 +1593,101 @@ class BAnalysisGenerationServiceTest {
         verify(localLlmClient, org.mockito.Mockito.times(2)).chat(anyString(), anyString(), any());
     }
 
+    // ── #2(정책 A): AUTO(선택 없음) 경로도 실제 성공 provider·모델·attempt_path·fallback_used 를 provenance 로
+    //     반환한다. requested_provider 는 NULL(사용자가 특정 모델을 고르지 않음). ──
+
+    @Test
+    void generateJobAnalysisAutoRecordsActualProvenanceOnFirstProviderSuccess() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(validJobJson());
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result =
+                service.generateJobAnalysis(applicationCase(), postingText());
+
+        var provenance = result.provenance();
+        assertThat(provenance).isNotNull();
+        assertThat(provenance.requestedProvider()).isNull(); // AUTO: 사용자가 고르지 않음
+        assertThat(provenance.actualProvider()).isEqualTo("LOCAL");
+        assertThat(provenance.actualModel()).isEqualTo("qwen-test");
+        assertThat(provenance.fallbackUsed()).isFalse(); // 첫 provider 로 성공 = 폴백 아님
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"LOCAL\"]");
+    }
+
+    @Test
+    void generateJobAnalysisAutoRecordsFallbackProvenanceWhenPrimaryFails() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        properties.getLocalLlm().setMaxRetries(0); // LOCAL 1회만 시도해 attempt_path 를 ["LOCAL","CLAUDE"] 로 고정
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenThrow(new RuntimeException("local down"));
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.model()).thenReturn("claude-haiku-test");
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validJobJson());
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result =
+                service.generateJobAnalysis(applicationCase(), postingText());
+
+        var provenance = result.provenance();
+        assertThat(provenance.requestedProvider()).isNull();
+        assertThat(provenance.actualProvider()).isEqualTo("CLAUDE");
+        assertThat(provenance.actualModel()).isEqualTo("claude-haiku-test");
+        assertThat(provenance.fallbackUsed()).isTrue(); // 첫 provider(LOCAL) 실패 후 폴백
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"LOCAL\",\"CLAUDE\"]");
+    }
+
+    @Test
+    void generateJobAnalysisAutoSelfRulesHasProvenanceWithoutFallbackWhenNoProvidersConfigured() {
+        // 아무 provider 도 활성/설정되지 않으면 self-rules 가 기본 동작(폴백 아님) → actual=SELF_RULES, fallback_used=false.
+        BAnalysisProperties properties = new BAnalysisProperties(); // local 비활성, hosted 미설정
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedJobAnalysis result =
+                service.generateJobAnalysis(applicationCase(), postingText());
+
+        assertThat(result.fellBack()).isFalse(); // ai_usage 폴백 기록 계약: 아무 것도 시도 안 함 = 폴백 표시 없음
+        var provenance = result.provenance();
+        assertThat(provenance.requestedProvider()).isNull();
+        assertThat(provenance.actualProvider()).isEqualTo("SELF_RULES");
+        assertThat(provenance.fallbackUsed()).isFalse();
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"SELF_RULES\"]");
+    }
+
+    @Test
+    void generateCompanyAnalysisAutoRecordsActualProvenanceOnSuccess() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenReturn(validCompanyJson());
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiClient);
+
+        BAnalysisGenerationService.GeneratedCompanyAnalysis result =
+                service.generateCompanyAnalysis(applicationCase(), postingText());
+
+        var provenance = result.provenance();
+        assertThat(provenance).isNotNull();
+        assertThat(provenance.requestedProvider()).isNull();
+        assertThat(provenance.actualProvider()).isEqualTo("LOCAL");
+        assertThat(provenance.actualModel()).isEqualTo("qwen-test");
+        assertThat(provenance.fallbackUsed()).isFalse();
+        assertThat(provenance.attemptPathJson()).isEqualTo("[\"LOCAL\"]");
+    }
+
     private static String validJobJson() {
         return """
                 {

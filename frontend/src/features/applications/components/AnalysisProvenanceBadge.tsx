@@ -21,8 +21,15 @@ export function AnalysisProvenanceBadge({ source, className }: AnalysisProvenanc
 
   const titleParts = [`생성 모델: ${provenance.actualProviderLabel}`];
   if (provenance.actualModel) titleParts.push(provenance.actualModel);
-  if (provenance.fallbackUsed && provenance.requestedProviderLabel) {
-    titleParts.push(`요청 모델(${provenance.requestedProviderLabel})이 실패해 폴백됨`);
+  if (provenance.fallbackUsed) {
+    // 명시 선택 폴백은 요청 모델을, AUTO(요청 없음) 폴백은 "자동 폴백"을 표시한다 — requested 가
+    // NULL 인 AUTO 폴백이 숨지 않게 한다.
+    titleParts.push(provenance.requestedProviderLabel
+        ? `요청 모델(${provenance.requestedProviderLabel})이 실패해 폴백됨`
+        : "자동 체인에서 앞 모델이 실패해 폴백됨");
+  }
+  if (provenance.attemptPathLabels && provenance.attemptPathLabels.length > 1) {
+    titleParts.push(`시도: ${provenance.attemptPathLabels.join(" → ")}`);
   }
   if (provenance.runModeLabel) titleParts.push(provenance.runModeLabel);
 
@@ -37,8 +44,8 @@ export function AnalysisProvenanceBadge({ source, className }: AnalysisProvenanc
       <Cpu className="size-3 shrink-0 text-slate-500" />
       <span className="font-medium text-slate-700">{provenance.actualProviderLabel}</span>
       {provenance.actualModel && <span className="text-slate-400">· {provenance.actualModel}</span>}
-      {provenance.fallbackUsed && provenance.requestedProviderLabel && (
-        <span className="text-amber-600">· 폴백(요청 {provenance.requestedProviderLabel})</span>
+      {provenance.fallbackLabel && (
+        <span className="text-amber-600">· {provenance.fallbackLabel}</span>
       )}
       {provenance.runModeLabel && <span className="text-slate-400">· {provenance.runModeLabel}</span>}
     </span>

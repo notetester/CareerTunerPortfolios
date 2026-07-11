@@ -152,12 +152,16 @@ public class BAnalysisGenerationService {
      */
     public GeneratedJobAnalysis generateJobAnalysis(ApplicationCase applicationCase, String postingText) {
         Classification classification = sentenceClassifier.classify(postingText);
+        // 실제 시도 순서를 누적해 provenance(actual provider·모델·폴백여부·attempt_path)를 채운다. 등록에서 모델을
+        // 고르지 않은 AUTO 경로도 "실제로 어느 모델이 결과를 냈는지"를 초기 분석 행에 남긴다(requested=NULL).
+        List<String> attempts = new ArrayList<>();
         String lastError = null;
 
         // 1) 자체모델(Ollama) — provider 활성 시 재시도. 실패하면 아래로 폴백.
         if (properties.getLocalLlm().isEnabled()) {
             int maxAttempts = 1 + properties.getLocalLlm().getMaxRetries();
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                attempts.add(BAnalysisProvider.LOCAL.name());
                 try {
                     String content = localLlmClient.chat(
                             JobAnalysisPromptCatalog.SYSTEM_PROMPT,
@@ -167,7 +171,8 @@ public class BAnalysisGenerationService {
                             properties.getLocalLlm().getModel(), classification);
                     validateGrounding(payload, postingText);
                     log.info("Local LLM job analysis succeeded (attempt={}/{})", attempt, maxAttempts);
-                    return new GeneratedJobAnalysis(payload, null, null);
+                    return new GeneratedJobAnalysis(payload, null, null,
+                            autoProvenance(BAnalysisProvider.LOCAL, payload.usage(), attempts));
                 } catch (RuntimeException ex) {
                     lastError = safeMessage(ex);
                     log.warn("Local LLM job analysis attempt {}/{} failed: {}", attempt, maxAttempts, lastError);
@@ -177,6 +182,7 @@ public class BAnalysisGenerationService {
 
         // 2) 1차 폴백: Claude(Haiku) — 공통 키라 가장 안정적. 같은 스키마/검증 재사용.
         if (anthropicClient.configured()) {
+            attempts.add(BAnalysisProvider.CLAUDE.name());
             try {
                 String content = anthropicClient.chat(
                         JobAnalysisPromptCatalog.SYSTEM_PROMPT,
@@ -186,7 +192,8 @@ public class BAnalysisGenerationService {
                         classification);
                 validateGrounding(payload, postingText);
                 log.info("Claude job analysis succeeded");
-                return new GeneratedJobAnalysis(payload, null, null);
+                return new GeneratedJobAnalysis(payload, null, null,
+                        autoProvenance(BAnalysisProvider.CLAUDE, payload.usage(), attempts));
             } catch (RuntimeException ex) {
                 lastError = safeMessage(ex);
                 log.warn("Claude job analysis failed: {}", lastError);
@@ -195,11 +202,13 @@ public class BAnalysisGenerationService {
 
         // 3) 2차 폴백: OpenAI.
         if (openAiResponsesClient.configured()) {
+            attempts.add(BAnalysisProvider.OPENAI.name());
             try {
                 JobAnalysisPayload payload = withDedupedEvidence(
                         openAiResponsesClient.analyzeJobPosting(applicationCase, postingText));
                 log.info("OpenAI job analysis succeeded");
-                return new GeneratedJobAnalysis(payload, null, null);
+                return new GeneratedJobAnalysis(payload, null, null,
+                        autoProvenance(BAnalysisProvider.OPENAI, payload.usage(), attempts));
             } catch (RuntimeException ex) {
                 lastError = safeMessage(ex);
                 log.warn("OpenAI job analysis failed: {}", lastError);
@@ -207,17 +216,17 @@ public class BAnalysisGenerationService {
         }
 
         // 4) 최종 안전망: self-rules-v1.
+        JobAnalysisPayload payload = selfRulesJobAnalysis(applicationCase, postingText, classification);
+        attempts.add(SELF_RULES_ATTEMPT);
         if (lastError == null) {
-            // 아무 AI provider 도 시도되지 않음(전부 비활성/미설정) → 의도된 기본 동작.
-            return new GeneratedJobAnalysis(
-                    selfRulesJobAnalysis(applicationCase, postingText, classification), null, null);
+            // 아무 AI provider 도 시도되지 않음(전부 비활성/미설정) → 의도된 기본 동작(폴백 아님).
+            return new GeneratedJobAnalysis(payload, null, null,
+                    autoSelfRulesProvenance(payload.usage(), attempts));
         }
         String reason = "Local/Claude/OpenAI job analysis unavailable; fallback to self-rules-v1: " + lastError;
         log.warn("{}", reason);
-        return new GeneratedJobAnalysis(
-                selfRulesJobAnalysis(applicationCase, postingText, classification),
-                reason,
-                properties.getLocalLlm().getModel());
+        return new GeneratedJobAnalysis(payload, reason, properties.getLocalLlm().getModel(),
+                autoSelfRulesProvenance(payload.usage(), attempts));
     }
 
     // ── strict 수동 재분석: 고른 provider 하나만. 교차 폴백·self-rules 안전망 없음, 실패는 그대로 throw. ──
@@ -398,6 +407,36 @@ public class BAnalysisGenerationService {
                 BAnalysisProvider.attemptPathJson(attempts));
     }
 
+    /**
+     * AUTO(선택 없음) 경로 성공 provenance — {@code requested=NULL}(사용자가 특정 모델을 고르지 않음),
+     * actual=성공 provider. {@code fallback_used} 는 실제 성공 provider 가 <b>첫 시도 provider</b> 와 다르면 true
+     * (같은 provider 재시도로 성공한 경우는 폴백이 아니다). attempt_path 는 실제 시도 순서 전체.
+     */
+    private AnalysisProvenance autoProvenance(BAnalysisProvider actual, Usage usage, List<String> attempts) {
+        boolean fellBack = !attempts.isEmpty() && !attempts.get(0).equals(actual.name());
+        return new AnalysisProvenance(
+                null,
+                actual.name(),
+                usage == null ? null : usage.model(),
+                fellBack,
+                BAnalysisProvider.attemptPathJson(attempts));
+    }
+
+    /**
+     * AUTO 경로가 self-rules 안전망으로 끝났을 때의 provenance — {@code requested=NULL}, actual=SELF_RULES.
+     * {@code fallback_used} 는 self-rules 앞에 실제 provider 시도가 하나라도 있었으면(전부 실패) true,
+     * 아무 provider 도 시도되지 않은 기본 동작이면 false(attempts 에 SELF_RULES 하나만 있음).
+     */
+    private AnalysisProvenance autoSelfRulesProvenance(Usage usage, List<String> attempts) {
+        boolean fellBack = attempts.size() > 1;
+        return new AnalysisProvenance(
+                null,
+                SELF_RULES_ATTEMPT,
+                usage == null ? null : usage.model(),
+                fellBack,
+                BAnalysisProvider.attemptPathJson(attempts));
+    }
+
     /** preferred 경로가 self-rules 안전망으로 끝났을 때의 provenance — actual=SELF_RULES, fallback_used=true. */
     private AnalysisProvenance selfRulesProvenance(BAnalysisProvider preferred, Usage usage, List<String> attempts) {
         return new AnalysisProvenance(
@@ -462,12 +501,15 @@ public class BAnalysisGenerationService {
         Classification classification = sentenceClassifier.classify(postingText);
         List<CompanyWebEvidence> usableWeb = usableWebEvidence(webEvidence);
         boolean includeWeb = !usableWeb.isEmpty();
+        // 공고분석과 동일: AUTO 경로도 실제 성공 provider·모델·폴백여부·attempt_path 를 provenance 로 남긴다.
+        List<String> attempts = new ArrayList<>();
         String lastError = null;
 
         for (BAnalysisProvider provider : companyProviderOrder()) {
             if (!providerAvailable(provider)) {
                 continue;
             }
+            attempts.add(provider.name());
             try {
                 CompanyAnalysisPayload payload = switch (provider) {
                     case LOCAL -> attemptLocalCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
@@ -476,7 +518,8 @@ public class BAnalysisGenerationService {
                             properties.getCompany().getOpenAiModel(), webEvidenceBlock(usableWeb));
                 };
                 log.info("{} company analysis succeeded", provider.label());
-                return new GeneratedCompanyAnalysis(payload, null, null);
+                return new GeneratedCompanyAnalysis(payload, null, null,
+                        autoProvenance(provider, payload.usage(), attempts));
             } catch (RuntimeException ex) {
                 lastError = safeMessage(ex);
                 log.warn("{} company analysis failed: {}", provider.label(), lastError);
@@ -485,16 +528,16 @@ public class BAnalysisGenerationService {
 
         // 최종 안전망: self-rules-v1. 아무 provider 도 시도되지 않았으면(전부 비활성/미설정) 의도된 기본 동작이라
         // fallback 으로 표시하지 않는다.
+        CompanyAnalysisPayload payload = selfRulesCompanyAnalysis(applicationCase, postingText, classification);
+        attempts.add(SELF_RULES_ATTEMPT);
         if (lastError == null) {
-            return new GeneratedCompanyAnalysis(
-                    selfRulesCompanyAnalysis(applicationCase, postingText, classification), null, null);
+            return new GeneratedCompanyAnalysis(payload, null, null,
+                    autoSelfRulesProvenance(payload.usage(), attempts));
         }
         String reason = "Company analysis providers unavailable; fallback to self-rules-v1: " + lastError;
         log.warn("{}", reason);
-        return new GeneratedCompanyAnalysis(
-                selfRulesCompanyAnalysis(applicationCase, postingText, classification),
-                reason,
-                properties.getLocalLlm().getModel());
+        return new GeneratedCompanyAnalysis(payload, reason, properties.getLocalLlm().getModel(),
+                autoSelfRulesProvenance(payload.usage(), attempts));
     }
 
     /**

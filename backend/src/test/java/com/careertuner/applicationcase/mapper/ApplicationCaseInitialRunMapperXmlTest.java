@@ -34,6 +34,19 @@ class ApplicationCaseInitialRunMapperXmlTest {
     }
 
     @Test
+    void closePendingAsFailedTransitionsOnlyPendingWithoutRunningState() throws Exception {
+        // 재추출이 PENDING 초기 실행 프로필을 RUNNING 을 거치지 않고 한 번에 닫는 원자 전이 — claim+markFailed
+        // 2단계 사이 크래시로 RUNNING 고착되는 창을 없앤다. PENDING 조건이라야 경합 시 0행으로 거절된다.
+        String close = statement("<update id=\"closePendingAsFailed\"");
+        assertThat(close).contains("state = 'FAILED'");
+        assertThat(close).contains("finished_at = NOW()");
+        assertThat(close).contains("failure_reason = #{failureReason}");
+        assertThat(close).contains("application_case_id = #{applicationCaseId}");
+        assertThat(close).contains("state = 'PENDING'"); // PENDING 만 → FAILED
+        assertThat(close).doesNotContain("state = 'RUNNING'"); // 중간 RUNNING 없음
+    }
+
+    @Test
     void markDoneFencesOnRunningStateAndToken() throws Exception {
         String done = statement("<update id=\"markDone\"");
         assertThat(done).contains("state = 'DONE'");

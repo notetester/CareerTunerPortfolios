@@ -205,19 +205,26 @@ class ApplicationCaseAutoPipelineServiceTest {
     }
 
     @Test
-    void initialRunWithoutSelectionUsesAutoChainMarksInitialWithNullProviderProvenance() {
-        // 선택이 없으면(프로필 provider NULL) 기존 자동 체인으로 돌지만, run_mode 는 여전히 INITIAL 로 찍는다
-        // ("초기 실행은 항상 INITIAL" 계약 — MANUAL·레거시와 구분). provider provenance 컬럼만 NULL 로 남는다.
+    void initialRunWithoutSelectionUsesAutoChainAndRecordsActualProvenance() {
+        // #2(정책 A): 선택이 없으면(프로필 provider NULL) 기존 자동 체인으로 돌되, 자동 체인이 실제 성공 provider·
+        // 모델·attempt_path·fallback_used 를 provenance 로 반환한다. requested_provider 만 NULL(사용자가 특정 모델을
+        // 고르지 않음)이고 actual_provider 등은 채워진다 → AUTO 등록 초기분석도 배지에 실제 모델이 뜬다.
+        // run_mode 는 여전히 INITIAL("초기 실행은 항상 INITIAL" 계약).
         stubRunnableDraftCase();
         stubAnalysisInsertCallbacks();
         BAnalysisGenerationService generation = mock(BAnalysisGenerationService.class);
         service = buildService(runtimeSettingServiceReturningFallback(), generation);
         when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
         when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        // AUTO 경로 provenance: requested=NULL, actual=실제 성공 provider. 여기선 LOCAL 실패 후 CLAUDE 로 폴백한 예.
         when(generation.generateJobAnalysis(any(), anyString()))
-                .thenReturn(new BAnalysisGenerationService.GeneratedJobAnalysis(jobPayload(), null, null));
+                .thenReturn(new BAnalysisGenerationService.GeneratedJobAnalysis(jobPayload(), null, null,
+                        new BAnalysisGenerationService.AnalysisProvenance(
+                                null, "CLAUDE", "claude-haiku-test", true, "[\"LOCAL\",\"CLAUDE\"]")));
         when(generation.generateCompanyAnalysis(any(), anyString(), any()))
-                .thenReturn(new BAnalysisGenerationService.GeneratedCompanyAnalysis(companyPayload(), null, null));
+                .thenReturn(new BAnalysisGenerationService.GeneratedCompanyAnalysis(companyPayload(), null, null,
+                        new BAnalysisGenerationService.AnalysisProvenance(
+                                null, "LOCAL", "self-r1-test", false, "[\"LOCAL\"]")));
 
         service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
 
@@ -229,16 +236,18 @@ class ApplicationCaseAutoPipelineServiceTest {
         ArgumentCaptor<JobAnalysis> jobCaptor = ArgumentCaptor.forClass(JobAnalysis.class);
         verify(jobAnalysisMapper).insertJobAnalysis(jobCaptor.capture());
         assertThat(jobCaptor.getValue().getRequestedProvider()).isNull();
-        assertThat(jobCaptor.getValue().getActualProvider()).isNull();
-        assertThat(jobCaptor.getValue().getActualModel()).isNull();
-        assertThat(jobCaptor.getValue().getFallbackUsed()).isNull();
-        assertThat(jobCaptor.getValue().getAttemptPath()).isNull();
+        assertThat(jobCaptor.getValue().getActualProvider()).isEqualTo("CLAUDE");
+        assertThat(jobCaptor.getValue().getActualModel()).isEqualTo("claude-haiku-test");
+        assertThat(jobCaptor.getValue().getFallbackUsed()).isTrue();
+        assertThat(jobCaptor.getValue().getAttemptPath()).isEqualTo("[\"LOCAL\",\"CLAUDE\"]");
         assertThat(jobCaptor.getValue().getRunMode()).isEqualTo("INITIAL");
 
         ArgumentCaptor<CompanyAnalysis> companyCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
         verify(companyAnalysisMapper).insertCompanyAnalysis(companyCaptor.capture());
         assertThat(companyCaptor.getValue().getRequestedProvider()).isNull();
-        assertThat(companyCaptor.getValue().getActualProvider()).isNull();
+        assertThat(companyCaptor.getValue().getActualProvider()).isEqualTo("LOCAL");
+        assertThat(companyCaptor.getValue().getActualModel()).isEqualTo("self-r1-test");
+        assertThat(companyCaptor.getValue().getFallbackUsed()).isFalse();
         assertThat(companyCaptor.getValue().getRunMode()).isEqualTo("INITIAL");
     }
 
@@ -254,6 +263,24 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
         verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), anyString());
         verify(applicationCaseMapper, never()).markReadyAfterAnalysis(anyLong(), anyLong(), anyString());
+        verify(initialRunMapper, never()).markDone(anyLong(), anyString());
+        verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void skipsPipelineWhenInitialRunProfileAlreadyClosedByReextraction() {
+        // #1 scenario 2(★): 최초 OCR 이 REVIEW_REQUIRED 라 PENDING 이던 프로필을 사용자가 재추출하며 FAILED 로
+        // 닫은 뒤, REVIEW_REQUIRED 공고를 confirm 하면 이 경로가 다시 불린다. 프로필이 이미 FAILED 이므로
+        // claimForRun(state='PENDING' 조건)이 0행 → 초기 자동 분석이 재실행되지 않는다("재추출 후 자동분석 없음" 유지).
+        stubRunnableDraftCase();
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(profile("FAILED"));
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(0);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+        verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any());
+        verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), anyString());
         verify(initialRunMapper, never()).markDone(anyLong(), anyString());
         verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
     }

@@ -139,6 +139,9 @@ export function NewApplicationPage() {
   const [ocrProvider, setOcrProvider] = useState(AUTO_PROVIDER);
   const [modelOptions, setModelOptions] = useState<ModelOptions | null>(null);
   const [modelOptionsLoading, setModelOptionsLoading] = useState(false);
+  // 조회 실패(네트워크·서버 오류)와 "선택지가 없음"을 구분한다 — 실패면 안내 + 재시도 버튼을 보여준다.
+  const [modelOptionsError, setModelOptionsError] = useState(false);
+  const [modelOptionsReloadKey, setModelOptionsReloadKey] = useState(0);
 
   const activePostingText = useMemo(() => displayPostingText(jobPosting), [jobPosting]);
   const extractionActive = extractionJob ? isApplicationCaseExtractionActive(extractionJob.status) : false;
@@ -342,18 +345,23 @@ export function NewApplicationPage() {
 
   // 등록 화면(step 0)에서 현재 등록 방식 기준으로 단계별 모델 선택지를 조회한다. sourceType 이 바뀌면
   // OCR 선택지가 달라지므로 다시 조회한다(공고·기업 분석 선택지는 sourceType 과 무관하지만 같은 응답에 온다).
-  // 조회 실패해도 등록은 막지 않는다 — 선택지가 없으면 "자동"만 노출돼 백엔드 기본 체인으로 진행한다.
+  // 조회 실패해도 등록은 막지 않는다 — "자동"으로 진행할 수 있고, 실패는 안내 + 재시도 버튼으로 노출한다
+  // (modelOptionsReloadKey 를 올리면 재조회). "선택지가 없음"(성공했으나 전부 불가)과 조회 실패를 구분한다.
   useEffect(() => {
     if (step !== 0 || !isAuthenticated) return;
 
     let cancelled = false;
     setModelOptionsLoading(true);
+    setModelOptionsError(false);
     void getModelOptions(postingForm.sourceType)
       .then((options) => {
         if (!cancelled) setModelOptions(options);
       })
       .catch(() => {
-        if (!cancelled) setModelOptions(null);
+        if (!cancelled) {
+          setModelOptions(null);
+          setModelOptionsError(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setModelOptionsLoading(false);
@@ -362,7 +370,7 @@ export function NewApplicationPage() {
     return () => {
       cancelled = true;
     };
-  }, [step, isAuthenticated, postingForm.sourceType]);
+  }, [step, isAuthenticated, postingForm.sourceType, modelOptionsReloadKey]);
 
   const saveConfirmation = async (): Promise<ApplicationCase> => {
     if (!createdCase || !jobPosting) {
@@ -621,6 +629,21 @@ export function NewApplicationPage() {
                   <p className="text-xs leading-5 text-slate-500">
                     초기 공고·기업 분석에 쓸 모델을 고를 수 있습니다. 고른 모델을 먼저 시도하고, 실패하면 자동으로 다른 모델로 이어서 처리합니다. 그대로 두면 기본 추천 순서로 실행합니다.
                   </p>
+                  {modelOptionsError && !modelOptionsLoading && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      <span>
+                        모델 선택지를 불러오지 못했습니다. 그대로 &quot;자동&quot;으로 진행할 수 있고, 다시 시도할 수도 있습니다.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setModelOptionsReloadKey((key) => key + 1)}
+                        disabled={busy}
+                        className="rounded border border-amber-300 bg-white px-2 py-1 font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        다시 시도
+                      </button>
+                    </div>
+                  )}
                   <div className="grid gap-4 md:grid-cols-2">
                     {isFileSource(postingForm.sourceType) && (
                       <RegistrationModelSelect
