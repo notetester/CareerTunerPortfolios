@@ -3,12 +3,14 @@ import { Mic, Camera, Trash2, Hand } from "lucide-react";
 /**
  * 마이크/카메라 권한 사전 동의 바텀시트 (스토어 심사 대응).
  * OS 권한 다이얼로그 전에 왜 필요한지·데이터 처리 방식을 설명한다.
- * - 원본 즉시 폐기, 거부 시 대체 경로(텍스트 답변) 고지
+ * - 답변 원본 저장·사용자 삭제 정책, 거부 시 대체 경로(텍스트 답변) 고지
  * - 허용 시 localStorage 에 기억 → 다음부터 바로 진입
  */
 export type PermKind = "voice" | "avatar";
 
-const ACCEPT_KEY = (kind: PermKind) => `careertuner.perm.preprompt.${kind}`;
+// v2부터 녹음/녹화 원본을 답변에 저장한다. 즉시 폐기 정책에 동의했던 사용자는
+// 변경된 보관 정책을 다시 확인해야 하므로 기존 동의 키를 재사용하지 않는다.
+const ACCEPT_KEY = (kind: PermKind) => `careertuner.perm.preprompt.v2.${kind}`;
 
 export function isPrepromptAccepted(kind: PermKind): boolean {
   try {
@@ -61,9 +63,9 @@ export function PermissionPreprompt({
           <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.04] px-3.5 py-3">
             <Trash2 className="mt-0.5 size-4 shrink-0 text-[#8A8F98]" />
             <div>
-              <div className="text-[12.5px] font-semibold text-[#EDEDEF]">원본은 즉시 폐기</div>
+              <div className="text-[12.5px] font-semibold text-[#EDEDEF]">원본 저장과 삭제</div>
               <div className="mt-0.5 text-[11.5px] leading-relaxed text-[#8A8F98]">
-                채점 후 녹음·녹화 원본은 저장하지 않아요. 점수와 텍스트만 남습니다.
+                원본은 답변 기록에 저장되며 직접 삭제할 수 있어요. 삭제 후에는 원본 기반 재분석이 불가능합니다.
               </div>
             </div>
           </div>

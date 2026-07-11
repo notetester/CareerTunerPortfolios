@@ -21,12 +21,15 @@ import {
  * 몰입형 화상 답변 (모바일 풀스크린) — 카메라 프리뷰 전체화면 + 질문 오버레이.
  * 진입 즉시 녹화 시작 → 정지 → 전사(serve, 폴백 브라우저 STT)
  * → 비언어 채점(serve late-fusion, 폴백 온디바이스 MediaPipe/음향 지표)
- * → onResult 로 스레드에 반환. 원본 영상은 폐기.
+ * → onResult 로 전사·점수·원본 Blob을 부모에 넘긴다. 부모가 INTERVIEW_ANSWER
+ * pending 파일로 저장하고 표준 answers 요청 성공 시 원자 연결한다.
  */
 export interface AvatarResult {
   transcript: string;
   voiceScore: number | null;
   visualScore: number | null;
+  videoBlob: Blob | null;
+  videoFormat: string;
 }
 
 type Phase = "recording" | "processing";
@@ -220,7 +223,9 @@ export function ImmersiveAvatarOverlay({
       voiceTracker?.dispose();
     }
 
-    if (!closedRef.current) onResult({ transcript, voiceScore, visualScore });
+    if (!closedRef.current) {
+      onResult({ transcript, voiceScore, visualScore, videoBlob: blob, videoFormat });
+    }
   };
 
   const mm = Math.floor(seconds / 60);
@@ -282,7 +287,7 @@ export function ImmersiveAvatarOverlay({
         {phase === "processing" && (
           <div className="mx-6 mb-4 flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-black/60 px-4 py-3 text-[13px] text-[#EDEDEF] backdrop-blur-md">
             <span className="size-4 animate-spin rounded-full border-2 border-white/15 border-t-[#5E6AD2]" />
-            표정·자세·음성 분석 중 — 원본은 폐기됩니다
+            표정·자세·음성 분석 중 — 제출 원본을 안전하게 준비합니다
           </div>
         )}
 

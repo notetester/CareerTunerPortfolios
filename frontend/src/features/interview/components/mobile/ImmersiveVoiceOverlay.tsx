@@ -21,11 +21,14 @@ import {
  * 몰입형 음성 답변 (모바일 풀스크린) — Claude 앱식 최소 UI.
  * 진입 즉시 녹음 시작 → 정지 → 전사(serve STT, 실패 시 브라우저 STT 폴백)
  * → 전달력 채점(serve LightGBM, 실패 시 온디바이스 규칙점수)
- * → onResult(전사, 전달력점수) 로 스레드에 돌려준다. 원본 음성은 폐기.
+ * → onResult 로 전사·점수·원본 Blob을 부모에 넘긴다. 부모가 INTERVIEW_ANSWER
+ * pending 파일로 저장하고 표준 answers 요청 성공 시 원자 연결한다.
  */
 export interface VoiceResult {
   transcript: string;
   voiceScore: number | null;
+  audioBlob: Blob | null;
+  audioFormat: string;
 }
 
 type Phase = "recording" | "processing";
@@ -150,7 +153,12 @@ export function ImmersiveVoiceOverlay({
 
     if (!blob || blob.size === 0) {
       tracker?.dispose();
-      onResult({ transcript: webSpeechText, voiceScore: null });
+      onResult({
+        transcript: webSpeechText,
+        voiceScore: null,
+        audioBlob: null,
+        audioFormat: formatRef.current,
+      });
       return;
     }
 
@@ -185,7 +193,9 @@ export function ImmersiveVoiceOverlay({
       tracker?.dispose();
     }
 
-    if (!closedRef.current) onResult({ transcript, voiceScore });
+    if (!closedRef.current) {
+      onResult({ transcript, voiceScore, audioBlob: blob, audioFormat });
+    }
   };
 
   const mm = Math.floor(seconds / 60);
@@ -235,7 +245,7 @@ export function ImmersiveVoiceOverlay({
         ) : phase === "processing" ? (
           <>
             <div className="size-9 animate-spin rounded-full border-2 border-white/10 border-t-[#5E6AD2]" />
-            <div className="text-[13px] text-[#8A8F98]">전사·채점 중 — 원본은 폐기됩니다</div>
+            <div className="text-[13px] text-[#8A8F98]">전사·채점 중 — 제출 원본을 안전하게 준비합니다</div>
           </>
         ) : (
           <>

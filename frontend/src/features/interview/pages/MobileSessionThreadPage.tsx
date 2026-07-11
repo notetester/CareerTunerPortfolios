@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, ArrowUp, Camera, Check, Mic, Monitor, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowUp, Camera, Check, Mic, Monitor, Sparkles, Trash2, X } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { haptic } from "@/platform/haptics";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import {
   dispatchSessionToDesktop,
+  deleteAnswerMedia,
+  deletePendingInterviewFile,
   generateExpectedQuestions,
   generateFollowUps,
   getModelAnswer,
@@ -15,10 +17,16 @@ import {
   listSessionQuestions,
   markSessionResumed,
   submitAnswer,
+  uploadFile,
 } from "../api/interviewApi";
 import { getInterviewModeLabel } from "../types/interview";
-import type { InterviewQuestion, InterviewSession } from "../types/interview";
-import { restoreFailedDraft, rollbackOptimisticSubmission } from "../lib/mobileSubmission";
+import type { FileAsset, InterviewQuestion, InterviewSession } from "../types/interview";
+import {
+  buildPendingMediaAnswerFields,
+  restoreFailedDraft,
+  rollbackOptimisticSubmission,
+  type PendingInterviewMediaKind,
+} from "../lib/mobileSubmission";
 import { ImmersiveVoiceOverlay } from "../components/mobile/ImmersiveVoiceOverlay";
 import { ImmersiveAvatarOverlay } from "../components/mobile/ImmersiveAvatarOverlay";
 import {
@@ -44,10 +52,27 @@ interface ScoreInfo {
 }
 type ThreadItem = (
   | { kind: "question"; q: InterviewQuestion }
-  | { kind: "answer"; text: string; hasAudio: boolean }
+  | {
+      kind: "answer";
+      qid: number;
+      answerId: number | null;
+      text: string;
+      hasAudio: boolean;
+      hasVideo: boolean;
+      audioUrl: string | null;
+      videoUrl: string | null;
+    }
   | { kind: "score"; s: ScoreInfo }
   | { kind: "scoring" }
 ) & { submissionId?: string };
+
+interface PendingInterviewMedia {
+  questionId: number;
+  kind: PendingInterviewMediaKind;
+  file: FileAsset;
+  voiceScore: number | null;
+  visualScore: number | null;
+}
 
 export function MobileSessionThreadPage() {
   const { id } = useParams();
@@ -69,10 +94,15 @@ export function MobileSessionThreadPage() {
   // 몰입형 오버레이 + 권한 프리프롬프트
   const [overlay, setOverlay] = useState<PermKind | null>(null);
   const [preprompt, setPreprompt] = useState<PermKind | null>(null);
-  // 몰입형에서 온 전달력/비언어 점수 — 다음 제출 시 점수 카드에 병기
-  const pendingVoiceScore = useRef<number | null>(null);
-  const pendingVisualScore = useRef<number | null>(null);
-  const [hasVoicePending, setHasVoicePending] = useState(false);
+  // 몰입형 원본은 answer 저장 전까지 ref_id=null pending 파일로 관리한다.
+  const [pendingMedia, setPendingMediaState] = useState<PendingInterviewMedia | null>(null);
+  const pendingMediaRef = useRef<PendingInterviewMedia | null>(null);
+  const pendingFileIdsRef = useRef(new Set<number>());
+  const mediaUploadGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const activeSessionIdRef = useRef(sessionId);
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [deletingMedia, setDeletingMedia] = useState<Record<string, boolean>>({});
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,6 +112,128 @@ export function MobileSessionThreadPage() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToastMsg(null), 3200);
   }, []);
+
+  const setPendingMedia = useCallback((next: PendingInterviewMedia | null) => {
+    pendingMediaRef.current = next;
+    setPendingMediaState(next);
+  }, []);
+
+  const cleanupPendingFile = useCallback(async (fileId: number, keepalive = false) => {
+    try {
+      await deletePendingInterviewFile(fileId, keepalive);
+      pendingFileIdsRef.current.delete(fileId);
+      return true;
+    } catch {
+      // 재시도 가능한 ID를 집합에 남긴다. unmount에서 한 번 더 best-effort 정리한다.
+      pendingFileIdsRef.current.add(fileId);
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      mediaUploadGenerationRef.current += 1;
+      pendingMediaRef.current = null;
+      for (const fileId of pendingFileIdsRef.current) {
+        void deletePendingInterviewFile(fileId, true)
+          .then(() => pendingFileIdsRef.current.delete(fileId))
+          .catch(() => undefined);
+      }
+    };
+  }, []);
+
+  const acceptCapturedMedia = useCallback(async ({
+    questionId,
+    kind,
+    blob,
+    format,
+    transcript,
+    voiceScore,
+    visualScore,
+  }: {
+    questionId: number;
+    kind: PendingInterviewMediaKind;
+    blob: Blob | null;
+    format: string;
+    transcript: string;
+    voiceScore: number | null;
+    visualScore: number | null;
+  }) => {
+    const normalizedTranscript = transcript.trim();
+    // STT가 비어도 원본은 보존해 사용자가 텍스트를 직접 입력한 뒤 함께 제출할 수 있다.
+    // 이미 작성한 초안이 있다면 빈 전사 결과로 덮어쓰지 않는다.
+    setDraft((current) => normalizedTranscript || current);
+    setSubmissionError(null);
+    const generation = ++mediaUploadGenerationRef.current;
+    setMediaUploading(true);
+
+    const previous = pendingMediaRef.current;
+
+    if (!blob || blob.size === 0) {
+      if (mountedRef.current && generation === mediaUploadGenerationRef.current) {
+        setMediaUploading(false);
+        toast(previous
+          ? "새 원본을 만들지 못했습니다 — 이전 원본을 유지합니다"
+          : "원본을 만들지 못했습니다 — 다시 녹음하거나 텍스트로 제출해 주세요");
+      }
+      return;
+    }
+
+    try {
+      const extension = format === "mp4" ? "mp4" : "webm";
+      const file = await uploadFile(blob, kind, {
+        fileName: `${kind === "AUDIO" ? "voice" : "video"}-answer-${questionId}.${extension}`,
+        refType: "INTERVIEW_ANSWER",
+      });
+      pendingFileIdsRef.current.add(file.id);
+      if (!mountedRef.current || generation !== mediaUploadGenerationRef.current) {
+        await cleanupPendingFile(file.id, true);
+        return;
+      }
+      setPendingMedia({ questionId, kind, file, voiceScore, visualScore });
+      if (previous && previous.file.id !== file.id) {
+        // 새 원본 저장이 확정된 뒤에만 이전 원본을 정리해 업로드 실패 시 복구 가능성을 보존한다.
+        void cleanupPendingFile(previous.file.id);
+      }
+      toast(normalizedTranscript
+        ? kind === "AUDIO"
+          ? "전사·원본 저장 완료 — 확인 후 전송하세요"
+          : "영상 분석·원본 저장 완료 — 확인 후 전송하세요"
+        : "원본 저장 완료 — 답변 텍스트를 입력한 뒤 전송하세요");
+    } catch {
+      if (mountedRef.current && generation === mediaUploadGenerationRef.current) {
+        toast(previous
+          ? "새 원본 저장에 실패했습니다 — 이전 원본을 유지합니다"
+          : "원본 저장에 실패했습니다 — 다시 녹음하거나 텍스트로 제출해 주세요");
+      }
+    } finally {
+      if (mountedRef.current && generation === mediaUploadGenerationRef.current) {
+        setMediaUploading(false);
+      }
+    }
+  }, [cleanupPendingFile, setPendingMedia, toast]);
+
+  const discardPendingMedia = useCallback(async () => {
+    const current = pendingMediaRef.current;
+    if (!current) return;
+    mediaUploadGenerationRef.current += 1;
+    setPendingMedia(null);
+    const deleted = await cleanupPendingFile(current.file.id);
+    toast(deleted ? "전송 대기 원본을 삭제했습니다" : "원본 삭제에 실패했습니다 — 페이지를 닫을 때 다시 정리합니다");
+  }, [cleanupPendingFile, setPendingMedia, toast]);
+
+  useEffect(() => {
+    if (activeSessionIdRef.current === sessionId) return;
+    activeSessionIdRef.current = sessionId;
+    mediaUploadGenerationRef.current += 1;
+    setPendingMedia(null);
+    for (const fileId of pendingFileIdsRef.current) {
+      void cleanupPendingFile(fileId, true);
+    }
+    setMediaUploading(false);
+  }, [cleanupPendingFile, sessionId, setPendingMedia]);
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => {
@@ -130,7 +282,16 @@ export function MobileSessionThreadPage() {
         out.push({ kind: "question", q });
         const rv = byQid.get(q.id);
         if (rv?.answerText) {
-          out.push({ kind: "answer", text: rv.answerText, hasAudio: false });
+          out.push({
+            kind: "answer",
+            qid: q.id,
+            answerId: rv.answerId,
+            text: rv.answerText,
+            hasAudio: Boolean(rv.audioUrl),
+            hasVideo: Boolean(rv.videoUrl),
+            audioUrl: rv.audioUrl,
+            videoUrl: rv.videoUrl,
+          });
           out.push({
             kind: "score",
             s: {
@@ -181,29 +342,56 @@ export function MobileSessionThreadPage() {
   /** 답변 제출 → 채점 카드 (몰입형 점수 있으면 병기). */
   const send = async () => {
     const text = draft.trim();
-    if (!text || !currentQ || scoring) return;
+    if (!text || !currentQ || scoring || mediaUploading) return;
     haptic("light");
     const qid = currentQ.id;
-    const hadAudio = hasVoicePending;
-    const voiceScore = pendingVoiceScore.current;
-    const visualScore = pendingVisualScore.current;
+    const selectedMedia = pendingMediaRef.current;
+    if (selectedMedia && selectedMedia.questionId !== qid) {
+      setPendingMedia(null);
+      await cleanupPendingFile(selectedMedia.file.id);
+    }
+    const pending = selectedMedia?.questionId === qid ? selectedMedia : null;
+    const hadAudio = pending?.kind === "AUDIO";
+    const hadVideo = pending?.kind === "VIDEO";
+    const voiceScore = pending?.voiceScore ?? null;
+    const visualScore = pending?.visualScore ?? null;
+    const mediaFields = pending
+      ? buildPendingMediaAnswerFields(pending.kind, pending.file.id, pending.file.contentUrl)
+      : {};
     const submissionId = `${qid}-${Date.now()}`;
     setSubmissionError(null);
     setDraft("");
     setScoring(true);
     setItems((prev) => [
       ...prev,
-      { kind: "answer", text, hasAudio: hadAudio, submissionId },
+      {
+        kind: "answer",
+        qid,
+        answerId: null,
+        text,
+        hasAudio: hadAudio,
+        hasVideo: hadVideo,
+        audioUrl: hadAudio ? pending?.file.contentUrl ?? null : null,
+        videoUrl: hadVideo ? pending?.file.contentUrl ?? null : null,
+        submissionId,
+      },
       { kind: "scoring", submissionId },
     ]);
-    let succeeded = false;
     try {
-      const a = await submitAnswer(qid, { answerText: text });
+      const a = await submitAnswer(qid, { answerText: text, ...mediaFields });
       setItems((prev) => [
         ...prev
           .filter((it) => !(it.kind === "scoring" && it.submissionId === submissionId))
           .map((it) => it.kind === "answer" && it.submissionId === submissionId
-            ? { ...it, submissionId: undefined }
+            ? {
+                ...it,
+                answerId: a.id,
+                audioUrl: a.audioUrl,
+                videoUrl: a.videoUrl,
+                hasAudio: Boolean(a.audioUrl),
+                hasVideo: Boolean(a.videoUrl),
+                submissionId: undefined,
+              }
             : it),
         {
           kind: "score",
@@ -218,7 +406,11 @@ export function MobileSessionThreadPage() {
           },
         },
       ]);
-      succeeded = true;
+      if (pending) {
+        // 서버 transaction이 file_asset을 answer.id로 연결했으므로 pending 정리 대상에서 제외한다.
+        pendingFileIdsRef.current.delete(pending.file.id);
+        if (pendingMediaRef.current?.file.id === pending.file.id) setPendingMedia(null);
+      }
       toast(a.score != null ? `채점 완료 — ${a.score}점` : "답변이 저장되었습니다");
       haptic("medium");
     } catch {
@@ -227,11 +419,6 @@ export function MobileSessionThreadPage() {
       setSubmissionError("전송되지 않았습니다. 답변을 보존했어요. 연결을 확인한 뒤 다시 보내주세요.");
       toast("답변 제출에 실패했습니다 — 입력 내용을 보존했습니다");
     } finally {
-      if (succeeded) {
-        pendingVoiceScore.current = null;
-        pendingVisualScore.current = null;
-        setHasVoicePending(false);
-      }
       setScoring(false);
     }
   };
@@ -276,6 +463,32 @@ export function MobileSessionThreadPage() {
       }
     }
     setOpenModel((prev) => ({ ...prev, [qid]: !prev[qid] }));
+  };
+
+  const removeStoredMedia = async (
+    answerId: number,
+    kind: PendingInterviewMediaKind,
+  ) => {
+    const label = kind === "AUDIO" ? "음성" : "영상";
+    if (!window.confirm(`${label} 원본을 삭제할까요? 삭제 후에는 원본 기반 재분석이 불가능합니다.`)) {
+      return;
+    }
+    const key = `${answerId}-${kind}`;
+    setDeletingMedia((prev) => ({ ...prev, [key]: true }));
+    try {
+      await deleteAnswerMedia(answerId, kind);
+      setItems((prev) => prev.map((item) => {
+        if (item.kind !== "answer" || item.answerId !== answerId) return item;
+        return kind === "AUDIO"
+          ? { ...item, audioUrl: null, hasAudio: false }
+          : { ...item, videoUrl: null, hasVideo: false };
+      }));
+      toast(`${label} 원본을 삭제했습니다 — 답변과 채점 결과는 유지됩니다`);
+    } catch {
+      toast(`${label} 원본 삭제에 실패했습니다`);
+    } finally {
+      setDeletingMedia((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
   const generate = async () => {
@@ -426,7 +639,7 @@ export function MobileSessionThreadPage() {
             }
             if (it.kind === "answer") {
               return (
-                <div key={`a-${i}`} className="my-4 flex gap-3">
+                <div key={`a-${it.answerId ?? it.submissionId ?? i}`} className="my-4 flex gap-3">
                   <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-[11px] font-bold text-muted-foreground">
                     나
                   </div>
@@ -438,10 +651,43 @@ export function MobileSessionThreadPage() {
                           <Mic className="size-2.5" /> 음성
                         </span>
                       )}
+                      {it.hasVideo && (
+                        <span className="flex items-center gap-1 text-[10px]">
+                          <Camera className="size-2.5" /> 영상
+                        </span>
+                      )}
                     </div>
                     <div className="rounded-xl border border-border bg-card px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm">
                       {it.text}
                     </div>
+                    {it.answerId != null && (it.audioUrl || it.videoUrl) && (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {it.audioUrl && (
+                          <button
+                            type="button"
+                            onClick={() => void removeStoredMedia(it.answerId!, "AUDIO")}
+                            disabled={deletingMedia[`${it.answerId}-AUDIO`]}
+                            className="flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[10px] text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                            aria-label="음성 원본 삭제"
+                          >
+                            <Trash2 className="size-2.5" />
+                            {deletingMedia[`${it.answerId}-AUDIO`] ? "삭제 중…" : "음성 원본 삭제"}
+                          </button>
+                        )}
+                        {it.videoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => void removeStoredMedia(it.answerId!, "VIDEO")}
+                            disabled={deletingMedia[`${it.answerId}-VIDEO`]}
+                            className="flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[10px] text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                            aria-label="영상 원본 삭제"
+                          >
+                            <Trash2 className="size-2.5" />
+                            {deletingMedia[`${it.answerId}-VIDEO`] ? "삭제 중…" : "영상 원본 삭제"}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -569,7 +815,7 @@ export function MobileSessionThreadPage() {
             <div className="flex items-center gap-1">
             <button
               onClick={() => openMedia("voice")}
-              disabled={!currentQ || scoring}
+              disabled={!currentQ || scoring || mediaUploading}
               className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
               aria-label="음성 답변"
             >
@@ -577,15 +823,28 @@ export function MobileSessionThreadPage() {
             </button>
             <button
               onClick={() => openMedia("avatar")}
-              disabled={!currentQ || scoring}
+              disabled={!currentQ || scoring || mediaUploading}
               className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
               aria-label="화상 답변"
             >
               <Camera className="size-[17px]" />
             </button>
-            {hasVoicePending && (
+            {mediaUploading && (
+              <span className="flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                <span className="size-2.5 animate-spin rounded-full border border-border border-t-primary" /> 원본 저장 중
+              </span>
+            )}
+            {pendingMedia && (
               <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] text-primary dark:text-[#aab2ef]">
-                <Check className="size-2.5" /> 음성 전사됨
+                <Check className="size-2.5" /> {pendingMedia.kind === "AUDIO" ? "음성" : "영상"} 원본 준비됨
+                <button
+                  type="button"
+                  onClick={() => void discardPendingMedia()}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-primary/10"
+                  aria-label="전송 대기 원본 제거"
+                >
+                  <X className="size-2.5" />
+                </button>
               </span>
             )}
             <span className="ml-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
@@ -593,7 +852,7 @@ export function MobileSessionThreadPage() {
             </span>
             <button
               onClick={() => void send()}
-              disabled={!currentQ || scoring || !draft.trim()}
+              disabled={!currentQ || scoring || mediaUploading || !draft.trim()}
               className="ml-auto flex size-[34px] items-center justify-center rounded-[9px] bg-gradient-to-b from-[#7d88de] to-[#5E6AD2] text-white shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_3px_10px_rgba(94,106,210,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-40"
               aria-label="보내기"
             >
@@ -634,17 +893,18 @@ export function MobileSessionThreadPage() {
           questionLabel={qLabel}
           modeLabel={modeLabel}
           onClose={() => setOverlay(null)}
-          onResult={({ transcript, voiceScore }) => {
+          onResult={({ transcript, voiceScore, audioBlob, audioFormat }) => {
             setOverlay(null);
-            if (transcript) {
-              setDraft(transcript);
-              pendingVoiceScore.current = voiceScore;
-              setHasVoicePending(true);
-              toast(
-                voiceScore != null
-                  ? `전사 완료 — 전달력 ${voiceScore}점 · 확인 후 전송하세요`
-                  : "전사 완료 — 확인 후 전송하세요",
-              );
+            if (transcript.trim() || (audioBlob?.size ?? 0) > 0) {
+              void acceptCapturedMedia({
+                questionId: currentQ.id,
+                kind: "AUDIO",
+                blob: audioBlob,
+                format: audioFormat,
+                transcript,
+                voiceScore,
+                visualScore: null,
+              });
             } else {
               toast("음성이 인식되지 않았습니다 — 텍스트로 입력해 주세요");
             }
@@ -657,14 +917,18 @@ export function MobileSessionThreadPage() {
           questionText={currentQ.question}
           questionLabel={qLabel}
           onClose={() => setOverlay(null)}
-          onResult={({ transcript, voiceScore, visualScore }) => {
+          onResult={({ transcript, voiceScore, visualScore, videoBlob, videoFormat }) => {
             setOverlay(null);
-            if (transcript) {
-              setDraft(transcript);
-              pendingVoiceScore.current = voiceScore;
-              pendingVisualScore.current = visualScore;
-              setHasVoicePending(true);
-              toast("분석 완료 — 확인 후 전송하세요");
+            if (transcript.trim() || (videoBlob?.size ?? 0) > 0) {
+              void acceptCapturedMedia({
+                questionId: currentQ.id,
+                kind: "VIDEO",
+                blob: videoBlob,
+                format: videoFormat,
+                transcript,
+                voiceScore,
+                visualScore,
+              });
             } else {
               toast("음성이 인식되지 않았습니다 — 텍스트로 입력해 주세요");
             }

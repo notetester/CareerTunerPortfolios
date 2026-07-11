@@ -133,7 +133,13 @@ export function submitAnswer(
   questionId: number,
   request: SubmitAnswerRequest,
 ): Promise<InterviewAnswer> {
-  if (isDataMockActive()) return mockDelay(dummyAnswer(questionId), 500);
+  if (isDataMockActive()) {
+    return mockDelay({
+      ...dummyAnswer(questionId),
+      audioUrl: request.audioUrl ?? null,
+      videoUrl: request.videoUrl ?? null,
+    }, 500);
+  }
   return runWithAiCharge("INTERVIEW_ANSWER_EVAL", (headers) =>
     api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
       method: "POST",
@@ -144,6 +150,7 @@ export function submitAnswer(
 
 /** 답변 내용·채점은 유지하고 선택한 음성/영상 원본만 물리 삭제한다. */
 export function deleteAnswerMedia(answerId: number, kind: "AUDIO" | "VIDEO"): Promise<void> {
+  if (isDataMockActive()) return Promise.resolve();
   return api<void>(`/interview/answers/${answerId}/media/${kind}`, { method: "DELETE" });
 }
 
@@ -216,7 +223,10 @@ export function getSessionReview(sessionId: number): Promise<SessionReview> {
         question: q.question,
         questionType: q.questionType ?? "EXPECTED",
         modelAnswer: dummyModelAnswer,
+        answerId: null,
         answerText: null,
+        audioUrl: null,
+        videoUrl: null,
         score: null,
         feedback: null,
         improvedAnswer: null,
@@ -237,7 +247,7 @@ export function getMediaCapabilities(): Promise<MediaCapabilities> {
 /**
  * 음성 답변 → 자체 추론 서버 점수 (ADR-006).
  * audioBase64 는 녹음 원본(webm 등). 글자수·군말수·응답지연은 프런트가 계산해 함께 보낸다.
- * 원본 음성은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
+ * 이 분석 요청의 base64 사본은 점수 산출 후 보관하지 않는다. 제출 원본은 file_asset에 별도 저장한다.
  */
 export function scoreVoiceServer(
   sessionId: number,
@@ -258,7 +268,7 @@ export function scoreVoiceServer(
 /**
  * 아바타 화상면접 → 자체 추론 서버 음성+영상 점수 (late fusion, ADR-006/007).
  * videoBase64 는 녹화 원본(webm 등). serve 가 webm 1개에서 음성·영상 피처를 함께 뽑아 결합한다.
- * 원본 영상은 서버에서 점수 산출 후 버려진다(전송 동의 필요).
+ * 이 분석 요청의 base64 사본은 점수 산출 후 보관하지 않는다. 제출 원본은 file_asset에 별도 저장한다.
  */
 export function scoreAvatarServer(
   sessionId: number,
@@ -278,7 +288,7 @@ export function scoreAvatarServer(
 
 /**
  * 음성 답변 → 자체 STT 전사 (B 베이직, faster-whisper, API 0).
- * audioBase64 는 녹음 원본(webm 등). 원본 음성은 전사 후 버려진다.
+ * audioBase64 는 녹음 원본(webm 등). 전사 요청 사본은 보관하지 않고 제출 원본은 별도 저장한다.
  */
 export function transcribeVoice(
   sessionId: number,
@@ -335,6 +345,20 @@ export function uploadFile(
   kind: FileAsset["kind"],
   options: { fileName?: string; refType?: string; refId?: number } = {},
 ): Promise<FileAsset> {
+  if (isDataMockActive()) {
+    const id = Date.now();
+    return Promise.resolve({
+      id,
+      kind,
+      refType: options.refType ?? null,
+      refId: options.refId ?? null,
+      originalName: options.fileName ?? "upload",
+      contentType: file.type || null,
+      sizeBytes: file.size,
+      contentUrl: `/api/file/${id}/content`,
+      createdAt: new Date().toISOString(),
+    });
+  }
   const form = new FormData();
   form.append("file", file, options.fileName ?? "upload");
   form.append("kind", kind);
@@ -342,6 +366,12 @@ export function uploadFile(
   if (options.refId != null) form.append("refId", String(options.refId));
   // api() 는 FormData 면 Content-Type 을 직접 지정하지 않고(boundary 자동), 인증 헤더만 붙인다.
   return api<FileAsset>("/file/upload", { method: "POST", body: form });
+}
+
+/** 아직 answer에 연결되지 않은 INTERVIEW_ANSWER 원본을 정리한다. */
+export function deletePendingInterviewFile(fileId: number, keepalive = false): Promise<void> {
+  if (isDataMockActive()) return Promise.resolve();
+  return api<void>(`/file/${fileId}`, { method: "DELETE", keepalive });
 }
 
 /**
