@@ -161,7 +161,8 @@ public class ApplicationCaseAutoPipelineService {
 
         try {
             // 등록 선택이 있으면 preferred 경로(선택 우선 + 나머지 기본 체인 폴백 + self-rules)로, 없으면 기존 자동
-            // 체인으로 돌린다. preferred 경로만 provenance 를 채우고(run_mode=INITIAL), 자동 체인은 NULL 이다.
+            // 체인으로 돌린다. 둘 다 provenance 를 채운다(run_mode=INITIAL). preferred 는 requested/actual 모두,
+            // 자동(AUTO)은 requested=NULL 이되 actual provider·모델·attempt_path·fallback_used 를 기록한다(#2 정책 A).
             GeneratedJobAnalysis generatedJob = jobProvider != null
                     ? bAnalysisGenerationService.generateJobAnalysisPreferred(applicationCase, postingText, jobProvider)
                     : bAnalysisGenerationService.generateJobAnalysis(applicationCase, postingText);
@@ -304,8 +305,9 @@ public class ApplicationCaseAutoPipelineService {
      * 초기 파이프라인이 만드는 공고분석 행에 run_mode 와 provenance 를 기록한다.
      * {@code run_mode} 는 <b>항상</b> {@code INITIAL} — 등록 시 provider 선택 여부와 무관하게 초기 실행임을 표시해
      * 수동 strict(=MANUAL)·레거시(=NULL)와 구분한다("초기 실행은 항상 INITIAL" 계약). provider provenance
-     * (요청·실제 provider·모델·폴백여부·시도순서)는 선택이 있었던 preferred 경로에서만 채우고, 자동 체인
-     * (provenance=null)은 이 컬럼들만 NULL 로 남긴다(run_mode 는 여전히 INITIAL).
+     * (요청·실제 provider·모델·폴백여부·시도순서)는 preferred 경로(요청·실제 모두)와 자동 AUTO 경로(요청=NULL,
+     * 실제 provider·모델·attempt_path·fallback_used 기록)가 모두 채운다(#2 정책 A). provenance 자체가 null 인
+     * 경우(방어적·레거시 호출부)만 이 컬럼들이 NULL 로 남는다(run_mode 는 여전히 INITIAL).
      */
     private void applyInitialRunProvenance(JobAnalysis.JobAnalysisBuilder builder, AnalysisProvenance provenance) {
         builder.runMode(RUN_MODE_INITIAL);

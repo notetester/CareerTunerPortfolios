@@ -2,14 +2,18 @@ package com.careertuner.applicationcase.service;
 
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
+import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.service.JobPostingExtractionProcessor.ExtractionResult;
 import com.careertuner.applicationcase.service.JobPostingExtractionProcessor.PostFailureAction;
 import com.careertuner.common.exception.BusinessException;
@@ -49,9 +53,17 @@ public class JobPostingReextractionService {
     private static final Set<String> REEXTRACTABLE_STATUSES = Set.of(EXTRACTION_STATUS_SUCCEEDED, EXTRACTION_STATUS_FAILED);
     private static final Set<String> OCR_PROVIDERS = Set.of("CLAUDE", "OPENAI", "SELF_OCR");
     private static final Set<String> OCR_SOURCE_TYPES = Set.of("PDF", "IMAGE");
+    // 초기 자동 파이프라인이 실행 중임을 나타내는 케이스 상태(진입게이트가 DRAFT|READY→ANALYZING 으로 마킹).
+    private static final String CASE_STATUS_ANALYZING = "ANALYZING";
+    // 초기 실행 프로필 상태.
+    private static final String INITIAL_RUN_PENDING = "PENDING";
+    private static final String INITIAL_RUN_RUNNING = "RUNNING";
+    // application_case_initial_run.failure_reason 컬럼 길이(VARCHAR 255)와 맞춘다(초과 시 markFailed 가 throw).
+    private static final int FAILURE_REASON_MAX_LENGTH = 255;
 
     private final ApplicationCaseAccessService accessService;
     private final ApplicationCaseExtractionMapper extractionMapper;
+    private final ApplicationCaseInitialRunMapper initialRunMapper;
     private final JobPostingService jobPostingService;
     private final JobPostingExtractionProcessor extractionProcessor;
     private final TransactionTemplate transactionTemplate;
@@ -59,7 +71,7 @@ public class JobPostingReextractionService {
     public ApplicationCaseExtractionResponse reextract(Long userId, Long applicationCaseId, String ocrProvider) {
         // 부수효과(새 추출 행) 전에 provider 를 먼저 검증 — 잘못된 값은 아무 행도 만들지 않고 400.
         String provider = validateOcrProvider(ocrProvider);
-        accessService.requireOwned(userId, applicationCaseId);
+        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
 
         ApplicationCaseExtraction latest = extractionMapper.findLatestExtractionByApplicationCaseId(applicationCaseId);
         if (latest == null) {
@@ -82,6 +94,10 @@ public class JobPostingReextractionService {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 진행 중인 공고 추출 작업이 있습니다.");
         }
         JobPosting posting = jobPostingService.getJobPostingDomainForCase(userId, applicationCaseId, latestJobPostingId);
+
+        // 초기 자동 파이프라인과의 경합/데드락을 막는다(모든 순수 검증 뒤, 부수효과 직전에). 진행 중이면 거절하고,
+        // 아직 PENDING 인 초기 실행 프로필은 원자적으로 닫아 재추출 후 수동 분석 경로가 영구 차단되지 않게 한다.
+        guardInitialRunForReextract(applicationCase, applicationCaseId);
 
         ApplicationCaseExtraction extraction = insertAndClaim(userId, applicationCaseId, latestJobPostingId, sourceType, provider);
 
@@ -129,6 +145,51 @@ public class JobPostingReextractionService {
             }
             return extraction;
         });
+    }
+
+    /**
+     * 초기 자동 파이프라인과 수동 재추출이 같은 공고 revision 을 두고 경합하지 않도록 막는다.
+     *
+     * <ul>
+     *   <li>케이스가 {@code ANALYZING} 이거나 초기 실행 프로필이 {@code RUNNING} 이면 초기 파이프라인이 진행
+     *       중이므로 CONFLICT 로 거절한다(부수효과 없음). extraction 이 이미 SUCCEEDED 라 {@code countActive}
+     *       가 0인 상태에서도 초기 분석은 아직 돌 수 있어, 이 게이트가 그 창을 닫는다.</li>
+     *   <li>프로필이 {@code PENDING}(최초 OCR 이 REVIEW_REQUIRED 라 파이프라인이 아직 실행되지 않음) 이면
+     *       원자적으로 claim(PENDING→RUNNING) 한 뒤 FAILED 로 닫는다. 이렇게 하지 않으면 재추출이 PASS 여도
+     *       프로필이 PENDING 으로 남아 수동 분석 가드가 영구 409 가 된다. 재추출은 정책상 초기 자동 분석을
+     *       되살리지 않으므로(성공=공고 revision 만 갱신), 프로필을 FAILED 로 종결해 수동 분석 경로를 연다.</li>
+     *   <li>claim 에 지면(그 사이 파이프라인이 PENDING 을 선점해 RUNNING) 경합이므로 CONFLICT 로 거절한다.</li>
+     *   <li>프로필이 없거나 이미 DONE/FAILED 면 통과한다.</li>
+     * </ul>
+     */
+    private void guardInitialRunForReextract(ApplicationCase applicationCase, Long applicationCaseId) {
+        if (CASE_STATUS_ANALYZING.equals(applicationCase.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "초기 분석이 진행 중입니다. 완료된 후 다시 시도해 주세요.");
+        }
+        ApplicationCaseInitialRun profile = initialRunMapper.findByApplicationCaseId(applicationCaseId);
+        if (profile == null) {
+            return;
+        }
+        String state = profile.getState();
+        if (INITIAL_RUN_RUNNING.equals(state)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "초기 분석이 진행 중입니다. 완료된 후 다시 시도해 주세요.");
+        }
+        if (INITIAL_RUN_PENDING.equals(state)) {
+            String executionToken = UUID.randomUUID().toString();
+            if (initialRunMapper.claimForRun(applicationCaseId, executionToken) != 1) {
+                // 그 사이 초기 파이프라인이 PENDING 을 선점(RUNNING) → 경합 패배로 거절.
+                throw new BusinessException(ErrorCode.CONFLICT, "초기 분석이 진행 중입니다. 완료된 후 다시 시도해 주세요.");
+            }
+            initialRunMapper.markFailed(applicationCaseId, executionToken,
+                    truncate("사용자가 다른 OCR 모델로 재추출을 시작해 초기 자동 실행을 종료했습니다.", FAILURE_REASON_MAX_LENGTH));
+        }
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     private static String validateOcrProvider(String ocrProvider) {
