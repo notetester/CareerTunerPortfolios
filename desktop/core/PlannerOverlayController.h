@@ -42,8 +42,8 @@ private:
     void applyWindowFlags();
     void applyNativeWindowOptions();
 
-    bool m_enabled = true;
-    bool m_alwaysOnTop = true;
+    bool m_enabled = false;
+    bool m_alwaysOnTop = false;
     bool m_clickThrough = false;
     double m_overlayOpacity = 0.92;
     QPointer<QWindow> m_window;

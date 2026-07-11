@@ -79,9 +79,12 @@ int main(int argc, char* argv[])
     CollaborationClient collaboration(&api);
     CommunityClient   community(&api);
 
-    // 설정에서 서버 주소를 바꾸면 즉시 반영
-    QObject::connect(&settings, &SettingsStore::changed, &api,
-        [&api, &settings]() { api.setBaseUrl(settings.baseUrl()); });
+    // 서버 변경 시 이전 호스트의 저장·메모리 자격증명을 먼저 폐기한 뒤 새 주소를 반영한다.
+    QObject::connect(&settings, &SettingsStore::baseUrlChanged, &api,
+        [&api, &auth, &settings]() {
+            auth.logout();
+            api.setBaseUrl(settings.baseUrl());
+        });
     QObject::connect(&settings, &SettingsStore::changed, &ads,
         [&ads]() { ads.refresh(); });
 

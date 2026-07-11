@@ -40,6 +40,8 @@ public:
 
     QString baseUrl() const;
     void setBaseUrl(const QString& v);
+    Q_INVOKABLE bool applyBaseUrl(const QString& v);
+    static QString normalizedBaseUrl(const QString& v);
 
     QString saveDir() const;          // 기본: 문서\CareerTuner
     void setSaveDir(const QString& v);
@@ -63,6 +65,7 @@ public:
 
 signals:
     void changed();
+    void baseUrlChanged();
 
 private:
     std::unique_ptr<QSettings> m_s;
