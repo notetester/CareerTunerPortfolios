@@ -32,7 +32,7 @@ assert(submission.restoreFailedDraft("", "보존할 답변") === "보존할 답�
 assert(submission.restoreFailedDraft("새 입력", "이전 답변") === "새 입력", "새 입력을 실패한 답변으로 덮어쓰면 안 된다");
 
 const server = await importTypeScriptModule("src/features/settings/lib/serverAddress.ts");
-const emulator = server.resolveServerOverride("emulator", "");
+const emulator = server.resolveServerOverride("emulator", "", true);
 assert(emulator.override === "http://10.0.2.2:8080/api", "에뮬레이터는 호스트 PC 특수 주소를 사용해야 한다");
 const aws = server.resolveServerOverride("aws", "");
 assert(aws.override === "https://careertuner.kro.kr/api", "AWS 프리셋은 실제 HTTPS API를 사용해야 한다");
@@ -40,7 +40,9 @@ assert(!server.SERVER_PRESETS.some((item) => item.url?.includes("CHANGEME")), "�
 assert(server.resolveServerOverride("custom", "file:///tokens").error !== null, "http(s) 외 URL을 거부해야 한다");
 assert(server.resolveServerOverride("custom", "https://user:pass@example.com/api").error !== null, "URL 인증 정보를 거부해야 한다");
 assert(server.resolveServerOverride("custom", "http://example.com/api").error !== null, "공개 HTTP 서버를 거부해야 한다");
-assert(server.resolveServerOverride("custom", "http://192.168.0.10:8080/api").error === null, "사설 LAN 개발 서버는 허용해야 한다");
+assert(server.resolveServerOverride("custom", "http://192.168.0.10:8080/api").error !== null, "운영 빌드는 사설 LAN HTTP도 거부해야 한다");
+assert(server.resolveServerOverride("custom", "http://192.168.0.10:8080/api", true).error === null, "명시적인 개발 빌드는 사설 LAN 서버를 허용해야 한다");
+assert(server.resolveServerOverride("custom", "http://localhost:8080/api").error === null, "진짜 loopback HTTP는 허용해야 한다");
 assert(server.resolveServerOverride("custom", "https://example.com/not-api").error !== null, "API가 아닌 경로를 거부해야 한다");
 assert(server.resolveServerOverride("custom", "https://example.com/api?token=value").error !== null, "query가 포함된 주소를 거부해야 한다");
 assert(!server.serverOverrideChanged("https://example.com/api/", "https://example.com/api"), "끝 슬래시만 다른 주소는 동일해야 한다");

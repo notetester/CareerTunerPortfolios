@@ -19,17 +19,25 @@ export interface ServerOverrideResult {
   error: string | null;
 }
 
-function isPrivateDevelopmentHost(hostname: string): boolean {
+function isLoopbackHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (host === "localhost" || host.endsWith(".localhost") || host === "[::1]") return true;
-  if (/^\[(?:fc|fd|fe8|fe9|fea|feb)/.test(host)) return true;
 
   const parts = host.split(".").map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
     return false;
   }
-  return parts[0] === 127
-    || parts[0] === 10
+  return parts[0] === 127;
+}
+
+function isPrivateNetworkHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (/^\[(?:fc|fd|fe8|fe9|fea|feb)/.test(host)) return true;
+  const parts = host.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+  return parts[0] === 10
     || (parts[0] === 192 && parts[1] === 168)
     || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31);
 }
@@ -40,7 +48,11 @@ export function initialServerPreset(override: string | null): string {
   return matched ? matched.value : "custom";
 }
 
-export function resolveServerOverride(presetValue: string, customUrl: string): ServerOverrideResult {
+export function resolveServerOverride(
+  presetValue: string,
+  customUrl: string,
+  allowPrivateHttp = false,
+): ServerOverrideResult {
   const preset = SERVER_PRESETS.find((item) => item.value === presetValue);
   if (!preset) return { override: null, error: "알 수 없는 서버 프리셋입니다." };
   if (preset.url === null) return { override: null, error: null };
@@ -63,8 +75,15 @@ export function resolveServerOverride(presetValue: string, customUrl: string): S
     if (normalizedPath !== "/api") {
       return { override: null, error: "서버 주소는 /api 경로까지 포함해야 합니다." };
     }
-    if (parsed.protocol === "http:" && !isPrivateDevelopmentHost(parsed.hostname)) {
-      return { override: null, error: "공개 서버는 HTTPS 주소만 사용할 수 있습니다." };
+    if (parsed.protocol === "http:"
+      && !isLoopbackHost(parsed.hostname)
+      && !(allowPrivateHttp && isPrivateNetworkHost(parsed.hostname))) {
+      return {
+        override: null,
+        error: allowPrivateHttp
+          ? "공개 서버는 HTTPS 주소만 사용할 수 있습니다."
+          : "평문 사설망 HTTP는 개발 빌드에서만 사용할 수 있습니다.",
+      };
     }
     parsed.pathname = "/api";
     return { override: parsed.toString().replace(/\/+$/, ""), error: null };

@@ -31,6 +31,8 @@ export function ServerAddressSettings() {
   const { isAuthenticated, logout } = useAuth();
   // 배포 웹에서는 노출하지 않는다(앱/개발 전용 기능).
   const visible = isNativeApp() || import.meta.env.DEV;
+  const allowPrivateHttp = import.meta.env.DEV
+    || import.meta.env.VITE_ALLOW_PRIVATE_HTTP === "true";
 
   const storedOverride = useMemo(() => apiBaseOverride(), []);
   const [appliedOverride, setAppliedOverride] = useState<string | null>(storedOverride);
@@ -81,7 +83,7 @@ export function ServerAddressSettings() {
   };
 
   const save = () => {
-    const resolved = resolveServerOverride(preset, url);
+    const resolved = resolveServerOverride(preset, url, allowPrivateHttp);
     if (resolved.error) {
       setError(resolved.error);
       setMessage(null);
@@ -154,7 +156,8 @@ export function ServerAddressSettings() {
         </div>
 
         <div className="rounded-lg border border-border bg-muted p-3 text-xs leading-5 text-muted-foreground">
-          APK 재빌드 없이 백엔드 환경(로컬/Tailscale/AWS)을 전환합니다. 절대 URL 은 백엔드 CORS
+          APK 재빌드 없이 백엔드 환경(로컬/Tailscale/AWS)을 전환합니다. 운영 빌드는 HTTPS 또는 기기 자체
+          loopback만 허용하고, 사설망 HTTP는 명시적인 개발 빌드에서만 허용합니다. 절대 URL 은 백엔드 CORS
           허용이 필요하며, 환경별 정식 주소는 <code>config/environments.json</code> · <code>docs/ENVIRONMENTS.md</code> 기준입니다.
         </div>
 

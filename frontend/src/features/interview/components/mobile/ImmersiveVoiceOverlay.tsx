@@ -10,6 +10,7 @@ import { BrowserSttTracker } from "../../hooks/speechToText";
 import { createNegotiatedRecorder } from "../../hooks/mediaSupport";
 import { scoreVoiceServer, transcribeVoice } from "../../api/interviewApi";
 import { MicLevelMeter } from "../MicLevelMeter";
+import { onAppLockState } from "@/platform/appLockEvents";
 
 /**
  * 몰입형 음성 답변 (모바일 풀스크린) — Claude 앱식 최소 UI.
@@ -105,6 +106,10 @@ export function ImmersiveVoiceOverlay({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => onAppLockState((locked) => {
+    if (locked) onClose();
+  }), [onClose]);
 
   const speakQuestion = () => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;

@@ -3,13 +3,16 @@ import { Lock, Fingerprint, Delete } from "lucide-react";
 import {
   AUTOLOCK_GRACE, biometricAvailable, biometricEnabled, hasPin, tryBiometric, verifyPin,
 } from "@/platform/applock";
+import { emitAppLockState } from "@/platform/appLockEvents";
 
 /**
  * 앱 잠금 게이트 — PIN 이 설정돼 있으면 앱 실행/장기 백그라운드 복귀 시 잠금 화면을 덮는다.
  * 잠긴 동안 콘텐츠는 보이지 않으며 PIN(또는 생체)으로만 해제된다.
  */
 export function AppLockGate({ children }: { children: ReactNode }) {
-  const [locked, setLocked] = useState<boolean>(() => hasPin());
+  const initiallyLocked = useRef(hasPin()).current;
+  const [locked, setLocked] = useState<boolean>(initiallyLocked);
+  const [childrenActivated, setChildrenActivated] = useState(!initiallyLocked);
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -25,6 +28,11 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     if (locked) void attemptBiometric();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    emitAppLockState(locked);
+    if (!locked) setChildrenActivated(true);
+  }, [locked]);
 
   // 백그라운드 복귀 시 grace 초과면 재잠금.
   useEffect(() => {
@@ -66,10 +74,15 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     }
   };
 
-  if (!locked) return <>{children}</>;
-
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 px-6 text-white backdrop-blur">
+    <>
+      {childrenActivated && (
+        <div className={locked ? "hidden" : "contents"} aria-hidden={locked || undefined}>
+          {children}
+        </div>
+      )}
+      {locked && (
+      <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 px-6 text-white backdrop-blur">
         <div className="flex size-16 items-center justify-center rounded-2xl bg-card/10">
           <Lock className="size-8" />
         </div>
@@ -110,6 +123,8 @@ export function AppLockGate({ children }: { children: ReactNode }) {
         >
           잠금 해제
         </button>
-    </div>
+      </div>
+      )}
+    </>
   );
 }
