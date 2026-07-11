@@ -23,6 +23,7 @@ import {
   saveProfile,
   startProfileAnalyze,
   summarizeProfile,
+  getProfileAiAnalysis,
   uploadProfileFile,
   uploadProfilePortfolioFile,
   type ProfileAiResponse,
@@ -285,6 +286,31 @@ export function ProfilePage() {
     initialCompletenessRequested.current = true;
     void diagnoseProfileCompleteness().then(setCompleteness).catch(() => setCompleteness(null));
   }, [loading, profileAiAllowed]);
+
+  // 저장된 프로필 AI 분석을 불러와 화면에 시드한다(새로고침 후에도 최근 분석이 보이도록).
+  useEffect(() => {
+    if (loading) return;
+    void getProfileAiAnalysis()
+      .then((saved) => {
+        if (!saved.hasAnalysis) return;
+        setSummaryResult((prev) => prev ?? {
+          featureType: "PROFILE_SUMMARY",
+          summary: saved.summary ?? "",
+          extractedSkills: saved.extractedSkills ?? [],
+          strengths: saved.strengths ?? [],
+          gaps: saved.gaps ?? [],
+          recommendations: saved.recommendations ?? [],
+          completenessScore: saved.completenessScore ?? 0,
+          jobFamily: saved.jobFamily ?? undefined,
+          jobFamilyLabel: saved.jobFamilyLabel ?? undefined,
+          criteria: saved.criteria ?? undefined,
+          status: "SUCCESS",
+          aiScore: saved.aiScore ?? undefined,
+          qualityWarnings: saved.qualityWarnings ?? [],
+        });
+      })
+      .catch(() => { /* 저장분 없음/조회 실패는 조용히 무시 — 기존 온디맨드 분석 흐름 유지 */ });
+  }, [loading]);
 
   useEffect(() => {
     setActiveTab(normalizeProfileTab(searchParams.get("tab")));

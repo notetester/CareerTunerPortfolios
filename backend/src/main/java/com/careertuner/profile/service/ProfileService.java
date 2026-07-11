@@ -20,6 +20,9 @@ public interface ProfileService {
 
     ProfileAiResponse summarize(AuthUser authUser);
 
+    /** 저장된 프로필 AI 분석 산출물 조회(feature 별 최신). 분석 이력이 없으면 빈 결과. */
+    com.careertuner.profile.dto.ProfileAiAnalysisResponse aiAnalysis(AuthUser authUser);
+
     ProfileAiResponse extractSkills(AuthUser authUser);
 
     ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser);

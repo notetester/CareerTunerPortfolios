@@ -133,6 +133,27 @@ export function summarizeProfile(): Promise<ProfileAiResponse> {
   return api<ProfileAiResponse>("/profile/ai/summary", { method: "POST" });
 }
 
+export interface ProfileAiAnalysis {
+  hasAnalysis: boolean;
+  summary: string | null;
+  strengths: string[];
+  gaps: string[];
+  recommendations: string[];
+  extractedSkills: string[];
+  jobFamily: string | null;
+  jobFamilyLabel: string | null;
+  completenessScore: number | null;
+  aiScore: number | null;
+  criteria: ProfileCriterionScore[] | null;
+  qualityWarnings: string[];
+  analyzedAt: string | null;
+}
+
+/** 저장된 프로필 AI 분석 조회(새로고침 후에도 최근 분석 표시). 분석 이력 없으면 hasAnalysis=false. */
+export function getProfileAiAnalysis(): Promise<ProfileAiAnalysis> {
+  return api<ProfileAiAnalysis>("/profile/ai-analysis");
+}
+
 export function extractProfileSkills(): Promise<ProfileAiResponse> {
   return api<ProfileAiResponse>("/profile/ai/skills", { method: "POST" });
 }

@@ -54,6 +54,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     private static final int MOCK_CREDIT = 2;
 
     private final FitAnalysisMapper fitAnalysisMapper;
+    private final com.careertuner.profile.mapper.ProfileAiAnalysisMapper profileAiAnalysisMapper;
     private final FitAnalysisAiService fitAnalysisAiService;
     private final EvidenceGateService evidenceGateService;
     private final NotificationService notificationService;
@@ -99,7 +100,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 parseList(source.getProfileCertificates()),
                 source.getDesiredJob(),
                 composeCompanyContext(source),
-                certificateStrategy);
+                certificateStrategy,
+                composeProfileInsight(userId));
 
         FitAnalysisResult previous = fitAnalysisMapper.findLatestByUserIdAndApplicationCaseId(userId, applicationCaseId);
         FitAnalysisAiResult ai = fitAnalysisAiService.generate(command);
@@ -267,6 +269,44 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
      * B(company_analysis) 기업 맥락을 설명 생성 프롬프트용 텍스트로 조립한다. 세 항목이 모두 비면 {@code null}
      * (프롬프트에 기업 맥락 섹션이 붙지 않고 공고 기반으로 degrade). 판단값 계산엔 쓰이지 않는다(뉴로-심볼릭 불변식).
      */
+    /**
+     * A(profile_ai_analysis)의 프로필 요약 분석을 fit 설명용 참고 텍스트로 조립한다. 없으면 null(프로필 AI 분석
+     * 미실행). 요약·강점·보완점만 담고, 판단값 계산엔 쓰지 않는다(companyContext 와 동일 격리). 실패는 null degrade.
+     */
+    private String composeProfileInsight(Long userId) {
+        try {
+            com.careertuner.profile.domain.ProfileAiAnalysis row =
+                    profileAiAnalysisMapper.findByUserIdAndFeature(userId, "PROFILE_SUMMARY");
+            if (row == null) {
+                return null;
+            }
+            StringBuilder sb = new StringBuilder();
+            if (row.getSummary() != null && !row.getSummary().isBlank()) {
+                sb.append("- 요약: ").append(row.getSummary().trim()).append('\n');
+            }
+            appendJsonListLine(sb, "강점", row.getStrengths());
+            appendJsonListLine(sb, "보완점", row.getGaps());
+            return sb.isEmpty() ? null : sb.toString().trim();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private void appendJsonListLine(StringBuilder sb, String label, String json) {
+        if (json == null || json.isBlank()) {
+            return;
+        }
+        try {
+            List<String> items = objectMapper.readValue(json,
+                    new tools.jackson.core.type.TypeReference<List<String>>() { });
+            if (items != null && !items.isEmpty()) {
+                sb.append("- ").append(label).append(": ").append(String.join(", ", items)).append('\n');
+            }
+        } catch (RuntimeException ignored) {
+            // JSON 파싱 실패 시 해당 줄만 생략(전체 insight 는 계속).
+        }
+    }
+
     private static String composeCompanyContext(FitAnalysisGenerationSource source) {
         StringBuilder sb = new StringBuilder();
         appendContextLine(sb, "회사 요약", source.getCompanySummary());
