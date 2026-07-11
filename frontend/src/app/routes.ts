@@ -8,6 +8,8 @@ import { AIInterviewPage } from "./pages/AIInterview";
 import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
 import { PlannerPage } from "./pages/Planner";
+import { CareerRoadmapPage } from "@/features/analysis/pages/CareerRoadmapPage";
+import { CertificateSearchPage } from "@/features/analysis/pages/CertificateSearchPage";
 import { CommunityPage } from "./pages/Community";
 import { MessengerPage } from "./pages/Messenger";
 import { BillingPage } from "./pages/Billing";
@@ -81,6 +83,8 @@ export const router = createBrowserRouter([
       { path: "correction", Component: ConsentCorrectionPage },
       { path: "analysis", Component: ConsentAnalysisPage },
       { path: "planner", Component: PlannerPage },
+      { path: "career-roadmap", Component: CareerRoadmapPage },
+      { path: "certificates", Component: CertificateSearchPage },
       { path: "messenger", Component: MessengerPage },
       { path: "community", Component: CommunityPage },
       // 알림/딥링크용 글 상세 경로. 같은 CommunityPage가 :postId를 읽어 상세 뷰를 연다. (팀장 승인 2026-06-19)

@@ -48,6 +48,11 @@ public record FitAnalysisConfidence(
             score -= 7;
             reasons.add("희망 직무가 비어 있어 직무 맞춤 추천 정확도가 낮을 수 있습니다.");
         }
+        if (command.companyContext() == null || command.companyContext().isBlank()) {
+            // 기업맥락은 판단값(점수·매칭)에 관여하지 않으므로 감점은 소폭 — 전략 조언의 기업 맞춤도만 낮아진다.
+            score -= 5;
+            reasons.add("기업 분석 정보가 없어 지원 전략이 공고 기반으로만 제안됩니다. 기업 분석을 실행하면 더 구체적인 전략을 받을 수 있습니다.");
+        }
 
         score = Math.max(0, Math.min(100, score));
         String level = score >= HIGH_THRESHOLD ? "HIGH" : score >= MEDIUM_THRESHOLD ? "MEDIUM" : "LOW";

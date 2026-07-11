@@ -177,6 +177,10 @@ careertuner:
     # 국가자격 종목 목록 오프라인 스냅샷(공공데이터포털 파일 번들, 연 단위 갱신 성격 — API 도 동일 시점 스냅샷 반환).
     # 스냅샷이 로드되면 종류 판별(T/S)·라우팅이 Q-Net 게이트웨이 장애와 무관하게 동작한다. 신규 스냅샷 파일을
     # resources/cert/ 에 추가하고 resource·label 만 교체하면 된다. 로드 실패 시 자동으로 기존 네트워크 경로 사용.
+    # 국가전문자격 연간 사전공고 번들(당해연도 한정, PREANNOUNCED 신뢰층) — 새해 사전공고 나오면 파일·연도 교체.
+    prof-schedule-bundle:
+      enabled: ${CAREERTUNER_CERT_PROF_BUNDLE_ENABLED:true}
+      resource: ${CAREERTUNER_CERT_PROF_BUNDLE_RESOURCE:cert/national-prof-schedule-2026-preannounced.json}
     catalog-snapshot:
       enabled: ${CAREERTUNER_CERT_CATALOG_SNAPSHOT_ENABLED:true}
       resource: ${CAREERTUNER_CERT_CATALOG_SNAPSHOT_RESOURCE:cert/national-qualification-catalog-20251231.csv}

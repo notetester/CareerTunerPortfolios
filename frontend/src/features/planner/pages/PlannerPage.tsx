@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import {
   Bell,
   CalendarClock,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Clock3,
   Edit3,
@@ -10,6 +13,7 @@ import {
   EyeOff,
   Layers,
   Link as LinkIcon,
+  List,
   Loader2,
   Pin,
   Plus,
@@ -137,25 +141,29 @@ export function PlannerPage() {
   const [editingMemoId, setEditingMemoId] = useState<number | null>(null);
   const [scheduleForm, setScheduleForm] = useState<ScheduleForm>(emptySchedule);
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
+  const [scheduleView, setScheduleView] = useState<ScheduleView>("list");
+  // 달력 기준점(월 뷰=해당 월, 연 뷰=해당 연도). 이동 버튼으로 변경.
+  const [calendarAnchor, setCalendarAnchor] = useState<Date>(() => new Date());
+  // 최신 조회만 반영 — 뷰/월을 빠르게 바꿀 때 늦게 도착한 이전 범위 응답이 현재 뷰 데이터를 덮어쓰지 않게.
+  const loadSeq = useRef(0);
 
   const load = async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
     try {
-      const now = new Date();
-      const from = new Date(now);
-      from.setDate(from.getDate() - 30);
-      const to = new Date(now);
-      to.setDate(to.getDate() + 120);
-      setData(await getPlannerDashboard(toApiDateTime(from), toApiDateTime(to)));
+      const [from, to] = scheduleRange(scheduleView, calendarAnchor);
+      const dashboard = await getPlannerDashboard(toApiDateTime(from), toApiDateTime(to));
+      if (seq === loadSeq.current) setData(dashboard);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "플래너 데이터를 불러오지 못했습니다.");
+      if (seq === loadSeq.current) setError(requestError instanceof Error ? requestError.message : "플래너 데이터를 불러오지 못했습니다.");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  // 뷰/기준점이 바뀌면 그 범위로 재조회(백엔드 from/to 겹침 필터 재사용).
+  useEffect(() => { void load(); }, [scheduleView, calendarAnchor]);
 
   useEffect(() => {
     const requested = searchParams.get("tab");
@@ -322,13 +330,66 @@ export function PlannerPage() {
               onSave={() => void saveSchedule()}
               onCancel={() => { setEditingScheduleId(null); setScheduleForm(emptySchedule()); }}
             />
-            <ScheduleTimeline
-              grouped={grouped}
-              focusItemId={requestedItemId}
-              onEdit={editSchedule}
-              onDelete={(id) => void removeSchedule(id)}
-              onToggleDone={(item) => void toggleScheduleStatus(item)}
-            />
+            <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex rounded-lg border border-slate-200 bg-card p-0.5">
+                  {([
+                    { key: "list", label: "목록", icon: List },
+                    { key: "month", label: "월", icon: CalendarDays },
+                    { key: "year", label: "연", icon: CalendarClock },
+                  ] as const).map((view) => (
+                    <button
+                      key={view.key}
+                      onClick={() => setScheduleView(view.key)}
+                      className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold ${
+                        scheduleView === view.key ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      <view.icon className="size-3.5" />
+                      {view.label}
+                    </button>
+                  ))}
+                </div>
+                {scheduleView !== "list" && (
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" className="size-7" title="이전" onClick={() => setCalendarAnchor(shiftAnchor(calendarAnchor, scheduleView, -1))}>
+                      <ChevronLeft className="size-4" />
+                    </Button>
+                    <span className="min-w-[110px] text-center text-sm font-bold text-slate-800">
+                      {scheduleView === "month"
+                        ? `${calendarAnchor.getFullYear()}년 ${calendarAnchor.getMonth() + 1}월`
+                        : `${calendarAnchor.getFullYear()}년`}
+                    </span>
+                    <Button variant="outline" size="icon" className="size-7" title="다음" onClick={() => setCalendarAnchor(shiftAnchor(calendarAnchor, scheduleView, 1))}>
+                      <ChevronRight className="size-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setCalendarAnchor(new Date())}>오늘</Button>
+                  </div>
+                )}
+              </div>
+              {scheduleView === "list" && (
+                <ScheduleTimeline
+                  grouped={grouped}
+                  focusItemId={requestedItemId}
+                  onEdit={editSchedule}
+                  onDelete={(id) => void removeSchedule(id)}
+                  onToggleDone={(item) => void toggleScheduleStatus(item)}
+                />
+              )}
+              {scheduleView === "month" && (
+                <ScheduleMonthCalendar anchor={calendarAnchor} items={data?.scheduleItems ?? []} onEdit={editSchedule} />
+              )}
+              {scheduleView === "year" && (
+                <ScheduleYearOverview
+                  anchor={calendarAnchor}
+                  items={data?.scheduleItems ?? []}
+                  onOpenMonth={(month) => {
+                    setCalendarAnchor(new Date(calendarAnchor.getFullYear(), month, 1));
+                    setScheduleView("month");
+                  }}
+                />
+              )}
+            </div>
           </div>
         )}
 
@@ -736,6 +797,159 @@ function itemToRequest(item: PlannerScheduleItem): PlannerScheduleItemRequest {
       vibrationEnabled: reminder.vibrationEnabled,
     })),
   };
+}
+
+type ScheduleView = "list" | "month" | "year";
+
+/** 뷰별 조회 범위 — 목록: 오늘 -30/+120일(기존 동작), 월: 그리드가 걸치는 주 포함 ±7일, 연: 해당 연도 전체. */
+function scheduleRange(view: ScheduleView, anchor: Date): [Date, Date] {
+  if (view === "month") {
+    const from = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    from.setDate(from.getDate() - 7);
+    const to = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+    to.setDate(to.getDate() + 7);
+    to.setHours(23, 59, 59);
+    return [from, to];
+  }
+  if (view === "year") {
+    return [new Date(anchor.getFullYear(), 0, 1), new Date(anchor.getFullYear(), 11, 31, 23, 59, 59)];
+  }
+  const now = new Date();
+  const from = new Date(now);
+  from.setDate(from.getDate() - 30);
+  const to = new Date(now);
+  to.setDate(to.getDate() + 120);
+  return [from, to];
+}
+
+function shiftAnchor(anchor: Date, view: ScheduleView, delta: number): Date {
+  return view === "year"
+    ? new Date(anchor.getFullYear() + delta, anchor.getMonth(), 1)
+    : new Date(anchor.getFullYear(), anchor.getMonth() + delta, 1);
+}
+
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** 일정이 해당 날짜에 걸치는지 — 시작~종료(없으면 시작일 하루) 구간 포함 판정. */
+function occursOn(item: PlannerScheduleItem, key: string): boolean {
+  const start = dayKey(new Date(item.startAt));
+  const end = item.endAt ? dayKey(new Date(item.endAt)) : start;
+  return start <= key && key <= end;
+}
+
+/** 월 달력 — 7열 그리드, 셀당 최대 3개 칩(+N 더보기), 오늘 하이라이트. 칩 클릭 시 편집으로 연결. */
+function ScheduleMonthCalendar({ anchor, items, onEdit }: {
+  anchor: Date;
+  items: PlannerScheduleItem[];
+  onEdit: (item: PlannerScheduleItem) => void;
+}) {
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(gridStart.getDate() - firstDay.getDay()); // 일요일 시작
+  const todayKey = dayKey(new Date());
+  const weeks: Date[][] = [];
+  const cursor = new Date(gridStart);
+  do {
+    const week: Date[] = [];
+    for (let i = 0; i < 7; i += 1) {
+      week.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  } while (cursor.getMonth() === month || (weeks.length < 6 && cursor <= new Date(year, month + 1, 0)));
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-slate-200 bg-card">
+      <div className="grid grid-cols-7 border-b border-slate-100 text-center text-[11px] font-bold text-slate-500">
+        {["일", "월", "화", "수", "목", "금", "토"].map((label, index) => (
+          <div key={label} className={`py-2 ${index === 0 ? "text-red-500" : ""}`}>{label}</div>
+        ))}
+      </div>
+      {weeks.map((week, weekIndex) => (
+        <div key={weekIndex} className="grid grid-cols-7 border-b border-slate-100 last:border-b-0">
+          {week.map((day) => {
+            const key = dayKey(day);
+            const inMonth = day.getMonth() === month;
+            const dayItems = items.filter((item) => occursOn(item, key));
+            return (
+              <div key={key} className={`min-h-[92px] border-r border-slate-100 p-1.5 align-top last:border-r-0 ${inMonth ? "" : "bg-slate-50/60"}`}>
+                <div className={`mb-1 inline-flex size-5 items-center justify-center rounded-full text-[11px] font-bold ${
+                  key === todayKey ? "bg-blue-600 text-white" : inMonth ? "text-slate-700" : "text-slate-300"
+                }`}>
+                  {day.getDate()}
+                </div>
+                <div className="space-y-0.5">
+                  {dayItems.slice(0, 3).map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => onEdit(item)}
+                      title={item.title}
+                      className={`block w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-semibold leading-4 ${kindTone(item.kind)} ${
+                        item.status === "DONE" ? "line-through opacity-60" : ""
+                      }`}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                  {dayItems.length > 3 && <div className="px-1 text-[10px] font-semibold text-slate-400">+{dayItems.length - 3}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 연간 오버뷰 — 12개월 카드(월별 건수·유형 분포·대표 일정 2개). 카드 클릭 시 해당 월 달력으로 이동. */
+function ScheduleYearOverview({ anchor, items, onOpenMonth }: {
+  anchor: Date;
+  items: PlannerScheduleItem[];
+  onOpenMonth: (month: number) => void;
+}) {
+  const year = anchor.getFullYear();
+  const nowMonthKey = `${new Date().getFullYear()}-${new Date().getMonth()}`;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 12 }, (_, month) => {
+        const monthItems = items
+          .filter((item) => {
+            const start = new Date(item.startAt);
+            return start.getFullYear() === year && start.getMonth() === month;
+          })
+          .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+        const isNow = `${year}-${month}` === nowMonthKey;
+        return (
+          <button
+            key={month}
+            onClick={() => onOpenMonth(month)}
+            className={`rounded-lg border bg-card p-3 text-left transition-colors hover:border-blue-300 ${
+              isNow ? "border-blue-400" : "border-slate-200"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-slate-800">{month + 1}월</span>
+              <span className="text-xs font-semibold text-slate-400">{monthItems.length}건</span>
+            </div>
+            <div className="mt-2 space-y-1">
+              {monthItems.slice(0, 2).map((item) => (
+                <div key={item.id} className={`truncate rounded px-1.5 py-0.5 text-[11px] font-semibold ${kindTone(item.kind)}`}>
+                  {new Date(item.startAt).getDate()}일 · {item.title}
+                </div>
+              ))}
+              {monthItems.length === 0 && <div className="text-[11px] text-slate-300">일정 없음</div>}
+              {monthItems.length > 2 && <div className="text-[11px] font-semibold text-slate-400">+{monthItems.length - 2}건 더</div>}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function groupByDay(items: PlannerScheduleItem[]) {

@@ -15,7 +15,7 @@ import com.careertuner.fitanalysis.certificate.CertificateScheduleEvidence.Sched
  * @param message            사용자에게 보여줄 솔직한 설명(상태별 수위 조절)
  * @param sourceName         출처명(확인된 경우)
  * @param sourceUrl          출처 URL
- * @param scheduleRounds     확인된 회차별 일정(VERIFIED_CURRENT 일 때만 비어있지 않음)
+ * @param scheduleRounds     확인된 회차별 일정(VERIFIED_CURRENT 또는 PREANNOUNCED 일 때만 비어있지 않음)
  */
 public record CertificateEvidenceResponse(
         String certName,
