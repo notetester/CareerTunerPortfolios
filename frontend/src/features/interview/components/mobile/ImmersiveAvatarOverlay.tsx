@@ -10,6 +10,7 @@ import { computeVisualScore, VisualMetricsTracker } from "../../hooks/visualAnal
 import { BrowserSttTracker } from "../../hooks/speechToText";
 import { createNegotiatedRecorder } from "../../hooks/mediaSupport";
 import { scoreAvatarServer, transcribeVoice } from "../../api/interviewApi";
+import { onAppLockState } from "@/platform/appLockEvents";
 
 /**
  * 몰입형 화상 답변 (모바일 풀스크린) — 카메라 프리뷰 전체화면 + 질문 오버레이.
@@ -128,6 +129,10 @@ export function ImmersiveAvatarOverlay({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => onAppLockState((locked) => {
+    if (locked) onClose();
+  }), [onClose]);
 
   const flip = () => {
     if (phase !== "recording") return;

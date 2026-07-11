@@ -22,6 +22,8 @@ Item {
 
     function closeVideoPanel() {
         cameraRecorder.stopPreview()
+        if (root.recordedVideoPath !== "")
+            cameraRecorder.discard(root.recordedVideoPath)
         root.recordedVideoPath = ""
         consentBox.checked = false
         root.videoPanelOpen = false
@@ -47,7 +49,11 @@ Item {
     }
     Connections {
         target: cameraRecorder
-        function onRecorded(filePath) { root.recordedVideoPath = filePath }
+        function onRecorded(filePath) {
+            if (root.recordedVideoPath !== "" && root.recordedVideoPath !== filePath)
+                cameraRecorder.discard(root.recordedVideoPath)
+            root.recordedVideoPath = filePath
+        }
         function onErrorOccurred(message) { win.showToast("카메라 오류", message) }
     }
 
@@ -196,7 +202,11 @@ Item {
                         Text { id: retryLbl; anchors.centerIn: parent; text: "다시 녹화"; color: Theme.text; font.pixelSize: 11 }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.recordedVideoPath = ""; consentBox.checked = false }
+                            onClicked: {
+                                cameraRecorder.discard(root.recordedVideoPath)
+                                root.recordedVideoPath = ""
+                                consentBox.checked = false
+                            }
                         }
                     }
 

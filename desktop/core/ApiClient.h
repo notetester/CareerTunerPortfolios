@@ -8,6 +8,7 @@
 #include <QString>
 #include <QList>
 #include <QPair>
+#include <QtTypes>
 #include <functional>
 
 #include "SettingsStore.h"
@@ -23,7 +24,7 @@ class ApiClient : public QObject
 public:
     explicit ApiClient(QObject* parent = nullptr);
 
-    Q_INVOKABLE void setBaseUrl(const QString& url) { m_baseUrl = url; }
+    Q_INVOKABLE void setBaseUrl(const QString& url);
     void setToken(const QString& token) { m_token = token; }
     Q_INVOKABLE QString baseUrl() const { return m_baseUrl; }
     QString token() const { return m_token; }
@@ -67,4 +68,5 @@ private:
     // 실제 기동 시 SettingsStore 에 저장된 값으로 덮어쓴다.
     QString m_baseUrl = SettingsStore::defaultBaseUrl();
     QString m_token;
+    quint64 m_generation = 0;
 };
