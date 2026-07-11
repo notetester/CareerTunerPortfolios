@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import type { ChangeEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -71,6 +71,11 @@ import { RoomSettingsSheet } from "../components/RoomSettingsSheet";
 import { blockConversation, blockUser } from "@/features/privacy/api/privacyApi";
 import { showBlockManageToast } from "@/features/privacy/components/blockToast";
 import type { BlockedMarker } from "@/features/privacy/types";
+import {
+  deletePendingCollaborationFile,
+  discardPendingCollaborationFiles,
+  markCollaborationFilesLinked,
+} from "@/app/lib/pendingCollaborationFiles";
 
 const ROOM_TYPES: Array<{ value: Exclude<ConversationType, "DIRECT">; label: string; icon: LucideIcon }> = [
   { value: "GROUP", label: "친구 단체방", icon: Users },
@@ -275,6 +280,7 @@ export function MessengerPage() {
   const [shareMode, setShareMode] = useState<WebShareMode>("TEMPORARY");
   const [temporaryHours, setTemporaryHours] = useState(72);
   const [pendingFiles, setPendingFiles] = useState<FileAssetResponse[]>([]);
+  const previousConversationId = useRef<number | null>(null);
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<number[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -364,6 +370,35 @@ export function MessengerPage() {
     void loadMessages(activeConversationId);
   }, [activeConversationId, loadMessages]);
 
+  useEffect(() => {
+    const previous = previousConversationId.current;
+    previousConversationId.current = activeConversationId;
+    if (previous == null || previous === activeConversationId || pendingFiles.length === 0) return;
+
+    const switchingFileIds = pendingFiles.map((file) => file.id);
+    const switchingFileIdSet = new Set(switchingFileIds);
+    void discardPendingCollaborationFiles(switchingFileIds).then((result) => {
+      const failedIdSet = new Set(result.failedIds);
+      setPendingFiles((current) => current.filter((file) =>
+        !switchingFileIdSet.has(file.id) || failedIdSet.has(file.id),
+      ));
+      if (result.failedIds.length > 0) {
+        setError("대화방을 바꾸며 일부 작성 중 첨부를 정리하지 못했습니다. 다시 제거해 주세요.");
+      }
+    });
+  }, [activeConversationId, pendingFiles]);
+
+  useEffect(() => {
+    const cleanup = () => {
+      void discardPendingCollaborationFiles(undefined, { keepalive: true });
+    };
+    window.addEventListener("pagehide", cleanup);
+    return () => {
+      window.removeEventListener("pagehide", cleanup);
+      cleanup();
+    };
+  }, []);
+
   async function execute(action: () => Promise<void>, success?: string) {
     setBusy(true);
     setError(null);
@@ -445,7 +480,14 @@ export function MessengerPage() {
     if (selected.length === 0) return;
 
     void execute(async () => {
-      const uploaded = await Promise.all(selected.map((file) => uploadCollaborationFile(file)));
+      const results = await Promise.allSettled(selected.map((file) => uploadCollaborationFile(file)));
+      const uploaded = results
+        .filter((result): result is PromiseFulfilledResult<FileAssetResponse> => result.status === "fulfilled")
+        .map((result) => result.value);
+      if (uploaded.length !== selected.length) {
+        await discardPendingCollaborationFiles(uploaded.map((file) => file.id));
+        throw new Error("일부 파일을 업로드하지 못해 이번 첨부를 취소했습니다.");
+      }
       setPendingFiles((current) => [...current, ...uploaded]);
     }, `${selected.length}개 파일을 첨부했습니다.`);
   };
@@ -456,6 +498,7 @@ export function MessengerPage() {
     if (!content && pendingFiles.length === 0 && selectedApplicationIds.length === 0) {
       throw new Error("메시지, 파일, 공유할 공고 중 하나는 필요합니다.");
     }
+    const pendingFileIds = pendingFiles.map((file) => file.id);
     const sent = await sendMessage(activeConversation.id, {
       kind: messageKind,
       content: content || null,
@@ -464,12 +507,31 @@ export function MessengerPage() {
       temporaryHours: shareMode === "TEMPORARY" ? temporaryHours : null,
       sharedApplicationCaseIds: selectedApplicationIds,
     });
+    markCollaborationFilesLinked(pendingFileIds);
     setMessages((current) => [...current, sent]);
     setMessageText("");
     setPendingFiles([]);
     setSelectedApplicationIds([]);
     await refreshConversations();
   });
+
+  const removePendingFile = (file: FileAssetResponse) => execute(async () => {
+    await deletePendingCollaborationFile(file.id);
+    setPendingFiles((current) => current.filter((item) => item.id !== file.id));
+  }, "첨부를 제거했습니다.");
+
+  const cancelPendingFiles = () => execute(async () => {
+    const cancellingFileIds = pendingFiles.map((file) => file.id);
+    const cancellingFileIdSet = new Set(cancellingFileIds);
+    const result = await discardPendingCollaborationFiles(cancellingFileIds);
+    const failedIdSet = new Set(result.failedIds);
+    setPendingFiles((current) => current.filter((file) =>
+      !cancellingFileIdSet.has(file.id) || failedIdSet.has(file.id),
+    ));
+    if (result.failedIds.length > 0) {
+      throw new Error("일부 첨부를 정리하지 못했습니다. 다시 시도해 주세요.");
+    }
+  }, "작성 중인 첨부를 모두 취소했습니다.");
 
   const toggleCreateInvite = (userId: number) => {
     setCreateInviteIds((current) => (
@@ -1033,6 +1095,7 @@ export function MessengerPage() {
                             <input
                               type="file"
                               multiple
+                              disabled={busy}
                               className="hidden"
                               onChange={handleFiles}
                             />
@@ -1042,13 +1105,24 @@ export function MessengerPage() {
                               <span className="truncate">{file.originalName}</span>
                               <button
                                 type="button"
-                                onClick={() => setPendingFiles((current) => current.filter((item) => item !== file))}
+                                onClick={() => removePendingFile(file)}
+                                disabled={busy}
                                 aria-label="첨부 제거"
                               >
                                 <X className="size-3.5" />
                               </button>
                             </span>
                           ))}
+                          {pendingFiles.length > 1 && (
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-destructive hover:underline"
+                              onClick={cancelPendingFiles}
+                              disabled={busy}
+                            >
+                              첨부 모두 취소
+                            </button>
+                          )}
                         </div>
                       </div>
 

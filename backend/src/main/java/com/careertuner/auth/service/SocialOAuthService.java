@@ -98,7 +98,7 @@ public class SocialOAuthService {
             case "GOOGLE" -> "구글";
             default -> normalized;
         };
-        return new SocialUserInfo(normalized, providerUserId, null, label + " mock 사용자");
+        return new SocialUserInfo(normalized, providerUserId, null, label + " mock 사용자", false);
     }
 
     // ── 내부 ──
@@ -138,10 +138,16 @@ public class SocialOAuthService {
     }
 
     private SocialUserInfo fetchKakao(String accessToken) {
-        Map<?, ?> me = userInfo("https://kapi.kakao.com/v2/user/me", accessToken);
+        return kakaoUserInfo(userInfo("https://kapi.kakao.com/v2/user/me", accessToken));
+    }
+
+    static SocialUserInfo kakaoUserInfo(Map<?, ?> me) {
         String id = String.valueOf(me.get("id"));
         Map<?, ?> account = asMap(me.get("kakao_account"));
         String email = account != null ? (String) account.get("email") : null;
+        boolean emailVerified = account != null
+                && Boolean.TRUE.equals(account.get("is_email_valid"))
+                && Boolean.TRUE.equals(account.get("is_email_verified"));
         String name = null;
         if (account != null) {
             Map<?, ?> profile = asMap(account.get("profile"));
@@ -149,11 +155,15 @@ public class SocialOAuthService {
                 name = (String) profile.get("nickname");
             }
         }
-        return new SocialUserInfo("KAKAO", id, email, name != null ? name : "카카오사용자");
+        return new SocialUserInfo(
+                "KAKAO", id, email, name != null ? name : "카카오사용자", emailVerified);
     }
 
     private SocialUserInfo fetchNaver(String accessToken) {
-        Map<?, ?> me = userInfo("https://openapi.naver.com/v1/nid/me", accessToken);
+        return naverUserInfo(userInfo("https://openapi.naver.com/v1/nid/me", accessToken));
+    }
+
+    static SocialUserInfo naverUserInfo(Map<?, ?> me) {
         Map<?, ?> response = asMap(me.get("response"));
         if (response == null) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "네이버 사용자 정보를 가져오지 못했습니다.");
@@ -164,15 +174,21 @@ public class SocialOAuthService {
         if (name == null) {
             name = (String) response.get("nickname");
         }
-        return new SocialUserInfo("NAVER", id, email, name != null ? name : "네이버사용자");
+        // NAVER 공식 /v1/nid/me 응답에는 email 검증 여부 필드가 없으므로 자동 병합에는 사용하지 않는다.
+        return new SocialUserInfo("NAVER", id, email, name != null ? name : "네이버사용자", false);
     }
 
     private SocialUserInfo fetchGoogle(String accessToken) {
-        Map<?, ?> me = userInfo("https://www.googleapis.com/oauth2/v2/userinfo", accessToken);
+        return googleUserInfo(userInfo("https://www.googleapis.com/oauth2/v2/userinfo", accessToken));
+    }
+
+    static SocialUserInfo googleUserInfo(Map<?, ?> me) {
         String id = String.valueOf(me.get("id"));
         String email = (String) me.get("email");
         String name = (String) me.get("name");
-        return new SocialUserInfo("GOOGLE", id, email, name != null ? name : "구글사용자");
+        boolean emailVerified = Boolean.TRUE.equals(me.get("verified_email"));
+        return new SocialUserInfo(
+                "GOOGLE", id, email, name != null ? name : "구글사용자", emailVerified);
     }
 
     private Map<?, ?> userInfo(String url, String accessToken) {

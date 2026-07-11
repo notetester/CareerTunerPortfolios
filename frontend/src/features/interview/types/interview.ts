@@ -98,6 +98,9 @@ export interface SubmitAnswerRequest {
   answerText: string;
   audioUrl?: string | null;
   videoUrl?: string | null;
+  /** 먼저 업로드한 원본을 답변에 원자적으로 연결한다. URL은 서버가 이 ID로 정규화한다. */
+  audioFileId?: number | null;
+  videoFileId?: number | null;
   /** 사용자에게 보여준 모범답안(답안지). 있으면 채점의 만점 기준으로 함께 보낸다. */
   modelAnswer?: string | null;
 }
@@ -255,7 +258,10 @@ export interface SessionReviewItem {
   question: string;
   questionType: string;
   modelAnswer: string | null;
+  answerId: number | null;
   answerText: string | null;
+  audioUrl: string | null;
+  videoUrl: string | null;
   score: number | null;
   feedback: string | null;
   improvedAnswer: string | null;

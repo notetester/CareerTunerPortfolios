@@ -109,13 +109,21 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | POST | `/api/auth/email/resend?email=` | 인증메일 재발송 | - |
 | GET | `/api/auth/oauth/providers` | 현재 환경에서 사용 가능한 소셜 로그인 제공자 조회 | - |
 | GET | `/api/auth/oauth/{provider}` | 소셜 로그인 시작(`kakao`/`naver`/`google`) | - |
+| POST | `/api/auth/oauth/{provider}/native/start` | 카카오/네이버 네이티브 OAuth 시작(PKCE challenge) | - |
+| POST | `/api/auth/oauth/native/exchange` | verified App Link handoff code와 PKCE verifier 교환 | - |
 | GET | `/api/auth/oauth/{provider}/callback` | 소셜 콜백 → 프런트로 토큰 전달 | - |
 
 - **JWT**: 액세스 토큰은 `Authorization: Bearer <token>`. 리프레시 토큰은 불투명 UUID로 `refresh_token` 테이블에서 회전/폐기 관리.
-- **소셜 로그인 흐름**: 프런트가 `/api/auth/oauth/{provider}` 로 전체 페이지 이동 → 제공자 인증 →
-  백엔드 콜백에서 사용자 조회/생성 후 JWT 발급 → 프런트 `/auth/callback#accessToken=…&refreshToken=…` 로 리다이렉트.
+- **웹 소셜 로그인 흐름**: 프런트가 `/api/auth/oauth/{provider}` 로 전체 페이지 이동 → 제공자 인증 →
+  백엔드 콜백에서 사용자 조회/생성 후 JWT 발급 → 프런트 `/auth/browser-callback#accessToken=…&refreshToken=…` 로 리다이렉트.
   반환 대상은 요청 URL이 아니라 서명된 state의 `primary`/`sites` named client로만 선택한다. OAuth 공급자에는
   기존 AWS 백엔드 콜백 하나만 등록하며, 이메일 인증 토큰도 같은 client를 DB에 보존한다.
+- **네이티브 카카오/네이버 흐름**: 앱이 PKCE challenge로 `native/start`를 호출하고 시스템 브라우저에서 인증한다.
+  백엔드는 실제 JWT 대신 3분짜리 일회성 handoff code만
+  `https://careertuner.kro.kr/auth/callback` verified App Link로 돌려준다. 앱은 verifier와 code를
+  `native/exchange`에 제출해 JWT를 받는다. `careertuner://auth/callback`은 허용하지 않는다.
+- Android App Link가 보안 경계가 되려면 release 인증서 지문이
+  `https://careertuner.kro.kr/.well-known/assetlinks.json`에 게시되고 OS에서 verified 상태여야 한다.
 - Sites 요청은 결제 준비를 서버에서 거부한다. 결제·구독·환불 mutation은 운영 AWS 프런트에서만 수행한다.
 
 ## 결제·구독 사용권 API

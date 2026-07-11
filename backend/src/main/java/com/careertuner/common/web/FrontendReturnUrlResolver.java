@@ -21,6 +21,7 @@ public class FrontendReturnUrlResolver {
     public static final String FRONTEND_CLIENT_HEADER = "X-CareerTuner-Frontend-Client";
     public static final String PRIMARY_CLIENT = "primary";
     public static final String SITES_CLIENT = "sites";
+    public static final String NATIVE_CLIENT = "native";
 
     private final CareerTunerProperties props;
 
@@ -35,6 +36,10 @@ public class FrontendReturnUrlResolver {
         }
         if (SITES_CLIENT.equals(client)) {
             return configuredTarget(SITES_CLIENT, props.getApp().getSitesFrontendUrl());
+        }
+        if (NATIVE_CLIENT.equals(client)) {
+            // 이메일·결제 등 일반 링크는 커스텀 스킴이 아니라 canonical HTTPS 프런트에서 처리한다.
+            return new FrontendReturnTarget(NATIVE_CLIENT, primary().baseUrl());
         }
         throw new BusinessException(ErrorCode.INVALID_INPUT, "지원하지 않는 프런트엔드 클라이언트입니다.");
     }

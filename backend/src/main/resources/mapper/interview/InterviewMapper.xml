@@ -167,6 +167,33 @@
         LIMIT 1
     </select>
 
+    <select id="findAnswerByIdAndUserId" resultType="com.careertuner.interview.domain.InterviewAnswer">
+        SELECT a.*
+          FROM interview_answer a
+          JOIN interview_question q ON q.id = a.question_id
+          JOIN interview_session s ON s.id = q.interview_session_id
+          JOIN application_case ac ON ac.id = s.application_case_id
+         WHERE a.id = #{id}
+           AND ac.user_id = #{userId}
+           AND ac.deleted_at IS NULL
+           AND s.deleted_at IS NULL
+    </select>
+
+    <update id="updateAnswerMediaUrls">
+        UPDATE interview_answer
+           SET audio_url = #{audioUrl},
+               video_url = #{videoUrl}
+         WHERE id = #{id}
+    </update>
+
+    <update id="clearAnswerAudioUrl">
+        UPDATE interview_answer SET audio_url = NULL WHERE id = #{id}
+    </update>
+
+    <update id="clearAnswerVideoUrl">
+        UPDATE interview_answer SET video_url = NULL WHERE id = #{id}
+    </update>
+
     <!-- ── AI 사용량 ── -->
     <insert id="insertAiUsageLog" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO ai_usage_log

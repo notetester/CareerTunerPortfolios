@@ -7,6 +7,7 @@ import java.time.format.DateTimeParseException;
 import org.springframework.stereotype.Component;
 
 import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.domain.NotificationDestinationPlatform;
 import com.careertuner.notification.mapper.PushSubscriptionMapper;
 import com.careertuner.notification.service.NotificationPreferenceService;
 
@@ -26,6 +27,11 @@ public class PushDispatcher {
 
     public void dispatch(Notification notification) {
         if (notification == null || notification.getUserId() == null) {
+            return;
+        }
+        // 데스크톱 앱은 API polling으로 수신한다. WEB/FCM/APNs로 재방송하지 않는다.
+        NotificationDestinationPlatform destination = notification.resolvedDestinationPlatform();
+        if (destination == NotificationDestinationPlatform.DESKTOP) {
             return;
         }
         try {
@@ -56,6 +62,12 @@ public class PushDispatcher {
             PushMessage message = new PushMessage(
                     notification.getTitle(), notification.getMessage(), notification.getLink(), androidChannelId);
             for (var subscription : pushSubscriptionMapper.findByUserId(notification.getUserId())) {
+                // MOBILE 핸드오프는 네이티브 기기만 수신한다. 데스크톱 브라우저의 WEB push로
+                // 같은 알림을 다시 보내면 플랫폼 필터의 의미가 없어진다.
+                if (destination == NotificationDestinationPlatform.MOBILE
+                        && "WEB".equalsIgnoreCase(subscription.getKind())) {
+                    continue;
+                }
                 String channel = pushChannel(subscription.getKind());
                 if (!pref.channelEnabled(type, channel)) {
                     continue;

@@ -10,8 +10,17 @@ ApplicationWindow {
     visible: true
     width: 1280
     height: 820
+    minimumWidth: phoneOpen ? 1120 : 880
+    minimumHeight: 640
     title: "CareerTuner — 면접 준비 컨트롤 센터"
     color: Theme.bg
+
+    // QSettings에 저장된 테마를 싱글턴 토큰에 바인딩해 모든 화면에 즉시 반영한다.
+    Binding {
+        target: Theme
+        property: "darkMode"
+        value: appSettings.darkTheme
+    }
 
     // ── 앱 상태 ──
     property bool loggedIn: false
@@ -24,10 +33,62 @@ ApplicationWindow {
         win.view = "thread"
     }
 
-    function showToast(title, body) { toasts.push(title, body) }
+    function showToast(title, body, type, link, targetType, targetId) {
+        toasts.push(title, body, String(type || ""), String(link || ""),
+                    String(targetType || ""), Number(targetId || 0))
+    }
+
+    function notificationSessionId(link, targetId) {
+        const explicitId = Number(targetId || 0)
+        if (isFinite(explicitId) && explicitId > 0)
+            return Math.floor(explicitId)
+
+        const url = String(link || "")
+        const queryMatch = url.match(/[?&]session=(\d+)/)
+        if (queryMatch)
+            return Number(queryMatch[1])
+        const mobileMatch = url.match(/^\/m\/session\/(\d+)/)
+        return mobileMatch ? Number(mobileMatch[1]) : 0
+    }
+
+    function openInterviewNotification(type, link, targetId) {
+        const sessionId = notificationSessionId(link, targetId)
+        if (sessionId <= 0) {
+            routeNotificationLink(link)
+            return
+        }
+
+        const context = jobModel.sessionContext(sessionId)
+        const hasContext = Number(context.id || 0) === sessionId
+        const title = hasContext && String(context.title || "").length > 0
+                    ? String(context.title) : "면접 세션 #" + sessionId
+        const mode = hasContext && String(context.mode || "").length > 0
+                   ? String(context.mode) : "이어하기"
+        const caseId = hasContext ? Number(context.caseId || 0) : 0
+
+        win.openSession(sessionId, title, mode, caseId)
+        jobModel.markResumed(sessionId)
+        if (String(type || "") === "INTERVIEW_REPORT_READY") {
+            session.loadReport()
+            win.view = "report"
+        }
+    }
+
+    // 트레이·인앱 토스트·알림 센터의 단일 알림 활성화 진입점.
+    function activateNotification(type, link, targetType, targetId) {
+        const url = String(link || "")
+        const target = String(targetType || "")
+        if (target === "INTERVIEW_SESSION"
+                || ((url.indexOf("/interview") === 0 || url.indexOf("/m/session/") === 0)
+                    && notificationSessionId(url, targetId) > 0)) {
+            openInterviewNotification(type, url, targetId)
+            return
+        }
+        routeNotificationLink(url)
+    }
 
     // 알림 link → 데스크톱 화면 라우팅.
-    // '/messenger' → 협업 뷰, '/interview?session=ID' → 해당 세션 스레드.
+    // 구조화된 대상 처리는 activateNotification 에서 끝낸 뒤 나머지 링크만 이곳으로 온다.
     // 데스크톱에 대응 화면이 없는 링크는 공개 웹 앱으로 이어서 고아 링크를 만들지 않는다.
     function routeNotificationLink(link) {
         const url = String(link || "")
@@ -46,14 +107,6 @@ ApplicationWindow {
             if (pm) community.openPost(Number(pm[1]))
             else if (qm) community.openPost(Number(qm[1]))
             return
-        }
-        if (url.indexOf("/interview") === 0) {
-            const m = url.match(/[?&]session=(\d+)/)
-            if (m) {
-                // 사이드바 목록에 아직 없는 세션일 수 있어 임시 라벨로 열고, 스레드가 실제 내용을 채운다
-                win.openSession(Number(m[1]), "면접 세션 #" + m[1], "이어하기", 0)
-                return
-            }
         }
         if (url.indexOf("/planner") === 0) {
             plannerOverlayController.enabled = true
@@ -104,6 +157,9 @@ ApplicationWindow {
         target: session
         function onAnswerScored(score) { win.showToast("채점 완료 — " + score + "점", "피드백이 스레드에 추가되었습니다") }
         function onVoiceScored(score) { win.showToast("전달력 채점 — " + score + "점", "음성 전달력 평가가 반영되었습니다") }
+        function onAnswerMediaDeleted(kind) {
+            win.showToast("원본 삭제됨", kind === "VIDEO" ? "영상 원본을 삭제했습니다" : "음성 원본을 삭제했습니다")
+        }
         function onExported(path, what) { win.showToast(what + " 저장됨", path) }
         function onErrorOccurred(message) { win.showToast("오류", message) }
         function onSessionFinished() { win.showToast("세션 완료", "모든 질문에 답변했습니다 — 리포트를 확인하세요") }
@@ -111,9 +167,10 @@ ApplicationWindow {
 
     Connections {
         target: notifications
-        function onNotificationArrived(type, title, message, link, targetId, desktopToast, desktopTaskbar) {
+        function onNotificationArrived(type, title, message, link, targetType, targetId,
+                                       desktopToast, desktopTaskbar) {
             if (desktopToast)
-                win.showToast(title, message)
+                win.showToast(title, message, type, link, targetType, targetId)
             if (type === "ROOM_MESSAGE" || type === "ROOM_MENTION" || type === "ROOM_INVITE"
                 || type === "FRIEND_REQUEST" || type === "FRIEND_ACCEPTED")
                 collaboration.refresh()
@@ -254,7 +311,8 @@ ApplicationWindow {
                             id: notificationCenter
                             x: -100
                             y: parent.height + 8
-                            onLinkActivated: (link) => win.routeNotificationLink(link)
+                            onNotificationActivated: (type, link, targetType, targetId) =>
+                                win.activateNotification(type, link, targetType, targetId)
                         }
                     }
                 }
@@ -644,8 +702,15 @@ ApplicationWindow {
         spacing: 8
         z: 100
 
-        function push(title, body) {
-            toastComp.createObject(toasts, { title: title, body: body })
+        function push(title, body, type, link, targetType, targetId) {
+            toastComp.createObject(toasts, {
+                title: title,
+                body: body,
+                notificationType: type,
+                notificationLink: link,
+                notificationTargetType: targetType,
+                notificationTargetId: targetId
+            })
         }
 
         Component {
@@ -654,11 +719,17 @@ ApplicationWindow {
                 id: toastItem
                 property string title: ""
                 property string body: ""
+                property string notificationType: ""
+                property string notificationLink: ""
+                property string notificationTargetType: ""
+                property var notificationTargetId: 0
+                readonly property bool actionable: notificationLink.length > 0
+                                                   || notificationTargetType.length > 0
                 width: 320
                 height: tcol.implicitHeight + 22
                 radius: 10
-                color: Theme.surface
-                border.color: Theme.border
+                color: actionable && toastHover.containsMouse ? Theme.hover : Theme.surface
+                border.color: actionable && toastHover.containsMouse ? Theme.accent : Theme.border
                 Rectangle { width: 3; height: parent.height - 16; y: 8; x: 0; radius: 2; color: Theme.accent }
                 ColumnLayout {
                     id: tcol
@@ -666,6 +737,28 @@ ApplicationWindow {
                     spacing: 3
                     Text { text: toastItem.title; color: Theme.text; font.pixelSize: 12; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
                     Text { text: toastItem.body; color: Theme.muted; font.pixelSize: 11; Layout.fillWidth: true; wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight }
+                    Text {
+                        visible: toastItem.actionable
+                        text: "클릭하여 열기  →"
+                        color: Theme.accentText
+                        font.pixelSize: 10
+                        font.bold: true
+                        Layout.topMargin: 2
+                    }
+                }
+                MouseArea {
+                    id: toastHover
+                    anchors.fill: parent
+                    enabled: toastItem.actionable
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        win.activateNotification(toastItem.notificationType,
+                                                 toastItem.notificationLink,
+                                                 toastItem.notificationTargetType,
+                                                 toastItem.notificationTargetId)
+                        toastItem.destroy()
+                    }
                 }
                 Timer { interval: 4500; running: true; onTriggered: toastItem.destroy() }
                 opacity: 0

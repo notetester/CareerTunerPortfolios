@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.domain.NotificationDestinationPlatform;
 import com.careertuner.notification.dto.NotificationPageResponse;
 import com.careertuner.notification.dto.NotificationResponse;
 import com.careertuner.notification.event.NotificationPushEvent;
@@ -61,23 +62,26 @@ public class NotificationServiceImpl implements NotificationService {
             notification.setSenderRelation(
                     senderRelationResolver.resolve(notification.getUserId(), notification.getActorId()));
         }
+        notification.setDestinationPlatform(notification.resolvedDestinationPlatform());
         notificationMapper.insert(notification);
         // 푸시는 알림 트랜잭션 밖에서 비동기로 발송(AFTER_COMMIT) — 커밋 지연·유령 푸시 방지.
         eventPublisher.publishEvent(new NotificationPushEvent(notification));
     }
 
     @Override
-    public NotificationPageResponse getNotifications(Long userId, int page, int size) {
+    public NotificationPageResponse getNotifications(
+            Long userId, int page, int size, NotificationDestinationPlatform platform) {
         int offset = page * size;
-        List<Notification> list = notificationMapper.findByUserId(userId, offset, size);
-        int total = notificationMapper.countByUserId(userId);
+        String platformFilter = platformFilter(platform);
+        List<Notification> list = notificationMapper.findByUserId(userId, platformFilter, offset, size);
+        int total = notificationMapper.countByUserId(userId, platformFilter);
         List<NotificationResponse> responses = list.stream().map(this::toResponse).toList();
         return new NotificationPageResponse(responses, total, page, size, offset + size < total);
     }
 
     @Override
-    public int getUnreadCount(Long userId) {
-        return notificationMapper.countUnreadByUserId(userId);
+    public int getUnreadCount(Long userId, NotificationDestinationPlatform platform) {
+        return notificationMapper.countUnreadByUserId(userId, platformFilter(platform));
     }
 
     @Override
@@ -134,6 +138,7 @@ public class NotificationServiceImpl implements NotificationService {
                 n.getTargetType(),
                 n.getTargetId(),
                 n.getSenderRelation(),
+                n.resolvedDestinationPlatform(),
                 n.getTitle(),
                 n.getMessage(),
                 n.getLink(),
@@ -141,5 +146,10 @@ public class NotificationServiceImpl implements NotificationService {
                 n.getCreatedAt(),
                 actor
         );
+    }
+
+    private static String platformFilter(NotificationDestinationPlatform platform) {
+        NotificationDestinationPlatform resolved = NotificationDestinationPlatform.resolve(platform);
+        return resolved == NotificationDestinationPlatform.ALL ? null : resolved.name();
     }
 }

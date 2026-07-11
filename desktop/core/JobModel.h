@@ -40,6 +40,7 @@ public:
     Q_INVOKABLE void loadCases();                                    // 지원건 목록 → casesReady
     Q_INVOKABLE void createSession(int caseId, const QString& mode); // 생성 → sessionCreated
     Q_INVOKABLE void loadProgress(int sessionId);                    // 진행률 → progressReady
+    Q_INVOKABLE QVariantMap sessionContext(qint64 sessionId) const;  // 알림에서 실제 세션 문맥 복원
     Q_INVOKABLE void markResumed(int sessionId);                     // 이어받기 시각 기록 → resumed
     Q_INVOKABLE void dispatchToPhone(int sessionId);                 // 폰/웹으로 알림 발송 → dispatched
 

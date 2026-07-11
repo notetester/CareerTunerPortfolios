@@ -1,4 +1,6 @@
 import { apiBase } from "./apiBase";
+import { applyFrontendClientHeader } from "./apiClientCore.mjs";
+import { isNativeApp } from "@/platform/capacitor";
 import {
   clearTokensIfUnchanged,
   getAccessToken,
@@ -124,6 +126,7 @@ export function createOutageMutationUncertainError(): ApiError {
 
 function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
   const headers = new Headers(options.headers ?? {});
+  applyFrontendClientHeader(headers, isNativeApp());
   const body = options.body;
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   if (body && !isFormData && !headers.has("Content-Type")) {
@@ -164,10 +167,11 @@ function tryRefresh(): Promise<boolean> {
   };
   attempt.promise = (async () => {
     try {
+      const refreshBody = JSON.stringify({ refreshToken });
       const res = await fetch(`${apiBase()}/auth/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
+        headers: buildHeaders({ body: refreshBody }, false),
+        body: refreshBody,
       });
       const env = (await res.json().catch(() => null)) as ApiEnvelope<{
         accessToken: string;

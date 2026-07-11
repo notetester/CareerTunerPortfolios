@@ -30,7 +30,8 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 음성 모의면접/아바타 화상 면접 — 외부 키 프록시와 분석 결과 저장.
- * 원본 음성·영상은 서버로 올라오지 않는다. 분석은 온디바이스, 저장은 점수(JSON)만 (ADR-002).
+ * 이 컨트롤러의 base64 분석 요청 사본은 분석 후 보관하지 않는다. 사용자가 저장에 동의한
+ * 답변 원본은 /api/file/upload 로 별도 보관하고 표준 answers 의 audioUrl/videoUrl 로 연결한다.
  */
 @RestController
 @RequestMapping("/api/interview")
@@ -51,7 +52,7 @@ public class InterviewMediaController {
                 "avatarSandbox", avatarProperties.isSandbox()));
     }
 
-    /** 음성 답변 → 자체 추론 서버 점수 (ADR-006). 원본 음성은 점수 산출 후 버려진다. */
+    /** 음성 답변 → 자체 추론 서버 점수 (ADR-006). 이 분석 요청의 base64 사본은 산출 후 보관하지 않는다. */
     @PostMapping("/sessions/{sessionId}/voice-score")
     public ApiResponse<VoiceScoreResponse> scoreVoice(@AuthenticationPrincipal AuthUser authUser,
                                                       @PathVariable Long sessionId,
@@ -59,7 +60,7 @@ public class InterviewMediaController {
         return ApiResponse.ok(mediaService.scoreVoice(authUser.id(), sessionId, request));
     }
 
-    /** 아바타 화상면접 → 자체 추론 서버 음성+영상 점수 (late fusion, ADR-006/007). 원본 영상은 점수 산출 후 버려진다. */
+    /** 아바타 화상면접 → 자체 추론 서버 음성+영상 점수. 이 분석 요청의 base64 사본은 산출 후 보관하지 않는다. */
     @PostMapping("/sessions/{sessionId}/avatar-score")
     public ApiResponse<AvatarScoreResponse> scoreAvatar(@AuthenticationPrincipal AuthUser authUser,
                                                         @PathVariable Long sessionId,
@@ -67,7 +68,7 @@ public class InterviewMediaController {
         return ApiResponse.ok(mediaService.scoreAvatar(authUser.id(), sessionId, request));
     }
 
-    /** 음성 답변 → 자체 STT 전사 (B 베이직, faster-whisper). 원본 음성은 전사 후 버려진다. */
+    /** 음성 답변 → 자체 STT 전사 (B 베이직, faster-whisper). 이 분석 요청의 base64 사본은 전사 후 보관하지 않는다. */
     @PostMapping("/sessions/{sessionId}/voice-transcribe")
     public ApiResponse<TranscribeResponse> transcribe(@AuthenticationPrincipal AuthUser authUser,
                                                       @PathVariable Long sessionId,

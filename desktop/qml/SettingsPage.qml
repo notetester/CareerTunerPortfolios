@@ -244,7 +244,13 @@ Item {
 
             SettingCard {
                 title: "테마"
-                desc: "블랙 + 인디고 다크 (기본 고정)"
+                desc: appSettings.darkTheme
+                      ? "다크 · 딥 블랙 + 인디고"
+                      : "라이트 · 오프화이트 + 인디고"
+                Toggle {
+                    checked: appSettings.darkTheme
+                    onToggled: (v) => appSettings.darkTheme = v
+                }
             }
         }
     }

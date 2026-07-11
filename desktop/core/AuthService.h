@@ -41,6 +41,7 @@ signals:
     void loggedIn(const QString& token);
     void loginFailed(const QString& message);
     void autoLoginFailed();          // 저장 토큰 없음/만료 → 로그인 화면으로
+    void aboutToLogout();            // access token 제거 전, 작성 중 원격 자산 정리 기회
     void loggedOut();
     void profileChanged();
     void mfaChallengeChanged();

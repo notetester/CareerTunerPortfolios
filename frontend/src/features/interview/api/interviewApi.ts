@@ -63,12 +63,15 @@ export function deleteInterviewSession(sessionId: number): Promise<void> {
   return api<void>(`/interview/sessions/${sessionId}`, { method: "DELETE" });
 }
 
-/** 세션 복원(=복습) 시각 기록. */
-/** 이 세션을 다른 기기(데스크탑·웹·폰)로 보내기 — 알림 + 딥링크 발송. 데스크탑 폴러가 토스트로 받는다. */
-export function dispatchSessionToDevices(sessionId: number): Promise<void> {
-  return api<void>(`/interview/sessions/${sessionId}/dispatch`, { method: "POST" });
+/** 모바일에서 이 세션을 데스크톱으로 보내기 — 데스크톱 폴러가 알림과 딥링크를 받는다. */
+export function dispatchSessionToDesktop(sessionId: number): Promise<void> {
+  return api<void>(`/interview/sessions/${sessionId}/dispatch`, {
+    method: "POST",
+    body: JSON.stringify({ target: "DESKTOP" }),
+  });
 }
 
+/** 세션 복원(=복습) 시각 기록. */
 export function markSessionResumed(sessionId: number): Promise<void> {
   if (isDataMockActive()) return Promise.resolve();
   return api<void>(`/interview/sessions/${sessionId}/resume`, { method: "POST" });
@@ -137,6 +140,11 @@ export function submitAnswer(
       headers,
       body: JSON.stringify(request),
     }));
+}
+
+/** 답변 내용·채점은 유지하고 선택한 음성/영상 원본만 물리 삭제한다. */
+export function deleteAnswerMedia(answerId: number, kind: "AUDIO" | "VIDEO"): Promise<void> {
+  return api<void>(`/interview/answers/${answerId}/media/${kind}`, { method: "DELETE" });
 }
 
 /** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */

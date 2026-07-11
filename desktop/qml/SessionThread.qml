@@ -270,6 +270,18 @@ Item {
                             Icon { name: "mic"; size: 10; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
                             Text { text: "음성"; color: Theme.muted; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
                         }
+                        Row {
+                            visible: data_.hasVideo === true
+                            spacing: 5
+                            Icon { name: "video"; size: 10; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: "영상"; color: Theme.muted; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                        }
+                        Text {
+                            visible: data_.pending === true
+                            text: "저장 중…"
+                            color: Theme.accentText
+                            font.pixelSize: 10
+                        }
                     }
                     Rectangle {
                         Layout.fillWidth: true
@@ -346,6 +358,37 @@ Item {
                                         Text {
                                             text: "전달력 " + scoreRoot.data_.voiceScore
                                             color: Theme.accent; font.pixelSize: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    visible: scoreRoot.data_.visualScore >= 0
+                                    height: 20; radius: 10
+                                    width: visualRow.implicitWidth + 16
+                                    color: Theme.accentSoft
+                                    Row {
+                                        id: visualRow; anchors.centerIn: parent
+                                        spacing: 5
+                                        Icon { name: "video"; size: 10; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            text: "비언어 " + scoreRoot.data_.visualScore
+                                            color: Theme.accent; font.pixelSize: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    visible: scoreRoot.data_.videoScore >= 0
+                                    height: 20; radius: 10
+                                    width: videoTotalRow.implicitWidth + 16
+                                    color: Theme.raised
+                                    Row {
+                                        id: videoTotalRow; anchors.centerIn: parent
+                                        spacing: 5
+                                        Text {
+                                            text: "영상 종합 " + scoreRoot.data_.videoScore
+                                            color: Theme.text; font.pixelSize: 10
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
                                     }
@@ -463,6 +506,34 @@ Item {
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: session.requestFollowUp()
+                            }
+                        }
+                        Rectangle {
+                            visible: scoreRoot.data_.answerId > 0
+                                     && scoreRoot.data_.hasAudioOriginal === true
+                            width: audioDeleteLbl.implicitWidth + 20; height: 28; radius: 7
+                            color: Theme.raised; border.color: Theme.border
+                            Text {
+                                id: audioDeleteLbl; anchors.centerIn: parent
+                                text: "음성 원본 삭제"; color: Theme.danger; font.pixelSize: 11
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: session.deleteAnswerMedia(scoreRoot.data_.answerId, "AUDIO")
+                            }
+                        }
+                        Rectangle {
+                            visible: scoreRoot.data_.answerId > 0
+                                     && scoreRoot.data_.hasVideoOriginal === true
+                            width: videoDeleteLbl.implicitWidth + 20; height: 28; radius: 7
+                            color: Theme.raised; border.color: Theme.border
+                            Text {
+                                id: videoDeleteLbl; anchors.centerIn: parent
+                                text: "영상 원본 삭제"; color: Theme.danger; font.pixelSize: 11
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: session.deleteAnswerMedia(scoreRoot.data_.answerId, "VIDEO")
                             }
                         }
                     }

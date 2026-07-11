@@ -11,6 +11,7 @@ import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
+import com.careertuner.interview.dto.InterviewDispatchTarget;
 import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
@@ -29,8 +30,8 @@ public interface InterviewService {
     /** 기존 세션 복원(=복습) 시각 기록. */
     void markResumed(Long userId, Long sessionId);
 
-    /** 데스크탑에서 이 세션을 폰으로 디스패치 — 사용자에게 알림을 남긴다. */
-    void dispatchToPhone(Long userId, Long sessionId);
+    /** 면접 세션을 지정한 플랫폼에서 이어받도록 사용자에게 알림을 남긴다. */
+    void dispatchSession(Long userId, Long sessionId, InterviewDispatchTarget target);
 
     List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId, GenerateQuestionsRequest request);
 
@@ -40,6 +41,9 @@ public interface InterviewService {
     List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId, GenerateFollowUpsRequest request);
 
     InterviewAnswerResponse submitAnswer(Long userId, Long questionId, SubmitAnswerRequest request);
+
+    /** 답변에 연결된 음성 또는 영상 원본을 물리 저장소와 메타데이터에서 함께 삭제한다. */
+    void deleteAnswerMedia(Long userId, Long answerId, String kind);
 
     /** 답변 유무 기반 진행 상태와 다음에 답할 질문을 반환한다. (AI 면접관 대화 진행) */
     InterviewProgressResponse getProgress(Long userId, Long sessionId);

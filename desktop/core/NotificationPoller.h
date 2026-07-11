@@ -35,7 +35,8 @@ signals:
     // 새 알림 도착 (폴링 간격 내 신규 + 미읽음)
     void notificationArrived(const QString& type, const QString& title,
                              const QString& message, const QString& link,
-                             qint64 targetId, bool desktopToast,
+                             const QString& targetType, qint64 targetId,
+                             bool desktopToast,
                              bool desktopTaskbar);
 
 private:
@@ -48,7 +49,7 @@ private:
     QTimer m_timer;
     qint64 m_lastMaxId = -1;  // -1 = 아직 기준선 없음
     int m_unread = 0;
-    // 최근 20개 알림 (각 항목: id/type/title/message/link/isRead/createdAt/senderRelation/actorName)
+    // 최근 20개 알림 (각 항목: id/type/title/message/link/targetType/targetId/isRead/createdAt/senderRelation/actorName)
     QVariantList m_items;
     QHash<QString, bool> m_desktopToastByType;
     QHash<QString, bool> m_desktopTaskbarByType;

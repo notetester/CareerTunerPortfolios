@@ -23,6 +23,7 @@ import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
 
@@ -38,6 +39,7 @@ class InterviewServiceSoftDeleteTest {
     private final ObjectMapper objectMapper = mock(ObjectMapper.class);
     private final InterviewBackgroundExecutor backgroundExecutor = mock(InterviewBackgroundExecutor.class);
     private final NotificationService notificationService = mock(NotificationService.class);
+    private final FileService fileService = mock(FileService.class);
 
     private InterviewServiceImpl service;
 
@@ -51,7 +53,8 @@ class InterviewServiceSoftDeleteTest {
                 orchestrator,
                 objectMapper,
                 backgroundExecutor,
-                notificationService);
+                notificationService,
+                fileService);
     }
 
     @Test

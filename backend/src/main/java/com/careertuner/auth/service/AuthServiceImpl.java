@@ -1,8 +1,14 @@
 package com.careertuner.auth.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.auth.domain.EmailVerification;
 import com.careertuner.auth.domain.MfaChallenge;
+import com.careertuner.auth.domain.NativeAuthHandoff;
 import com.careertuner.auth.domain.RefreshToken;
 import com.careertuner.auth.domain.UserConsent;
 import com.careertuner.auth.domain.UserLoginHistory;
@@ -23,6 +30,7 @@ import com.careertuner.auth.dto.MeResponse;
 import com.careertuner.auth.dto.MfaLoginStatusResponse;
 import com.careertuner.auth.dto.MfaLoginVerifyRequest;
 import com.careertuner.auth.dto.OAuthCallbackResult;
+import com.careertuner.auth.dto.OAuthCallbackContext;
 import com.careertuner.auth.dto.OAuthProviderAvailabilityResponse;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
@@ -55,6 +63,12 @@ public class AuthServiceImpl implements AuthService {
     private static final String STATUS_DORMANT = "DORMANT";
     private static final String STATUS_BLOCKED = "BLOCKED";
     private static final String STATUS_DELETED = "DELETED";
+    private static final int NATIVE_HANDOFF_PROVIDER_USER_ID_MAX_LENGTH = 255;
+    private static final int NATIVE_HANDOFF_EMAIL_MAX_LENGTH = 255;
+    private static final int NATIVE_HANDOFF_DISPLAY_NAME_MAX_LENGTH = 100;
+    private static final Pattern PKCE_CHALLENGE_PATTERN = Pattern.compile("^[A-Za-z0-9_-]{43}$");
+    private static final Pattern PKCE_VERIFIER_PATTERN = Pattern.compile("^[A-Za-z0-9._~-]{43,128}$");
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final UserMapper userMapper;
     private final AuthMapper authMapper;
@@ -554,6 +568,17 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public String buildNativeAuthorizationUrl(String provider, String handoffChallenge) {
+        String normalized = normalizeProvider(provider);
+        requirePkceChallenge(handoffChallenge);
+        String state = jwtTokenProvider.createNativeOauthState(normalized, handoffChallenge);
+        if (!socialOAuthService.isConfigured(normalized)) {
+            return buildMockAuthorizationUrl(normalized, state);
+        }
+        return socialOAuthService.getAuthorizationUrl(normalized, state);
+    }
+
+    @Override
     public String buildSocialLinkUrl(Long userId, String provider) {
         return buildSocialLinkUrl(userId, provider, frontendReturnUrlResolver.primary());
     }
@@ -588,15 +613,14 @@ public class AuthServiceImpl implements AuthService {
             linkSocial(oauthState.userId(), info, context);
             return OAuthCallbackResult.linked(info.provider(), oauthState.frontendClient());
         }
+        if (oauthState.nativeLogin()) {
+            return completeNativeOAuthHandoff(info, oauthState);
+        }
 
         User user = findOrCreateSocialUser(info);
         user = releaseExpiredBlockIfNeeded(user);
         validateSocialLoginAllowed(user, info, context);
-
-        userMapper.touchLastLoginAndResetFailures(user.getId());
-        String identifier = info.email() != null ? info.email() : info.providerUserId();
-        recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, true, null, context);
-        return OAuthCallbackResult.login(issueTokens(user, context), oauthState.frontendClient());
+        return completeOAuthLogin(user, info, oauthState, context);
     }
 
     @Override
@@ -620,26 +644,175 @@ public class AuthServiceImpl implements AuthService {
         }
 
         SocialUserInfo info = socialOAuthService.mockUserInfo(normalized, null);
+        if (oauthState.nativeLogin()) {
+            return completeNativeOAuthHandoff(info, oauthState);
+        }
         User user = findOrCreateSocialUser(info);
         user = releaseExpiredBlockIfNeeded(user);
         validateSocialLoginAllowed(user, info, context);
-        userMapper.touchLastLoginAndResetFailures(user.getId());
-        recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", info.providerUserId(),
-                true, null, context);
         recordSecurityEvent(user.getId(), null, "SOCIAL_LOGIN", "MOCK_COMPLETE",
                 info.providerUserId(), user.getEmail(), true, null, info.provider(), context);
-        return OAuthCallbackResult.login(issueTokens(user, context), oauthState.frontendClient());
+        return completeOAuthLogin(user, info, oauthState, context);
+    }
+
+    @Override
+    @Transactional
+    public TokenResponse exchangeNativeOAuthHandoff(
+            String handoffCode, String handoffVerifier, LoginRequestContext context) {
+        requireHandoffCode(handoffCode);
+        requirePkceVerifier(handoffVerifier);
+
+        NativeAuthHandoff handoff = authMapper.findNativeAuthHandoffForUpdate(sha256Base64Url(handoffCode));
+        if (handoff == null) {
+            throw invalidNativeHandoff();
+        }
+
+        String actualChallenge = sha256Base64Url(handoffVerifier);
+        if (handoff.getHandoffChallenge() == null || !MessageDigest.isEqual(
+                handoff.getHandoffChallenge().getBytes(StandardCharsets.US_ASCII),
+                actualChallenge.getBytes(StandardCharsets.US_ASCII))) {
+            throw invalidNativeHandoff();
+        }
+
+        // 만료 판정과 소비는 DB NOW() 한 시계를 사용해 서버/DB timezone 또는 clock skew 영향을 피한다.
+        if (authMapper.consumeNativeAuthHandoff(handoff.getId()) != 1) {
+            throw invalidNativeHandoff();
+        }
+
+        // 회원/소셜 계정 생성은 PKCE 검증과 일회성 행 소비가 끝난 뒤 같은 트랜잭션에서만 수행한다.
+        SocialUserInfo loginInfo = validatedNativeSocialUserInfo(new SocialUserInfo(
+                handoff.getProvider(), handoff.getProviderUserId(), handoff.getEmail(), handoff.getDisplayName(),
+                handoff.isEmailVerified()));
+        User user = releaseExpiredBlockIfNeeded(findOrCreateSocialUser(loginInfo));
+        validateSocialLoginAllowed(user, loginInfo, context);
+        completeSocialLoginAudit(user, loginInfo, context);
+        return issueTokens(user, context);
     }
 
     @Override
     public String resolveOAuthFrontendClient(String provider, String state) {
+        return resolveOAuthCallbackContext(provider, state).frontendClient();
+    }
+
+    @Override
+    public OAuthCallbackContext resolveOAuthCallbackContext(String provider, String state) {
         try {
             String normalized = normalizeProvider(provider);
             OauthState oauthState = jwtTokenProvider.parseOauthState(state, normalized);
-            return oauthState != null ? oauthState.frontendClient() : null;
+            if (oauthState == null) {
+                return OAuthCallbackContext.invalid();
+            }
+            // link 반환은 서명된 type뿐 아니라 서버가 발급한 대상 userId까지 있어야 인정한다.
+            boolean socialLink = oauthState.link() && oauthState.userId() != null;
+            return new OAuthCallbackContext(oauthState.frontendClient(), socialLink);
         } catch (RuntimeException e) {
+            return OAuthCallbackContext.invalid();
+        }
+    }
+
+    private OAuthCallbackResult completeOAuthLogin(
+            User user, SocialUserInfo info, OauthState oauthState, LoginRequestContext context) {
+        if (!oauthState.login()) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth state입니다.");
+        }
+        completeSocialLoginAudit(user, info, context);
+        return OAuthCallbackResult.login(issueTokens(user, context), oauthState.frontendClient());
+    }
+
+    private OAuthCallbackResult completeNativeOAuthHandoff(SocialUserInfo info, OauthState oauthState) {
+        if (!FrontendReturnUrlResolver.NATIVE_CLIENT.equals(oauthState.frontendClient())) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 네이티브 OAuth state입니다.");
+        }
+        requirePkceChallenge(oauthState.handoffChallenge());
+        return OAuthCallbackResult.nativeLogin(createNativeAuthHandoff(info, oauthState.handoffChallenge()));
+    }
+
+    private void completeSocialLoginAudit(User user, SocialUserInfo info, LoginRequestContext context) {
+        userMapper.touchLastLoginAndResetFailures(user.getId());
+        String identifier = info.email() != null ? info.email() : info.providerUserId();
+        recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, true, null, context);
+    }
+
+    private String createNativeAuthHandoff(SocialUserInfo info, String handoffChallenge) {
+        SocialUserInfo storedInfo = validatedNativeSocialUserInfo(info);
+        // 교환하지 않은 제공자 정보도 영구 보관되지 않도록 새 발급마다 만료 행을 제한적으로 정리한다.
+        authMapper.deleteExpiredNativeAuthHandoffs();
+        byte[] codeBytes = new byte[32];
+        SECURE_RANDOM.nextBytes(codeBytes);
+        String handoffCode = Base64.getUrlEncoder().withoutPadding().encodeToString(codeBytes);
+        authMapper.insertNativeAuthHandoff(NativeAuthHandoff.builder()
+                .provider(storedInfo.provider())
+                .providerUserId(storedInfo.providerUserId())
+                .email(storedInfo.email())
+                .emailVerified(storedInfo.emailVerified())
+                .displayName(storedInfo.name())
+                .codeHash(sha256Base64Url(handoffCode))
+                .handoffChallenge(handoffChallenge)
+                .build());
+        return handoffCode;
+    }
+
+    private SocialUserInfo validatedNativeSocialUserInfo(SocialUserInfo info) {
+        if (info == null || info.provider() == null || info.providerUserId() == null) {
+            throw invalidNativeHandoff();
+        }
+        String provider = info.provider().trim().toUpperCase(Locale.ROOT);
+        if (!("KAKAO".equals(provider) || "NAVER".equals(provider) || "GOOGLE".equals(provider))) {
+            throw invalidNativeHandoff();
+        }
+        String providerUserId = info.providerUserId();
+        if (providerUserId.isBlank() || providerUserId.length() > NATIVE_HANDOFF_PROVIDER_USER_ID_MAX_LENGTH) {
+            throw invalidNativeHandoff();
+        }
+        String email = normalizeNullableNativeHandoffValue(
+                info.email(), NATIVE_HANDOFF_EMAIL_MAX_LENGTH);
+        String displayName = normalizeNullableNativeHandoffValue(
+                info.name(), NATIVE_HANDOFF_DISPLAY_NAME_MAX_LENGTH);
+        return new SocialUserInfo(
+                provider, providerUserId, email, displayName, email != null && info.emailVerified());
+    }
+
+    private String normalizeNullableNativeHandoffValue(String value, int maxLength) {
+        if (value == null || value.isBlank()) {
             return null;
         }
+        String normalized = value.trim();
+        if (normalized.length() > maxLength) {
+            throw invalidNativeHandoff();
+        }
+        return normalized;
+    }
+
+    private void requirePkceChallenge(String challenge) {
+        if (challenge == null || !PKCE_CHALLENGE_PATTERN.matcher(challenge).matches()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "유효한 PKCE handoffChallenge가 필요합니다.");
+        }
+    }
+
+    private void requirePkceVerifier(String verifier) {
+        if (verifier == null || !PKCE_VERIFIER_PATTERN.matcher(verifier).matches()) {
+            throw invalidNativeHandoff();
+        }
+    }
+
+    private void requireHandoffCode(String handoffCode) {
+        if (handoffCode == null || !PKCE_CHALLENGE_PATTERN.matcher(handoffCode).matches()) {
+            throw invalidNativeHandoff();
+        }
+    }
+
+    private String sha256Base64Url(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.US_ASCII));
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
+    }
+
+    private BusinessException invalidNativeHandoff() {
+        return new BusinessException(ErrorCode.UNAUTHORIZED, "유효하지 않거나 만료된 네이티브 인증 handoff입니다.");
     }
 
     private String buildMockAuthorizationUrl(String provider, String state) {
@@ -660,28 +833,29 @@ public class AuthServiceImpl implements AuthService {
             return user;
         }
 
+        String verifiedEmail = info.emailVerified() ? normalizeOptionalEmail(info.email()) : null;
         User user = null;
-        if (info.email() != null && !info.email().isBlank()) {
-            user = userMapper.findByEmail(normalizeEmail(info.email()));
+        if (verifiedEmail != null) {
+            user = userMapper.findByEmail(verifiedEmail);
             if (user != null && STATUS_DELETED.equals(user.getStatus())) {
                 throw new BusinessException(ErrorCode.FORBIDDEN, "탈퇴 또는 삭제된 계정입니다.");
             }
         }
         if (user == null) {
-            String email = info.email() != null && !info.email().isBlank()
-                    ? normalizeEmail(info.email())
+            // 검증되지 않은 provider 이메일은 기존 계정 병합·users.email 선점에 사용하지 않는다.
+            String email = verifiedEmail != null
+                    ? verifiedEmail
                     : info.provider().toLowerCase(Locale.ROOT) + "_" + info.providerUserId() + "@social.careertuner";
             if (userMapper.countByEmail(email) > 0) {
                 email = info.provider().toLowerCase(Locale.ROOT) + "_" + info.providerUserId()
                         + "_" + System.currentTimeMillis() + "@social.careertuner";
             }
-            boolean providerEmailPresent = info.email() != null && !info.email().isBlank();
             user = User.builder()
                     .email(email)
                     .password(null)
                     .passwordEnabled(false)
                     .name(info.name() != null && !info.name().isBlank() ? info.name() : info.provider() + " 사용자")
-                    .emailVerified(providerEmailPresent)
+                    .emailVerified(verifiedEmail != null)
                     .userType("JOB_SEEKER")
                     .role("USER")
                     .status(STATUS_ACTIVE)
@@ -691,7 +865,7 @@ public class AuthServiceImpl implements AuthService {
             userMapper.insert(user);
         }
 
-        // 소셜 제공자가 이메일을 내려주고 같은 이메일의 기존 계정이 있으면 자동으로 연결한다.
+        // 소셜 제공자가 검증한 이메일을 내려주고 같은 이메일의 기존 계정이 있으면 자동으로 연결한다.
         // 단, 삭제 계정은 위에서 차단하고, 차단/휴면 계정은 연결 후 validateSocialLoginAllowed에서 로그인만 막는다.
         authMapper.insertSocial(UserSocial.builder()
                 .userId(user.getId())

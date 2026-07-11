@@ -1,6 +1,7 @@
 import { api } from "@/app/lib/api";
 import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken } from "@/app/lib/tokenStore";
+import { trackPendingCollaborationUpload } from "@/app/lib/pendingCollaborationFiles";
 import type {
   AttachmentShareMode,
   CollaborationUser,
@@ -204,10 +205,10 @@ export function uploadCollaborationFile(file: File): Promise<FileAssetResponse> 
   formData.append("refType", "COLLAB_MESSAGE");
   formData.append("file", file);
 
-  return api<FileAssetResponse>("/file/upload", {
+  return trackPendingCollaborationUpload(api<FileAssetResponse>("/file/upload", {
     method: "POST",
     body: formData,
-  });
+  }));
 }
 
 export async function downloadCollaborationAttachment(file: MessageAttachmentResponse): Promise<void> {

@@ -63,6 +63,16 @@ public interface InterviewMapper {
     /** 특정 질문에 저장된 가장 최근 답변. 꼬리 질문 생성 입력으로 사용. (없으면 null) */
     InterviewAnswer findLatestAnswerByQuestionId(@Param("questionId") Long questionId);
 
+    InterviewAnswer findAnswerByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+
+    int updateAnswerMediaUrls(@Param("id") Long id,
+                              @Param("audioUrl") String audioUrl,
+                              @Param("videoUrl") String videoUrl);
+
+    int clearAnswerAudioUrl(@Param("id") Long id);
+
+    int clearAnswerVideoUrl(@Param("id") Long id);
+
     // ── AI 사용량 ──
     void insertAiUsageLog(InterviewAiUsageLog aiUsageLog);
 

@@ -206,6 +206,8 @@ void AuthService::logout()
         body["refreshToken"] = refresh;
         m_api->post("/api/auth/logout", body, nullptr); // best-effort
     }
+    // direct connection 슬롯이 현재 access token으로 작성 중 첨부 삭제 요청을 시작할 수 있게 한다.
+    emit aboutToLogout();
     if (m_store) m_store->clearTokens();
     m_token.clear();
     m_api->setToken(QString());

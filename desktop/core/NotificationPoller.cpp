@@ -43,7 +43,7 @@ void NotificationPoller::pollNow()
 
 void NotificationPoller::pollNotifications()
 {
-    m_api->get(QStringLiteral("/api/notifications?page=0&size=20"),
+    m_api->get(QStringLiteral("/api/notifications?page=0&size=20&platform=DESKTOP"),
         [this](bool ok, const QJsonValue& data, const QString&) {
             if (!ok) return;
             const QJsonObject o = data.toObject();
@@ -70,6 +70,8 @@ void NotificationPoller::pollNotifications()
                     {"title", n.value("title").toString()},
                     {"message", n.value("message").toString()},
                     {"link", n.value("link").toString()},
+                    {"targetType", n.value("targetType").toString()},
+                    {"targetId", n.value("targetId").toInteger()},
                     {"isRead", read},
                     {"createdAt", n.value("createdAt").toString()},
                     {"senderRelation", relation},
@@ -89,6 +91,7 @@ void NotificationPoller::pollNotifications()
                         n.value("title").toString(),
                         n.value("message").toString(),
                         n.value("link").toString(),
+                        n.value("targetType").toString(),
                         n.value("targetId").toInteger(),
                         desktopToast,
                         desktopTaskbar);

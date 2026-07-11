@@ -135,6 +135,23 @@ void JobModel::loadProgress(int sessionId)
         });
 }
 
+QVariantMap JobModel::sessionContext(qint64 sessionId) const
+{
+    const int row = indexOf(sessionId);
+    if (row < 0) return {};
+
+    const Job& job = m_jobs.at(row);
+    return QVariantMap{
+        {"id", job.id},
+        {"caseId", job.caseId},
+        {"title", job.title},
+        {"mode", job.mode},
+        {"modeCode", job.modeCode},
+        {"status", job.status},
+        {"progress", job.progress}
+    };
+}
+
 void JobModel::markResumed(int sessionId)
 {
     if (!m_api) return;
@@ -147,7 +164,9 @@ void JobModel::markResumed(int sessionId)
 void JobModel::dispatchToPhone(int sessionId)
 {
     if (!m_api) return;
-    m_api->post("/api/interview/sessions/" + QString::number(sessionId) + "/dispatch", QJsonObject(),
+    QJsonObject body;
+    body["target"] = QStringLiteral("MOBILE");
+    m_api->post("/api/interview/sessions/" + QString::number(sessionId) + "/dispatch", body,
         [this, sessionId](bool ok, const QJsonValue&, const QString&) {
             if (ok) emit dispatched(sessionId);   // 서버가 알림 저장+푸시 발송 → 폰/웹 알림 벨에 뜸
         });

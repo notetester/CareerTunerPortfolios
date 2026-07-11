@@ -31,6 +31,15 @@ void ApiClient::deleteResource(const QString& path, JsonCallback cb)
     handle(m_nam.deleteResource(makeRequest(path)), std::move(cb));
 }
 
+void ApiClient::deleteResourceWithToken(const QString& path, const QString& bearerToken, JsonCallback cb)
+{
+    QNetworkRequest request{QUrl(m_baseUrl + path)};
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    if (!bearerToken.isEmpty())
+        request.setRawHeader("Authorization", QByteArray("Bearer ") + bearerToken.toUtf8());
+    handle(m_nam.deleteResource(request), std::move(cb));
+}
+
 void ApiClient::postMultipart(const QString& path,
                               const QList<QPair<QString, QString>>& fields,
                               const QList<FilePart>& files,

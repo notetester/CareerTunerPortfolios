@@ -58,7 +58,9 @@ public class SecurityConfig {
                                 "/api/auth/refresh", "/api/auth/email/resend",
                                 "/api/auth/find-id/request",
                                 "/api/auth/password/reset-request", "/api/auth/password/reset",
-                                "/api/auth/dormant/release-request", "/api/auth/dormant/release").permitAll()
+                                "/api/auth/dormant/release-request", "/api/auth/dormant/release",
+                                "/api/auth/oauth/*/native/start",
+                                "/api/auth/oauth/native/exchange").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/verify-email", "/api/auth/find-id/verify",
                                 "/api/auth/check/**", "/api/auth/oauth/**",

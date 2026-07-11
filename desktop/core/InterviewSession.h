@@ -5,6 +5,7 @@
 #include <QString>
 #include <QStringList>
 #include <QHash>
+#include <QJsonObject>
 
 class ApiClient;
 class SettingsStore;
@@ -13,9 +14,10 @@ class SettingsStore;
 //
 // thread 프로퍼티 (QVariantList of QVariantMap) 아이템 종류:
 //   {kind:"question", qid, text, qtype, followUp}
-//   {kind:"answer",   text, hasAudio, hasVideo}
-//   {kind:"score",    qid, score, feedback, improvedAnswer, modelAnswer, voiceScore[, visualScore]}
-//   {kind:"scoring"}                        — 채점 중 스피너 행
+//   {kind:"answer",   qid, text, hasAudio, hasVideo, pending}
+//   {kind:"score",    qid, score, feedback, improvedAnswer, modelAnswer,
+//                     voiceScore[, visualScore, videoScore]}
+//   {kind:"scoring",  qid}                  — 채점 중 스피너 행
 // QML 은 이 리스트를 그대로 그린다 (CC Desktop 의 대화 타임라인 문법).
 class InterviewSession : public QObject
 {
@@ -59,9 +61,11 @@ public:
     Q_INVOKABLE void transcribeAudio(const QString& filePath); // base64 → voice-transcribe
 
     // ── 영상 답변 (카메라 면접) ──
-    // 녹화 mp4 를 base64 로 avatar-score 에 전송 — 음성+비언어(시선/표정) late fusion 채점.
-    // consented(동의 플래그)가 false 면 전송하지 않는다. 원본 영상은 전송 직후 로컬에서도 폐기.
+    // 녹화 mp4 를 저장한 뒤 avatar-score + 표준 answers API 로 전송한다.
+    // consented(동의 플래그)가 false 면 전송하지 않는다. 제출 원본은 답변 기록에 보관하고,
+    // 실패한 업로드만 정리한다. 사용자가 원본을 삭제하면 원본 기반 재분석은 제공하지 않는다.
     Q_INVOKABLE void submitVideoAnswer(const QString& filePath, bool consented);
+    Q_INVOKABLE void deleteAnswerMedia(qint64 answerId, const QString& kind);
 
     // ── 리포트/내보내기 ──
     Q_INVOKABLE void loadReport();
@@ -76,9 +80,13 @@ signals:
     void reportChanged();
     void busyChanged();
     void answerScored(int score);                 // 토스트용
+    void answerSubmissionStarted();               // 입력창은 실제 제출 시작 뒤에만 비운다
+    void answerSubmissionFailed(const QString& text); // 실패한 텍스트를 입력창에 복원
     void transcribed(const QString& text);        // 입력창 채우기
     void voiceScored(int score);                  // 전달력 점수 도착
     void videoScored(int score);                  // 영상 답변 결합 점수 도착
+    void videoAnswerSubmitted();                  // 영상 원본+표준 답변 저장 완료
+    void answerMediaDeleted(const QString& kind); // 연결 원본 물리 삭제 완료
     void exported(const QString& path, const QString& what);
     void errorOccurred(const QString& message);
     void sessionFinished();                       // 마지막 답변 완료
@@ -89,6 +97,23 @@ private:
     void loadAgentSteps();
     void appendQuestionItem(const QJsonObject& q);
     void setCurrentQuestion(qint64 qid, const QString& text);
+    void startAnswerSubmission(qint64 qid, const QString& displayText,
+                               bool hasAudio, bool hasVideo);
+    void failAnswerSubmission(qint64 qid, const QString& retryText,
+                              const QString& message, qint64 uploadedFileId,
+                              bool restoreText);
+    void submitStoredAnswer(qint64 qid, int sessionId, const QString& answerText,
+                            const QString& audioUrl, const QString& videoUrl,
+                            const QString& localMediaPath, qint64 uploadedFileId,
+                            bool videoAnswer, int voiceScore = -1,
+                            int visualScore = -1, int videoCombined = -1,
+                            const QJsonObject& avatarResult = QJsonObject(),
+                            const QString& nonverbalWarning = QString());
+    void advanceAfterAnswer();
+    void finishCompletedSession();
+    void recordVoiceScore(qint64 questionId, int score);
+    void saveVideoAnalysis(const QString& transcript, const QJsonObject& avatarResult);
+    void deleteUnlinkedUpload(qint64 fileId);
     QString sessionFolder() const;                // 저장 폴더\<세션 제목-id>
     QString reportMarkdown() const;
     void writeFile(const QString& path, const QByteArray& bytes, const QString& what);
@@ -114,6 +139,11 @@ private:
 
     qint64  m_currentQid = -1;
     QString m_currentQText;
-    QString m_pendingAudioPath;   // 마지막 녹음 파일 — 제출 시 세션 폴더로 보관
+    QString m_pendingAudioPath;   // 현재 질문의 마지막 녹음 — 표준 답변 저장 성공까지 유지
+    qint64 m_pendingAudioQuestionId = -1;
+    QHash<qint64, QString> m_audioSourceByQuestion; // 재녹음 시 이전 비동기 점수 무시
+    QHash<qint64, int> m_voiceScoreByQuestion; // 답변 카드보다 먼저 도착한 전달력 점수
     QStringList m_audioFiles;     // 이 세션에서 만든 녹음들 (일괄 내보내기 대상)
+    QStringList m_videoFiles;     // 저장 성공한 영상들 (일괄 내보내기 대상)
+    QHash<QString, QString> m_localMediaPathByAnswerKind; // "answerId:KIND" -> 로컬 원본
 };

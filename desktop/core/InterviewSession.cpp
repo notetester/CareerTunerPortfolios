@@ -26,9 +26,16 @@ void InterviewSession::open(int sessionId, const QString& title, const QString& 
     m_report.clear();
     m_review.clear();
     m_audioFiles.clear();
+    m_videoFiles.clear();
+    m_localMediaPathByAnswerKind.clear();
     m_pendingAudioPath.clear();
+    m_pendingAudioQuestionId = -1;
+    m_audioSourceByQuestion.clear();
+    m_voiceScoreByQuestion.clear();
     m_currentQid = -1;
     m_currentQText.clear();
+    m_scoring = false;
+    m_transcribing = false;
 
     emit sessionChanged();
     emit threadChanged();
@@ -80,16 +87,23 @@ void InterviewSession::reloadThread()
                         const QJsonObject rv = reviewByQid.value(qid);
                         const QString answer = rv.value("answerText").toString();
                         if (!answer.isEmpty()) {
+                            const qint64 answerId = rv.value("answerId").toInteger();
+                            const bool hasAudio = !rv.value("audioUrl").toString().isEmpty();
+                            const bool hasVideo = !rv.value("videoUrl").toString().isEmpty();
                             m_thread.push_back(QVariantMap{
-                                {"kind", "answer"}, {"text", answer}, {"hasAudio", false}});
+                                {"kind", "answer"}, {"qid", qid}, {"answerId", answerId},
+                                {"text", answer}, {"hasAudio", hasAudio}, {"hasVideo", hasVideo},
+                                {"pending", false}});
                             m_thread.push_back(QVariantMap{
                                 {"kind", "score"},
                                 {"qid", qid},
+                                {"answerId", answerId},
                                 {"score", rv.value("score").toInt(-1)},
                                 {"feedback", rv.value("feedback").toString()},
                                 {"improvedAnswer", rv.value("improvedAnswer").toString()},
                                 {"modelAnswer", rv.value("modelAnswer").toString()},
-                                {"voiceScore", -1}});
+                                {"voiceScore", -1}, {"visualScore", -1}, {"videoScore", -1},
+                                {"hasAudioOriginal", hasAudio}, {"hasVideoOriginal", hasVideo}});
                         } else if (firstUnanswered < 0) {
                             firstUnanswered = qid;
                             firstUnansweredText = q.value("question").toString();
@@ -187,77 +201,290 @@ void InterviewSession::submitAnswer(const QString& text)
 
     const qint64 qid = m_currentQid;
     const int sid = m_sessionId;
-    const bool hasAudio = !m_pendingAudioPath.isEmpty();
-
-    // 낙관적으로 답변 + 채점중 행을 먼저 그림
-    m_thread.push_back(QVariantMap{{"kind", "answer"}, {"text", text}, {"hasAudio", hasAudio}});
-    m_thread.push_back(QVariantMap{{"kind", "scoring"}});
-    emit threadChanged();
-
+    const bool hasAudio = m_pendingAudioQuestionId == qid && !m_pendingAudioPath.isEmpty();
+    const QString audioPath = hasAudio ? m_pendingAudioPath : QString();
+    QByteArray audio;
     if (hasAudio) {
-        m_audioFiles.push_back(m_pendingAudioPath);
-        m_pendingAudioPath.clear();
+        QFile file(audioPath);
+        if (!file.open(QIODevice::ReadOnly)) {
+            emit errorOccurred(QStringLiteral("녹음 원본을 열 수 없어 답변을 제출하지 않았습니다"));
+            return;
+        }
+        audio = file.readAll();
     }
 
+    startAnswerSubmission(qid, text, hasAudio, false);
+    emit answerSubmissionStarted();
+
+    if (!hasAudio) {
+        submitStoredAnswer(qid, sid, text, QString(), QString(), QString(), 0, false);
+        return;
+    }
+
+    // 기획 정본: 제출된 음성 원본은 답변 기록에 저장한다. 업로드가 끝난 뒤에만
+    // 표준 answers API 를 호출하며, 후속 저장 실패 시 미연결 업로드만 정리한다.
+    ApiClient::FilePart filePart{
+        QStringLiteral("file"),
+        QFileInfo(audioPath).fileName(),
+        QStringLiteral("audio/mp4"),
+        audio
+    };
+    m_api->postMultipart(QStringLiteral("/api/file/upload"),
+        {{QStringLiteral("kind"), QStringLiteral("AUDIO")},
+         {QStringLiteral("refType"), QStringLiteral("INTERVIEW_ANSWER")}}, {filePart},
+        [this, sid, qid, text, audioPath](bool ok, const QJsonValue& data, const QString& msg) {
+            const QJsonObject uploaded = data.toObject();
+            const qint64 fileId = uploaded.value("id").toInteger();
+            if (sid != m_sessionId) {
+                if (ok) deleteUnlinkedUpload(fileId);
+                return;
+            }
+            const QString contentUrl = uploaded.value("contentUrl").toString();
+            if (!ok || fileId <= 0 || contentUrl.isEmpty()) {
+                failAnswerSubmission(qid, text,
+                    msg.isEmpty() ? QStringLiteral("녹음 원본 업로드 실패") : msg,
+                    fileId, true);
+                return;
+            }
+            submitStoredAnswer(qid, sid, text, contentUrl, QString(), audioPath,
+                               fileId, false);
+        });
+}
+
+void InterviewSession::startAnswerSubmission(qint64 qid, const QString& displayText,
+                                             bool hasAudio, bool hasVideo)
+{
+    m_thread.push_back(QVariantMap{
+        {"kind", "answer"}, {"qid", qid}, {"text", displayText},
+        {"hasAudio", hasAudio}, {"hasVideo", hasVideo}, {"pending", true}});
+    m_thread.push_back(QVariantMap{{"kind", "scoring"}, {"qid", qid}});
     m_scoring = true;
     emit busyChanged();
+    emit threadChanged();
+}
 
+void InterviewSession::failAnswerSubmission(qint64 qid, const QString& retryText,
+                                            const QString& message, qint64 uploadedFileId,
+                                            bool restoreText)
+{
+    if (uploadedFileId > 0) deleteUnlinkedUpload(uploadedFileId);
+    for (int i = m_thread.size() - 1; i >= 0; --i) {
+        const QVariantMap item = m_thread.at(i).toMap();
+        const bool pendingAnswer = item.value("kind") == QStringLiteral("answer")
+                && item.value("pending").toBool()
+                && item.value("qid").toLongLong() == qid;
+        const bool scoringRow = item.value("kind") == QStringLiteral("scoring")
+                && item.value("qid").toLongLong() == qid;
+        if (pendingAnswer || scoringRow) m_thread.removeAt(i);
+    }
+    m_scoring = false;
+    emit busyChanged();
+    emit threadChanged();
+    if (restoreText && !retryText.isEmpty()) emit answerSubmissionFailed(retryText);
+    emit errorOccurred(message);
+}
+
+void InterviewSession::submitStoredAnswer(qint64 qid, int sessionId,
+                                          const QString& answerText,
+                                          const QString& audioUrl,
+                                          const QString& videoUrl,
+                                          const QString& localMediaPath,
+                                          qint64 uploadedFileId,
+                                          bool videoAnswer,
+                                          int voiceScore,
+                                          int visualScore,
+                                          int videoCombined,
+                                          const QJsonObject& avatarResult,
+                                          const QString& nonverbalWarning)
+{
     QJsonObject body;
-    body["answerText"] = text;
+    body["answerText"] = answerText;
+    if (!audioUrl.isEmpty()) body["audioUrl"] = audioUrl;
+    if (!videoUrl.isEmpty()) body["videoUrl"] = videoUrl;
+    if (uploadedFileId > 0) {
+        if (videoAnswer) body["videoFileId"] = uploadedFileId;
+        else if (!audioUrl.isEmpty()) body["audioFileId"] = uploadedFileId;
+    }
+
     m_api->post(QStringLiteral("/api/interview/questions/%1/answers").arg(qid), body,
-        [this, sid, qid](bool ok, const QJsonValue& data, const QString& msg) {
-            if (sid != m_sessionId) return;
-            // 채점중 행 제거
-            if (!m_thread.isEmpty()
-                && m_thread.last().toMap().value("kind") == QStringLiteral("scoring"))
-                m_thread.removeLast();
-
-            m_scoring = false;
-            emit busyChanged();
-
+        [this, sessionId, qid, answerText, localMediaPath, uploadedFileId,
+         videoAnswer, voiceScore, visualScore, videoCombined,
+         avatarResult, nonverbalWarning](bool ok, const QJsonValue& data, const QString& msg) {
+            if (sessionId != m_sessionId) {
+                // 서버가 이미 표준 답변을 저장했다면 그 답변이 참조하는 원본은 보존한다.
+                if (!ok) deleteUnlinkedUpload(uploadedFileId);
+                return;
+            }
             if (!ok) {
-                emit threadChanged();
-                emit errorOccurred(msg.isEmpty() ? QStringLiteral("답변 제출 실패") : msg);
+                failAnswerSubmission(qid, answerText,
+                    msg.isEmpty() ? QStringLiteral("답변 제출 실패") : msg,
+                    uploadedFileId, !videoAnswer);
                 return;
             }
 
-            const QJsonObject a = data.toObject();
-            const int score = a.value("score").toInt(-1);
-            m_thread.push_back(QVariantMap{
-                {"kind", "score"},
-                {"qid", qid},
-                {"score", score},
-                {"feedback", a.value("feedback").toString()},
-                {"improvedAnswer", a.value("improvedAnswer").toString()},
-                {"modelAnswer", ""},
-                {"voiceScore", -1}});
+            const QJsonObject answer = data.toObject();
+            const qint64 answerId = answer.value("id").toInteger();
 
-            // 다음 미답변 질문으로 이동 (스레드에서 탐색)
-            qint64 nextQid = -1;
-            QString nextText;
-            QHash<qint64, bool> answered;
-            for (const QVariant& v : m_thread) {
-                const QVariantMap it = v.toMap();
-                if (it.value("kind") == QStringLiteral("score"))
-                    answered.insert(it.value("qid").toLongLong(), true);
-            }
-            for (const QVariant& v : m_thread) {
-                const QVariantMap it = v.toMap();
-                if (it.value("kind") == QStringLiteral("question")) {
-                    const qint64 id = it.value("qid").toLongLong();
-                    if (!answered.value(id, false)) { nextQid = id; nextText = it.value("text").toString(); break; }
+            for (int i = m_thread.size() - 1; i >= 0; --i) {
+                QVariantMap item = m_thread.at(i).toMap();
+                if (item.value("kind") == QStringLiteral("scoring")
+                        && item.value("qid").toLongLong() == qid) {
+                    m_thread.removeAt(i);
+                    continue;
+                }
+                if (item.value("kind") == QStringLiteral("answer")
+                        && item.value("pending").toBool()
+                        && item.value("qid").toLongLong() == qid) {
+                    item["text"] = answerText;
+                    item["pending"] = false;
+                    item["answerId"] = answerId;
+                    item["mediaFileId"] = uploadedFileId;
+                    m_thread[i] = item;
                 }
             }
-            setCurrentQuestion(nextQid, nextText);
-            emit threadChanged();
-            emit answerScored(score);
-            refreshProgress();
 
-            if (nextQid < 0) {
-                emit sessionFinished();
-                loadReport();
-                maybeAutoSave();
+            if (!localMediaPath.isEmpty()) {
+                QStringList& files = videoAnswer ? m_videoFiles : m_audioFiles;
+                if (!files.contains(localMediaPath)) files.push_back(localMediaPath);
+                if (answerId > 0) {
+                    const QString mediaKind = videoAnswer ? QStringLiteral("VIDEO") : QStringLiteral("AUDIO");
+                    m_localMediaPathByAnswerKind.insert(
+                        QString::number(answerId) + QStringLiteral(":") + mediaKind, localMediaPath);
+                }
             }
+            if (!videoAnswer && m_pendingAudioQuestionId == qid
+                    && m_pendingAudioPath == localMediaPath) {
+                m_pendingAudioPath.clear();
+                m_pendingAudioQuestionId = -1;
+            }
+
+            int attachedVoiceScore = voiceScore;
+            if (!videoAnswer && m_voiceScoreByQuestion.contains(qid))
+                attachedVoiceScore = m_voiceScoreByQuestion.take(qid);
+
+            const int contentScore = answer.value("score").toInt(-1);
+            QVariantList reviewItems = m_review.value("items").toList();
+            for (int i = 0; i < reviewItems.size(); ++i) {
+                QVariantMap reviewItem = reviewItems.at(i).toMap();
+                if (reviewItem.value("questionId").toLongLong() != qid) continue;
+                reviewItem["answerText"] = answerText;
+                reviewItem["answerId"] = answerId;
+                reviewItem[videoAnswer ? "videoUrl" : "audioUrl"] =
+                        answer.value(videoAnswer ? "videoUrl" : "audioUrl").toString();
+                reviewItem["score"] = contentScore;
+                reviewItem["feedback"] = answer.value("feedback").toString();
+                reviewItem["improvedAnswer"] = answer.value("improvedAnswer").toString();
+                reviewItems[i] = reviewItem;
+                m_review["items"] = reviewItems;
+                break;
+            }
+            m_thread.push_back(QVariantMap{
+                {"kind", "score"}, {"qid", qid}, {"answerId", answerId}, {"score", contentScore},
+                {"feedback", answer.value("feedback").toString()},
+                {"improvedAnswer", answer.value("improvedAnswer").toString()},
+                {"modelAnswer", ""}, {"voiceScore", attachedVoiceScore},
+                {"visualScore", visualScore}, {"videoScore", videoCombined},
+                {"hasAudioOriginal", !videoAnswer && uploadedFileId > 0},
+                {"hasVideoOriginal", videoAnswer && uploadedFileId > 0}});
+
+            m_scoring = false;
+            emit busyChanged();
+            emit threadChanged();
+            if (!videoAnswer || videoCombined < 0) emit answerScored(contentScore);
+            if (attachedVoiceScore >= 0 && !videoAnswer) emit voiceScored(attachedVoiceScore);
+            if (videoAnswer) {
+                if (!avatarResult.isEmpty()) saveVideoAnalysis(answerText, avatarResult);
+                if (videoCombined >= 0) emit videoScored(videoCombined);
+                emit videoAnswerSubmitted();
+            }
+            if (!nonverbalWarning.isEmpty()) emit errorOccurred(nonverbalWarning);
+
+            advanceAfterAnswer();
+        });
+}
+
+void InterviewSession::advanceAfterAnswer()
+{
+    qint64 nextQid = -1;
+    QString nextText;
+    QHash<qint64, bool> answered;
+    for (const QVariant& value : m_thread) {
+        const QVariantMap item = value.toMap();
+        if (item.value("kind") == QStringLiteral("score"))
+            answered.insert(item.value("qid").toLongLong(), true);
+    }
+    for (const QVariant& value : m_thread) {
+        const QVariantMap item = value.toMap();
+        if (item.value("kind") != QStringLiteral("question")) continue;
+        const qint64 id = item.value("qid").toLongLong();
+        if (!answered.value(id, false)) {
+            nextQid = id;
+            nextText = item.value("text").toString();
+            break;
+        }
+    }
+    setCurrentQuestion(nextQid, nextText);
+    refreshProgress();
+    if (nextQid < 0) finishCompletedSession();
+}
+
+void InterviewSession::finishCompletedSession()
+{
+    emit sessionFinished();
+    const int sid = m_sessionId;
+    // 자동 저장 리포트가 첫 답변까지 포함하도록 review 를 먼저 다시 읽는다.
+    m_api->get(QStringLiteral("/api/interview/sessions/%1/review").arg(sid),
+        [this, sid](bool ok, const QJsonValue& data, const QString&) {
+            if (sid != m_sessionId) return;
+            if (ok) m_review = data.toObject().toVariantMap();
+            // reportChanged 이전에 연결해야 매우 빠른 응답에서도 자동 저장을 놓치지 않는다.
+            maybeAutoSave();
+            loadReport();
+        });
+}
+
+void InterviewSession::deleteUnlinkedUpload(qint64 fileId)
+{
+    if (fileId <= 0) return;
+    m_api->deleteResource(QStringLiteral("/api/file/%1").arg(fileId),
+        [](bool, const QJsonValue&, const QString&) {});
+}
+
+void InterviewSession::deleteAnswerMedia(qint64 answerId, const QString& kind)
+{
+    const QString normalized = kind.trimmed().toUpper();
+    if (answerId <= 0 || (normalized != QStringLiteral("AUDIO")
+            && normalized != QStringLiteral("VIDEO"))) return;
+    const int sid = m_sessionId;
+    m_api->deleteResource(
+        QStringLiteral("/api/interview/answers/%1/media/%2").arg(answerId).arg(normalized),
+        [this, sid, answerId, normalized](bool ok, const QJsonValue&, const QString& msg) {
+            if (sid != m_sessionId) return;
+            if (!ok) {
+                emit errorOccurred(msg.isEmpty()
+                    ? QStringLiteral("원본 삭제에 실패했습니다") : msg);
+                return;
+            }
+            for (int i = 0; i < m_thread.size(); ++i) {
+                QVariantMap item = m_thread.at(i).toMap();
+                if (item.value("answerId").toLongLong() != answerId) continue;
+                if (item.value("kind") == QStringLiteral("answer")) {
+                    item[normalized == QStringLiteral("AUDIO") ? "hasAudio" : "hasVideo"] = false;
+                } else if (item.value("kind") == QStringLiteral("score")) {
+                    item[normalized == QStringLiteral("AUDIO")
+                            ? "hasAudioOriginal" : "hasVideoOriginal"] = false;
+                }
+                m_thread[i] = item;
+            }
+            const QString key = QString::number(answerId) + QStringLiteral(":") + normalized;
+            const QString localPath = m_localMediaPathByAnswerKind.take(key);
+            if (!localPath.isEmpty()) {
+                QFile::remove(localPath);
+                if (normalized == QStringLiteral("AUDIO")) m_audioFiles.removeAll(localPath);
+                else m_videoFiles.removeAll(localPath);
+            }
+            emit threadChanged();
+            emit answerMediaDeleted(normalized);
         });
 }
 
@@ -320,6 +547,7 @@ void InterviewSession::requestModelAnswer(qint64 questionId)
 
 void InterviewSession::transcribeAudio(const QString& filePath)
 {
+    if (m_currentQid < 0 || m_scoring || m_transcribing) return;
     QFile f(filePath);
     if (!f.open(QIODevice::ReadOnly)) {
         emit errorOccurred(QStringLiteral("녹음 파일을 열 수 없습니다"));
@@ -328,7 +556,11 @@ void InterviewSession::transcribeAudio(const QString& filePath)
     const QByteArray audio = f.readAll();
     f.close();
 
+    const qint64 qid = m_currentQid;
     m_pendingAudioPath = filePath;
+    m_pendingAudioQuestionId = qid;
+    m_audioSourceByQuestion.insert(qid, filePath);
+    m_voiceScoreByQuestion.remove(qid);
     m_transcribing = true;
     emit busyChanged();
 
@@ -339,7 +571,7 @@ void InterviewSession::transcribeAudio(const QString& filePath)
     body["language"]     = QStringLiteral("ko");
 
     m_api->post(QStringLiteral("/api/interview/sessions/%1/voice-transcribe").arg(sid), body,
-        [this, sid, audio](bool ok, const QJsonValue& data, const QString& msg) {
+        [this, sid, qid, filePath, audio](bool ok, const QJsonValue& data, const QString& msg) {
             if (sid != m_sessionId) return;
             m_transcribing = false;
             emit busyChanged();
@@ -348,7 +580,11 @@ void InterviewSession::transcribeAudio(const QString& filePath)
                     ? QStringLiteral("전사 실패 — 추론 서버(serve) 상태를 확인하세요") : msg);
                 return;
             }
-            const QString text = data.toObject().value("text").toString();
+            const QString text = data.toObject().value("text").toString().trimmed();
+            if (text.isEmpty()) {
+                emit errorOccurred(QStringLiteral("전사 결과가 비어 있습니다 — 녹음을 확인하고 다시 시도하세요"));
+                return;
+            }
             emit transcribed(text);
 
             // 전달력 채점(비동기, 실패해도 답변 흐름과 무관)
@@ -357,32 +593,43 @@ void InterviewSession::transcribeAudio(const QString& filePath)
             sbody["audioFormat"]     = QStringLiteral("m4a");
             sbody["transcriptChars"] = text.length();
             m_api->post(QStringLiteral("/api/interview/sessions/%1/voice-score").arg(sid), sbody,
-                [this, sid](bool ok2, const QJsonValue& d2, const QString&) {
+                [this, sid, qid, filePath](bool ok2, const QJsonValue& d2, const QString&) {
                     if (sid != m_sessionId || !ok2) return;
+                    // 같은 질문을 다시 녹음했다면 이전 녹음의 늦은 점수를 버린다.
+                    if (m_audioSourceByQuestion.value(qid) != filePath) return;
                     const int vscore = d2.toObject().value("score").toInt(-1);
                     if (vscore < 0) return;
-                    // 마지막 score 카드에 전달력 병기
-                    for (int i = m_thread.size() - 1; i >= 0; --i) {
-                        QVariantMap it = m_thread[i].toMap();
-                        if (it.value("kind") == QStringLiteral("score")) {
-                            it["voiceScore"] = vscore;
-                            m_thread[i] = it;
-                            emit threadChanged();
-                            break;
-                        }
-                    }
-                    emit voiceScored(vscore);
+                    // qid 를 캡처해 이전 질문의 마지막 카드가 아니라 이 녹음이 속한 답변에 연결한다.
+                    recordVoiceScore(qid, vscore);
+                    m_audioSourceByQuestion.remove(qid);
                 });
         });
+}
+
+void InterviewSession::recordVoiceScore(qint64 questionId, int score)
+{
+    for (int i = m_thread.size() - 1; i >= 0; --i) {
+        QVariantMap item = m_thread.at(i).toMap();
+        if (item.value("kind") == QStringLiteral("score")
+                && item.value("qid").toLongLong() == questionId) {
+            item["voiceScore"] = score;
+            m_thread[i] = item;
+            emit threadChanged();
+            emit voiceScored(score);
+            return;
+        }
+    }
+    // 표준 answers 응답보다 점수가 먼저 오면 버리지 않고 질문별로 보류한다.
+    m_voiceScoreByQuestion.insert(questionId, score);
 }
 
 // ─────────────────────────── 영상 답변 (카메라 면접) ───────────────────────────
 
 void InterviewSession::submitVideoAnswer(const QString& filePath, bool consented)
 {
-    if (m_sessionId < 0 || m_scoring) return;
+    if (m_sessionId < 0 || m_currentQid < 0 || m_scoring) return;
     if (!consented) {
-        emit errorOccurred(QStringLiteral("영상 전송 동의가 필요합니다 — 동의 체크 후 다시 시도하세요"));
+        emit errorOccurred(QStringLiteral("영상 원본 저장·분석 동의가 필요합니다 — 동의 체크 후 다시 시도하세요"));
         return;
     }
 
@@ -393,68 +640,136 @@ void InterviewSession::submitVideoAnswer(const QString& filePath, bool consented
     }
     const QByteArray video = f.readAll();
     f.close();
-    QFile::remove(filePath); // 메모리 사본만 전송 — 원본 영상은 로컬에서도 즉시 폐기
 
     const qint64 qid = m_currentQid;
     const int    sid = m_sessionId;
 
-    // 낙관적으로 답변 + 채점중 행을 먼저 그림 (텍스트 답변과 같은 문법)
-    m_thread.push_back(QVariantMap{
-        {"kind", "answer"},
-        {"text", QStringLiteral("영상 답변 — 음성·비언어(시선/표정) 전달력 평가를 요청했습니다.")},
-        {"hasAudio", false}, {"hasVideo", true}});
-    m_thread.push_back(QVariantMap{{"kind", "scoring"}});
-    emit threadChanged();
+    startAnswerSubmission(qid, QStringLiteral("영상 답변을 전사하고 있습니다…"), false, true);
 
-    m_scoring = true;
-    emit busyChanged();
-
-    QJsonObject body;
-    body["videoBase64"] = QString::fromLatin1(video.toBase64());
-    body["videoFormat"] = QStringLiteral("mp4");
-
-    m_api->post(QStringLiteral("/api/interview/sessions/%1/avatar-score").arg(sid), body,
-        [this, sid, qid](bool ok, const QJsonValue& data, const QString& msg) {
+    // 영상 컨테이너의 오디오 트랙을 먼저 STT 하여 실제 answerText 를 만든다. 빈 설명문을
+    // 대신 저장하지 않고 표준 평가·리포트 경로로 보낸다.
+    QJsonObject transcribeBody;
+    transcribeBody["audioBase64"] = QString::fromLatin1(video.toBase64());
+    transcribeBody["audioFormat"] = QStringLiteral("mp4");
+    transcribeBody["language"] = QStringLiteral("ko");
+    m_api->post(QStringLiteral("/api/interview/sessions/%1/voice-transcribe").arg(sid),
+        transcribeBody,
+        [this, sid, qid, filePath, video](bool transcribedOk,
+                                        const QJsonValue& transcribedData,
+                                        const QString& transcribeMessage) {
             if (sid != m_sessionId) return;
-            // 채점중 행 제거
-            if (!m_thread.isEmpty()
-                && m_thread.last().toMap().value("kind") == QStringLiteral("scoring"))
-                m_thread.removeLast();
-
-            m_scoring = false;
-            emit busyChanged();
-
-            if (!ok) {
-                emit threadChanged();
-                emit errorOccurred(msg.isEmpty()
-                    ? QStringLiteral("영상 채점 실패 — 추론 서버(serve) 상태를 확인하세요") : msg);
+            const QString transcript = transcribedData.toObject()
+                    .value("text").toString().trimmed();
+            if (!transcribedOk || transcript.isEmpty()) {
+                failAnswerSubmission(qid, QString(),
+                    transcribeMessage.isEmpty()
+                        ? QStringLiteral("영상 음성 전사 실패 — 원본을 유지했으니 다시 시도하세요")
+                        : transcribeMessage,
+                    0, false);
                 return;
             }
 
-            // {voice:{score,...}, visual:{score,...}|null, combined} — late fusion 결과
-            const QJsonObject o = data.toObject();
-            const int combined    = o.value("combined").toInt(-1);
-            const int voiceScore  = o.value("voice").toObject().value("score").toInt(-1);
-            const int visualScore = o.value("visual").isObject()
-                                  ? o.value("visual").toObject().value("score").toInt(-1) : -1;
+            for (int i = m_thread.size() - 1; i >= 0; --i) {
+                QVariantMap item = m_thread.at(i).toMap();
+                if (item.value("kind") == QStringLiteral("answer")
+                        && item.value("pending").toBool()
+                        && item.value("qid").toLongLong() == qid) {
+                    item["text"] = transcript;
+                    m_thread[i] = item;
+                    emit threadChanged();
+                    break;
+                }
+            }
 
-            QString feedback = QStringLiteral("영상 답변 전달력 평가 — 음성과 비언어(시선·표정)를 결합한 점수입니다.");
-            if (visualScore < 0)
-                feedback += QStringLiteral(" 영상 피처 추출에 실패해 음성 점수만 반영되었습니다.");
-            feedback += QStringLiteral(" 원본 영상은 채점 후 즉시 폐기되었습니다.");
+            QJsonObject scoreBody;
+            scoreBody["videoBase64"] = QString::fromLatin1(video.toBase64());
+            scoreBody["videoFormat"] = QStringLiteral("mp4");
+            scoreBody["transcriptChars"] = transcript.length();
+            m_api->post(QStringLiteral("/api/interview/sessions/%1/avatar-score").arg(sid),
+                scoreBody,
+                [this, sid, qid, filePath, video, transcript](
+                        bool scoredOk, const QJsonValue& scoredData,
+                        const QString& scoreMessage) {
+                    if (sid != m_sessionId) return;
+                    const QJsonObject avatarResult = scoredOk
+                            ? scoredData.toObject() : QJsonObject();
+                    const int combined = avatarResult.value("combined").toInt(-1);
+                    const int voiceScore = avatarResult.value("voice")
+                            .toObject().value("score").toInt(-1);
+                    const int visualScore = avatarResult.value("visual").isObject()
+                            ? avatarResult.value("visual").toObject()
+                                  .value("score").toInt(-1)
+                            : -1;
+                    const QString warning = scoredOk ? QString()
+                            : (scoreMessage.isEmpty()
+                                ? QStringLiteral("영상 전달력 평가는 실패했지만 답변 원본과 내용 평가는 저장했습니다")
+                                : QStringLiteral("영상 전달력 평가는 실패했지만 답변은 저장했습니다: %1")
+                                      .arg(scoreMessage));
 
-            m_thread.push_back(QVariantMap{
-                {"kind", "score"},
-                {"qid", qid},
-                {"score", combined},
-                {"feedback", feedback},
-                {"improvedAnswer", ""},
-                {"modelAnswer", ""},
-                {"voiceScore", voiceScore},
-                {"visualScore", visualScore}});
-            emit threadChanged();
-            emit videoScored(combined);
+                    // 분석이 끝난 뒤 원본을 올려 pending file_asset 의 체류 시간을 줄인다.
+                    // 제출 성공 시 서버가 audioFileId/videoFileId 를 INTERVIEW_ANSWER 로 원자 연결하고,
+                    // 실패 시에만 ref_id 없는 업로드를 삭제한다. 로컬 mp4 는 재시도용으로 유지한다.
+                    ApiClient::FilePart filePart{
+                        QStringLiteral("file"), QFileInfo(filePath).fileName(),
+                        QStringLiteral("video/mp4"), video
+                    };
+                    m_api->postMultipart(QStringLiteral("/api/file/upload"),
+                        {{QStringLiteral("kind"), QStringLiteral("VIDEO")},
+                         {QStringLiteral("refType"), QStringLiteral("INTERVIEW_ANSWER")}},
+                        {filePart},
+                        [this, sid, qid, filePath, transcript, avatarResult,
+                         warning, voiceScore, visualScore, combined](
+                                bool uploadedOk, const QJsonValue& uploadedData,
+                                const QString& uploadMessage) {
+                            const QJsonObject uploaded = uploadedData.toObject();
+                            const qint64 fileId = uploaded.value("id").toInteger();
+                            if (sid != m_sessionId) {
+                                if (uploadedOk) deleteUnlinkedUpload(fileId);
+                                return;
+                            }
+                            const QString videoUrl = uploaded.value("contentUrl").toString();
+                            if (!uploadedOk || fileId <= 0 || videoUrl.isEmpty()) {
+                                failAnswerSubmission(qid, QString(),
+                                    uploadMessage.isEmpty()
+                                        ? QStringLiteral("영상 원본 업로드 실패") : uploadMessage,
+                                    fileId, false);
+                                return;
+                            }
+
+                            // 비언어 점수 실패는 내용 답변 저장을 막지 않는다. 표준 answers API 가
+                            // currentQid·진행률·완료·리포트의 유일한 정본이다.
+                            submitStoredAnswer(qid, sid, transcript, QString(), videoUrl,
+                                filePath, fileId, true, voiceScore, visualScore, combined,
+                                avatarResult, warning);
+                        });
+                });
         });
+}
+
+void InterviewSession::saveVideoAnalysis(const QString& transcript,
+                                         const QJsonObject& avatarResult)
+{
+    const int combined = avatarResult.value("combined").toInt(-1);
+    if (combined < 0) return;
+
+    QJsonArray transcriptLines;
+    transcriptLines.push_back(QJsonObject{
+        {"role", QStringLiteral("user")}, {"text", transcript}});
+    QJsonObject metrics{
+        {"voice", avatarResult.value("voice").toObject().value("metrics")},
+        {"visual", avatarResult.value("visual").toObject().value("metrics")}};
+    QJsonObject detail{
+        {"voice", avatarResult.value("voice")},
+        {"visual", avatarResult.value("visual")},
+        {"overall", combined}};
+    QJsonObject body{
+        {"kind", QStringLiteral("AVATAR")},
+        {"transcript", transcriptLines},
+        {"metrics", metrics},
+        {"score", combined},
+        {"scoreDetail", detail}};
+    m_api->post(QStringLiteral("/api/interview/sessions/%1/media-results").arg(m_sessionId),
+        body, [](bool, const QJsonValue&, const QString&) {});
 }
 
 // ─────────────────────────── 리포트/내보내기 ───────────────────────────
@@ -587,7 +902,17 @@ void InterviewSession::exportAll()
     if (copied > 0)
         emit exported(dir, QStringLiteral("녹음 %1건").arg(copied));
 
-    // 3) 회사분석/직무분석 문서
+    // 3) 제출 완료된 영상 원본 복사
+    int copiedVideos = 0;
+    for (const QString& src : m_videoFiles) {
+        const QString dst = dir + QStringLiteral("/") + QFileInfo(src).fileName();
+        if (QFile::exists(dst)) QFile::remove(dst);
+        if (QFile::copy(src, dst)) ++copiedVideos;
+    }
+    if (copiedVideos > 0)
+        emit exported(dir, QStringLiteral("영상 %1건").arg(copiedVideos));
+
+    // 4) 회사분석/직무분석 문서
     if (m_caseId > 0) {
         const int sid = m_sessionId;
         m_api->get(QStringLiteral("/api/application-cases/%1/company-analysis").arg(m_caseId),

@@ -1,5 +1,6 @@
 package com.careertuner.file.service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -97,6 +98,25 @@ public class FileService {
         return fileAssetMapper.findByRef(refType, refId);
     }
 
+    /** 단일 대기 파일을 소유자·종류·선언 용도를 모두 재검증해 도메인 row에 귀속한다. */
+    @Transactional
+    public FileAsset claimOwnedPendingFile(Long userId, Long fileId, String expectedKind,
+                                           String expectedRefType, Long refId) {
+        if (fileId == null || refId == null || fileAssetMapper.claimOwnedPendingFile(
+                fileId, userId, expectedKind, expectedRefType, refId) != 1) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "전송 대기 중인 본인 파일을 확인할 수 없습니다.");
+        }
+        FileAsset linked = fileAssetMapper.findById(fileId);
+        if (linked == null
+                || !Objects.equals(userId, linked.getOwnerUserId())
+                || !Objects.equals(expectedKind, linked.getKind())
+                || !Objects.equals(expectedRefType, linked.getRefType())
+                || !Objects.equals(refId, linked.getRefId())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "파일 연결 상태를 확인할 수 없습니다.");
+        }
+        return linked;
+    }
+
     /** 소유자 확인 후 다운로드용 메타 + 바이트를 함께 반환한다. */
     public Download download(Long userId, Long fileId) {
         FileAsset asset = fileAssetMapper.findById(fileId);
@@ -118,18 +138,60 @@ public class FileService {
         return new Download(asset, storageService.read(asset.getStorageKey()));
     }
 
-    /** 소유자 본인의 아직 연결되지 않은 업로드만 메타데이터와 실제 저장 파일에서 삭제한다. */
+    /**
+     * 소유자 본인의 아직 연결되지 않은 업로드만 메타데이터와 실제 저장 파일에서 삭제한다.
+     * ref_type은 업로드 목적을 미리 기록할 수 있으므로 ref_id=null을 실제 미연결 기준으로 삼는다.
+     */
     @Transactional
     public void deleteOwnedUnlinked(Long userId, Long fileId) {
         FileAsset asset = fileAssetMapper.findById(fileId);
         assertOwner(userId, asset);
-        if (asset.getRefType() != null || asset.getRefId() != null) {
+        if (asset.getRefId() != null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "연결된 파일은 해당 기능에서 삭제해 주세요.");
         }
-        if (fileAssetMapper.deleteByIdAndOwnerIfUnlinked(fileId, userId) != 1) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "파일을 찾을 수 없습니다.");
+        if (fileAssetMapper.deleteByIdAndOwnerIfPending(fileId, userId) != 1) {
+            throw new BusinessException(ErrorCode.CONFLICT, "파일이 이미 연결되었거나 삭제되었습니다.");
         }
         deleteStored(asset);
+    }
+
+    /**
+     * 클라이언트 강제종료·오프라인으로 삭제 요청을 못 보낸 메신저 첨부를 제한 배치로 회수한다.
+     * 최소 TTL 24시간과 최대 100건을 강제해 다른 장기 편집 파일 및 대량 삭제를 막는다.
+     */
+    @Transactional
+    public int cleanupStalePendingCollaborationAttachments(int olderThanHours, int requestedLimit) {
+        int safeHours = Math.max(24, olderThanHours);
+        int limit = Math.max(1, Math.min(100, requestedLimit));
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(safeHours);
+        int deleted = 0;
+        for (FileAsset asset : fileAssetMapper.findStalePendingCollaborationAttachments(cutoff, limit)) {
+            if (fileAssetMapper.deleteStalePendingCollaborationAttachment(
+                    asset.getId(), asset.getOwnerUserId(), cutoff) != 1) {
+                continue;
+            }
+            deleteStored(asset);
+            deleted++;
+        }
+        return deleted;
+    }
+
+    /** 앱 강제 종료 등으로 답변에 연결되지 못한 음성·영상 원본만 제한 배치로 회수한다. */
+    @Transactional
+    public int cleanupStalePendingInterviewMedia(int olderThanHours, int requestedLimit) {
+        int safeHours = Math.max(24, olderThanHours);
+        int limit = Math.max(1, Math.min(100, requestedLimit));
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(safeHours);
+        int deleted = 0;
+        for (FileAsset asset : fileAssetMapper.findStalePendingInterviewMedia(cutoff, limit)) {
+            if (fileAssetMapper.deleteStalePendingInterviewMedia(
+                    asset.getId(), asset.getOwnerUserId(), cutoff) != 1) {
+                continue;
+            }
+            deleteStored(asset);
+            deleted++;
+        }
+        return deleted;
     }
 
     /** 도메인 서비스가 확정한 소유자·종류·참조가 모두 유지된 경우에만 연결 파일을 삭제한다. */

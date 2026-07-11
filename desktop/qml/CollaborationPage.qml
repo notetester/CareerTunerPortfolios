@@ -690,6 +690,20 @@ Item {
                                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: collaboration.removePendingAttachment(index) }
                                 }
                             }
+                            Rectangle {
+                                visible: collaboration.pendingAttachments.length > 1
+                                height: 26
+                                width: 68
+                                radius: 7
+                                color: Theme.raised
+                                border.color: Theme.border
+                                Text { anchors.centerIn: parent; text: "모두 취소"; color: Theme.danger; font.pixelSize: 9 }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: collaboration.clearPendingAttachments()
+                                }
+                            }
                         }
                         RowLayout {
                             Layout.fillWidth: true

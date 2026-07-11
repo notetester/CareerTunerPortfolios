@@ -11,6 +11,7 @@
         <result property="targetType"   column="target_type"/>
         <result property="targetId"     column="target_id"/>
         <result property="senderRelation" column="sender_relation"/>
+        <result property="destinationPlatform" column="destination_platform"/>
         <result property="title"        column="title"/>
         <result property="message"      column="message"/>
         <result property="link"         column="link"/>
@@ -25,9 +26,12 @@
     <select id="findByUserId" resultMap="notificationResultMap">
         SELECT n.*,
                a.name AS actor_name
-          FROM notification n
+         FROM notification n
           LEFT JOIN users a ON n.actor_id = a.id
          WHERE n.user_id = #{userId}
+        <if test="platform != null">
+           AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
+        </if>
          ORDER BY n.created_at DESC
          LIMIT #{limit} OFFSET #{offset}
     </select>
@@ -35,16 +39,22 @@
     <!-- 총 알림 수 -->
     <select id="countByUserId" resultType="int">
         SELECT COUNT(*)
-          FROM notification
-         WHERE user_id = #{userId}
+          FROM notification n
+         WHERE n.user_id = #{userId}
+        <if test="platform != null">
+           AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
+        </if>
     </select>
 
     <!-- 안읽음 알림 수 -->
     <select id="countUnreadByUserId" resultType="int">
         SELECT COUNT(*)
-          FROM notification
-         WHERE user_id = #{userId}
-           AND is_read = 0
+          FROM notification n
+         WHERE n.user_id = #{userId}
+           AND n.is_read = 0
+        <if test="platform != null">
+           AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
+        </if>
     </select>
 
     <!-- 단건 조회 -->
@@ -101,8 +111,9 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO notification (user_id, actor_id, type, target_type, target_id, sender_relation,
-                                  title, message, link)
+                                  destination_platform, title, message, link)
         VALUES (#{userId}, #{actorId}, #{type}, #{targetType}, #{targetId}, #{senderRelation},
+                COALESCE(#{destinationPlatform}, 'ALL'),
                 #{title}, #{message}, #{link})
     </insert>
 

@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { isNativeApp } from "@/platform/capacitor";
 import type { Notification, NotificationType, SenderRelation } from "../types/notification";
 import { TYPE_TO_CATEGORY } from "../types/notification";
 import type { NotificationRulePreference } from "../types/preferences";
@@ -48,10 +49,14 @@ function toNotification(n: BackendNotification): Notification {
   };
 }
 
+function destinationQuery(separator: "?" | "&"): string {
+  return isNativeApp() ? `${separator}platform=MOBILE` : "";
+}
+
 /** 알림 목록 */
 export async function getNotifications(page = 0, size = 20): Promise<Notification[]> {
   const res = await api<NotificationPageResponse>(
-    `/notifications?page=${page}&size=${size}`,
+    `/notifications?page=${page}&size=${size}${destinationQuery("&")}`,
     {},
   );
   return res.notifications.map(toNotification);
@@ -59,7 +64,7 @@ export async function getNotifications(page = 0, size = 20): Promise<Notificatio
 
 /** 안 읽은 알림 수 */
 export async function getUnreadCount(): Promise<number> {
-  return api<number>("/notifications/unread-count", {});
+  return api<number>(`/notifications/unread-count${destinationQuery("?")}`, {});
 }
 
 /** 읽음 처리 */

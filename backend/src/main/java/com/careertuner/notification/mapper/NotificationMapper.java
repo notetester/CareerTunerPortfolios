@@ -11,12 +11,15 @@ import com.careertuner.notification.domain.Notification;
 public interface NotificationMapper {
 
     List<Notification> findByUserId(@Param("userId") Long userId,
+                                    @Param("platform") String platform,
                                     @Param("offset") int offset,
                                     @Param("limit") int limit);
 
-    int countByUserId(@Param("userId") Long userId);
+    int countByUserId(@Param("userId") Long userId,
+                      @Param("platform") String platform);
 
-    int countUnreadByUserId(@Param("userId") Long userId);
+    int countUnreadByUserId(@Param("userId") Long userId,
+                            @Param("platform") String platform);
 
     Notification findById(@Param("id") Long id);
 

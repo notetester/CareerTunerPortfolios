@@ -513,6 +513,23 @@ public class CollaborationServiceImpl implements CollaborationService {
                 ? LocalDateTime.now().plusHours(normalizeTemporaryHours(request.temporaryHours()))
                 : null;
 
+        // 메시지 row를 만들기 전에 모든 첨부가 현재 사용자의 메신저 전송 대기 자산인지 확인한다.
+        // 아래 조건부 claim이 같은 조건을 다시 검사해 검증-사용 사이 경합도 차단한다.
+        for (Long fileId : attachmentIds) {
+            FileAsset asset = fileAssetMapper.findById(fileId);
+            if (asset == null) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "첨부 파일을 찾을 수 없습니다.");
+            }
+            if (!userId.equals(asset.getOwnerUserId())) {
+                throw new BusinessException(ErrorCode.FORBIDDEN, "본인이 업로드한 파일만 첨부할 수 있습니다.");
+            }
+            if (!"ATTACHMENT".equals(asset.getKind())
+                    || !"COLLAB_MESSAGE".equals(asset.getRefType())
+                    || asset.getRefId() != null) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "전송 대기 중인 메신저 첨부만 사용할 수 있습니다.");
+            }
+        }
+
         CollaborationMessage message = CollaborationMessage.builder()
                 .conversationId(conversationId)
                 .senderId(userId)
@@ -522,15 +539,10 @@ public class CollaborationServiceImpl implements CollaborationService {
         mapper.insertMessage(message);
 
         for (Long fileId : attachmentIds) {
-            FileAsset asset = fileAssetMapper.findById(fileId);
-            if (asset == null) {
-                throw new BusinessException(ErrorCode.NOT_FOUND, "첨부 파일을 찾을 수 없습니다.");
-            }
-            if (!userId.equals(asset.getOwnerUserId())) {
-                throw new BusinessException(ErrorCode.FORBIDDEN, "본인이 업로드한 파일만 첨부할 수 있습니다.");
+            if (fileAssetMapper.claimPendingCollaborationAttachment(fileId, userId, message.getId()) != 1) {
+                throw new BusinessException(ErrorCode.CONFLICT, "첨부 파일 상태가 변경되었습니다. 다시 첨부해 주세요.");
             }
             mapper.insertMessageAttachment(message.getId(), fileId, shareMode, expiresAt);
-            fileAssetMapper.updateRef(fileId, "COLLAB_MESSAGE", message.getId());
         }
 
         for (Long applicationCaseId : postingIds) {

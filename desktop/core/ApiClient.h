@@ -50,6 +50,8 @@ public:
         handle(m_nam.sendCustomRequest(makeRequest(path), QByteArrayLiteral("PATCH"), payload), std::move(cb));
     }
     void deleteResource(const QString& path, JsonCallback cb);
+    /** 로그아웃 직전/직후 완료된 업로드 정리에만 쓰는 1회성 bearer override. 토큰은 저장하지 않는다. */
+    void deleteResourceWithToken(const QString& path, const QString& bearerToken, JsonCallback cb);
     // multipart/form-data POST — 음성 업로드 등
     void postMultipart(const QString& path,
                        const QList<QPair<QString, QString>>& fields,

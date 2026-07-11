@@ -10,5 +10,7 @@ public record SubmitAnswerRequest(
         @NotBlank String answerText,
         String audioUrl,
         String videoUrl,
+        Long audioFileId,
+        Long videoFileId,
         String modelAnswer) {
 }

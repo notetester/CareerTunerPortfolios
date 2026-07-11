@@ -46,12 +46,79 @@
         </if>
     </update>
 
-    <delete id="deleteByIdAndOwnerIfUnlinked">
+    <!-- ref_type은 업로드 시점에 미리 지정될 수 있다. 실제 연결 여부는 ref_id로 판정한다. -->
+    <delete id="deleteByIdAndOwnerIfPending">
         DELETE FROM file_asset
          WHERE id = #{id}
            AND owner_user_id = #{ownerUserId}
-           AND ref_type IS NULL
            AND ref_id IS NULL
+    </delete>
+
+    <!-- 삭제와 전송이 경합해도 둘 중 하나만 성공하도록 같은 ref_id IS NULL 잠금을 사용한다. -->
+    <update id="claimPendingCollaborationAttachment">
+        UPDATE file_asset
+           SET ref_type = 'COLLAB_MESSAGE',
+               ref_id = #{messageId}
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND kind = 'ATTACHMENT'
+           AND ref_type = 'COLLAB_MESSAGE'
+           AND ref_id IS NULL
+    </update>
+
+    <update id="claimOwnedPendingFile">
+        UPDATE file_asset
+           SET ref_id = #{refId}
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND kind = #{expectedKind}
+           AND ref_type = #{expectedRefType}
+           AND ref_id IS NULL
+    </update>
+
+    <select id="findStalePendingCollaborationAttachments"
+            resultType="com.careertuner.file.domain.FileAsset">
+        SELECT *
+          FROM file_asset
+         WHERE kind = 'ATTACHMENT'
+           AND ref_type = 'COLLAB_MESSAGE'
+           AND ref_id IS NULL
+           AND created_at &lt; #{cutoff}
+         ORDER BY created_at, id
+         LIMIT #{limit}
+    </select>
+
+    <!-- 조회 뒤 메시지 전송/재귀속이 끼어들 수 있으므로 삭제 순간에도 전체 TTL 조건을 재검사한다. -->
+    <delete id="deleteStalePendingCollaborationAttachment">
+        DELETE FROM file_asset
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND kind = 'ATTACHMENT'
+           AND ref_type = 'COLLAB_MESSAGE'
+           AND ref_id IS NULL
+           AND created_at &lt; #{cutoff}
+    </delete>
+
+    <select id="findStalePendingInterviewMedia"
+            resultType="com.careertuner.file.domain.FileAsset">
+        SELECT *
+          FROM file_asset
+         WHERE kind IN ('AUDIO', 'VIDEO')
+           AND ref_type = 'INTERVIEW_ANSWER'
+           AND ref_id IS NULL
+           AND created_at &lt; #{cutoff}
+         ORDER BY created_at, id
+         LIMIT #{limit}
+    </select>
+
+    <delete id="deleteStalePendingInterviewMedia">
+        DELETE FROM file_asset
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND kind IN ('AUDIO', 'VIDEO')
+           AND ref_type = 'INTERVIEW_ANSWER'
+           AND ref_id IS NULL
+           AND created_at &lt; #{cutoff}
     </delete>
 
     <delete id="deleteByIdAndOwnerAndRef">

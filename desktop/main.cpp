@@ -8,6 +8,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QIcon>
+#include <QVariant>
 
 #include "core/ApiClient.h"
 #include "core/AuthService.h"
@@ -94,6 +95,8 @@ int main(int argc, char* argv[])
         [&collaboration](const QString&) { collaboration.refresh(); });
     QObject::connect(&auth, &AuthService::loggedIn, &ads,
         [&ads](const QString&) { ads.refresh(); });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &collaboration,
+        [&collaboration]() { collaboration.clear(); });
     QObject::connect(&auth, &AuthService::loggedOut, &poller,
         [&poller]() { poller.stop(); });
     QObject::connect(&auth, &AuthService::loggedOut, &planner,
@@ -137,12 +140,29 @@ int main(int argc, char* argv[])
     QAction* plannerOverlayAct = trayMenu.addAction("플래너 오버레이 켜기");
     QAction* plannerClickAct = trayMenu.addAction("플래너 클릭 통과 해제");
     QAction* quitAct = trayMenu.addAction("종료");
+    QString trayNotificationType;
+    QString trayNotificationLink;
+    QString trayNotificationTargetType;
+    qint64 trayNotificationTargetId = 0;
     const auto showWindow = [&engine]() {
         if (!engine.rootObjects().isEmpty()) {
             QObject* win = engine.rootObjects().first();
             win->setProperty("visible", true);
             QMetaObject::invokeMethod(win, "requestActivate", Qt::DirectConnection);
         }
+    };
+    const auto activateNotification = [&engine, showWindow](
+            const QString& type, const QString& link,
+            const QString& targetType, qint64 targetId) {
+        showWindow();
+        if (engine.rootObjects().isEmpty()) return;
+        QObject* win = engine.rootObjects().first();
+        QMetaObject::invokeMethod(
+            win, "activateNotification", Qt::QueuedConnection,
+            Q_ARG(QVariant, QVariant(type)),
+            Q_ARG(QVariant, QVariant(link)),
+            Q_ARG(QVariant, QVariant(targetType)),
+            Q_ARG(QVariant, QVariant::fromValue(targetId)));
     };
     QObject::connect(showAct, &QAction::triggered, showWindow);
     QObject::connect(plannerOverlayAct, &QAction::triggered, &plannerOverlayController,
@@ -155,17 +175,40 @@ int main(int argc, char* argv[])
             if (r == QSystemTrayIcon::Trigger || r == QSystemTrayIcon::DoubleClick)
                 showWindow();
         });
-    QObject::connect(&tray, &QSystemTrayIcon::messageClicked, &app, showWindow);
+    QObject::connect(&tray, &QSystemTrayIcon::messageClicked, &app,
+        [showWindow, activateNotification,
+         &trayNotificationType, &trayNotificationLink,
+         &trayNotificationTargetType, &trayNotificationTargetId]() {
+            if (!trayNotificationLink.isEmpty() || !trayNotificationTargetType.isEmpty()) {
+                activateNotification(trayNotificationType, trayNotificationLink,
+                                     trayNotificationTargetType, trayNotificationTargetId);
+            } else {
+                showWindow();
+            }
+            trayNotificationType.clear();
+            trayNotificationLink.clear();
+            trayNotificationTargetType.clear();
+            trayNotificationTargetId = 0;
+        });
     tray.setContextMenu(&trayMenu);
     tray.show();
 
     // 새 알림 → Windows 트레이 토스트 / 작업표시줄 attention (설정에서 각각 끌 수 있음)
     QObject::connect(&poller, &NotificationPoller::notificationArrived, &tray,
-        [&tray, &settings, &engine](const QString&, const QString& title,
-                           const QString& message, const QString&, qint64,
+        [&tray, &settings, &engine,
+         &trayNotificationType, &trayNotificationLink,
+         &trayNotificationTargetType, &trayNotificationTargetId](
+                           const QString& type, const QString& title,
+                           const QString& message, const QString& link,
+                           const QString& targetType, qint64 targetId,
                            bool desktopToast, bool desktopTaskbar) {
-            if (desktopToast && settings.trayNotify())
+            if (desktopToast && settings.trayNotify()) {
+                trayNotificationType = type;
+                trayNotificationLink = link;
+                trayNotificationTargetType = targetType;
+                trayNotificationTargetId = targetId;
                 tray.showMessage(title, message, QSystemTrayIcon::Information, 6000);
+            }
             if (desktopTaskbar && !engine.rootObjects().isEmpty()) {
                 if (auto* window = qobject_cast<QWindow*>(engine.rootObjects().first())) {
                     window->alert(6000);
@@ -173,11 +216,19 @@ int main(int argc, char* argv[])
             }
         });
     QObject::connect(&planner, &PlannerClient::reminderArrived, &tray,
-        [&tray, &settings, &engine, &plannerOverlayController](
+        [&tray, &settings, &engine, &plannerOverlayController,
+         &trayNotificationType, &trayNotificationLink,
+         &trayNotificationTargetType, &trayNotificationTargetId](
             const QString& title, const QString& message,
             bool desktopToast, bool desktopTaskbar, bool desktopSound) {
-            if (desktopToast && settings.trayNotify())
+            if (desktopToast && settings.trayNotify()) {
+                // 일정 알림 클릭이 직전 일반 알림의 대상을 잘못 여는 일을 막는다.
+                trayNotificationType.clear();
+                trayNotificationLink.clear();
+                trayNotificationTargetType.clear();
+                trayNotificationTargetId = 0;
                 tray.showMessage(QStringLiteral("일정 알림: %1").arg(title), message, QSystemTrayIcon::Information, 6000);
+            }
             if (desktopTaskbar && !engine.rootObjects().isEmpty()) {
                 if (auto* window = qobject_cast<QWindow*>(engine.rootObjects().first())) {
                     window->alert(6000);

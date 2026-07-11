@@ -18,6 +18,7 @@ import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
+import com.careertuner.interview.dto.DispatchInterviewSessionRequest;
 import com.careertuner.interview.dto.GenerateFollowUpsRequest;
 import com.careertuner.interview.dto.GenerateQuestionsRequest;
 import com.careertuner.interview.dto.InterviewAgentStepResponse;
@@ -73,9 +74,13 @@ public class InterviewController {
     }
 
     @PostMapping("/sessions/{sessionId}/dispatch")
-    public ApiResponse<Void> dispatchToPhone(@AuthenticationPrincipal AuthUser authUser,
-                                             @PathVariable Long sessionId) {
-        interviewService.dispatchToPhone(authUser.id(), sessionId);
+    public ApiResponse<Void> dispatchSession(@AuthenticationPrincipal AuthUser authUser,
+                                             @PathVariable Long sessionId,
+                                             @RequestBody(required = false) DispatchInterviewSessionRequest request) {
+        DispatchInterviewSessionRequest body = request != null
+                ? request
+                : new DispatchInterviewSessionRequest(null);
+        interviewService.dispatchSession(authUser.id(), sessionId, body.targetOrDefault());
         return ApiResponse.ok();
     }
 
@@ -110,6 +115,14 @@ public class InterviewController {
                                                              @PathVariable Long questionId,
                                                              @Valid @RequestBody SubmitAnswerRequest request) {
         return ApiResponse.ok(interviewService.submitAnswer(authUser.id(), questionId, request));
+    }
+
+    @DeleteMapping("/answers/{answerId}/media/{kind}")
+    public ApiResponse<Void> deleteAnswerMedia(@AuthenticationPrincipal AuthUser authUser,
+                                               @PathVariable Long answerId,
+                                               @PathVariable String kind) {
+        interviewService.deleteAnswerMedia(authUser.id(), answerId, kind);
+        return ApiResponse.ok();
     }
 
     @PostMapping("/questions/{questionId}/follow-ups")

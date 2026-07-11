@@ -3,6 +3,12 @@ import { api } from "../lib/api";
 import { apiBase } from "../lib/apiBase";
 import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
 import { isOutageFallbackActive, isSocialOAuthBlocked } from "../lib/outageFallback";
+import { isNativeApp } from "@/platform/capacitor";
+import { cancelPendingNativeOAuth, startNativeSocialLogin } from "@/platform/nativeOAuth";
+import {
+  discardPendingCollaborationFiles,
+  forgetPendingCollaborationFiles,
+} from "../lib/pendingCollaborationFiles";
 import {
   clearTokens,
   clearTokensIfUnchanged,
@@ -60,7 +66,7 @@ interface AuthContextValue {
   login(identifier: string, password: string): Promise<LoginResponse>;
   completeLogin(token: TokenResponse): void;
   register(loginId: string, email: string | null, password: string, name: string, consents: RegisterConsents): Promise<void>;
-  socialLogin(provider: SocialProvider): void;
+  socialLogin(provider: SocialProvider): Promise<void>;
   logout(): Promise<void>;
   logoutAll(): Promise<void>;
   refreshMe(): Promise<void>;
@@ -170,13 +176,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   }, []);
 
-  const socialLogin = useCallback((provider: SocialProvider) => {
+  const socialLogin = useCallback(async (provider: SocialProvider) => {
     if (isSocialOAuthBlocked()) return;
+    if (isNativeApp()) {
+      await startNativeSocialLogin(provider);
+      return;
+    }
     // 전체 페이지 이동 → 백엔드가 제공자로 리다이렉트
     window.location.href = `${apiBase()}/auth/oauth/${provider}`;
   }, []);
 
   const logout = useCallback(async () => {
+    if (isNativeApp()) cancelPendingNativeOAuth();
+    await discardPendingCollaborationFiles();
+    forgetPendingCollaborationFiles();
     const refreshToken = getRefreshToken();
     try {
       await api<void>("/auth/logout", {
@@ -191,6 +204,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logoutAll = useCallback(async () => {
+    if (isNativeApp()) cancelPendingNativeOAuth();
+    await discardPendingCollaborationFiles();
+    forgetPendingCollaborationFiles();
     try {
       await api<void>("/auth/logout-all", { method: "POST" });
     } catch {

@@ -122,6 +122,14 @@ void SettingsStore::setTrayNotify(bool v)
     emit changed();
 }
 
+bool SettingsStore::darkTheme() const { return m_s->value("display/darkTheme", true).toBool(); }
+void SettingsStore::setDarkTheme(bool v)
+{
+    if (v == darkTheme()) return;
+    m_s->setValue("display/darkTheme", v);
+    emit changed();
+}
+
 QString SettingsStore::accessToken() const  { return m_s->value("auth/accessToken").toString(); }
 QString SettingsStore::refreshToken() const { return m_s->value("auth/refreshToken").toString(); }
 

@@ -64,6 +64,7 @@ public:
                                  const QString& postingIdsText);
     Q_INVOKABLE void uploadAttachment(const QString& localUrl);
     Q_INVOKABLE void removePendingAttachment(int index);
+    Q_INVOKABLE void clearPendingAttachments();
     Q_INVOKABLE void downloadAttachment(qint64 fileId, const QString& originalName);
 
 signals:
@@ -94,6 +95,7 @@ private:
                                QVariantMap (CollaborationClient::*mapper)(const QJsonObject&) const) const;
     QString readableFileName(const QString& pathOrName) const;
     QString uniqueDownloadPath(const QString& originalName) const;
+    void discardPendingAttachments();
 
     ApiClient* m_api;
     QVariantList m_searchResults;
@@ -104,6 +106,7 @@ private:
     QVariantList m_discoverableRooms;
     QVariantList m_messages;
     QVariantList m_pendingAttachments;
+    quint64 m_pendingGeneration = 0;
     qint64 m_currentConversationId = -1;
     QString m_currentPeerName;
     QString m_currentConversationType;

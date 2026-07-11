@@ -18,6 +18,8 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.file.domain.FileAsset;
+import com.careertuner.file.service.FileService;
 import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
@@ -30,12 +32,14 @@ import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
+import com.careertuner.interview.dto.InterviewDispatchTarget;
 import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
 import com.careertuner.interview.dto.SubmitAnswerRequest;
 import com.careertuner.interview.mapper.InterviewMapper;
 import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.domain.NotificationDestinationPlatform;
 import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.core.JacksonException;
@@ -75,6 +79,7 @@ public class InterviewServiceImpl implements InterviewService {
     private final ObjectMapper objectMapper;
     private final InterviewBackgroundExecutor backgroundExecutor;
     private final NotificationService notificationService;
+    private final FileService fileService;
 
     @Override
     @Transactional
@@ -119,17 +124,28 @@ public class InterviewServiceImpl implements InterviewService {
 
     @Override
     @Transactional
-    public void dispatchToPhone(Long userId, Long sessionId) {
+    public void dispatchSession(Long userId, Long sessionId, InterviewDispatchTarget target) {
         InterviewSession session = requireSession(userId, sessionId);
         String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
+        InterviewDispatchTarget resolvedTarget = target != null ? target : InterviewDispatchTarget.MOBILE;
+        boolean toDesktop = InterviewDispatchTarget.DESKTOP == resolvedTarget;
         notificationService.notify(Notification.builder()
                 .userId(userId)
                 .type("INTERVIEW_DISPATCH")
                 .targetType("INTERVIEW_SESSION")
                 .targetId(sessionId)
-                .title("데스크탑에서 면접 세션을 보냈어요")
-                .message(modeLabel + " 세션을 폰에서 이어받을 수 있어요.")
-                .link("/interview?session=" + sessionId) // 알림 탭 → 세션 딥링크 직행
+                .destinationPlatform(toDesktop
+                        ? NotificationDestinationPlatform.DESKTOP
+                        : NotificationDestinationPlatform.MOBILE)
+                .title(toDesktop
+                        ? "모바일에서 면접 세션을 보냈어요"
+                        : "데스크톱에서 면접 세션을 보냈어요")
+                .message(modeLabel + (toDesktop
+                        ? " 세션을 데스크톱에서 이어받을 수 있어요."
+                        : " 세션을 폰에서 이어받을 수 있어요."))
+                .link(toDesktop
+                        ? "/interview?session=" + sessionId
+                        : "/m/session/" + sessionId)
                 .build());
     }
 
@@ -372,7 +388,54 @@ public class InterviewServiceImpl implements InterviewService {
                 .improvedAnswer(evaluation.improvedAnswer())
                 .build();
         interviewMapper.insertAnswer(answer);
+
+        // 원본 파일은 답변 id가 발급된 뒤 같은 트랜잭션에서만 연결한다.
+        // 소유자·kind·업로드 용도·ref_id IS NULL을 조건부 UPDATE로 검증하며,
+        // 클라이언트가 보낸 URL 대신 서버 소유 content URL로 정규화한다.
+        String audioUrl = request.audioFileId() == null
+                ? blankToNull(request.audioUrl())
+                : claimAnswerMedia(userId, request.audioFileId(), "AUDIO", answer.getId());
+        String videoUrl = request.videoFileId() == null
+                ? blankToNull(request.videoUrl())
+                : claimAnswerMedia(userId, request.videoFileId(), "VIDEO", answer.getId());
+        if (!java.util.Objects.equals(audioUrl, answer.getAudioUrl())
+                || !java.util.Objects.equals(videoUrl, answer.getVideoUrl())) {
+            answer.setAudioUrl(audioUrl);
+            answer.setVideoUrl(videoUrl);
+            interviewMapper.updateAnswerMediaUrls(answer.getId(), audioUrl, videoUrl);
+        }
         return InterviewAnswerResponse.from(answer);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAnswerMedia(Long userId, Long answerId, String kind) {
+        InterviewAnswer answer = interviewMapper.findAnswerByIdAndUserId(answerId, userId);
+        if (answer == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 답변을 찾을 수 없습니다.");
+        }
+        String normalizedKind = kind == null ? "" : kind.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!("AUDIO".equals(normalizedKind) || "VIDEO".equals(normalizedKind))) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "삭제할 원본 종류는 AUDIO 또는 VIDEO여야 합니다.");
+        }
+
+        for (FileAsset asset : fileService.findLinkedFiles("INTERVIEW_ANSWER", answerId)) {
+            if (normalizedKind.equals(asset.getKind())) {
+                fileService.deleteOwnedLinked(
+                        userId, asset.getId(), normalizedKind, "INTERVIEW_ANSWER", answerId);
+            }
+        }
+        if ("AUDIO".equals(normalizedKind)) {
+            interviewMapper.clearAnswerAudioUrl(answerId);
+        } else {
+            interviewMapper.clearAnswerVideoUrl(answerId);
+        }
+    }
+
+    private String claimAnswerMedia(Long userId, Long fileId, String kind, Long answerId) {
+        FileAsset linked = fileService.claimOwnedPendingFile(
+                userId, fileId, kind, "INTERVIEW_ANSWER", answerId);
+        return "/api/file/" + linked.getId() + "/content";
     }
 
     @Override

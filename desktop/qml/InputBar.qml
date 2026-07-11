@@ -39,6 +39,16 @@ Item {
         function onTranscribed(text) {
             if (root.mode === "answer") { input.text = text; input.forceActiveFocus() }
         }
+        function onAnswerSubmissionStarted() {
+            if (root.mode === "answer") input.text = ""
+        }
+        function onAnswerSubmissionFailed(text) {
+            if (root.mode === "answer" && input.text.trim() === "") {
+                input.text = text
+                input.forceActiveFocus()
+            }
+        }
+        function onVideoAnswerSubmitted() { root.closeVideoPanel() }
     }
     Connections {
         target: recorder
@@ -84,8 +94,8 @@ Item {
                     }
                     Text {
                         text: root.recordedVideoPath !== ""
-                              ? "녹화 완료 — 전송 전 동의를 확인하세요"
-                              : (cameraRecorder.recording ? "녹화 중" : "최대 3분 · 채점 후 영상은 즉시 폐기됩니다")
+                              ? "녹화 완료 — 원본 저장·분석 동의를 확인하세요"
+                              : (cameraRecorder.recording ? "녹화 중" : "최대 3분 · 제출 원본은 답변 기록에 저장됩니다")
                         color: Theme.muted; font.pixelSize: 11
                     }
                     Item { Layout.fillWidth: true }
@@ -177,7 +187,7 @@ Item {
                             }
                         }
                         Text {
-                            text: "영상은 채점 후 즉시 폐기됩니다 — 전송에 동의합니다"
+                            text: "원본 저장 및 분석에 동의합니다 (삭제 후 재분석 불가)"
                             color: Theme.muted; font.pixelSize: 11
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -215,7 +225,6 @@ Item {
                             enabled: consentBox.checked && !session.scoring
                             onClicked: {
                                 session.submitVideoAnswer(root.recordedVideoPath, consentBox.checked)
-                                root.closeVideoPanel()
                             }
                         }
                     }
@@ -324,7 +333,7 @@ Item {
                     }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        enabled: session.currentQid >= 0
+                        enabled: session.currentQid >= 0 && !session.scoring && !session.transcribing
                         onClicked: recorder.recording ? recorder.stop() : recorder.start()
                     }
                 }
@@ -352,7 +361,7 @@ Item {
                     }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        enabled: session.currentQid >= 0
+                        enabled: session.currentQid >= 0 && !session.scoring
                         onClicked: {
                             if (!cameraRecorder.cameraAvailable) {
                                 // 카메라 없는 PC — 세션을 폰으로 보내 영상 면접을 이어한다
@@ -422,6 +431,6 @@ Item {
         if (t === "") return
         if (root.mode === "answer" && (session.currentQid < 0 || session.scoring)) return
         root.submitted(t)
-        input.text = ""
+        if (root.mode === "intake") input.text = ""
     }
 }

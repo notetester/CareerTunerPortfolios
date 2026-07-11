@@ -6,7 +6,7 @@ import { haptic } from "@/platform/haptics";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import {
-  dispatchSessionToDevices,
+  dispatchSessionToDesktop,
   generateExpectedQuestions,
   generateFollowUps,
   getModelAnswer,
@@ -273,7 +273,7 @@ export function MobileSessionThreadPage() {
   const sendToDesktop = async () => {
     haptic("light");
     try {
-      await dispatchSessionToDevices(sessionId);
+      await dispatchSessionToDesktop(sessionId);
       toast("데스크탑으로 보냈습니다 — PC 트레이 알림 확인 (30초 내)");
     } catch {
       toast("보내기에 실패했습니다");

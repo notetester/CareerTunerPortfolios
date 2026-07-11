@@ -20,6 +20,7 @@ CollaborationClient::CollaborationClient(ApiClient* api, QObject* parent)
 
 void CollaborationClient::clear()
 {
+    discardPendingAttachments();
     m_searchResults.clear();
     m_friends.clear();
     m_incomingRequests.clear();
@@ -27,7 +28,6 @@ void CollaborationClient::clear()
     m_conversations.clear();
     m_discoverableRooms.clear();
     m_messages.clear();
-    m_pendingAttachments.clear();
     m_currentConversationId = -1;
     m_currentPeerName.clear();
     m_currentConversationType.clear();
@@ -38,7 +38,6 @@ void CollaborationClient::clear()
     emit conversationsChanged();
     emit discoverableRoomsChanged();
     emit messagesChanged();
-    emit pendingAttachmentsChanged();
     emit currentConversationChanged();
 }
 
@@ -142,6 +141,8 @@ void CollaborationClient::openConversation(qint64 userId, const QString& peerNam
 void CollaborationClient::openConversationById(qint64 conversationId, const QString& peerName,
                                                const QString& type, bool muted)
 {
+    if (m_currentConversationId > 0 && m_currentConversationId != conversationId)
+        discardPendingAttachments();
     m_currentConversationId = conversationId;
     m_currentPeerName = peerName;
     m_currentConversationType = type;
@@ -315,15 +316,25 @@ void CollaborationClient::uploadAttachment(const QString& localUrl)
         {QStringLiteral("refType"), QStringLiteral("COLLAB_MESSAGE")}
     };
     QList<ApiClient::FilePart> files{filePart};
+    const quint64 uploadGeneration = m_pendingGeneration;
+    const QString uploadToken = m_api->token();
     m_api->postMultipart(QStringLiteral("/api/file/upload"), fields, files,
-        [this, name = info.fileName()](bool ok, const QJsonValue& data, const QString& message) {
+        [this, name = info.fileName(), uploadGeneration, uploadToken](
+            bool ok, const QJsonValue& data, const QString& message) {
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("첨부 업로드에 실패했습니다") : message);
                 return;
             }
             const QJsonObject file = data.toObject();
+            const qint64 fileId = file.value("id").toInteger();
+            if (uploadGeneration != m_pendingGeneration) {
+                // clear/logout 중 완료된 업로드는 UI에 되살리지 않고 업로드 때의 토큰으로 즉시 정리한다.
+                m_api->deleteResourceWithToken(
+                    QStringLiteral("/api/file/%1").arg(fileId), uploadToken, nullptr);
+                return;
+            }
             m_pendingAttachments.push_back(QVariantMap{
-                {"id", file.value("id").toInteger()},
+                {"id", fileId},
                 {"name", file.value("originalName").toString(name)},
                 {"sizeBytes", file.value("sizeBytes").toInteger()}
             });
@@ -334,8 +345,40 @@ void CollaborationClient::uploadAttachment(const QString& localUrl)
 void CollaborationClient::removePendingAttachment(int index)
 {
     if (index < 0 || index >= m_pendingAttachments.size()) return;
-    m_pendingAttachments.removeAt(index);
+    const qint64 fileId = m_pendingAttachments.at(index).toMap().value("id").toLongLong();
+    m_api->deleteResource(QStringLiteral("/api/file/%1").arg(fileId),
+        [this, fileId](bool ok, const QJsonValue&, const QString& message) {
+            if (!ok) {
+                emit errorOccurred(message.isEmpty() ? QStringLiteral("첨부를 제거하지 못했습니다") : message);
+                return;
+            }
+            for (int i = 0; i < m_pendingAttachments.size(); ++i) {
+                if (m_pendingAttachments.at(i).toMap().value("id").toLongLong() == fileId) {
+                    m_pendingAttachments.removeAt(i);
+                    emit pendingAttachmentsChanged();
+                    break;
+                }
+            }
+        });
+}
+
+void CollaborationClient::clearPendingAttachments()
+{
+    discardPendingAttachments();
+}
+
+void CollaborationClient::discardPendingAttachments()
+{
+    ++m_pendingGeneration;
+    const QVariantList pending = m_pendingAttachments;
+    m_pendingAttachments.clear();
     emit pendingAttachmentsChanged();
+
+    for (const QVariant& item : pending) {
+        const qint64 fileId = item.toMap().value("id").toLongLong();
+        if (fileId <= 0) continue;
+        m_api->deleteResource(QStringLiteral("/api/file/%1").arg(fileId), nullptr);
+    }
 }
 
 void CollaborationClient::downloadAttachment(qint64 fileId, const QString& originalName)
@@ -429,7 +472,10 @@ void CollaborationClient::loadConversations()
 
 void CollaborationClient::openConversationFromObject(const QJsonObject& conversation, const QString& fallbackName)
 {
-    m_currentConversationId = conversation.value("id").toInteger();
+    const qint64 conversationId = conversation.value("id").toInteger();
+    if (m_currentConversationId > 0 && m_currentConversationId != conversationId)
+        discardPendingAttachments();
+    m_currentConversationId = conversationId;
     m_currentConversationType = conversation.value("type").toString();
     m_currentConversationMuted = conversation.value("muted").toBool();
     const QJsonObject peer = conversation.value("peer").toObject();

@@ -70,6 +70,42 @@
         WHERE user_id = #{userId} AND revoked = 0
     </update>
 
+    <!-- 네이티브 OAuth 일회성 handoff: PKCE 검증 전에는 회원/소셜 계정을 만들지 않는다. -->
+    <insert id="insertNativeAuthHandoff" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO native_auth_handoff (
+            provider, provider_user_id, email, email_verified, display_name,
+            code_hash, handoff_challenge, expired_at
+        )
+        VALUES (
+            #{provider}, #{providerUserId}, #{email}, #{emailVerified}, #{displayName},
+            #{codeHash}, #{handoffChallenge}, DATE_ADD(NOW(), INTERVAL 3 MINUTE)
+        )
+    </insert>
+
+    <select id="findNativeAuthHandoffForUpdate"
+            resultType="com.careertuner.auth.domain.NativeAuthHandoff">
+        SELECT id, provider, provider_user_id, email, email_verified, display_name,
+               code_hash, handoff_challenge, expired_at, created_at
+          FROM native_auth_handoff
+         WHERE code_hash = #{codeHash}
+         LIMIT 1
+           FOR UPDATE
+    </select>
+
+    <!-- 검증 성공 행은 같은 트랜잭션에서 삭제한다. 실패 시 삭제와 후속 회원 생성이 함께 rollback된다. -->
+    <delete id="consumeNativeAuthHandoff">
+        DELETE FROM native_auth_handoff
+         WHERE id = #{id}
+           AND expired_at &gt; NOW()
+    </delete>
+
+    <delete id="deleteExpiredNativeAuthHandoffs">
+        DELETE FROM native_auth_handoff
+         WHERE expired_at &lt;= NOW()
+         ORDER BY expired_at
+         LIMIT 100
+    </delete>
+
     <insert id="insertLoginHistory" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_login_history (
             user_id, event_type, auth_provider, login_method, login_identifier,

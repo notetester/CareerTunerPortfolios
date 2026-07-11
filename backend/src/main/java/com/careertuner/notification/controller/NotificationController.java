@@ -23,6 +23,7 @@ import com.careertuner.notification.dto.NotificationPageResponse;
 import com.careertuner.notification.dto.NotificationPreferenceResponse;
 import com.careertuner.notification.dto.NotificationPreferenceUpdateRequest;
 import com.careertuner.notification.dto.PushSubscribeRequest;
+import com.careertuner.notification.domain.NotificationDestinationPlatform;
 import com.careertuner.notification.push.PushService;
 import com.careertuner.notification.service.NotificationPreferenceService;
 import com.careertuner.notification.service.NotificationService;
@@ -42,16 +43,18 @@ public class NotificationController {
     public ApiResponse<NotificationPageResponse> getNotifications(
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) NotificationDestinationPlatform platform,
             @AuthenticationPrincipal AuthUser authUser
     ) {
-        return ApiResponse.ok(notificationService.getNotifications(authUser.id(), page, size));
+        return ApiResponse.ok(notificationService.getNotifications(authUser.id(), page, size, platform));
     }
 
     @GetMapping("/unread-count")
     public ApiResponse<Integer> getUnreadCount(
+            @RequestParam(required = false) NotificationDestinationPlatform platform,
             @AuthenticationPrincipal AuthUser authUser
     ) {
-        return ApiResponse.ok(notificationService.getUnreadCount(authUser.id()));
+        return ApiResponse.ok(notificationService.getUnreadCount(authUser.id(), platform));
     }
 
     @PatchMapping("/{id}/read")

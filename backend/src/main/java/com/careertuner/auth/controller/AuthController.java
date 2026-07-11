@@ -31,7 +31,11 @@ import com.careertuner.auth.dto.MfaLoginVerifyRequest;
 import com.careertuner.auth.dto.MfaSetupStartResponse;
 import com.careertuner.auth.dto.MfaSetupVerifyRequest;
 import com.careertuner.auth.dto.MfaStatusResponse;
+import com.careertuner.auth.dto.NativeOAuthExchangeRequest;
+import com.careertuner.auth.dto.NativeOAuthStartRequest;
+import com.careertuner.auth.dto.NativeOAuthStartResponse;
 import com.careertuner.auth.dto.OAuthCallbackResult;
+import com.careertuner.auth.dto.OAuthCallbackContext;
 import com.careertuner.auth.dto.OAuthProviderAvailabilityResponse;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
@@ -55,13 +59,19 @@ import lombok.extern.slf4j.Slf4j;
  * 인증 API. 프런트엔드 프록시 기준 모든 경로는 /api/auth/** 하위.
  *
  * <p>소셜 로그인: 프런트가 /api/auth/oauth/{provider} 로 전체 페이지 이동 → 제공자 인증 →
- * /api/auth/oauth/{provider}/callback 에서 처리 후 프런트 /auth/callback 으로 토큰과 함께 리다이렉트.</p>
+ * /api/auth/oauth/{provider}/callback 에서 처리 후 웹은 /auth/browser-callback으로,
+ * 네이티브 handoff는 verified HTTPS /auth/callback으로 리다이렉트.</p>
  */
 @Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
+
+    private static final String NATIVE_OAUTH_CALLBACK = "https://careertuner.kro.kr/auth/callback";
+    private static final String NATIVE_PROFILE_DETAIL = "https://careertuner.kro.kr/profile/detail";
+    private static final String BROWSER_OAUTH_CALLBACK_PATH = "/auth/browser-callback";
+    private static final String BROWSER_SOCIAL_LINK_CALLBACK_PATH = "/profile/social-callback";
 
     private final AuthService authService;
     private final MfaService mfaService;
@@ -245,28 +255,42 @@ public class AuthController {
         return redirect(authService.buildAuthorizationUrl(provider, frontendReturnUrlResolver.resolve(servletRequest)));
     }
 
+    @PostMapping("/oauth/{provider}/native/start")
+    public ApiResponse<NativeOAuthStartResponse> nativeOAuthStart(
+            @PathVariable String provider,
+            @Valid @RequestBody NativeOAuthStartRequest request) {
+        return ApiResponse.ok(new NativeOAuthStartResponse(
+                authService.buildNativeAuthorizationUrl(provider, request.handoffChallenge())));
+    }
+
+    @PostMapping("/oauth/native/exchange")
+    public ApiResponse<TokenResponse> exchangeNativeOAuth(
+            @Valid @RequestBody NativeOAuthExchangeRequest request,
+            HttpServletRequest servletRequest) {
+        return ApiResponse.ok(authService.exchangeNativeOAuthHandoff(
+                request.handoffCode(), request.handoffVerifier(), LoginRequestContext.from(servletRequest)));
+    }
+
     @GetMapping("/oauth/{provider}/callback")
     public ResponseEntity<Void> oauthCallback(@PathVariable String provider,
                                               @RequestParam(required = false) String code,
                                               @RequestParam(required = false) String state,
                                               @RequestParam(required = false) String error,
                                               HttpServletRequest servletRequest) {
-        FrontendReturnTarget failureTarget = frontendReturnUrlResolver.resolveStoredClient(
-                authService.resolveOAuthFrontendClient(provider, state));
+        OAuthCallbackContext failureContext = authService.resolveOAuthCallbackContext(provider, state);
         if (error != null && !error.isBlank()) {
-            return redirect(failureTarget.absoluteUrl("/auth/callback?error=" + enc(oauthFailureCode(error))));
+            return redirectOAuthFailure(failureContext, oauthFailureCode(error));
         }
         if (code == null || code.isBlank()) {
-            return redirect(failureTarget.absoluteUrl("/auth/callback?error=" + enc("social_login_failed")));
+            return redirectOAuthFailure(failureContext, "social_login_failed");
         }
         try {
             OAuthCallbackResult result = authService.handleOAuthCallback(provider, code, state,
                     LoginRequestContext.from(servletRequest));
-            return redirectOAuthResult(frontendReturnUrlResolver.resolveStoredClient(result.frontendClient()),
-                    result, false);
+            return redirectOAuthResult(result, false);
         } catch (Exception e) {
             log.warn("[{}] OAuth 콜백 실패: {}", provider, e.getMessage());
-            return redirect(failureTarget.absoluteUrl("/auth/callback?error=" + enc("social_login_failed")));
+            return redirectOAuthFailure(failureContext, "social_login_failed");
         }
     }
 
@@ -277,35 +301,58 @@ public class AuthController {
         try {
             OAuthCallbackResult result = authService.handleOAuthMockCallback(provider, state,
                     LoginRequestContext.from(servletRequest));
-            return redirectOAuthResult(frontendReturnUrlResolver.resolveStoredClient(result.frontendClient()),
-                    result, true);
+            return redirectOAuthResult(result, true);
         } catch (Exception e) {
             log.warn("[{}] OAuth mock 콜백 실패: {}", provider, e.getMessage());
-            FrontendReturnTarget target = frontendReturnUrlResolver.resolveStoredClient(
-                    authService.resolveOAuthFrontendClient(provider, state));
-            return redirect(target.absoluteUrl("/auth/callback?error=" + enc("social_login_failed")));
+            return redirectOAuthFailure(
+                    authService.resolveOAuthCallbackContext(provider, state), "social_login_failed");
         }
     }
 
     // ── 내부 ──
 
-    private ResponseEntity<Void> redirectOAuthResult(
-            FrontendReturnTarget target, OAuthCallbackResult result, boolean mock) {
+    private ResponseEntity<Void> redirectOAuthResult(OAuthCallbackResult result, boolean mock) {
+        if (result.nativeHandoff()) {
+            return redirect(NATIVE_OAUTH_CALLBACK + "?handoffCode=" + enc(result.handoffCode()));
+        }
         if (result.linked()) {
-            String query = "/profile/detail?socialLinked=" + enc(result.provider());
+            String query = "?socialLinked=" + enc(result.provider());
             if (mock) {
                 query += "&socialMock=1";
             }
-            return redirect(target.absoluteUrl(query));
+            if (FrontendReturnUrlResolver.NATIVE_CLIENT.equals(result.frontendClient())) {
+                return redirect(NATIVE_PROFILE_DETAIL + query);
+            }
+            FrontendReturnTarget target = frontendReturnUrlResolver.resolveStoredClient(result.frontendClient());
+            // 브라우저 반환 경로를 verified App Link와 분리한다. 앱이 설치된 모바일 브라우저에서도
+            // 웹 계정 연결 결과가 다른 네이티브 세션으로 가로채지지 않아야 한다.
+            return redirect(target.absoluteUrl(BROWSER_SOCIAL_LINK_CALLBACK_PATH + query));
         }
+        FrontendReturnTarget target = frontendReturnUrlResolver.resolveStoredClient(result.frontendClient());
         TokenResponse tokens = result.tokens();
-        String fragment = "/auth/callback#accessToken=" + enc(tokens.accessToken())
+        String fragment = BROWSER_OAUTH_CALLBACK_PATH + "#accessToken=" + enc(tokens.accessToken())
                 + "&refreshToken=" + enc(tokens.refreshToken())
                 + "&expiresIn=" + tokens.expiresIn();
         if (mock) {
             fragment += "&mockOAuth=1";
         }
         return redirect(target.absoluteUrl(fragment));
+    }
+
+    private ResponseEntity<Void> redirectOAuthFailure(OAuthCallbackContext context, String errorCode) {
+        String frontendClient = context != null ? context.frontendClient() : null;
+        if (FrontendReturnUrlResolver.NATIVE_CLIENT.equals(frontendClient)) {
+            if (context.socialLink()) {
+                return redirect(NATIVE_PROFILE_DETAIL + "?socialLinkError=" + enc(errorCode));
+            }
+            return redirect(NATIVE_OAUTH_CALLBACK + "?error=" + enc(errorCode));
+        }
+        FrontendReturnTarget target = frontendReturnUrlResolver.resolveStoredClient(frontendClient);
+        if (context != null && context.socialLink()) {
+            return redirect(target.absoluteUrl(
+                    BROWSER_SOCIAL_LINK_CALLBACK_PATH + "?socialLinkError=" + enc(errorCode)));
+        }
+        return redirect(target.absoluteUrl(BROWSER_OAUTH_CALLBACK_PATH + "?error=" + enc(errorCode)));
     }
 
     private ResponseEntity<Void> redirect(String url) {
