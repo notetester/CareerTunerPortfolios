@@ -16,7 +16,11 @@ import { Card, CardContent } from "@/app/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/app/components/ui/collapsible";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import { parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
+import {
+  formatAnalysisProvenanceSummary,
+  parseJsonArrayOrText,
+  parseJsonStringArray,
+} from "@/features/applications/types/analysis";
 import { VerifiedFactsList } from "@/features/applications/components/VerifiedFactsList";
 import {
   getAdminCompanyAnalyses,
@@ -736,6 +740,7 @@ function CompanyAnalysisDetail({
         <MetaBlock label="갱신 권장" value={formatDateTime(row.refreshRecommendedAt)} />
         <MetaBlock label="공고 revision" value={formatPostingRevision(row)} />
         <MetaBlock label="확정일" value={row.confirmedAt ? formatDateTime(row.confirmedAt) : "미확정"} />
+        <MetaBlock label="생성 모델" value={formatAnalysisProvenanceSummary(row)} />
       </div>
 
       <TagBlock title="경쟁사" items={parseJsonStringArray(row.competitors)} emptyLabel="경쟁사 미정" />

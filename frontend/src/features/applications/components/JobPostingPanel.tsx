@@ -239,12 +239,19 @@ export function JobPostingPanel({
                 업로드 및 추출
               </Button>
             )}
-            {extraction?.status === "FAILED" && onRetryExtraction && (
+            {/* 실패 복구뿐 아니라 성공한 파일 공고도 다른 OCR 모델로 다시 뽑을 수 있다(#3). URL/TEXT 는
+                OcrRetryButton 이 내부에서 숨긴다. 재추출 성공 시 새 revision 이 저장되고 기존 분석은 stale 처리된다. */}
+            {(extraction?.status === "FAILED" || extraction?.status === "SUCCEEDED") && onRetryExtraction && (
               <OcrRetryButton
                 sourceType={extraction.sourceType}
                 retrying={retryingExtraction}
                 onRetry={(provider) => void onRetryExtraction(provider)}
-                className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                label={extraction.status === "FAILED" ? "다시 추출" : "다른 모델로 재추출"}
+                className={
+                  extraction.status === "FAILED"
+                    ? "border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                    : undefined
+                }
               />
             )}
             {extractionReviewRequired && onReviewExtraction && (

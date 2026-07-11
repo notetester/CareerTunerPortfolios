@@ -35,5 +35,12 @@ public class AdminCompanyAnalysisRow {
     private LocalDateTime refreshRecommendedAt;
     private LocalDateTime confirmedAt;
     private String adminMemo;
+    // 모델 선택·실행 provenance (지원건별 모델 선택·재실행). 자동 초기 실행·strict 재분석만 채우고, 레거시 행은 NULL.
+    private String requestedProvider;
+    private String actualProvider;
+    private String actualModel;
+    private Boolean fallbackUsed;
+    private String attemptPath;
+    private String runMode;
     private LocalDateTime createdAt;
 }
