@@ -6,6 +6,19 @@
 
 ApiClient::ApiClient(QObject* parent) : QObject(parent) {}
 
+void ApiClient::setBaseUrl(const QString& url)
+{
+    if (url == m_baseUrl) return;
+
+    // 이전 호스트에서 진행 중인 인증/데이터 응답이 새 호스트 세션을 되살리지 않게 중단한다.
+    ++m_generation;
+    m_token.clear();
+    m_baseUrl = url;
+    const auto replies = m_nam.findChildren<QNetworkReply*>();
+    for (QNetworkReply* reply : replies)
+        reply->abort();
+}
+
 QNetworkRequest ApiClient::makeRequest(const QString& path) const
 {
     QNetworkRequest req{QUrl(m_baseUrl + path)};
@@ -81,10 +94,11 @@ void ApiClient::download(const QString& path, BytesCallback cb)
         req.setRawHeader("Authorization", QByteArray("Bearer ") + m_token.toUtf8());
 
     QNetworkReply* reply = m_nam.get(req);
-    connect(reply, &QNetworkReply::finished, this, [reply, cb = std::move(cb)]() {
+    const quint64 generation = m_generation;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation, cb = std::move(cb)]() {
         const QByteArray bytes = reply->readAll();
         const QString ctype = reply->header(QNetworkRequest::ContentTypeHeader).toString();
-        const bool ok = (reply->error() == QNetworkReply::NoError);
+        const bool ok = generation == m_generation && reply->error() == QNetworkReply::NoError;
         reply->deleteLater();
         if (cb) cb(ok, bytes, ctype);
     });
@@ -92,9 +106,15 @@ void ApiClient::download(const QString& path, BytesCallback cb)
 
 void ApiClient::handle(QNetworkReply* reply, JsonCallback cb)
 {
-    connect(reply, &QNetworkReply::finished, this, [reply, cb = std::move(cb)]() {
+    const quint64 generation = m_generation;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation, cb = std::move(cb)]() {
         const QByteArray raw = reply->readAll();
         reply->deleteLater();
+
+        if (generation != m_generation) {
+            if (cb) cb(false, QJsonValue(), QStringLiteral("서버가 변경되어 요청이 취소되었습니다."));
+            return;
+        }
 
         const QJsonObject root = QJsonDocument::fromJson(raw).object();
         // 공통 envelope: { success, code, message, data } — data 는 object 또는 array

@@ -13,6 +13,7 @@
     "test:native-oauth": "node --test scripts/test-native-oauth.mjs",
     "test:native-config": "node --test scripts/test-capacitor-config.mjs",
     "test:deep-link-runtime": "node --test scripts/test-deep-link-runtime.mjs",
+    "test:mobile-platform": "node scripts/test-mobile-platform.mjs",
     "dev:mock": "vite --mode mock",
     "build:mock": "vite build --mode mock",
     "dev:tailscale": "vite --mode tailscale",

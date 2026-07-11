@@ -69,3 +69,30 @@ target_link_libraries(CareerTunerDesktop PRIVATE
     Qt6::Widgets
     Qt6::Multimedia
 )
+
+include(CTest)
+if (BUILD_TESTING)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+    qt_add_executable(CareerTunerDesktopCoreTests
+        tests/DesktopCoreTests.cpp
+        core/ApiClient.h core/ApiClient.cpp
+        core/SettingsStore.h core/SettingsStore.cpp
+        core/PlannerOverlayController.h core/PlannerOverlayController.cpp
+    )
+    target_include_directories(CareerTunerDesktopCoreTests PRIVATE core)
+    target_link_libraries(CareerTunerDesktopCoreTests PRIVATE
+        Qt6::Test
+        Qt6::Network
+        Qt6::Widgets
+    )
+    if (WIN32)
+        target_link_libraries(CareerTunerDesktopCoreTests PRIVATE user32)
+    endif()
+    add_test(NAME CareerTunerDesktopCoreTests COMMAND CareerTunerDesktopCoreTests)
+    if (WIN32)
+        # 일반 PowerShell에서도 Qt DLL 탐색 오류 대화상자 없이 ctest를 바로 실행할 수 있게 한다.
+        set_tests_properties(CareerTunerDesktopCoreTests PROPERTIES
+            ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+        )
+    endif()
+endif()

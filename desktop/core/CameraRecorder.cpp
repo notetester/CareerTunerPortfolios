@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QMediaFormat>
 #include <QUrl>
 #include <QVideoSink>
@@ -55,6 +56,12 @@ CameraRecorder::CameraRecorder(QObject* parent) : QObject(parent)
     connect(&m_devices, &QMediaDevices::audioInputsChanged, this, &CameraRecorder::devicesChanged);
 }
 
+QString CameraRecorder::recordingDir()
+{
+    return QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+                           + QStringLiteral("/careertuner"));
+}
+
 bool CameraRecorder::cameraAvailable() const
 {
     return !QMediaDevices::videoInputs().isEmpty();
@@ -101,8 +108,8 @@ void CameraRecorder::start()
     if (!m_previewing) startPreview();
     if (!m_previewing) return; // 카메라 없음 — startPreview 가 이미 에러 발행
 
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-                        + QStringLiteral("/careertuner");
+    if (!m_outPath.isEmpty()) discard(m_outPath);
+    const QString dir = recordingDir();
     QDir().mkpath(dir);
     m_outPath = dir + QStringLiteral("/video-answer-%1.mp4")
                           .arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
@@ -128,4 +135,29 @@ void CameraRecorder::cancel()
     if (!m_recording) return;
     m_cancelled = true;
     m_recorder.stop();
+}
+
+bool CameraRecorder::discard(const QString& filePath)
+{
+    if (filePath.isEmpty()) return true;
+
+    const QFileInfo fileInfo(filePath);
+    const QString expectedDir = QDir::cleanPath(recordingDir());
+    const Qt::CaseSensitivity pathCase =
+#ifdef Q_OS_WIN
+        Qt::CaseInsensitive;
+#else
+        Qt::CaseSensitive;
+#endif
+    if (QDir::cleanPath(fileInfo.absolutePath()).compare(expectedDir, pathCase) != 0
+        || !fileInfo.fileName().startsWith(QStringLiteral("video-answer-"))
+        || fileInfo.suffix().compare(QStringLiteral("mp4"), Qt::CaseInsensitive) != 0) {
+        return false;
+    }
+
+    const QString absolutePath = QDir::cleanPath(fileInfo.absoluteFilePath());
+    const bool removed = !QFile::exists(absolutePath) || QFile::remove(absolutePath);
+    if (removed && QDir::cleanPath(m_outPath).compare(absolutePath, pathCase) == 0)
+        m_outPath.clear();
+    return removed;
 }

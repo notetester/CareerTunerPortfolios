@@ -18,6 +18,7 @@ import {
 } from "../api/interviewApi";
 import { getInterviewModeLabel } from "../types/interview";
 import type { InterviewQuestion, InterviewSession } from "../types/interview";
+import { restoreFailedDraft, rollbackOptimisticSubmission } from "../lib/mobileSubmission";
 import { ImmersiveVoiceOverlay } from "../components/mobile/ImmersiveVoiceOverlay";
 import { ImmersiveAvatarOverlay } from "../components/mobile/ImmersiveAvatarOverlay";
 import {
@@ -41,11 +42,12 @@ interface ScoreInfo {
   voiceScore: number | null;
   visualScore: number | null;
 }
-type ThreadItem =
+type ThreadItem = (
   | { kind: "question"; q: InterviewQuestion }
   | { kind: "answer"; text: string; hasAudio: boolean }
   | { kind: "score"; s: ScoreInfo }
-  | { kind: "scoring" };
+  | { kind: "scoring" }
+) & { submissionId?: string };
 
 export function MobileSessionThreadPage() {
   const { id } = useParams();
@@ -60,6 +62,7 @@ export function MobileSessionThreadPage() {
   const [generating, setGenerating] = useState(false);
   const [draft, setDraft] = useState("");
   const [scoring, setScoring] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [openModel, setOpenModel] = useState<Record<number, boolean>>({});
   const [openImproved, setOpenImproved] = useState<Record<number, boolean>>({});
@@ -182,13 +185,26 @@ export function MobileSessionThreadPage() {
     haptic("light");
     const qid = currentQ.id;
     const hadAudio = hasVoicePending;
+    const voiceScore = pendingVoiceScore.current;
+    const visualScore = pendingVisualScore.current;
+    const submissionId = `${qid}-${Date.now()}`;
+    setSubmissionError(null);
     setDraft("");
     setScoring(true);
-    setItems((prev) => [...prev, { kind: "answer", text, hasAudio: hadAudio }, { kind: "scoring" }]);
+    setItems((prev) => [
+      ...prev,
+      { kind: "answer", text, hasAudio: hadAudio, submissionId },
+      { kind: "scoring", submissionId },
+    ]);
+    let succeeded = false;
     try {
       const a = await submitAnswer(qid, { answerText: text });
       setItems((prev) => [
-        ...prev.filter((it) => it.kind !== "scoring"),
+        ...prev
+          .filter((it) => !(it.kind === "scoring" && it.submissionId === submissionId))
+          .map((it) => it.kind === "answer" && it.submissionId === submissionId
+            ? { ...it, submissionId: undefined }
+            : it),
         {
           kind: "score",
           s: {
@@ -197,20 +213,25 @@ export function MobileSessionThreadPage() {
             feedback: a.feedback,
             improvedAnswer: a.improvedAnswer,
             modelAnswer: null,
-            voiceScore: pendingVoiceScore.current,
-            visualScore: pendingVisualScore.current,
+            voiceScore,
+            visualScore,
           },
         },
       ]);
+      succeeded = true;
       toast(a.score != null ? `채점 완료 — ${a.score}점` : "답변이 저장되었습니다");
       haptic("medium");
     } catch {
-      setItems((prev) => prev.filter((it) => it.kind !== "scoring"));
-      toast("답변 제출에 실패했습니다");
+      setItems((prev) => rollbackOptimisticSubmission(prev, submissionId));
+      setDraft((current) => restoreFailedDraft(current, text));
+      setSubmissionError("전송되지 않았습니다. 답변을 보존했어요. 연결을 확인한 뒤 다시 보내주세요.");
+      toast("답변 제출에 실패했습니다 — 입력 내용을 보존했습니다");
     } finally {
-      pendingVoiceScore.current = null;
-      pendingVisualScore.current = null;
-      setHasVoicePending(false);
+      if (succeeded) {
+        pendingVoiceScore.current = null;
+        pendingVisualScore.current = null;
+        setHasVoicePending(false);
+      }
       setScoring(false);
     }
   };
@@ -296,7 +317,7 @@ export function MobileSessionThreadPage() {
     : "";
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-[#050506] text-[#EDEDEF]">
+    <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
       {/* 앰비언트 */}
       <div
         className="pointer-events-none absolute inset-0"
@@ -307,12 +328,12 @@ export function MobileSessionThreadPage() {
       />
       {/* 앱바 */}
       <div
-        className="relative flex h-[52px] shrink-0 items-center gap-2 border-b border-white/[0.06] px-3"
+        className="relative flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-3"
         style={{ marginTop: "env(safe-area-inset-top)" }}
       >
         <button
           onClick={() => navigate(-1)}
-          className="flex size-9 items-center justify-center rounded-lg text-[#8A8F98]"
+          className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-label="뒤로"
         >
           <ArrowLeft className="size-5" />
@@ -323,15 +344,15 @@ export function MobileSessionThreadPage() {
         <span
           className={`rounded-full border px-2.5 py-0.5 text-[11px] ${
             currentQ
-              ? "border-white/[0.06] bg-white/[0.05] text-[#d6a24c]"
-              : "border-white/[0.06] bg-white/[0.05] text-[#4cc38a]"
+              ? "border-border bg-muted text-amber-700 dark:text-[#d6a24c]"
+              : "border-border bg-muted text-emerald-700 dark:text-[#4cc38a]"
           }`}
         >
           {currentQ ? `${answeredCount}/${questionCount}` : "완료"}
         </span>
         <button
           onClick={() => void sendToDesktop()}
-          className="flex size-9 items-center justify-center rounded-lg text-[#8A8F98]"
+          className="flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-label="데스크탑으로 보내기"
           title="데스크탑으로 보내기"
         >
@@ -342,31 +363,31 @@ export function MobileSessionThreadPage() {
       {/* 스레드 */}
       <div ref={scrollRef} className="relative flex-1 overflow-y-auto px-4 pb-3">
         <div className="mx-auto max-w-xl">
-          <div className="my-3 flex items-center gap-2.5 text-[10.5px] text-[#8A8F98]">
-            <span className="h-px flex-1 bg-white/[0.06]" />
+          <div className="my-3 flex items-center gap-2.5 text-[10.5px] text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
             <span>
               {modeLabel}
               {session ? ` · 지원건 #${session.applicationCaseId}` : ""}
             </span>
-            <span className="h-px flex-1 bg-white/[0.06]" />
+            <span className="h-px flex-1 bg-border" />
           </div>
 
           {loading && (
-            <div className="flex items-center justify-center gap-3 py-14 text-[13px] text-[#8A8F98]">
-              <span className="size-4 animate-spin rounded-full border-2 border-white/10 border-t-[#5E6AD2]" />
+            <div className="flex items-center justify-center gap-3 py-14 text-[13px] text-muted-foreground">
+              <span className="size-4 animate-spin rounded-full border-2 border-border border-t-primary" />
               세션을 불러오는 중
             </div>
           )}
 
           {!loading && items.length === 0 && (
-            <div className="mt-8 rounded-2xl border border-white/[0.06] bg-white/[0.04] p-6 text-center">
+            <div className="mt-8 rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
               <div className="text-[14px] font-semibold">아직 질문이 없습니다</div>
-              <p className="mt-1.5 text-[12px] leading-relaxed text-[#8A8F98]">
+              <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground">
                 공고·지원건 분석을 반영해 예상 질문을 생성합니다.
               </p>
               <AiChargeCostBadge
                 featureType="INTERVIEW_QUESTION_GEN"
-                className="mx-auto mt-3 bg-white/[0.06] text-[#aab2ef]"
+                className="mx-auto mt-3 bg-accent text-primary"
               />
               <button
                 onClick={() => void generate()}
@@ -386,13 +407,13 @@ export function MobileSessionThreadPage() {
                     <Sparkles className="size-3.5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center gap-2 text-[10.5px] text-[#8A8F98]">
+                    <div className="mb-1 flex items-center gap-2 text-[10.5px] text-muted-foreground">
                       AI 면접관
                       <span
                         className={`rounded-full border px-2 py-px text-[10px] ${
                           it.q.parentQuestionId != null
-                            ? "border-[#5E6AD2]/30 bg-[#5E6AD2]/15 text-[#aab2ef]"
-                            : "border-white/[0.06] bg-white/[0.05] text-[#8A8F98]"
+                            ? "border-primary/30 bg-primary/10 text-primary dark:text-[#aab2ef]"
+                            : "border-border bg-muted text-muted-foreground"
                         }`}
                       >
                         {it.q.parentQuestionId != null ? "꼬리질문" : it.q.questionType || "질문"}
@@ -406,11 +427,11 @@ export function MobileSessionThreadPage() {
             if (it.kind === "answer") {
               return (
                 <div key={`a-${i}`} className="my-4 flex gap-3">
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.05] text-[11px] font-bold text-[#8A8F98]">
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-[11px] font-bold text-muted-foreground">
                     나
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center gap-2 text-[10.5px] text-[#8A8F98]">
+                    <div className="mb-1 flex items-center gap-2 text-[10.5px] text-muted-foreground">
                       내 답변
                       {it.hasAudio && (
                         <span className="flex items-center gap-1 text-[10px]">
@@ -418,7 +439,7 @@ export function MobileSessionThreadPage() {
                         </span>
                       )}
                     </div>
-                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.04] px-3.5 py-2.5 text-[13px] leading-relaxed shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                    <div className="rounded-xl border border-border bg-card px-3.5 py-2.5 text-[13px] leading-relaxed shadow-sm">
                       {it.text}
                     </div>
                   </div>
@@ -429,9 +450,9 @@ export function MobileSessionThreadPage() {
               return (
                 <div
                   key={`sc-${i}`}
-                  className="my-3 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.04] px-4 py-3 text-[12px] text-[#8A8F98]"
+                  className="my-3 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-[12px] text-muted-foreground shadow-sm"
                 >
-                  <span className="size-3.5 animate-spin rounded-full border-2 border-white/10 border-t-[#5E6AD2]" />
+                  <span className="size-3.5 animate-spin rounded-full border-2 border-border border-t-primary" />
                   답변 채점 중 — 내용·논리·직무적합 평가
                 </div>
               );
@@ -440,9 +461,9 @@ export function MobileSessionThreadPage() {
             return (
               <div
                 key={`s-${s.qid}-${i}`}
-                className="my-3 overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.04] shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_2px_20px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                className="my-3 overflow-hidden rounded-2xl border border-border bg-card shadow-sm dark:shadow-[0_2px_20px_rgba(0,0,0,0.35)]"
               >
-                <div className="flex items-center gap-3.5 border-b border-white/[0.06] px-4 py-3">
+                <div className="flex items-center gap-3.5 border-b border-border px-4 py-3">
                   <div className="flex size-11 shrink-0 items-center justify-center rounded-full border-2 border-[#5E6AD2] font-mono text-[14px] font-bold text-[#7d88de] shadow-[0_0_18px_rgba(94,106,210,0.2)]">
                     {s.score ?? "—"}
                   </div>
@@ -450,12 +471,12 @@ export function MobileSessionThreadPage() {
                     <div className="text-[13px] font-semibold">답변 평가</div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {s.voiceScore != null && (
-                        <span className="flex items-center gap-1 rounded-full border border-[#5E6AD2]/30 bg-[#5E6AD2]/15 px-2 py-px text-[10px] text-[#aab2ef]">
+                        <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-px text-[10px] text-primary dark:text-[#aab2ef]">
                           <Mic className="size-2.5" /> 전달력 {s.voiceScore}
                         </span>
                       )}
                       {s.visualScore != null && (
-                        <span className="flex items-center gap-1 rounded-full border border-[#5E6AD2]/30 bg-[#5E6AD2]/15 px-2 py-px text-[10px] text-[#aab2ef]">
+                        <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-px text-[10px] text-primary dark:text-[#aab2ef]">
                           <Camera className="size-2.5" /> 비언어 {s.visualScore}
                         </span>
                       )}
@@ -463,42 +484,42 @@ export function MobileSessionThreadPage() {
                   </div>
                 </div>
                 {s.feedback && (
-                  <div className="px-4 py-3 text-[12.5px] leading-relaxed text-[#EDEDEF]">{s.feedback}</div>
+                  <div className="px-4 py-3 text-[12.5px] leading-relaxed text-foreground">{s.feedback}</div>
                 )}
                 {openImproved[s.qid] && s.improvedAnswer && (
-                  <div className="mx-3.5 mb-2 rounded-lg bg-[#050506] px-3 py-2.5">
+                  <div className="mx-3.5 mb-2 rounded-lg bg-muted px-3 py-2.5">
                     <div className="mb-1 text-[11px] font-semibold text-[#4cc38a]">개선 답변 제안</div>
-                    <div className="text-[12px] leading-relaxed text-[#8A8F98]">{s.improvedAnswer}</div>
+                    <div className="text-[12px] leading-relaxed text-muted-foreground">{s.improvedAnswer}</div>
                   </div>
                 )}
                 {openModel[s.qid] && s.modelAnswer && (
-                  <div className="mx-3.5 mb-2 rounded-lg bg-[#050506] px-3 py-2.5">
+                  <div className="mx-3.5 mb-2 rounded-lg bg-muted px-3 py-2.5">
                     <div className="mb-1 text-[11px] font-semibold text-[#58a6ff]">모범답안</div>
-                    <div className="text-[12px] leading-relaxed text-[#8A8F98]">{s.modelAnswer}</div>
+                    <div className="text-[12px] leading-relaxed text-muted-foreground">{s.modelAnswer}</div>
                   </div>
                 )}
                 <AiChargeCostBadge
                   featureType="INTERVIEW_FOLLOWUP_GEN"
-                  className="mx-3 mb-2 bg-white/[0.06] text-[#aab2ef]"
+                  className="mx-3 mb-2 bg-accent text-primary"
                 />
                 <div className="flex flex-wrap gap-1.5 px-3.5 pb-3.5 pt-1">
                   <button
                     onClick={() => void showModelAnswer(s.qid)}
-                    className="rounded-lg border border-white/[0.06] px-3 py-1.5 text-[11.5px] font-medium text-[#EDEDEF]"
+                    className="rounded-lg border border-border px-3 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-accent"
                   >
                     {openModel[s.qid] ? "모범답안 접기" : "모범답안"}
                   </button>
                   {s.improvedAnswer && (
                     <button
                       onClick={() => setOpenImproved((p) => ({ ...p, [s.qid]: !p[s.qid] }))}
-                      className="rounded-lg border border-white/[0.06] px-3 py-1.5 text-[11.5px] font-medium text-[#EDEDEF]"
+                      className="rounded-lg border border-border px-3 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-accent"
                     >
                       {openImproved[s.qid] ? "개선 제안 접기" : "개선 제안"}
                     </button>
                   )}
                   <button
                     onClick={() => void followUp()}
-                    className="rounded-lg border border-white/[0.06] px-3 py-1.5 text-[11.5px] font-medium text-[#EDEDEF]"
+                    className="rounded-lg border border-border px-3 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-accent"
                   >
                     꼬리질문 받기
                   </button>
@@ -514,31 +535,42 @@ export function MobileSessionThreadPage() {
         className="relative shrink-0 px-3 pt-1"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 64px)" }}
       >
-        <div className="mx-auto max-w-xl rounded-2xl border border-white/[0.06] bg-[#0a0a0c] p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.02),0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.04)] focus-within:border-[#5E6AD2]/40 focus-within:shadow-[0_0_0_3px_rgba(94,106,210,0.12)]">
-          <AiChargeCostBadge
-            featureType="INTERVIEW_ANSWER_EVAL"
-            className="mb-2 bg-white/[0.06] text-[#aab2ef]"
-          />
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={
-              currentQ ? "답변을 입력하거나 마이크로 말하세요" : "모든 질문 완료 — 꼬리질문을 받아보세요"
-            }
-            disabled={!currentQ || scoring}
-            rows={1}
-            className="max-h-28 w-full resize-none bg-transparent px-1 pb-2 text-[13.5px] leading-relaxed text-[#EDEDEF] outline-none placeholder:text-[#8A8F98] disabled:opacity-50"
-            onInput={(e) => {
-              const el = e.currentTarget;
-              el.style.height = "auto";
-              el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
-            }}
-          />
-          <div className="flex items-center gap-1">
+        <div className="mx-auto max-w-xl">
+          {submissionError && (
+            <div
+              id="mobile-answer-submit-error"
+              role="alert"
+              className="mb-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] leading-relaxed text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+            >
+              {submissionError}
+            </div>
+          )}
+          <div className="rounded-2xl border border-border bg-card p-3 shadow-lg focus-within:border-primary/40 focus-within:shadow-[0_0_0_3px_rgba(94,106,210,0.12)]">
+            <AiChargeCostBadge
+              featureType="INTERVIEW_ANSWER_EVAL"
+              className="mb-2 bg-accent text-primary"
+            />
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              aria-describedby={submissionError ? "mobile-answer-submit-error" : undefined}
+              placeholder={
+                currentQ ? "답변을 입력하거나 마이크로 말하세요" : "모든 질문 완료 — 꼬리질문을 받아보세요"
+              }
+              disabled={!currentQ || scoring}
+              rows={1}
+              className="max-h-28 w-full resize-none bg-transparent px-1 pb-2 text-[13.5px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-50"
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
+              }}
+            />
+            <div className="flex items-center gap-1">
             <button
               onClick={() => openMedia("voice")}
               disabled={!currentQ || scoring}
-              className="flex size-8 items-center justify-center rounded-lg text-[#8A8F98] transition-colors hover:bg-white/[0.06] hover:text-[#EDEDEF] disabled:opacity-40"
+              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
               aria-label="음성 답변"
             >
               <Mic className="size-[17px]" />
@@ -546,17 +578,17 @@ export function MobileSessionThreadPage() {
             <button
               onClick={() => openMedia("avatar")}
               disabled={!currentQ || scoring}
-              className="flex size-8 items-center justify-center rounded-lg text-[#8A8F98] transition-colors hover:bg-white/[0.06] hover:text-[#EDEDEF] disabled:opacity-40"
+              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
               aria-label="화상 답변"
             >
               <Camera className="size-[17px]" />
             </button>
             {hasVoicePending && (
-              <span className="flex items-center gap-1 rounded-full border border-[#5E6AD2]/30 bg-[#5E6AD2]/15 px-2 py-0.5 text-[10px] text-[#aab2ef]">
+              <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] text-primary dark:text-[#aab2ef]">
                 <Check className="size-2.5" /> 음성 전사됨
               </span>
             )}
-            <span className="ml-1 rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-0.5 text-[10px] text-[#8A8F98]">
+            <span className="ml-1 rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
               {currentQ ? qLabel : "질문 없음"}
             </span>
             <button
@@ -567,6 +599,7 @@ export function MobileSessionThreadPage() {
             >
               <ArrowUp className="size-[17px]" />
             </button>
+            </div>
           </div>
         </div>
       </div>
@@ -574,7 +607,7 @@ export function MobileSessionThreadPage() {
       {/* 토스트 */}
       {toastMsg && (
         <div
-          className="absolute inset-x-4 z-[65] rounded-xl border border-white/10 bg-[#0a0a0c]/95 px-4 py-3 text-[12.5px] shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-md"
+          className="absolute inset-x-4 z-[65] rounded-xl border border-border bg-card/95 px-4 py-3 text-[12.5px] text-foreground shadow-[0_12px_40px_rgba(0,0,0,0.25)] backdrop-blur-md"
           style={{ top: "calc(env(safe-area-inset-top) + 60px)" }}
         >
           {toastMsg}

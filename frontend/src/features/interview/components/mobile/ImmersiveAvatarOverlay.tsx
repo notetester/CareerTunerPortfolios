@@ -10,6 +10,12 @@ import { computeVisualScore, VisualMetricsTracker } from "../../hooks/visualAnal
 import { BrowserSttTracker } from "../../hooks/speechToText";
 import { createNegotiatedRecorder } from "../../hooks/mediaSupport";
 import { scoreAvatarServer, transcribeVoice } from "../../api/interviewApi";
+import {
+  captureAppLockGeneration,
+  isAppLockGenerationCurrent,
+  keepStreamForAppLock,
+  onAppLockState,
+} from "@/platform/appLockEvents";
 
 /**
  * 몰입형 화상 답변 (모바일 풀스크린) — 카메라 프리뷰 전체화면 + 질문 오버레이.
@@ -67,6 +73,8 @@ export function ImmersiveAvatarOverlay({
 
   /** 스트림 시작(+플립 시 재시작 — 녹화도 새로 시작한다). */
   const startCapture = async (face: "user" | "environment") => {
+    const lockGeneration = captureAppLockGeneration();
+    if (lockGeneration === null) return;
     stopAll();
     setSeconds(0);
     try {
@@ -74,7 +82,7 @@ export function ImmersiveAvatarOverlay({
         video: { facingMode: face },
         audio: true,
       });
-      if (closedRef.current) {
+      if (closedRef.current || !keepStreamForAppLock(stream, lockGeneration)) {
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
@@ -95,7 +103,7 @@ export function ImmersiveAvatarOverlay({
       const { recorder, format } = createNegotiatedRecorder(stream, "video");
       formatRef.current = format;
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (isAppLockGenerationCurrent(lockGeneration) && e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.start();
       recorderRef.current = recorder;
@@ -128,6 +136,10 @@ export function ImmersiveAvatarOverlay({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => onAppLockState((locked) => {
+    if (locked) onClose();
+  }), [onClose]);
 
   const flip = () => {
     if (phase !== "recording") return;
