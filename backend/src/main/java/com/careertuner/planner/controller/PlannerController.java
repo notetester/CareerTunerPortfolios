@@ -36,6 +36,17 @@ import lombok.RequiredArgsConstructor;
 public class PlannerController {
 
     private final PlannerService plannerService;
+    private final com.careertuner.planner.service.PlannerICalService plannerICalService;
+
+    /** 플래너 일정 iCalendar(.ics) 내보내기 — 구글/애플/아웃룩 캘린더에 가져오기로 연동(단방향, OAuth 불요). */
+    @GetMapping(value = "/export.ics", produces = "text/calendar")
+    public org.springframework.http.ResponseEntity<String> exportIcs(@AuthenticationPrincipal AuthUser authUser) {
+        String ics = plannerICalService.export(authUser.id());
+        return org.springframework.http.ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"careertuner-planner.ics\"")
+                .header("Content-Type", "text/calendar; charset=UTF-8")
+                .body(ics);
+    }
 
     @GetMapping
     public ApiResponse<PlannerDashboardResponse> dashboard(

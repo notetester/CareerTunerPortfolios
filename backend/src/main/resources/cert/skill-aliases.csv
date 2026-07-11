@@ -1,0 +1,41 @@
+별칭,정규형
+js,javascript
+javascript,javascript
+ts,typescript
+typescript,typescript
+k8s,kubernetes
+kubernetes,kubernetes
+node,nodejs
+nodejs,nodejs
+node.js,nodejs
+py,python
+python,python
+golang,go
+reactjs,react
+react.js,react
+react,react
+vuejs,vue
+vue.js,vue
+vue,vue
+postgres,postgresql
+postgre,postgresql
+postgresql,postgresql
+mssql,mssqlserver
+ms sql,mssqlserver
+sql server,mssqlserver
+sqlserver,mssqlserver
+aws,aws
+amazon web services,aws
+gcp,gcp
+google cloud,gcp
+google cloud platform,gcp
+tailwind,tailwindcss
+tailwind css,tailwindcss
+tailwindcss,tailwindcss
+springboot,springboot
+spring boot,springboot
+k8s,kubernetes
+gha,githubactions
+github actions,githubactions
+ga4,googleanalytics
+google analytics,googleanalytics
