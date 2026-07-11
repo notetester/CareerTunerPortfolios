@@ -54,7 +54,7 @@ public class CareerTunerProperties {
          * 실 OAuth 키가 없는 개발/데모 환경에서 signed state 기반 mock OAuth 콜백을 허용한다.
          * 운영 프로파일은 false 로 덮어써서 실제 제공자 설정 누락을 숨기지 않는다.
          */
-        private boolean mockEnabled = true;
+        private boolean mockEnabled = false;
         private Provider kakao = new Provider();
         private Provider naver = new Provider();
         private Provider google = new Provider();

@@ -5,9 +5,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-# Qt 6.11+ : Quick(QML) · Network(HTTP/SSE) · Widgets(트레이) · Multimedia(음성 녹음)
-find_package(Qt6 6.11 REQUIRED COMPONENTS Quick QuickControls2 Network Widgets Multimedia)
-qt_standard_project_setup(REQUIRES 6.11)
+# Qt 6.8+ : Quick(QML) · Network(HTTP/SSE) · Widgets(트레이) · Multimedia(음성 녹음)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Quick QuickControls2 Network Widgets Multimedia)
+qt_standard_project_setup(REQUIRES 6.8)
 
 if (COMMAND qt_policy)
     qt_policy(SET QTP0004 NEW)
