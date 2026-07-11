@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.file.domain.FileAsset;
 import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
@@ -55,6 +56,54 @@ class InterviewServiceSoftDeleteTest {
                 backgroundExecutor,
                 notificationService,
                 fileService);
+    }
+
+    @Test
+    void deletingSessionReclaimsOnlyOwnedLinkedOriginalMedia() {
+        long userId = 1L;
+        long sessionId = 10L;
+        InterviewSession session = InterviewSession.builder()
+                .id(sessionId).applicationCaseId(100L).mode("BASIC").build();
+        InterviewAnswer answer = InterviewAnswer.builder().id(30L).questionId(20L).build();
+        FileAsset ownedAudio = FileAsset.builder()
+                .id(71L).ownerUserId(userId).kind("AUDIO")
+                .refType("INTERVIEW_ANSWER").refId(answer.getId()).build();
+        FileAsset foreignVideo = FileAsset.builder()
+                .id(72L).ownerUserId(99L).kind("VIDEO")
+                .refType("INTERVIEW_ANSWER").refId(answer.getId()).build();
+        FileAsset unrelatedKind = FileAsset.builder()
+                .id(73L).ownerUserId(userId).kind("ATTACHMENT")
+                .refType("INTERVIEW_ANSWER").refId(answer.getId()).build();
+        when(interviewMapper.findSessionByIdAndUserId(sessionId, userId)).thenReturn(session);
+        when(interviewMapper.findAnswersBySessionId(sessionId)).thenReturn(List.of(answer));
+        when(fileService.findLinkedFiles("INTERVIEW_ANSWER", answer.getId()))
+                .thenReturn(List.of(ownedAudio, foreignVideo, unrelatedKind));
+        when(interviewMapper.softDeleteSession(sessionId, userId)).thenReturn(1);
+
+        service.deleteSession(userId, sessionId);
+
+        verify(fileService).deleteOwnedLinked(
+                userId, 71L, "AUDIO", "INTERVIEW_ANSWER", answer.getId());
+        verify(fileService, never()).deleteOwnedLinked(
+                userId, 72L, "VIDEO", "INTERVIEW_ANSWER", answer.getId());
+        verify(fileService, never()).deleteOwnedLinked(
+                userId, 73L, "ATTACHMENT", "INTERVIEW_ANSWER", answer.getId());
+        verify(interviewMapper).softDeleteSession(sessionId, userId);
+    }
+
+    @Test
+    void deletingUnknownOrForeignSessionCannotProbeOrDeleteMedia() {
+        long userId = 1L;
+        long sessionId = 10L;
+        when(interviewMapper.findSessionByIdAndUserId(sessionId, userId)).thenReturn(null);
+
+        BusinessException error = catchThrowableOfType(
+                () -> service.deleteSession(userId, sessionId), BusinessException.class);
+
+        assertThat(error.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND);
+        verify(interviewMapper, never()).findAnswersBySessionId(sessionId);
+        verify(fileService, never()).findLinkedFiles(anyString(), any());
+        verify(interviewMapper, never()).softDeleteSession(sessionId, userId);
     }
 
     @Test

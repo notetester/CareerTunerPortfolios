@@ -6,6 +6,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -22,15 +24,19 @@ import com.careertuner.file.mapper.FileAssetMapper;
 @Service
 public class FileService {
 
+    private static final Logger log = LoggerFactory.getLogger(FileService.class);
     private static final Set<String> ALLOWED_KINDS =
             Set.of("AUDIO", "VIDEO", "RESUME", "PORTFOLIO", "POSTING", "ATTACHMENT");
 
     private final FileStorageService storageService;
     private final FileAssetMapper fileAssetMapper;
+    private final PendingFileCleanupWorker pendingFileCleanupWorker;
 
-    public FileService(FileStorageService storageService, FileAssetMapper fileAssetMapper) {
+    public FileService(FileStorageService storageService, FileAssetMapper fileAssetMapper,
+                       PendingFileCleanupWorker pendingFileCleanupWorker) {
         this.storageService = storageService;
         this.fileAssetMapper = fileAssetMapper;
+        this.pendingFileCleanupWorker = pendingFileCleanupWorker;
     }
 
     @Transactional
@@ -159,37 +165,37 @@ public class FileService {
      * 클라이언트 강제종료·오프라인으로 삭제 요청을 못 보낸 메신저 첨부를 제한 배치로 회수한다.
      * 최소 TTL 24시간과 최대 100건을 강제해 다른 장기 편집 파일 및 대량 삭제를 막는다.
      */
-    @Transactional
     public int cleanupStalePendingCollaborationAttachments(int olderThanHours, int requestedLimit) {
         int safeHours = Math.max(24, olderThanHours);
         int limit = Math.max(1, Math.min(100, requestedLimit));
         LocalDateTime cutoff = LocalDateTime.now().minusHours(safeHours);
         int deleted = 0;
         for (FileAsset asset : fileAssetMapper.findStalePendingCollaborationAttachments(cutoff, limit)) {
-            if (fileAssetMapper.deleteStalePendingCollaborationAttachment(
-                    asset.getId(), asset.getOwnerUserId(), cutoff) != 1) {
-                continue;
+            try {
+                if (pendingFileCleanupWorker.deleteStaleCollaborationAttachment(asset, cutoff)) {
+                    deleted++;
+                }
+            } catch (RuntimeException ex) {
+                log.warn("전송 대기 메신저 첨부 정리에 실패했습니다. fileId={}", asset.getId(), ex);
             }
-            deleteStored(asset);
-            deleted++;
         }
         return deleted;
     }
 
     /** 앱 강제 종료 등으로 답변에 연결되지 못한 음성·영상 원본만 제한 배치로 회수한다. */
-    @Transactional
     public int cleanupStalePendingInterviewMedia(int olderThanHours, int requestedLimit) {
         int safeHours = Math.max(24, olderThanHours);
         int limit = Math.max(1, Math.min(100, requestedLimit));
         LocalDateTime cutoff = LocalDateTime.now().minusHours(safeHours);
         int deleted = 0;
         for (FileAsset asset : fileAssetMapper.findStalePendingInterviewMedia(cutoff, limit)) {
-            if (fileAssetMapper.deleteStalePendingInterviewMedia(
-                    asset.getId(), asset.getOwnerUserId(), cutoff) != 1) {
-                continue;
+            try {
+                if (pendingFileCleanupWorker.deleteStaleInterviewMedia(asset, cutoff)) {
+                    deleted++;
+                }
+            } catch (RuntimeException ex) {
+                log.warn("전송 대기 면접 원본 정리에 실패했습니다. fileId={}", asset.getId(), ex);
             }
-            deleteStored(asset);
-            deleted++;
         }
         return deleted;
     }

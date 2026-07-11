@@ -110,6 +110,17 @@ public class InterviewServiceImpl implements InterviewService {
     @Override
     @Transactional
     public void deleteSession(Long userId, Long sessionId) {
+        requireSession(userId, sessionId);
+        for (InterviewAnswer answer : interviewMapper.findAnswersBySessionId(sessionId)) {
+            for (FileAsset asset : fileService.findLinkedFiles("INTERVIEW_ANSWER", answer.getId())) {
+                if (!userId.equals(asset.getOwnerUserId())
+                        || !("AUDIO".equals(asset.getKind()) || "VIDEO".equals(asset.getKind()))) {
+                    continue;
+                }
+                fileService.deleteOwnedLinked(
+                        userId, asset.getId(), asset.getKind(), "INTERVIEW_ANSWER", answer.getId());
+            }
+        }
         int updated = interviewMapper.softDeleteSession(sessionId, userId);
         if (updated == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "삭제할 면접 기록을 찾을 수 없습니다.");

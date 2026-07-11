@@ -24,7 +24,8 @@ class FileServiceTest {
 
     private final FileStorageService storage = mock(FileStorageService.class);
     private final FileAssetMapper mapper = mock(FileAssetMapper.class);
-    private final FileService service = new FileService(storage, mapper);
+    private final PendingFileCleanupWorker cleanupWorker = mock(PendingFileCleanupWorker.class);
+    private final FileService service = new FileService(storage, mapper, cleanupWorker);
 
     @Test
     void removesStoredBytesWhenMetadataInsertFails() {
@@ -112,20 +113,20 @@ class FileServiceTest {
         when(mapper.findStalePendingCollaborationAttachments(
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100)))
                 .thenReturn(List.of(deletable, claimedDuringCleanup));
-        when(mapper.deleteStalePendingCollaborationAttachment(
-                org.mockito.ArgumentMatchers.eq(21L), org.mockito.ArgumentMatchers.eq(7L),
-                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(1);
-        when(mapper.deleteStalePendingCollaborationAttachment(
-                org.mockito.ArgumentMatchers.eq(22L), org.mockito.ArgumentMatchers.eq(7L),
-                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(0);
+        when(cleanupWorker.deleteStaleCollaborationAttachment(
+                org.mockito.ArgumentMatchers.same(deletable),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(true);
+        when(cleanupWorker.deleteStaleCollaborationAttachment(
+                org.mockito.ArgumentMatchers.same(claimedDuringCleanup),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(false);
 
         int deleted = service.cleanupStalePendingCollaborationAttachments(1, 1000);
 
         org.assertj.core.api.Assertions.assertThat(deleted).isEqualTo(1);
-        verify(storage).delete("7/file-21");
-        verify(storage, never()).delete("7/file-22");
         ArgumentCaptor<LocalDateTime> cutoff = ArgumentCaptor.forClass(LocalDateTime.class);
         verify(mapper).findStalePendingCollaborationAttachments(cutoff.capture(), org.mockito.ArgumentMatchers.eq(100));
+        verify(cleanupWorker).deleteStaleCollaborationAttachment(deletable, cutoff.getValue());
+        verify(cleanupWorker).deleteStaleCollaborationAttachment(claimedDuringCleanup, cutoff.getValue());
         org.assertj.core.api.Assertions.assertThat(cutoff.getValue())
                 .isBeforeOrEqualTo(LocalDateTime.now().minusHours(24))
                 .isAfter(LocalDateTime.now().minusHours(25));
@@ -151,18 +152,22 @@ class FileServiceTest {
         when(mapper.findStalePendingInterviewMedia(
                 org.mockito.ArgumentMatchers.any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100)))
                 .thenReturn(List.of(audio, claimed));
-        when(mapper.deleteStalePendingInterviewMedia(
-                org.mockito.ArgumentMatchers.eq(32L), org.mockito.ArgumentMatchers.eq(7L),
-                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(1);
-        when(mapper.deleteStalePendingInterviewMedia(
-                org.mockito.ArgumentMatchers.eq(33L), org.mockito.ArgumentMatchers.eq(7L),
-                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(0);
+        when(cleanupWorker.deleteStaleInterviewMedia(
+                org.mockito.ArgumentMatchers.same(audio),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(true);
+        when(cleanupWorker.deleteStaleInterviewMedia(
+                org.mockito.ArgumentMatchers.same(claimed),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(false);
 
         int deleted = service.cleanupStalePendingInterviewMedia(2, 500);
 
         org.assertj.core.api.Assertions.assertThat(deleted).isEqualTo(1);
-        verify(storage).delete("7/file-32");
-        verify(storage, never()).delete("7/file-33");
+        verify(cleanupWorker).deleteStaleInterviewMedia(
+                org.mockito.ArgumentMatchers.same(audio),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class));
+        verify(cleanupWorker).deleteStaleInterviewMedia(
+                org.mockito.ArgumentMatchers.same(claimed),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class));
     }
 
     @Test
