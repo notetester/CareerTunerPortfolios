@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import type { BAnalysisFailureLog } from "../types/analysis";
 import { formatKoreaDateTime } from "../utils/dateFormat";
@@ -5,6 +6,9 @@ import { formatKoreaDateTime } from "../utils/dateFormat";
 interface AnalysisFailureNoticeProps {
   failures: BAnalysisFailureLog[];
   featureType: string;
+  /** 재시도 진입점. strict 재분석은 provider picker 를 넣어 실패 화면에서도 모델을 고르게 한다. */
+  retryAction?: ReactNode;
+  /** (레거시) 단순 재시도 버튼. retryAction 이 있으면 그것이 우선한다. */
   onRetry?: () => void;
   retrying?: boolean;
   retryLabel?: string;
@@ -54,6 +58,7 @@ function displayMessage(failure: BAnalysisFailureLog, featureType: string): stri
 export function AnalysisFailureNotice({
   failures,
   featureType,
+  retryAction,
   onRetry,
   retrying = false,
   retryLabel = "다시 시도",
@@ -67,7 +72,7 @@ export function AnalysisFailureNotice({
         <AlertCircle className="size-4" />
         <span>최근 실패</span>
         <span className="text-xs font-medium text-amber-700">{formatKoreaDateTime(failure.createdAt)}</span>
-        {onRetry && (
+        {retryAction ?? (onRetry && (
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-card px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -77,7 +82,7 @@ export function AnalysisFailureNotice({
             {retrying ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
             {retryLabel}
           </button>
-        )}
+        ))}
         <span className="rounded-full bg-card px-2 py-0.5 text-xs text-amber-700">재시도 가능</span>
       </div>
       <p className="mt-1 whitespace-pre-line leading-6">{displayMessage(failure, featureType)}</p>

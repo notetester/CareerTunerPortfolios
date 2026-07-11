@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import com.careertuner.admin.permission.annotation.AdminRoleOnly;
 import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.permission.service.EffectivePermissionService;
 import com.careertuner.common.exception.BusinessException;
@@ -40,11 +41,6 @@ public class AdminPermissionInterceptor implements HandlerInterceptor {
         if (!(handler instanceof HandlerMethod handlerMethod)) {
             return true;
         }
-        RequireAdminPermission required = resolveAnnotation(handlerMethod);
-        if (required == null || required.value().length == 0) {
-            return true;
-        }
-
         AuthUser authUser = currentAuthUser();
         if (authUser == null) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 권한이 필요합니다.");
@@ -54,6 +50,14 @@ public class AdminPermissionInterceptor implements HandlerInterceptor {
         }
         if (!"ADMIN".equals(authUser.role())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 권한이 필요합니다.");
+        }
+        if (isRoleOnly(handlerMethod)) {
+            return true;
+        }
+        RequireAdminPermission required = resolveAnnotation(handlerMethod);
+        if (required == null || required.value().length == 0) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "관리자 API에 필요한 세부 권한 정책이 선언되지 않았습니다.");
         }
         if (!effectivePermissionService.hasAny(authUser.id(), required.value())) {
             throw new BusinessException(ErrorCode.FORBIDDEN,
@@ -80,6 +84,18 @@ public class AdminPermissionInterceptor implements HandlerInterceptor {
             return onMethod;
         }
         return handlerMethod.getBeanType().getAnnotation(RequireAdminPermission.class);
+    }
+
+    private boolean isRoleOnly(HandlerMethod handlerMethod) {
+        AdminRoleOnly onMethod = handlerMethod.getMethodAnnotation(AdminRoleOnly.class);
+        if (onMethod != null) {
+            return true;
+        }
+        // 메서드의 세부 권한 선언이 클래스 role-only 기본값보다 우선한다.
+        if (handlerMethod.getMethodAnnotation(RequireAdminPermission.class) != null) {
+            return false;
+        }
+        return handlerMethod.getBeanType().getAnnotation(AdminRoleOnly.class) != null;
     }
 
     private AuthUser currentAuthUser() {

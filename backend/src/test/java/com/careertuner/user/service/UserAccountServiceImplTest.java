@@ -129,7 +129,7 @@ class UserAccountServiceImplTest {
         ArgumentCaptor<EmailVerification> captor = ArgumentCaptor.forClass(EmailVerification.class);
 
         FrontendReturnTarget target = new FrontendReturnTarget(
-                "sites", "https://careertuner-backup.career-tuner-4654.chatgpt.site");
+                "sites", "https://careertuner.career-tuner-4654.chatgpt.site");
         service.requestEmailRegistration(1L, " New@Example.COM ", target);
 
         verify(authMapper).insertEmailVerification(captor.capture());

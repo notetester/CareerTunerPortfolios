@@ -1,5 +1,7 @@
 package com.careertuner.admin.securityops.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/security")
+@RequireAdminPermission({"SECURITY_LOG_READ", "AUDIT_ADMIN"})
 @RequiredArgsConstructor
 public class AdminSecurityOpsController {
 
@@ -46,6 +49,7 @@ public class AdminSecurityOpsController {
 
     /** 런타임 차단 캐시를 DB 와 수동 재동기화. */
     @PostMapping("/block-cache/sync")
+    @RequireAdminPermission({"BLOCK_MANAGE"})
     public ApiResponse<AdminSecurityOpsService.BlockCacheStatus> syncBlockCache(
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.syncBlockCache(authUser));
@@ -60,6 +64,7 @@ public class AdminSecurityOpsController {
 
     /** WAF 동기화 큐를 즉시 처리(수동 드레인). 처리 건수를 반환. */
     @PostMapping("/waf-sync/process")
+    @RequireAdminPermission({"BLOCK_MANAGE"})
     public ApiResponse<Integer> processWafSync(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.processWafSyncNow(authUser));
     }
@@ -75,6 +80,7 @@ public class AdminSecurityOpsController {
     }
 
     @PostMapping("/block-rules")
+    @RequireAdminPermission({"BLOCK_MANAGE"})
     public ApiResponse<SecurityBlockRuleRow> createBlockRule(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody SecurityBlockRuleRequest request) {
@@ -82,6 +88,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/block-rules/{id}")
+    @RequireAdminPermission({"BLOCK_MANAGE"})
     public ApiResponse<SecurityBlockRuleRow> updateBlockRule(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -90,6 +97,7 @@ public class AdminSecurityOpsController {
     }
 
     @PostMapping("/block-rules/{id}/waf-sync")
+    @RequireAdminPermission({"BLOCK_MANAGE"})
     public ApiResponse<SecurityBlockRuleRow> queueWafSync(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -124,6 +132,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/providers/{providerCode}")
+    @RequireAdminPermission({"POLICY_MANAGE"})
     public ApiResponse<SecurityProviderConfigRow> updateProvider(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable String providerCode,
@@ -132,6 +141,7 @@ public class AdminSecurityOpsController {
     }
 
     @PostMapping("/providers/{providerCode}/health-check")
+    @RequireAdminPermission({"POLICY_MANAGE"})
     public ApiResponse<SecurityProviderConfigRow> healthCheck(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable String providerCode) {
@@ -149,6 +159,7 @@ public class AdminSecurityOpsController {
     }
 
     @PostMapping("/reviews")
+    @RequireAdminPermission({"BLOCK_MANAGE"})
     public ApiResponse<SecurityReviewRow> createReview(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody SecurityReviewRequest request) {
@@ -156,6 +167,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/reviews/{id}")
+    @RequireAdminPermission({"BLOCK_MANAGE"})
     public ApiResponse<SecurityReviewRow> updateReview(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -169,6 +181,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/appeal-policy")
+    @RequireAdminPermission({"POLICY_MANAGE"})
     public ApiResponse<SecurityAppealPolicyRow> updateAppealPolicy(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody SecurityAppealPolicyRequest request) {
@@ -185,6 +198,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/appeals/{id}")
+    @RequireAdminPermission({"BLOCK_MANAGE"})
     public ApiResponse<SecurityAppealRow> decideAppeal(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,

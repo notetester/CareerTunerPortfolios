@@ -1,6 +1,7 @@
 package com.careertuner.applicationcase.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -1363,6 +1364,66 @@ class BAnalysisGenerationServiceTest {
                 "OpenAI 기업 요약", "확인 불가", "IT 서비스", "[]",
                 "면접 준비 포인트", "[]", "[]", "[]", "[]",
                 new OpenAiResponsesClient.Usage(model, 1, 1, 2));
+    }
+
+    // ── strict 생성: 단일 provider·LOCAL 재시도·교차 provider/self-rules 미진입·실패 throw ──
+
+    @Test
+    void generateJobAnalysisStrictLocalRetriesRecordAllLocalAttempts() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test");
+        properties.getLocalLlm().setMaxRetries(1); // 1 재시도 → 최대 2회, 전부 LOCAL
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any()))
+                .thenThrow(new RuntimeException("first attempt fails"))
+                .thenReturn(validJobJson());
+        BAnalysisGenerationService service = service(properties, localLlmClient);
+
+        BAnalysisGenerationService.StrictJobResult result = service.generateJobAnalysisStrict(
+                applicationCase(), "Java Spring Boot Docker 백엔드 개발 경험 필수", BAnalysisProvider.LOCAL);
+
+        assertThat(result.attempts()).containsExactly(BAnalysisProvider.LOCAL, BAnalysisProvider.LOCAL);
+        assertThat(BAnalysisProvider.toAttemptPathJson(result.attempts())).isEqualTo("[\"LOCAL\",\"LOCAL\"]");
+    }
+
+    @Test
+    void generateJobAnalysisStrictThrowsWithoutSelfRulesOrCrossProviderFallback() {
+        BAnalysisProperties properties = new BAnalysisProperties();
+        properties.getLocalLlm().setEnabled(true);
+        properties.getLocalLlm().setModel("qwen-test"); // maxRetries 기본 0 → 단일 시도
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        when(localLlmClient.chat(anyString(), anyString(), any())).thenThrow(new RuntimeException("local down"));
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        OpenAiResponsesClient openAiResponsesClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiResponsesClient);
+
+        assertThatThrownBy(() -> service.generateJobAnalysisStrict(
+                applicationCase(), "Java Spring Boot posting", BAnalysisProvider.LOCAL))
+                .isInstanceOf(RuntimeException.class);
+
+        // 안전망(self-rules)·교차 provider 폴백 없음 — Claude·OpenAI 미호출.
+        verify(anthropicClient, never()).chat(anyString(), anyString(), any());
+        verify(openAiResponsesClient, never()).analyzeJobPosting(any(), any());
+    }
+
+    @Test
+    void generateJobAnalysisStrictClaudeUsesOnlySelectedProvider() {
+        BAnalysisProperties properties = new BAnalysisProperties(); // LOCAL 비활성이어도 strict 는 선택 provider 만 본다
+        BLocalLlmClient localLlmClient = mock(BLocalLlmClient.class);
+        BAnthropicClient anthropicClient = mock(BAnthropicClient.class);
+        when(anthropicClient.configured()).thenReturn(true);
+        when(anthropicClient.model()).thenReturn("claude-haiku");
+        when(anthropicClient.chat(anyString(), anyString(), any())).thenReturn(validJobJson());
+        OpenAiResponsesClient openAiResponsesClient = mock(OpenAiResponsesClient.class);
+        BAnalysisGenerationService service = service(properties, localLlmClient, anthropicClient, openAiResponsesClient);
+
+        BAnalysisGenerationService.StrictJobResult result = service.generateJobAnalysisStrict(
+                applicationCase(), "Java Spring Boot Docker 백엔드 개발", BAnalysisProvider.CLAUDE);
+
+        assertThat(result.attempts()).containsExactly(BAnalysisProvider.CLAUDE);
+        verify(localLlmClient, never()).chat(anyString(), anyString(), any());
+        verify(openAiResponsesClient, never()).analyzeJobPosting(any(), any());
     }
 
     private static String validJobJson() {

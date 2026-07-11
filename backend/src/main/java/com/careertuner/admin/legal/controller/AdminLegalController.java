@@ -19,6 +19,7 @@ import com.careertuner.admin.legal.dto.PublishLegalRequest;
 import com.careertuner.admin.legal.dto.PublishLegalResponse;
 import com.careertuner.admin.legal.dto.SaveLegalDraftRequest;
 import com.careertuner.admin.legal.service.AdminLegalService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -30,6 +31,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/legal")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN", "POLICY_MANAGE", "POLICY_ADMIN"})
 @RequiredArgsConstructor
 public class AdminLegalController {
 

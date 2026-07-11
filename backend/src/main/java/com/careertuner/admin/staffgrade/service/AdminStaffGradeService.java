@@ -88,6 +88,7 @@ public class AdminStaffGradeService {
     @Transactional
     public AdminStaffGradeRow upsert(AuthUser authUser, Long userId, AdminStaffGradeUpsertRequest req) {
         AdminAccess.requireSuperAdmin(authUser);
+        requireAdminTargetForUpdate(userId);
         AdminStaffGradeRow existingRow = mapper.findRowByUserId(userId);
         if (existingRow == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "등급을 배정할 사용자를 찾을 수 없습니다.");
@@ -142,6 +143,7 @@ public class AdminStaffGradeService {
                 skipped++;
                 continue;
             }
+            requireAdminTargetForUpdate(row.getUserId());
             AdminStaffGrade old = mapper.findByUserId(row.getUserId());
             AdminStaffGrade next = AdminStaffGrade.builder()
                     .userId(row.getUserId())
@@ -235,7 +237,7 @@ public class AdminStaffGradeService {
         } else {
             Long userId = mapper.findUserIdByEmail(row.getEmail().trim());
             if (userId == null) {
-                err.append("존재하지 않는 email. ");
+                err.append("존재하지 않거나 관리자 역할이 아닌 email. ");
             } else {
                 row.setUserId(userId);
             }
@@ -293,6 +295,14 @@ public class AdminStaffGradeService {
                 .source(source)
                 .memo(blankToNull(memo))
                 .build());
+    }
+
+    private void requireAdminTargetForUpdate(Long userId) {
+        String role = mapper.findUserRoleForUpdate(userId);
+        if (!"ADMIN".equals(role) && !"SUPER_ADMIN".equals(role)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "직원 등급·급여는 현재 관리자 역할인 계정에만 배정할 수 있습니다.");
+        }
     }
 
     private String toJson(Object value) {

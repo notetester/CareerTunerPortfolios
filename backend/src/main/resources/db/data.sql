@@ -1,13 +1,15 @@
 -- =====================================================================
---  CareerTuner — 개발용 샘플 데이터
+--  CareerTuner — 개발/demo 전용 샘플 데이터
 --  ※ 최초 1회(빈 DB) 적용 가정. 회원/소셜/프로필은 INSERT IGNORE 로 재실행 안전,
 --    도메인 샘플(지원 건 등)은 재실행 시 중복될 수 있다.
 --  ※ 비밀번호 계정 공통 비번: "Career1234!"  (BCrypt 해시는 spring-security-crypto 로 생성)
+--  ※ 알려진 비밀번호의 SUPER_ADMIN이 포함되므로 운영 DB에는 절대 적용하지 않는다.
+--     운영 bootstrap은 별도 one-time 계정 생성/승격 절차와 운영 비밀값을 사용한다.
 -- =====================================================================
 
 -- 회원 ---------------------------------------------------------------
 INSERT IGNORE INTO users (email, password, password_enabled, name, email_verified, user_type, role, status, plan, credit) VALUES
- ('admin@careertuner.dev',       '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '관리자',  1, 'JOB_SEEKER',     'ADMIN', 'ACTIVE', 'PRO',   999),
+ ('admin@careertuner.dev',       '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '관리자',  1, 'JOB_SEEKER',     'SUPER_ADMIN', 'ACTIVE', 'PRO',   999),
  ('jiwon.kim@careertuner.dev',   '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '김지원',  1, 'JOB_SEEKER',     'USER',  'ACTIVE', 'FREE',  10),
  ('seoyeon.lee@careertuner.dev', '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '이서연',  1, 'CAREER_CHANGER', 'USER',  'ACTIVE', 'BASIC', 30),
  ('minsu.park@careertuner.dev',  NULL,                                                           0, '박민수',  1, 'JOB_SEEKER',     'USER',  'ACTIVE', 'FREE',  5),

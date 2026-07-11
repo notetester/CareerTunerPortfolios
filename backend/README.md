@@ -14,10 +14,17 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 ## 사전 준비
 
 - JDK 21
-- MySQL 8 — 개발은 할당받은 **`team1_db`** 사용. 스키마/시드 적용(최초 1회):
-  `src/main/resources/db/schema.sql` → `src/main/resources/db/data.sql` 순서로 실행(IntelliJ Database 콘솔 권장).
-- 기존 DB를 갱신할 때는 코드 배포 전에 필요한 `src/main/resources/db/patches/*.sql`을 적용한다. Sites 반환
+- MySQL 8 — 공유 개발·AWS 환경은 할당받은 **`team1_db`**를 사용하며 기존 DB에는 필요한 patch만 적용한다.
+- 외부에 연결되지 않은 로컬/demo DB를 처음 만들 때만
+  `src/main/resources/db/schema.sql` → `src/main/resources/db/data.sql` 순서로 실행한다(IntelliJ Database 콘솔 권장).
+  `data.sql`에는 공통 비밀번호의 개발용 `SUPER_ADMIN`이 있으므로 `team1_db`와 운영 DB에는 적용하지 않는다.
+  운영 관리자는 별도 one-time bootstrap 절차와 운영 비밀값으로 생성·승격한다.
+- 기존 DB를 갱신할 때는 배포 절차에 명시된 `src/main/resources/db/patches/*.sql`을 적용한다. Sites 반환
   주소 연동에는 `20260711_auth_frontend_return_client.sql`이 필요하며, 기존 이메일 토큰은 `primary`로 호환된다.
+- 관리자 경계 정합 보정은 애플리케이션 쓰기를 멈춘 뒤
+  `20260711_admin_active_assignment_unique.sql` → `20260711_admin_seed_role_reconciliation.sql` 순서로 적용한다.
+  후자는 고정 id+email 검증을 통과한 공유 DB seed 5개를 모두 `USER`로 복구한다.
+  seed 외 ACTIVE `SUPER_ADMIN`이 최소 1명 없으면 실패하며 seed 외 관리자 계정은 수정하지 않는다.
 
 ## 실행
 
@@ -282,14 +289,23 @@ MySQL `JSON` 컬럼은 초기에는 Java `String`으로 매핑한다. 예를 들
 이 방식은 MyBatis `TypeHandler` 없이 MVP를 빠르게 붙이기 위한 결정이다. 프런트/백엔드에서 구조화된 조작이
 많아지는 시점에 Jackson 기반 `JsonTypeHandler`를 추가하고 `List<String>` 또는 전용 DTO로 전환한다.
 
-### 시드 계정 (공통 비밀번호 `Career1234!`)
+### 개발/demo 시드 계정 (공통 비밀번호 `Career1234!`)
+
+> 아래 계정은 로컬·팀 개발 DB 전용이다. 알려진 비밀번호의 `SUPER_ADMIN`이 포함되므로
+> 운영 DB에 `data.sql`을 적용하거나 운영 bootstrap 계정으로 재사용하지 않는다.
 
 | 이메일 | 비고 |
 | --- | --- |
-| `admin@careertuner.dev` | ADMIN |
+| `admin@careertuner.dev` | SUPER_ADMIN — 개발/demo bootstrap 전용 |
 | `jiwon.kim@careertuner.dev` · `seoyeon.lee@careertuner.dev` | USER, 이메일 인증됨 |
 | `pending@careertuner.dev` | 이메일 미인증 상태 |
 | `minsu.park@careertuner.dev` | **소셜(카카오) 전용** — 비밀번호 로그인 불가 |
+
+공개 AWS와 함께 쓰는 공유 DB의 seed role이 드리프트했다면, 관리자 role/status를 매 요청 재검증하는 백엔드가 배포된 뒤
+`20260711_admin_seed_role_reconciliation.sql`을 적용한다. 패치가 반환하는 5행이 모두
+`USER`이고 활성 권한·그룹이 모두 0인지 확인한다. 로컬/demo의 `data.sql`은 이와 달리
+독립 시연을 위해 admin을 `SUPER_ADMIN`으로 최초 생성하며 공유·운영 DB에는 적용하지 않는다. 역할 보정 패치는 활성 refresh token도
+최초 1회 회수하므로 적용 후 다시 로그인해야 한다.
 
 ## 패키지 구조
 

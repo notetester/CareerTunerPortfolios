@@ -1,5 +1,7 @@
 package com.careertuner.admin.correction.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 @Validated
 @RestController
 @RequestMapping("/api/admin/corrections")
+@RequireAdminPermission({"ANALYSIS_READ", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminCorrectionController {
 
@@ -68,6 +71,7 @@ public class AdminCorrectionController {
     }
 
     @PutMapping("/{id}/memo")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<Void> updateMemo(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,

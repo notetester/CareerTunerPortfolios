@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.community.dto.AdminPostStatusRequest;
 import com.careertuner.admin.ops.dto.AdminActionLogCreate;
 import com.careertuner.admin.ops.mapper.AdminActionLogMapper;
@@ -27,6 +28,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api/admin/community/posts")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
 @RequiredArgsConstructor
 public class AdminCommunityPostController {
 

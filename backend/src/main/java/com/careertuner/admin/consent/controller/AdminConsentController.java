@@ -12,11 +12,13 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.dto.ConsentView;
 import com.careertuner.consent.service.ConsentService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/consents")
+@RequireAdminPermission({"CONSENT_READ", "MEMBER_ADMIN"})
 @RequiredArgsConstructor
 public class AdminConsentController {
 

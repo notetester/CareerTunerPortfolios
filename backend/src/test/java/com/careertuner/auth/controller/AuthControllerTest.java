@@ -27,7 +27,7 @@ class AuthControllerTest {
     private final FrontendReturnTarget primary =
             new FrontendReturnTarget("primary", "https://careertuner.kro.kr");
     private final FrontendReturnTarget sites = new FrontendReturnTarget(
-            "sites", "https://careertuner-backup.career-tuner-4654.chatgpt.site");
+            "sites", "https://careertuner.career-tuner-4654.chatgpt.site");
 
     @BeforeEach
     void setUp() {
@@ -43,7 +43,7 @@ class AuthControllerTest {
                 "google", null, "signed-state", "access_denied", request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner-backup.career-tuner-4654.chatgpt.site/auth/callback"
+                "https://careertuner.career-tuner-4654.chatgpt.site/auth/callback"
                         + "?error=social_login_cancelled");
         verify(authService, never()).handleOAuthCallback(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),

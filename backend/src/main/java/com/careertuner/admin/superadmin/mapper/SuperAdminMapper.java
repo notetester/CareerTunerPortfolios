@@ -44,13 +44,13 @@ public interface SuperAdminMapper {
 
     void updateRole(@Param("userId") Long userId, @Param("role") String role);
 
-    void insertPermission(@Param("code") String code, @Param("displayName") String displayName,
-                          @Param("description") String description, @Param("actorId") Long actorId);
+    int updatePermissionMetadata(@Param("code") String code, @Param("displayName") String displayName,
+                                 @Param("description") String description, @Param("actorId") Long actorId);
 
     void togglePermission(@Param("code") String code, @Param("active") boolean active, @Param("actorId") Long actorId);
 
-    void insertGroup(@Param("code") String code, @Param("displayName") String displayName,
-                     @Param("description") String description, @Param("actorId") Long actorId);
+    int updateGroupMetadata(@Param("code") String code, @Param("displayName") String displayName,
+                            @Param("description") String description, @Param("actorId") Long actorId);
 
     void toggleGroup(@Param("code") String code, @Param("active") boolean active, @Param("actorId") Long actorId);
 

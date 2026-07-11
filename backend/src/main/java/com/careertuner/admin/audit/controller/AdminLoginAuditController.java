@@ -1,5 +1,7 @@
 package com.careertuner.admin.audit.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
@@ -26,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 /** 로그인 감사 그리드 API — 조회 전용(목록 + 내보내기). */
 @RestController
 @RequestMapping("/api/admin/audit/logins")
+@RequireAdminPermission({"SECURITY_LOG_READ", "AUDIT_ADMIN"})
 @RequiredArgsConstructor
 public class AdminLoginAuditController {
 

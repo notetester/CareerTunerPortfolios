@@ -1,5 +1,7 @@
 package com.careertuner.admin.companyanalysis.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.time.LocalDate;
 import java.util.List;
 
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/company-analysis")
+@RequireAdminPermission({"ANALYSIS_READ", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminCompanyAnalysisController {
 
@@ -95,6 +98,7 @@ public class AdminCompanyAnalysisController {
     }
 
     @PatchMapping("/{analysisId}/memo")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<Void> updateMemo(@AuthenticationPrincipal AuthUser authUser,
                                         @PathVariable Long analysisId,
                                         @Valid @RequestBody AdminMemoRequest request) {
@@ -103,6 +107,7 @@ public class AdminCompanyAnalysisController {
     }
 
     @PatchMapping("/{analysisId}/metadata")
+    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
     public ApiResponse<Void> updateMetadata(@AuthenticationPrincipal AuthUser authUser,
                                             @PathVariable Long analysisId,
                                             @Valid @RequestBody AdminCompanyAnalysisMetadataRequest request) {

@@ -38,10 +38,14 @@ export function sumCounts(...badges: (PendingQueueBadge | undefined)[]): number 
   return badges.reduce((sum, b) => sum + (b?.count ?? 0), 0);
 }
 
-export function useAdminPendingCounts(): AdminPendingCounts | null {
+export function useAdminPendingCounts(enabled = true): AdminPendingCounts | null {
   const [counts, setCounts] = useState<AdminPendingCounts | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setCounts(null);
+      return;
+    }
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -76,7 +80,7 @@ export function useAdminPendingCounts(): AdminPendingCounts | null {
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [enabled]);
 
   return counts;
 }

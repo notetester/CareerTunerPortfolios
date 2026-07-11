@@ -1,12 +1,26 @@
 import { createElement, lazy, Suspense, type ComponentType } from "react";
 
 import { PageFallback } from "../app/pages/pageFallback";
+import { AdminRouteBoundary } from "./auth/AdminRouteBoundary";
+import { adminRoutePolicy, type AdminRoutePath } from "./auth/adminAccess";
 
 function lazyAdminPage(loader: () => Promise<{ default: ComponentType }>): ComponentType {
   const LazyPage = lazy(loader);
   return function LazyAdminRoute() {
     return createElement(Suspense, { fallback: createElement(PageFallback) }, createElement(LazyPage));
   };
+}
+
+function adminRoute(path: AdminRoutePath, Component: ComponentType) {
+  const adminAccess = adminRoutePolicy(path);
+  function GuardedAdminRoute() {
+    return createElement(AdminRouteBoundary, {
+      policy: adminAccess,
+      // render callback 안쪽에서만 lazy route element를 만들어 비인가 요청은 import도 시작하지 않는다.
+      render: () => createElement(Component),
+    });
+  }
+  return { path, Component: GuardedAdminRoute, handle: { adminAccess } };
 }
 
 const AdminDashboardPage = lazyAdminPage(() => import("./pages/AdminDashboard").then((module) => ({ default: module.AdminDashboardPage })));
@@ -66,63 +80,63 @@ const AdminInterviewPromptsPage = lazyAdminPage(() => import("./features/prompts
 const AdminLogsPage = lazyAdminPage(() => import("./features/system-logs/pages/AdminLogsPage").then((module) => ({ default: module.AdminLogsPage })));
 
 export const adminRoutes = [
-  { path: "admin", Component: AdminDashboardPage },
-  { path: "admin/home", Component: AdminHomePage },
-  { path: "admin/dashboard", Component: AdminOpsDashboardPage },
+  adminRoute("admin", AdminDashboardPage),
+  adminRoute("admin/home", AdminHomePage),
+  adminRoute("admin/dashboard", AdminOpsDashboardPage),
   // C 분석 통계 전용 화면. 백엔드/api/types는 완비됐으나 전용 페이지·라우트가 없어 연결한다.
-  { path: "admin/analytics", Component: AdminAnalyticsPage },
+  adminRoute("admin/analytics", AdminAnalyticsPage),
   // C 적합도 운영 화면은 구현돼 있었지만 접근 경로가 없어 완료 기준 충족을 위해 라우트만 연결한다.
-  { path: "admin/fit-analysis", Component: AdminFitAnalysisPage },
+  adminRoute("admin/fit-analysis", AdminFitAnalysisPage),
   // C 프롬프트 운영 확인(적합도/장기 분석). 페이지·백엔드 존재했으나 라우트 누락이라 연결한다.
-  { path: "admin/prompts/fit-analysis", Component: AdminFitAnalysisPromptsPage },
-  { path: "admin/prompts/analytics", Component: AdminAnalyticsPromptsPage },
+  adminRoute("admin/prompts/fit-analysis", AdminFitAnalysisPromptsPage),
+  adminRoute("admin/prompts/analytics", AdminAnalyticsPromptsPage),
   // W1: 기업 신청 승인/반려, 공고 검토 큐
-  { path: "admin/company/applications", Component: AdminCompanyApplicationsPage },
-  { path: "admin/company/job-postings", Component: AdminJobPostingReviewPage },
-  { path: "admin/notification-settings", Component: AdminNotificationPreferences },
-  { path: "admin/ads", Component: AdminAdsPage },
-  { path: "admin/users", Component: AdminUsersPage },
-  { path: "admin/users/blocked", Component: AdminBlockedUsersPage },
-  { path: "admin/security", Component: AdminSecurityOpsPage },
-  { path: "admin/security/login-risk", Component: AdminLoginRiskPolicyPage },
-  { path: "admin/security/mfa-policy", Component: AdminMfaPolicyPage },
-  { path: "admin/audit/security", Component: AdminSecurityAuditPage },
-  { path: "admin/audit/email", Component: AdminEmailAuditPage },
-  { path: "admin/audit/activity", Component: AdminActivityLogsPage },
-  { path: "admin/audit/email-log", Component: AdminEmailAuditLogPage },
-  { path: "admin/profiles", Component: AdminProfilesPage },
-  { path: "admin/consents", Component: AdminConsentsPage },
-  { path: "admin/super", Component: AdminSuperAdminPage },
-  { path: "admin/policies", Component: AdminPoliciesPage },
-  { path: "admin/runtime-settings", Component: AdminRuntimeSettingsPage },
-  { path: "admin/action-logs", Component: AdminActionLogsPage },
-  { path: "admin/payments", Component: AdminPaymentsPage },
-  { path: "admin/credits", Component: AdminCreditsPage },
-  { path: "admin/rewards", Component: AdminRewardsPage },
-  { path: "admin/staff-grades", Component: AdminStaffGradePage },
-  { path: "admin/application-cases", Component: AdminApplicationCasesPage },
-  { path: "admin/ai-usage", Component: AdminAiUsagePage },
-  { path: "admin/chatbot-governance", Component: AdminChatbotGovernancePage },
-  { path: "admin/ai-settings", Component: AdminAiSettingsPage },
-  { path: "admin/job-analysis", Component: AdminJobAnalysisPage },
-  { path: "admin/company-analysis", Component: AdminCompanyAnalysisPage },
-  { path: "admin/interviews", Component: AdminInterviewsPage },
-  { path: "admin/interview/reports", Component: AdminInterviewReportsPage },
-  { path: "admin/corrections", Component: AdminCorrectionsPage },
-  { path: "admin/interview/knowledge", Component: AdminInterviewKnowledgePage },
-  { path: "admin/community", Component: AdminReports },
-  { path: "admin/notices", Component: AdminNotices },
-  { path: "admin/notices/new", Component: NoticeCompose },
-  { path: "admin/faq", Component: AdminFaq },
-  { path: "admin/faq/new", Component: FaqCompose },
-  { path: "admin/ai-support", Component: AdminAiSupport },
-  { path: "admin/inquiries", Component: AdminInquiries },
-  { path: "admin/terms", Component: AdminTerms },
-  { path: "admin/terms/guidelines", Component: AdminGuidelines },
-  { path: "admin/notifications", Component: AdminNotifications },
-  { path: "admin/plans", Component: AdminPlansPage },
-  { path: "admin/prompts", Component: AdminPromptsPage },
-  { path: "admin/prompts/profile", Component: AdminProfilePromptsPage },
-  { path: "admin/prompts/interview", Component: AdminInterviewPromptsPage },
-  { path: "admin/logs", Component: AdminLogsPage },
+  adminRoute("admin/company/applications", AdminCompanyApplicationsPage),
+  adminRoute("admin/company/job-postings", AdminJobPostingReviewPage),
+  adminRoute("admin/notification-settings", AdminNotificationPreferences),
+  adminRoute("admin/ads", AdminAdsPage),
+  adminRoute("admin/users", AdminUsersPage),
+  adminRoute("admin/users/blocked", AdminBlockedUsersPage),
+  adminRoute("admin/security", AdminSecurityOpsPage),
+  adminRoute("admin/security/login-risk", AdminLoginRiskPolicyPage),
+  adminRoute("admin/security/mfa-policy", AdminMfaPolicyPage),
+  adminRoute("admin/audit/security", AdminSecurityAuditPage),
+  adminRoute("admin/audit/email", AdminEmailAuditPage),
+  adminRoute("admin/audit/activity", AdminActivityLogsPage),
+  adminRoute("admin/audit/email-log", AdminEmailAuditLogPage),
+  adminRoute("admin/profiles", AdminProfilesPage),
+  adminRoute("admin/consents", AdminConsentsPage),
+  adminRoute("admin/super", AdminSuperAdminPage),
+  adminRoute("admin/policies", AdminPoliciesPage),
+  adminRoute("admin/runtime-settings", AdminRuntimeSettingsPage),
+  adminRoute("admin/action-logs", AdminActionLogsPage),
+  adminRoute("admin/payments", AdminPaymentsPage),
+  adminRoute("admin/credits", AdminCreditsPage),
+  adminRoute("admin/rewards", AdminRewardsPage),
+  adminRoute("admin/staff-grades", AdminStaffGradePage),
+  adminRoute("admin/application-cases", AdminApplicationCasesPage),
+  adminRoute("admin/ai-usage", AdminAiUsagePage),
+  adminRoute("admin/chatbot-governance", AdminChatbotGovernancePage),
+  adminRoute("admin/ai-settings", AdminAiSettingsPage),
+  adminRoute("admin/job-analysis", AdminJobAnalysisPage),
+  adminRoute("admin/company-analysis", AdminCompanyAnalysisPage),
+  adminRoute("admin/interviews", AdminInterviewsPage),
+  adminRoute("admin/interview/reports", AdminInterviewReportsPage),
+  adminRoute("admin/corrections", AdminCorrectionsPage),
+  adminRoute("admin/interview/knowledge", AdminInterviewKnowledgePage),
+  adminRoute("admin/community", AdminReports),
+  adminRoute("admin/notices", AdminNotices),
+  adminRoute("admin/notices/new", NoticeCompose),
+  adminRoute("admin/faq", AdminFaq),
+  adminRoute("admin/faq/new", FaqCompose),
+  adminRoute("admin/ai-support", AdminAiSupport),
+  adminRoute("admin/inquiries", AdminInquiries),
+  adminRoute("admin/terms", AdminTerms),
+  adminRoute("admin/terms/guidelines", AdminGuidelines),
+  adminRoute("admin/notifications", AdminNotifications),
+  adminRoute("admin/plans", AdminPlansPage),
+  adminRoute("admin/prompts", AdminPromptsPage),
+  adminRoute("admin/prompts/profile", AdminProfilePromptsPage),
+  adminRoute("admin/prompts/interview", AdminInterviewPromptsPage),
+  adminRoute("admin/logs", AdminLogsPage),
 ];

@@ -1,5 +1,12 @@
 import { apiBase } from "./apiBase";
-import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./tokenStore";
+import {
+  clearTokensIfUnchanged,
+  getAccessToken,
+  getRefreshToken,
+  getTokenStoreSnapshot,
+  setTokensIfUnchanged,
+  type TokenStoreSnapshot,
+} from "./tokenStore";
 import {
   activateOutageFallbackIfConfirmed,
   isNetworkOutageError,
@@ -57,6 +64,9 @@ function demoUnavailableMessage(kind: "data" | "file"): string {
 async function resolveMockData<T>(path: string, options: RequestInit): Promise<T> {
   const mock = await loadMockModule();
   const value = await mock.resolveMock(path, options);
+  if (value === mock.MOCK_FORBIDDEN) {
+    throw new ApiError("관리자 권한이 필요한 데모 요청입니다.", "FORBIDDEN", 403);
+  }
   if (value !== mock.MOCK_UNHANDLED) return value as T;
   throw new ApiError(demoUnavailableMessage("data"), "DEMO_UNAVAILABLE", 501);
 }
@@ -64,6 +74,9 @@ async function resolveMockData<T>(path: string, options: RequestInit): Promise<T
 async function resolveMockBlob(path: string, options: RequestInit): Promise<Blob> {
   const mock = await loadMockModule();
   const value = await mock.resolveMock(path, options);
+  if (value === mock.MOCK_FORBIDDEN) {
+    throw new ApiError("관리자 권한이 필요한 데모 요청입니다.", "FORBIDDEN", 403);
+  }
   if (value === mock.MOCK_UNHANDLED) {
     throw new ApiError(demoUnavailableMessage("file"), "DEMO_UNAVAILABLE", 501);
   }
@@ -123,14 +136,33 @@ function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
   return headers;
 }
 
-// 동시 401에 대해 refresh 가 한 번만 일어나도록 단일 프라미스로 공유한다.
-let refreshPromise: Promise<boolean> | null = null;
+interface RefreshAttempt {
+  snapshot: TokenStoreSnapshot;
+  refreshToken: string;
+  promise: Promise<boolean>;
+}
+
+// 같은 세션의 동시 401만 하나로 합친다. 세션이 바뀌면 이전 응답은 CAS에서 폐기한다.
+let refreshAttempt: RefreshAttempt | null = null;
 
 function tryRefresh(): Promise<boolean> {
-  if (refreshPromise) return refreshPromise;
-  const refreshToken = getRefreshToken();
+  const snapshot = getTokenStoreSnapshot();
+  const refreshToken = snapshot.tokens?.refreshToken;
   if (!refreshToken) return Promise.resolve(false);
-  refreshPromise = (async () => {
+  if (
+    refreshAttempt
+    && refreshAttempt.snapshot.revision === snapshot.revision
+    && refreshAttempt.refreshToken === refreshToken
+  ) {
+    return refreshAttempt.promise;
+  }
+
+  const attempt: RefreshAttempt = {
+    snapshot,
+    refreshToken,
+    promise: Promise.resolve(false),
+  };
+  attempt.promise = (async () => {
     try {
       const res = await fetch(`${apiBase()}/auth/refresh`, {
         method: "POST",
@@ -142,18 +174,21 @@ function tryRefresh(): Promise<boolean> {
         refreshToken: string;
       }> | null;
       if (res.ok && env?.success && env.data) {
-        setTokens({ accessToken: env.data.accessToken, refreshToken: env.data.refreshToken });
-        return true;
+        return setTokensIfUnchanged(snapshot, {
+          accessToken: env.data.accessToken,
+          refreshToken: env.data.refreshToken,
+        });
       }
-      clearTokens();
+      clearTokensIfUnchanged(snapshot);
       return false;
     } catch {
       return false;
     } finally {
-      refreshPromise = null;
+      if (refreshAttempt === attempt) refreshAttempt = null;
     }
   })();
-  return refreshPromise;
+  refreshAttempt = attempt;
+  return attempt.promise;
 }
 
 /** ApiResponse 를 풀어 data 를 반환. 실패 시 ApiError 를 던진다. */
