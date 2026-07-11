@@ -3,6 +3,7 @@
 // 모든 응답 타입은 admin/features 의 api 모듈이 기대하는 T(백엔드 응답 shape) 그대로 반환한다(transform 없음).
 import type { MockRoute, MockContext } from "../../registry";
 import { iso } from "../../registry";
+import { NULL_ANALYSIS_PROVENANCE } from "@/features/applications/types/analysis";
 import type {
   AdminAnalyticsSummary,
   AdminAnalysisFailure,
@@ -672,6 +673,7 @@ const jobAnalysisRows: AdminJobAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 1,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.kakao.userId,
     userEmail: CASE.kakao.email,
     companyName: CASE.kakao.company,
@@ -697,6 +699,7 @@ const jobAnalysisRows: AdminJobAnalysisRow[] = [
     jobPostingRevision: 2,
     latestJobPostingRevision: 2,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.naver.userId,
     userEmail: CASE.naver.email,
     companyName: CASE.naver.company,
@@ -722,6 +725,7 @@ const jobAnalysisRows: AdminJobAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 2,
     staleAgainstLatestPosting: true,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.toss.userId,
     userEmail: CASE.toss.email,
     companyName: CASE.toss.company,
@@ -747,6 +751,7 @@ const jobAnalysisRows: AdminJobAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 1,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.line.userId,
     userEmail: CASE.line.email,
     companyName: CASE.line.company,
@@ -789,6 +794,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 1,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.kakao.userId,
     userEmail: CASE.kakao.email,
     companyName: CASE.kakao.company,
@@ -816,6 +822,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     jobPostingRevision: 2,
     latestJobPostingRevision: 2,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.naver.userId,
     userEmail: CASE.naver.email,
     companyName: CASE.naver.company,
@@ -843,6 +850,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 2,
     staleAgainstLatestPosting: true,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.toss.userId,
     userEmail: CASE.toss.email,
     companyName: CASE.toss.company,
@@ -1173,6 +1181,7 @@ function buildAppCaseDetail(id: number): AdminApplicationCaseDetail {
           ambiguousConditions: job.ambiguousConditions,
           confirmedAt: job.confirmedAt,
           adminMemo: job.adminMemo,
+          ...NULL_ANALYSIS_PROVENANCE,
           createdAt: job.createdAt,
         },
       ]
@@ -1199,6 +1208,7 @@ function buildAppCaseDetail(id: number): AdminApplicationCaseDetail {
           refreshRecommendedAt: company.refreshRecommendedAt,
           confirmedAt: company.confirmedAt,
           adminMemo: company.adminMemo,
+          ...NULL_ANALYSIS_PROVENANCE,
           createdAt: company.createdAt,
         },
       ]

@@ -1,3 +1,4 @@
+import { NULL_ANALYSIS_PROVENANCE } from "@/features/applications/types/analysis";
 import type {
   AdminAiUsageLogRow,
   AdminBUsageLogQueryParams,
@@ -44,6 +45,7 @@ const jobAnalysisRow: AdminJobAnalysisRow = {
   ambiguousConditions: "Ambiguous conditions",
   confirmedAt: null,
   adminMemo: null,
+  ...NULL_ANALYSIS_PROVENANCE,
   createdAt: "2026-06-02T00:00:00Z",
 };
 

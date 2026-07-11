@@ -345,12 +345,18 @@ export function ApplicationOverviewPanel({
               <div className="mb-2 text-xs font-semibold text-slate-500">공고문 추출</div>
               <div className="flex flex-wrap items-center gap-2">
                 <ApplicationExtractionBadge extraction={extraction} />
-                {extraction.status === "FAILED" && onRetryExtraction && (
+                {/* 실패 복구 + 성공한 파일 공고를 다른 OCR 모델로 재추출(#3). URL/TEXT 는 버튼이 내부에서 숨는다. */}
+                {(extraction.status === "FAILED" || extraction.status === "SUCCEEDED") && onRetryExtraction && (
                   <OcrRetryButton
                     sourceType={extraction.sourceType}
                     retrying={retryingExtraction}
                     onRetry={(provider) => void onRetryExtraction(provider)}
-                    className="h-7 border-red-200 px-2 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
+                    label={extraction.status === "FAILED" ? "다시 추출" : "다른 모델로 재추출"}
+                    className={
+                      extraction.status === "FAILED"
+                        ? "h-7 border-red-200 px-2 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
+                        : "h-7 px-2 text-xs"
+                    }
                   />
                 )}
               </div>

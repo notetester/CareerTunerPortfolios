@@ -34,6 +34,12 @@ import tools.jackson.databind.ObjectMapper;
 public class BAnalysisGenerationService {
 
     public static final String SELF_RULES_MODEL = "self-rules-v1";
+    // 자동 공고분석 폴백 체인 순서(preferred 경로가 선택 provider 를 맨 앞에 두고 재사용). company 는 config
+    // 기반이라 companyProviderOrder() 를 쓴다.
+    private static final List<BAnalysisProvider> JOB_DEFAULT_ORDER =
+            List.of(BAnalysisProvider.LOCAL, BAnalysisProvider.CLAUDE, BAnalysisProvider.OPENAI);
+    // self-rules 안전망은 BAnalysisProvider enum 이 아니라 attempt_path·actual_provider 에 이 토큰으로 기록한다.
+    private static final String SELF_RULES_ATTEMPT = "SELF_RULES";
     private static final int COMPANY_VERIFIED_FACTS_MAX_ITEMS = 8;
     private static final int COMPANY_AI_INFERENCES_MAX_ITEMS = 4;
     private static final int COMPANY_UNKNOWNS_MAX_ITEMS = 5;
@@ -268,6 +274,138 @@ public class BAnalysisGenerationService {
             }
             case OPENAI -> withDedupedEvidence(openAiResponsesClient.analyzeJobPosting(applicationCase, postingText));
         };
+    }
+
+    // ── 초기 등록 preferred 경로: 고른 provider 우선 + 나머지 기본 체인 폴백 + 최종 self-rules 안전망. ──
+    // strict(단일·폴백 없음)와도, 순수 auto(선택 없음)와도 다르다. 등록 시 사용자가 provider 를 고른 경우
+    // 초기 자동 파이프라인이 그 선택을 최우선으로 쓰되, 실패하면 조용히 나머지 체인으로 폴백해 결과를 보장한다.
+    // provenance(요청·실제 provider·모델·폴백여부·시도순서)를 함께 반환해 초기 분석 행에 기록하게 한다.
+
+    /**
+     * preferred 공고분석 — 고른 provider 를 체인 맨 앞에 두고, 실패 시 나머지 기본 체인(자동과 동일 provider·검증)
+     * 으로 폴백한 뒤 최종 self-rules 로 안전망을 친다. 미가용 provider 는 자동 체인처럼 건너뛴다.
+     * self-rules 로 끝나면 {@code fallbackReason} 을 채워 기존 ai_usage 폴백 기록 계약을 유지한다.
+     */
+    public GeneratedJobAnalysis generateJobAnalysisPreferred(ApplicationCase applicationCase, String postingText,
+                                                             BAnalysisProvider preferred) {
+        Classification classification = sentenceClassifier.classify(postingText);
+        List<String> attempts = new ArrayList<>();
+        String lastError = null;
+        for (BAnalysisProvider provider : preferredFirst(JOB_DEFAULT_ORDER, preferred)) {
+            if (!providerAvailable(provider)) {
+                continue;
+            }
+            // LOCAL 은 자동/strict 경로와 동일하게 maxRetries 만큼 재시도한다(선택 provider 실패 후 폴백 회복력 보존).
+            // 각 시도를 attempt_path 에 그대로 기록한다(예: LOCAL 2회 → ["...","LOCAL","LOCAL"]).
+            int maxAttempts = maxAttemptsFor(provider);
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                attempts.add(provider.name());
+                try {
+                    JobAnalysisPayload payload = attemptJob(provider, applicationCase, postingText, classification);
+                    log.info("Preferred job analysis ({}) succeeded (requested={}, attempt {}/{})",
+                            provider, preferred, attempt, maxAttempts);
+                    return new GeneratedJobAnalysis(payload, null, null,
+                            provenance(preferred, provider, payload.usage(), attempts));
+                } catch (RuntimeException ex) {
+                    lastError = safeMessage(ex);
+                    log.warn("Preferred job analysis ({}) attempt {}/{} failed: {}", provider, attempt, maxAttempts, lastError);
+                }
+            }
+        }
+        attempts.add(SELF_RULES_ATTEMPT);
+        JobAnalysisPayload payload = selfRulesJobAnalysis(applicationCase, postingText, classification);
+        String reason = lastError == null ? null
+                : "Preferred/fallback job analysis unavailable; fallback to self-rules-v1: " + lastError;
+        log.warn("Preferred job analysis fell back to self-rules-v1 (requested={})", preferred);
+        return new GeneratedJobAnalysis(payload, reason,
+                reason == null ? null : properties.getLocalLlm().getModel(),
+                selfRulesProvenance(preferred, payload.usage(), attempts));
+    }
+
+    /**
+     * preferred 기업분석 — 고른 provider 우선 + 나머지 config 기본 체인 폴백 + 최종 self-rules. 웹 근거는 비-모델
+     * 보조 입력이라 있으면 쓰고 없으면 공고-only(자동 경로와 동일). provenance 를 함께 반환한다.
+     */
+    public GeneratedCompanyAnalysis generateCompanyAnalysisPreferred(ApplicationCase applicationCase, String postingText,
+                                                                     List<CompanyWebEvidence> webEvidence,
+                                                                     BAnalysisProvider preferred) {
+        Classification classification = sentenceClassifier.classify(postingText);
+        List<CompanyWebEvidence> usableWeb = usableWebEvidence(webEvidence);
+        boolean includeWeb = !usableWeb.isEmpty();
+        List<String> attempts = new ArrayList<>();
+        String lastError = null;
+        for (BAnalysisProvider provider : preferredFirst(companyProviderOrder(), preferred)) {
+            if (!providerAvailable(provider)) {
+                continue;
+            }
+            // 기업 자동 체인(generateCompanyAnalysis)은 provider 를 1회만 시도하므로 preferred 도 그대로 1회다.
+            // (공고 자동 체인은 LOCAL 을 재시도하지만 기업 자동 체인엔 재시도가 없다 — 기본 체인 보존이 목적이므로
+            // 여기서 새 재시도 정책을 만들지 않는다. 기업 재시도를 도입하려면 자동 체인·strict 와 함께 별도 변경.)
+            attempts.add(provider.name());
+            try {
+                CompanyAnalysisPayload payload = attemptCompany(provider, applicationCase, postingText,
+                        classification, usableWeb, includeWeb);
+                log.info("Preferred company analysis ({}) succeeded (requested={})", provider, preferred);
+                return new GeneratedCompanyAnalysis(payload, null, null,
+                        provenance(preferred, provider, payload.usage(), attempts));
+            } catch (RuntimeException ex) {
+                lastError = safeMessage(ex);
+                log.warn("Preferred company analysis ({}) failed: {}", provider, lastError);
+            }
+        }
+        attempts.add(SELF_RULES_ATTEMPT);
+        CompanyAnalysisPayload payload = selfRulesCompanyAnalysis(applicationCase, postingText, classification);
+        String reason = lastError == null ? null
+                : "Preferred/fallback company analysis unavailable; fallback to self-rules-v1: " + lastError;
+        log.warn("Preferred company analysis fell back to self-rules-v1 (requested={})", preferred);
+        return new GeneratedCompanyAnalysis(payload, reason,
+                reason == null ? null : properties.getLocalLlm().getModel(),
+                selfRulesProvenance(preferred, payload.usage(), attempts));
+    }
+
+    /**
+     * 고른 provider 를 체인 맨 앞에 두고 나머지 기본 체인을 이어붙인다(중복 제거). preferred 가 기본 체인에
+     * 없더라도 항상 맨 앞에 포함한다(등록 검증이 유효 provider 만 통과시키지만 방어적).
+     */
+    private List<BAnalysisProvider> preferredFirst(List<BAnalysisProvider> defaultOrder, BAnalysisProvider preferred) {
+        List<BAnalysisProvider> ordered = new ArrayList<>();
+        ordered.add(preferred);
+        for (BAnalysisProvider provider : defaultOrder) {
+            if (provider != preferred) {
+                ordered.add(provider);
+            }
+        }
+        return ordered;
+    }
+
+    /**
+     * 공고 preferred 경로의 provider 별 최대 시도 횟수. LOCAL 은 <b>공고</b> 자동 체인({@link #generateJobAnalysis})
+     * 과 동일하게 {@code 1 + maxRetries}(일시 실패 회복), hosted(CLAUDE/OPENAI)는 1회(통신 재시도는 각 client 내부).
+     * 기업 자동 체인은 재시도가 없으므로 기업 preferred 는 이 헬퍼를 쓰지 않고 1회만 시도한다(기본 체인 보존).
+     */
+    private int maxAttemptsFor(BAnalysisProvider provider) {
+        return provider == BAnalysisProvider.LOCAL ? 1 + properties.getLocalLlm().getMaxRetries() : 1;
+    }
+
+    /** preferred 경로 성공 provenance — actual=성공 provider, fallback_used=선택과 다르면 true. */
+    private AnalysisProvenance provenance(BAnalysisProvider preferred, BAnalysisProvider actual,
+                                          Usage usage, List<String> attempts) {
+        return new AnalysisProvenance(
+                preferred.name(),
+                actual.name(),
+                usage == null ? null : usage.model(),
+                actual != preferred,
+                BAnalysisProvider.attemptPathJson(attempts));
+    }
+
+    /** preferred 경로가 self-rules 안전망으로 끝났을 때의 provenance — actual=SELF_RULES, fallback_used=true. */
+    private AnalysisProvenance selfRulesProvenance(BAnalysisProvider preferred, Usage usage, List<String> attempts) {
+        return new AnalysisProvenance(
+                preferred.name(),
+                SELF_RULES_ATTEMPT,
+                usage == null ? null : usage.model(),
+                true,
+                BAnalysisProvider.attemptPathJson(attempts));
     }
 
     /**
@@ -1770,8 +1908,14 @@ public class BAnalysisGenerationService {
     public record GeneratedJobAnalysis(
             JobAnalysisPayload payload,
             String fallbackReason,
-            String fallbackAttemptedModel
+            String fallbackAttemptedModel,
+            AnalysisProvenance provenance
     ) {
+        /** 자동 체인 등 provenance 없는 기존 생성부 호환(3-arg) — provenance=null(= 컬럼 NULL). */
+        public GeneratedJobAnalysis(JobAnalysisPayload payload, String fallbackReason, String fallbackAttemptedModel) {
+            this(payload, fallbackReason, fallbackAttemptedModel, null);
+        }
+
         public boolean fellBack() {
             return fallbackReason != null;
         }
@@ -1780,11 +1924,36 @@ public class BAnalysisGenerationService {
     public record GeneratedCompanyAnalysis(
             CompanyAnalysisPayload payload,
             String fallbackReason,
-            String fallbackAttemptedModel
+            String fallbackAttemptedModel,
+            AnalysisProvenance provenance
     ) {
+        /** 자동 체인 등 provenance 없는 기존 생성부 호환(3-arg) — provenance=null(= 컬럼 NULL). */
+        public GeneratedCompanyAnalysis(CompanyAnalysisPayload payload, String fallbackReason, String fallbackAttemptedModel) {
+            this(payload, fallbackReason, fallbackAttemptedModel, null);
+        }
+
         public boolean fellBack() {
             return fallbackReason != null;
         }
+    }
+
+    /**
+     * 초기 등록 preferred 경로가 채우는 분석 provenance(자동 체인은 null → 컬럼 NULL). strict 재분석은 별도로
+     * {@link StrictJobResult}/{@link StrictCompanyResult} 로 provenance 를 구성한다.
+     *
+     * @param requestedProvider 등록 시 사용자가 고른 provider(항상 non-null in preferred 경로)
+     * @param actualProvider    실제로 성공한 provider 이름, 또는 self-rules 안전망이면 {@code "SELF_RULES"}
+     * @param actualModel       실제 성공 모델 라벨(payload usage 기준; 없으면 null)
+     * @param fallbackUsed      선택 provider 로 성공하지 못하고 폴백/안전망으로 성공했으면 true
+     * @param attemptPathJson   실제 시도 순서 JSON(예: {@code ["CLAUDE","OPENAI","SELF_RULES"]}; 없으면 null)
+     */
+    public record AnalysisProvenance(
+            String requestedProvider,
+            String actualProvider,
+            String actualModel,
+            boolean fallbackUsed,
+            String attemptPathJson
+    ) {
     }
 
     /** strict 공고 재분석 결과 — payload + 실제 시도 provider 순서(전부 같은 provider; LOCAL 재시도 시 복수). */

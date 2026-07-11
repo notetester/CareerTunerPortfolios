@@ -33,6 +33,12 @@
             ja.ambiguous_conditions,
             ja.confirmed_at,
             ja.admin_memo,
+            ja.requested_provider,
+            ja.actual_provider,
+            ja.actual_model,
+            ja.fallback_used,
+            ja.attempt_path,
+            ja.run_mode,
             ja.created_at
         FROM job_analysis ja
         JOIN application_case ac ON ja.application_case_id = ac.id
