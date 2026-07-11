@@ -9,6 +9,7 @@ import com.careertuner.billing.dto.AiFeatureBenefitPolicyResponse;
 import com.careertuner.billing.dto.BenefitTransactionResponse;
 import com.careertuner.billing.dto.MyBillingResponse;
 import com.careertuner.billing.dto.MyBenefitsResponse;
+import com.careertuner.billing.dto.PlanRecommendationResponse;
 import com.careertuner.billing.dto.SubscriptionPlanResponse;
 import com.careertuner.billing.dto.UsageRow;
 import com.careertuner.credit.domain.CreditProduct;
@@ -30,6 +31,9 @@ public interface BillingService {
     List<Payment> getMyPayments(Long userId);
 
     List<UsageRow> getMonthlyUsage(Long userId);
+
+    /** 사용량 기반 요금제/크레딧 추천(결정론, LLM 미호출). */
+    PlanRecommendationResponse recommendPlan(Long userId);
 
     List<CreditTransaction> getMyCreditTransactions(Long userId);
 
