@@ -2,6 +2,7 @@
 #include "ApiClient.h"
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QtGlobal>
 #include <QVariantMap>
 
 static QString modeLabel(const QString& m)
@@ -56,15 +57,21 @@ void JobModel::loadSessions()
                 for (const QJsonValue& v : arr) {
                     const QJsonObject s = v.toObject();
                     const QString code = s.value("mode").toString();
-                    const bool ended = !s.value("endedAt").isNull();
+                    const bool ended = s.contains("endedAt") && !s.value("endedAt").isNull();
+                    const int total = qMax(0, s.value("totalQuestions").toInt());
+                    const int answered = qBound(0, s.value("answeredQuestions").toInt(), total);
+                    const bool finished = s.value("finished").toBool();
                     Job j;
                     j.id       = s.value("id").toInteger();
                     j.caseId   = s.value("applicationCaseId").toInteger();
                     j.modeCode = code;
                     j.mode     = modeLabel(code);
                     j.title    = caseLabel(j.caseId);
-                    j.status   = ended ? QStringLiteral("DONE") : QStringLiteral("RUNNING");
-                    j.progress = ended ? 100 : 0; // 정확한 진행률은 progress API — 목록에선 이진 표시
+                    j.status   = finished
+                        ? QStringLiteral("DONE")
+                        : ended ? QStringLiteral("REPORTED") : QStringLiteral("RUNNING");
+                    j.progress = finished ? 100
+                        : total > 0 ? (answered * 100 + total / 2) / total : 0;
                     m_jobs.push_back(j);
                 }
             }

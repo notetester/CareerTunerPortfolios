@@ -2,6 +2,7 @@
 #include "CameraRecorder.h"
 #include "CollaborationClient.h"
 #include "InterviewSession.h"
+#include "JobModel.h"
 #include "PlannerOverlayController.h"
 #include "SettingsStore.h"
 #include "VoiceRecorder.h"
@@ -108,6 +109,53 @@ private slots:
         QVERIFY(!callbackOk);
         QCOMPARE(callbackMessage, QStringLiteral("서버가 변경되어 요청이 취소되었습니다."));
         QVERIFY(api.token().isEmpty());
+    }
+
+    void sessionListUsesFinishedInsteadOfEndedAtForCompletion()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+
+        connect(&server, &QTcpServer::newConnection, this, [&]() {
+            while (server.hasPendingConnections()) {
+                QTcpSocket* socket = server.nextPendingConnection();
+                QVERIFY(socket != nullptr);
+                connect(socket, &QTcpSocket::readyRead, socket,
+                        [socket, request = QByteArray()]() mutable {
+                    request += socket->readAll();
+                    if (!request.contains("\r\n\r\n")) return;
+
+                    QByteArray body;
+                    if (request.startsWith("GET /api/application-cases?")) {
+                        body = R"({"success":true,"data":[{"id":101,"companyName":"Acme","jobTitle":"Engineer"}]})";
+                    } else if (request.startsWith("GET /api/interview/sessions?")) {
+                        body = R"JSON({"success":true,"data":{"sessions":[{"id":1,"applicationCaseId":101,"mode":"BASIC","endedAt":"2026-07-12T10:00:00","totalQuestions":6,"answeredQuestions":6,"finished":true},{"id":2,"applicationCaseId":101,"mode":"JOB","endedAt":"2026-07-12T10:00:00","totalQuestions":6,"answeredQuestions":1,"finished":false},{"id":3,"applicationCaseId":101,"mode":"COMPANY","endedAt":null,"totalQuestions":6,"answeredQuestions":2,"finished":false}]}})JSON";
+                    } else {
+                        body = R"({"success":false,"message":"unexpected request"})";
+                    }
+
+                    socket->write(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                        + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n" + body);
+                    socket->flush();
+                    socket->disconnectFromHost();
+                });
+            }
+        });
+
+        ApiClient api;
+        api.setBaseUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort()));
+        JobModel jobs;
+        jobs.setApi(&api);
+        jobs.reload();
+
+        QTRY_COMPARE_WITH_TIMEOUT(jobs.rowCount(), 3, 3000);
+        QCOMPARE(jobs.data(jobs.index(0, 0), JobModel::StatusRole).toString(), QStringLiteral("DONE"));
+        QCOMPARE(jobs.data(jobs.index(0, 0), JobModel::ProgressRole).toInt(), 100);
+        QCOMPARE(jobs.data(jobs.index(1, 0), JobModel::StatusRole).toString(), QStringLiteral("REPORTED"));
+        QCOMPARE(jobs.data(jobs.index(1, 0), JobModel::ProgressRole).toInt(), 17);
+        QCOMPARE(jobs.data(jobs.index(2, 0), JobModel::StatusRole).toString(), QStringLiteral("RUNNING"));
+        QCOMPARE(jobs.data(jobs.index(2, 0), JobModel::ProgressRole).toInt(), 33);
     }
 
     void cleanupRequestKeepsCapturedOldOriginAndBearerAcrossServerChange()

@@ -79,6 +79,7 @@ if (BUILD_TESTING)
         core/CameraRecorder.h core/CameraRecorder.cpp
         core/CollaborationClient.h core/CollaborationClient.cpp
         core/InterviewSession.h core/InterviewSession.cpp
+        core/JobModel.h core/JobModel.cpp
         core/SettingsStore.h core/SettingsStore.cpp
         core/VoiceRecorder.h core/VoiceRecorder.cpp
         core/PlannerOverlayController.h core/PlannerOverlayController.cpp

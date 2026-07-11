@@ -24,6 +24,12 @@ export interface InterviewSession {
   mode: InterviewMode;
   startedAt: string | null;
   endedAt: string | null;
+  /** 목록 조회에서 함께 계산되는 전체 질문 수. */
+  totalQuestions: number;
+  /** 답변이 하나 이상 존재하는 질문 수. */
+  answeredQuestions: number;
+  /** 질문이 있고 모든 질문에 답변한 경우에만 true. endedAt 과 독립적이다. */
+  finished: boolean;
   totalScore: number | null;
   /** 답변 점수 평균(목록 조회 계산값). 리포트 미생성으로 totalScore 가 없을 때 카드 점수 폴백용. */
   avgScore: number | null;

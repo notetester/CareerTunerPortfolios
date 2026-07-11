@@ -5,6 +5,7 @@ import { useAuth } from "@/app/auth/AuthContext";
 import { haptic } from "@/platform/haptics";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { listInterviewSessions } from "../api/interviewApi";
+import { getInterviewSessionListState } from "../lib/sessionListState";
 import { getInterviewModeLabel } from "../types/interview";
 import type { InterviewSession } from "../types/interview";
 
@@ -98,7 +99,7 @@ export function MobileSessionsPage() {
         )}
         <div className="mx-auto max-w-xl px-2 pt-2">
           {sessions.map((s) => {
-            const done = s.endedAt != null;
+            const state = getInterviewSessionListState(s);
             return (
               <button
                 key={s.id}
@@ -114,12 +115,16 @@ export function MobileSessionsPage() {
                 <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
                   <span
                     className={`size-1.5 rounded-full ${
-                      done ? "bg-[#4cc38a]" : "bg-[#d6a24c] shadow-[0_0_8px_rgba(214,162,76,0.5)]"
+                      state.kind === "DONE"
+                        ? "bg-[#4cc38a]"
+                        : state.kind === "REPORTED"
+                          ? "bg-[#58a6ff]"
+                          : "bg-[#d6a24c] shadow-[0_0_8px_rgba(214,162,76,0.5)]"
                     }`}
                   />
                   {getInterviewModeLabel(s.mode)}
                   {" · "}
-                  {done ? "완료" : "진행 중"}
+                  {state.label}
                   {s.avgScore != null && ` · ${s.avgScore}점`}
                   {" · "}
                   {relTime(s.lastResumedAt ?? s.createdAt)}

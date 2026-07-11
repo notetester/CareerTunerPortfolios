@@ -15,6 +15,11 @@
 
     <select id="findSessionsByUserId" resultType="com.careertuner.interview.domain.InterviewSession">
         SELECT s.*,
+               COALESCE(progress.total_questions, 0) AS total_questions,
+               COALESCE(progress.answered_questions, 0) AS answered_questions,
+               (COALESCE(progress.total_questions, 0) &gt; 0
+                   AND COALESCE(progress.answered_questions, 0)
+                       = COALESCE(progress.total_questions, 0)) AS finished,
                (SELECT ROUND(AVG(a.score))
                   FROM interview_answer a
                   JOIN interview_question q ON q.id = a.question_id
@@ -26,6 +31,14 @@
                    AND m.kind = 'VOICE') AS avg_voice_score
         FROM interview_session s
         JOIN application_case ac ON ac.id = s.application_case_id
+        LEFT JOIN (
+            SELECT q.interview_session_id,
+                   COUNT(DISTINCT q.id) AS total_questions,
+                   COUNT(DISTINCT CASE WHEN a.id IS NOT NULL THEN q.id END) AS answered_questions
+            FROM interview_question q
+            LEFT JOIN interview_answer a ON a.question_id = q.id
+            GROUP BY q.interview_session_id
+        ) progress ON progress.interview_session_id = s.id
         WHERE ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
           AND s.deleted_at IS NULL

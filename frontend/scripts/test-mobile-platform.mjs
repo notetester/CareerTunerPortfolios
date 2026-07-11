@@ -65,6 +65,30 @@ assert(submission.SUBMISSION_RECONCILE_DELAYS_MS.length >= 3, "불명 제출은 
 assert(submission.concludeMissingSubmissionReconciliation(3, 3, false) === "NOT_SAVED", "모든 review가 정상이고 모두 미저장일 때만 안전한 재시도를 허용해야 한다");
 assert(submission.concludeMissingSubmissionReconciliation(2, 3, true) === "UNKNOWN", "조회 실패나 outage가 한 번이라도 섞이면 결과 불명으로 격리해야 한다");
 
+const sessionListState = await importTypeScriptModule("src/features/interview/lib/sessionListState.ts");
+const completedSession = sessionListState.getInterviewSessionListState({
+  endedAt: "2026-07-12T10:00:00",
+  totalQuestions: 6,
+  answeredQuestions: 6,
+  finished: true,
+});
+assert(completedSession.kind === "DONE" && completedSession.progress === 100, "모든 질문에 답한 세션만 완료여야 한다");
+const partialReport = sessionListState.getInterviewSessionListState({
+  endedAt: "2026-07-12T10:00:00",
+  totalQuestions: 6,
+  answeredQuestions: 1,
+  finished: false,
+});
+assert(partialReport.kind === "REPORTED", "종료 시각이 있어도 미완료면 완료로 표시하면 안 된다");
+assert(partialReport.progress === 17 && partialReport.label.includes("1/6"), "미완료 리포트는 실제 답변 진행률을 표시해야 한다");
+const runningSession = sessionListState.getInterviewSessionListState({
+  endedAt: null,
+  totalQuestions: 6,
+  answeredQuestions: 2,
+  finished: false,
+});
+assert(runningSession.kind === "RUNNING" && runningSession.progress === 33, "진행 중 세션도 목록 집계 진행률을 사용해야 한다");
+
 const server = await importTypeScriptModule("src/features/settings/lib/serverAddress.ts");
 const emulator = server.resolveServerOverride("emulator", "", true);
 assert(emulator.override === "http://10.0.2.2:8080/api", "에뮬레이터는 호스트 PC 특수 주소를 사용해야 한다");

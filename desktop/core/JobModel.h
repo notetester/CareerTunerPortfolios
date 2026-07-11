@@ -15,7 +15,7 @@ struct Job {
     QString title;       // "회사 · 직무" (케이스 라벨) — 없으면 "지원건 #n"
     QString mode;        // 표시용 한글 라벨
     QString modeCode;    // 원본 enum (BASIC/JOB/...)
-    QString status;      // RUNNING / DONE
+    QString status;      // RUNNING / REPORTED / DONE
     int     progress;    // 0~100 (answered/total 기반)
 };
 

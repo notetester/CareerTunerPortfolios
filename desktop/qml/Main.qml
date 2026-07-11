@@ -376,6 +376,7 @@ ApplicationWindow {
                         required property string title
                         required property string mode
                         required property string status
+                        required property int progress
                         width: ListView.view.width
                         height: 52
                         radius: 8
@@ -395,14 +396,20 @@ ApplicationWindow {
                                 elide: Text.ElideRight
                             }
                             RowLayout {
+                                Layout.fillWidth: true
                                 spacing: 6
                                 Rectangle {
                                     width: 7; height: 7; radius: 3.5
-                                    color: status === "DONE" ? Theme.good : Theme.warn
+                                    color: status === "DONE" ? Theme.good
+                                         : status === "REPORTED" ? Theme.info : Theme.warn
                                 }
                                 Text {
-                                    text: mode + (status === "DONE" ? " · 완료" : " · 진행 중")
+                                    Layout.fillWidth: true
+                                    text: status === "DONE" ? mode + " · 완료"
+                                        : status === "REPORTED" ? mode + " · 리포트 · " + progress + "% 답변"
+                                        : mode + (progress > 0 ? " · " + progress + "% 진행 중" : " · 진행 중")
                                     color: Theme.muted; font.pixelSize: 11
+                                    elide: Text.ElideRight
                                 }
                             }
                         }
