@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { AlertTriangle, FileText, Loader2, Lock, Paperclip, X, Zap } from "lucide-react";
+import { AlertTriangle, FileText, History, Loader2, Lock, Paperclip, X, Zap } from "lucide-react";
 
 import { uploadAttachment } from "../api/autoPrepApi";
 import type { AutoPrepRequest } from "../types/autoPrep";
@@ -13,6 +13,8 @@ interface FileItem {
 
 interface Props {
   onRun: (req: AutoPrepRequest) => void;
+  /** 지난 준비 기록 열기(요청 없이 창만) — 미전달이면 버튼을 숨긴다. */
+  onHistory?: () => void;
   busy: boolean;
 }
 
@@ -23,7 +25,7 @@ const EXAMPLES = [
 ];
 
 /** 한 줄 입력 + 파일 첨부(드래그/버튼) 런처. "준비 시작"을 누르면 채팅 팝업이 즉시 뜬다(되묻기는 그 안에서). */
-export function AutoPrepLauncher({ onRun, busy }: Props) {
+export function AutoPrepLauncher({ onRun, onHistory, busy }: Props) {
   const [query, setQuery] = useState("");
   const [files, setFiles] = useState<FileItem[]>([]);
   const [drag, setDrag] = useState(false);
@@ -75,6 +77,16 @@ export function AutoPrepLauncher({ onRun, busy }: Props) {
     >
       <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
         <Zap className="size-4 text-primary" aria-hidden /> AI 오케스트레이터
+        {onHistory && (
+          <button
+            type="button"
+            onClick={onHistory}
+            className="ml-auto flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-muted-foreground transition hover:text-foreground"
+            title="지난 준비 기록"
+          >
+            <History className="size-3.5" /> 기록
+          </button>
+        )}
       </div>
       <p className="mb-3 mt-1 text-xs text-muted-foreground">
         회사·직무를 말하거나, 공고 캡처·PDF·자소서를 첨부하면 6개 AI가 알아서 준비해요.
