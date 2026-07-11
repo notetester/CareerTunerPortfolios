@@ -102,6 +102,22 @@ public final class FitAnalysisPromptCatalog {
                                               int fitScore, String applyDecision,
                                               String matchedSkills, String missingRequiredSkills,
                                               String missingPreferredSkills, String companyContext) {
+        return fitExplainUserPrompt(companyName, jobTitle, desiredJob, requiredSkills, preferredSkills, duties,
+                profileSkills, profileCertificates, fitScore, applyDecision, matchedSkills,
+                missingRequiredSkills, missingPreferredSkills, companyContext, null);
+    }
+
+    /**
+     * profileInsight(A 프로필 AI 분석 요약) 포함 오버로드 — 호스티드 provider 전용. OSS(3B)는 학습 정합을 위해
+     * profileInsight 없는 시그니처를 쓴다(serve skew·conflation 리스크 회피).
+     */
+    public static String fitExplainUserPrompt(String companyName, String jobTitle, String desiredJob,
+                                              String requiredSkills, String preferredSkills, String duties,
+                                              String profileSkills, String profileCertificates,
+                                              int fitScore, String applyDecision,
+                                              String matchedSkills, String missingRequiredSkills,
+                                              String missingPreferredSkills, String companyContext,
+                                              String profileInsight) {
         // 핵심 본문은 학습 데이터(assemble_dataset.py build_fit_user)와 동일 구조를 유지한다(train/serve 정합).
         String base = """
                 # 적합도 분석 입력
@@ -132,14 +148,24 @@ public final class FitAnalysisPromptCatalog {
                 safe(missingRequiredSkills), safe(missingPreferredSkills));
         // 기업 맥락은 있을 때만 뒤에 덧붙인다(없으면 본문이 학습 프롬프트와 byte 동일 → skew 없음).
         // 지원 회사 정보이지 지원자 보유역량이 아니다 — strategyActions/설명에서 접근 전략으로만 활용.
+        StringBuilder out = new StringBuilder(base);
         if (companyContext != null && !companyContext.isBlank()) {
-            return base + """
+            out.append("""
 
                     ## 기업 맥락 (지원 회사 정보 — 지원자 보유역량과 혼동 금지, 지원 전략 참고용)
                     %s
-                    """.formatted(companyContext.trim());
+                    """.formatted(companyContext.trim()));
         }
-        return base;
+        // 프로필 AI 분석 요약(A영역, 지원자 자신에 대한 분석) — 강점/위험요인 서술 참고용. 여기 언급된 기술을
+        // '보유 확정'으로 단정하지 않는다(규칙엔진 매칭·부족 역량이 확정값). 있을 때만 덧붙인다.
+        if (profileInsight != null && !profileInsight.isBlank()) {
+            out.append("""
+
+                    ## 지원자 프로필 AI 분석 요약 (참고 — 강점/보완점, 보유 확정 아님)
+                    %s
+                    """.formatted(profileInsight.trim()));
+        }
+        return out.toString();
     }
 
     private static String safe(String value) {

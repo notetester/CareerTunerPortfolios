@@ -61,6 +61,7 @@ class ProfileDocumentImportServiceTest {
         });
         service = new ProfileServiceImpl(
                 profileMapper,
+                mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class),
                 mock(ApplicationCaseMapper.class),
                 consentService,
                 mock(ProfileAiService.class),
