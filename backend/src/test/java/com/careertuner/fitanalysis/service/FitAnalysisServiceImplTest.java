@@ -41,7 +41,7 @@ class FitAnalysisServiceImplTest {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         ObjectMapper objectMapper = new ObjectMapper();
         var usageLogService = mock(com.careertuner.applicationcase.service.AiUsageLogService.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper, usageLogService, mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper, usageLogService, mock(CertificateEvidenceService.class), transactionTemplate());
         FitAnalysisGenerationSource source = source();
         FitAnalysisResult previous = FitAnalysisResult.builder()
                 .id(10L).applicationCaseId(20L).fitScore(60)
@@ -70,7 +70,7 @@ class FitAnalysisServiceImplTest {
     void generatePersistsEvidenceGateWithoutMutatingScoreOrDecision() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(
-                mapper, new MockFitAnalysisAiService(), new EvidenceGateService(),
+                mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), new MockFitAnalysisAiService(), new EvidenceGateService(),
                 mock(NotificationService.class), new ObjectMapper(),
                 mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         when(mapper.findGenerationSource(1L, 20L)).thenReturn(source());
@@ -106,7 +106,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void scoreBreakdownNeverExceedsEachMaximumAndSumsToFitScore() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         FitAnalysisResult result = FitAnalysisResult.builder()
                 .id(11L).applicationCaseId(20L).fitScore(100)
                 .conditionMatrix("[]").gapRecommendations("[]").strategyActions("[]")
@@ -123,7 +123,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void careerStrategyExcludesHeldCertsAndMarksThemAsStrengths() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         var profile = new com.careertuner.fitanalysis.domain.CareerProfileSource();
         profile.setDesiredJob("데이터 엔지니어");
         profile.setProfileCertificates("[\"SQLD\"]");
@@ -144,7 +144,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void careerStrategyWithoutDesiredJobDegradesHonestly() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         when(mapper.findCareerProfile(1L)).thenReturn(null);
 
         var strategy = service.careerCertificateStrategy(1L);
@@ -186,7 +186,7 @@ class FitAnalysisServiceImplTest {
     void careerRoadmapPlacesOnlyVerifiedDatesAndMarksPlanningBlocks() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         var evidenceService = mock(CertificateEvidenceService.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class),
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class),
                 new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(),
                 mock(com.careertuner.applicationcase.service.AiUsageLogService.class), evidenceService, transactionTemplate());
 
@@ -234,7 +234,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void careerRoadmapWithoutDesiredJobReturnsGuidanceOnly() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class),
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class),
                 new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(),
                 mock(com.careertuner.applicationcase.service.AiUsageLogService.class),
                 mock(CertificateEvidenceService.class), transactionTemplate());

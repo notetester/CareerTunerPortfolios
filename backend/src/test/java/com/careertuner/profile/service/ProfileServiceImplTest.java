@@ -131,6 +131,7 @@ class ProfileServiceImplTest {
             ProfileAiService aiService) {
         return new ProfileServiceImpl(
                 profileMapper,
+                mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class),
                 usageMapper,
                 consentService,
                 aiService,

@@ -44,11 +44,13 @@ import com.careertuner.profile.mapper.ProfileMapper;
 
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ProfileServiceImpl implements ProfileService {
 
     /** import 텍스트 상한 — 프로필 폼 resume 한도(20000)보다 낮게 잡아 파이프라인·AI 토큰 부담 완화. */
@@ -61,6 +63,7 @@ public class ProfileServiceImpl implements ProfileService {
             "PROFILE_COMPLETENESS", "프로필 완성도 진단");
 
     private final ProfileMapper profileMapper;
+    private final com.careertuner.profile.mapper.ProfileAiAnalysisMapper profileAiAnalysisMapper;
     private final ApplicationCaseMapper applicationCaseMapper;
     private final ConsentService consentService;
     private final ProfileAiService profileAiService;
@@ -283,6 +286,11 @@ public class ProfileServiceImpl implements ProfileService {
         profile.setPortfolioEvidence(profilePortfolioService.evidenceText(userId));
         ProfileAiResult result = profileAiService.evaluate(profile, featureType);
         recordAi(userId, result);
+        // 성공 산출물을 영속한다(feature 별 최신 1행) — 사용자 조회 + C 적합도 입력 창구.
+        // 실패해도 분석 응답 자체는 막지 않는다(best-effort persist).
+        if ("SUCCESS".equals(result.status())) {
+            persistAiAnalysis(userId, featureType, result);
+        }
         // 스펙(프로필) 분석이 성공하면 사용자에게 완료 알림을 남긴다.
         if ("SUCCESS".equals(result.status())) {
             notificationService.notify(Notification.builder()
@@ -361,6 +369,126 @@ public class ProfileServiceImpl implements ProfileService {
                         row.evidence(),
                         row.improvement()))
                 .toList();
+    }
+
+    /** 성공 산출물을 feature 별 최신 1행으로 저장(JSON 컬럼 직렬화). 직렬화 실패는 무시(분석 자체는 성공). */
+    private void persistAiAnalysis(Long userId, String featureType, ProfileAiResult result) {
+        try {
+            profileAiAnalysisMapper.upsert(com.careertuner.profile.domain.ProfileAiAnalysis.builder()
+                    .userId(userId)
+                    .featureType(featureType)
+                    .summary(result.summary())
+                    .strengths(toJson(result.strengths()))
+                    .gaps(toJson(result.gaps()))
+                    .recommendations(toJson(result.recommendations()))
+                    .extractedSkills(toJson(result.extractedSkills()))
+                    .criteria(toJson(result.criteria()))
+                    .jobFamily(result.jobFamily() == null ? null : result.jobFamily().name())
+                    .completenessScore(result.completenessScore())
+                    .aiScore(result.aiScore())
+                    .qualityWarnings(toJson(result.qualityWarnings()))
+                    .model(result.usage() == null ? null : result.usage().model())
+                    .status(result.status())
+                    .build());
+        } catch (RuntimeException e) {
+            log.debug("profile ai analysis persist failed: userId={} feature={} err={}",
+                    userId, featureType, e.getClass().getSimpleName());
+        }
+    }
+
+    private String toJson(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    @Override
+    public com.careertuner.profile.dto.ProfileAiAnalysisResponse aiAnalysis(AuthUser authUser) {
+        Long userId = requireUser(authUser);
+        List<com.careertuner.profile.domain.ProfileAiAnalysis> rows = profileAiAnalysisMapper.findByUserId(userId);
+        if (rows == null || rows.isEmpty()) {
+            return com.careertuner.profile.dto.ProfileAiAnalysisResponse.empty();
+        }
+        // 요약(강점/약점/summary)과 완성도(점수/항목)를 feature 별로 합쳐 하나의 뷰로 제공.
+        // 각 필드는 그 값을 가진 feature 우선 + summary 폴백(요약만 실행한 사용자도 점수/경고가 보이도록).
+        com.careertuner.profile.domain.ProfileAiAnalysis summaryRow = pick(rows, "PROFILE_SUMMARY");
+        com.careertuner.profile.domain.ProfileAiAnalysis completenessRow = pick(rows, "PROFILE_COMPLETENESS");
+        com.careertuner.profile.domain.ProfileAiAnalysis skillRow = pick(rows, "PROFILE_SKILL_EXTRACT");
+        com.careertuner.profile.domain.ProfileAiAnalysis primary = summaryRow != null ? summaryRow : rows.get(0);
+        com.careertuner.profile.domain.ProfileAiAnalysis criteriaSource = completenessRow != null ? completenessRow : summaryRow;
+        com.careertuner.profile.domain.ProfileAiAnalysis scoreSource = completenessRow != null ? completenessRow : summaryRow;
+        String jobFamily = primary.getJobFamily() != null ? primary.getJobFamily()
+                : (completenessRow == null ? null : completenessRow.getJobFamily());
+        return new com.careertuner.profile.dto.ProfileAiAnalysisResponse(
+                true,
+                summaryRow == null ? null : summaryRow.getSummary(),
+                jsonToList(summaryRow, com.careertuner.profile.domain.ProfileAiAnalysis::getStrengths),
+                jsonToList(summaryRow, com.careertuner.profile.domain.ProfileAiAnalysis::getGaps),
+                jsonToList(summaryRow, com.careertuner.profile.domain.ProfileAiAnalysis::getRecommendations),
+                jsonToList(skillRow != null ? skillRow : summaryRow,
+                        com.careertuner.profile.domain.ProfileAiAnalysis::getExtractedSkills),
+                jobFamily,
+                jobFamilyLabel(jobFamily),
+                scoreSource == null ? null : scoreSource.getCompletenessScore(),
+                summaryRow == null ? null : summaryRow.getAiScore(),
+                criteriaFromJson(criteriaSource),
+                // 품질 경고는 요약 분석 우선(요약 탭에 표시되므로) — 없으면 최신 행.
+                jsonToList(summaryRow != null ? summaryRow : primary,
+                        com.careertuner.profile.domain.ProfileAiAnalysis::getQualityWarnings),
+                primary.getUpdatedAt() == null ? null : primary.getUpdatedAt().toString());
+    }
+
+    /** enum 이름 → 표시 라벨(잘못된/미상 값이면 null, valueOf 예외 삼킴). */
+    private static String jobFamilyLabel(String jobFamilyName) {
+        if (jobFamilyName == null || jobFamilyName.isBlank()) {
+            return null;
+        }
+        try {
+            return com.careertuner.profile.ai.JobFamily.valueOf(jobFamilyName).label();
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static com.careertuner.profile.domain.ProfileAiAnalysis pick(
+            List<com.careertuner.profile.domain.ProfileAiAnalysis> rows, String featureType) {
+        return rows.stream().filter(row -> featureType.equals(row.getFeatureType())).findFirst().orElse(null);
+    }
+
+    private List<String> jsonToList(com.careertuner.profile.domain.ProfileAiAnalysis row,
+                                    java.util.function.Function<com.careertuner.profile.domain.ProfileAiAnalysis, String> getter) {
+        if (row == null) {
+            return List.of();
+        }
+        String json = getter.apply(row);
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<String> list = objectMapper.readValue(json,
+                    new tools.jackson.core.type.TypeReference<List<String>>() { });
+            return list == null ? List.of() : list;
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    private List<ProfileCriterionScoreResponse> criteriaFromJson(com.careertuner.profile.domain.ProfileAiAnalysis row) {
+        if (row == null || row.getCriteria() == null || row.getCriteria().isBlank()) {
+            return List.of();
+        }
+        try {
+            List<ProfileCriterionScore> criteria = objectMapper.readValue(row.getCriteria(),
+                    new tools.jackson.core.type.TypeReference<List<ProfileCriterionScore>>() { });
+            return criteria == null ? List.of() : criteria(criteria);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
     }
 
     private void recordAi(Long userId, ProfileAiResult result) {

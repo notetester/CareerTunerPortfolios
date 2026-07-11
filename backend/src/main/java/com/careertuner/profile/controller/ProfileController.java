@@ -131,4 +131,11 @@ public class ProfileController {
     public ApiResponse<ProfileCompletenessResponse> diagnoseCompleteness(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.diagnoseCompleteness(authUser));
     }
+
+    /** 저장된 프로필 AI 분석 조회 — 새로고침 후에도 최근 분석 결과를 보여준다(조회는 동의 불요, 저장분 읽기만). */
+    @GetMapping("/ai-analysis")
+    public ApiResponse<com.careertuner.profile.dto.ProfileAiAnalysisResponse> aiAnalysis(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.aiAnalysis(authUser));
+    }
 }
