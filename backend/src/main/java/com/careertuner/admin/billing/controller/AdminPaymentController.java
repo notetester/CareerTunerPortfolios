@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 결제 조회. 권한은 SecurityConfig 의 /api/admin/** = ADMIN 정책으로 보호된다. */
 @RestController
 @RequestMapping("/api/admin/payments")
-@RequireAdminPermission({"BILLING_READ", "BILLING_ADMIN"})
+@RequireAdminPermission({"BILLING_READ"})
 @RequiredArgsConstructor
 public class AdminPaymentController {
 

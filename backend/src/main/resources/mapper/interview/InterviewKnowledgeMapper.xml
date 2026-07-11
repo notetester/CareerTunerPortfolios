@@ -9,24 +9,32 @@
     </insert>
 
     <select id="findById" resultType="com.careertuner.interview.domain.InterviewKnowledge">
-        SELECT * FROM interview_knowledge WHERE id = #{id}
+        SELECT * FROM interview_knowledge WHERE id = #{id} AND deleted_at IS NULL
     </select>
 
     <select id="findAll" resultType="com.careertuner.interview.domain.InterviewKnowledge">
-        SELECT * FROM interview_knowledge ORDER BY id DESC LIMIT #{limit}
+        SELECT * FROM interview_knowledge
+         WHERE deleted_at IS NULL
+         ORDER BY id DESC LIMIT #{limit}
     </select>
 
     <update id="markIndexed">
-        UPDATE interview_knowledge SET indexed = 1 WHERE id = #{id}
+        UPDATE interview_knowledge SET indexed = 1
+         WHERE id = #{id} AND deleted_at IS NULL
     </update>
 
     <update id="update">
         UPDATE interview_knowledge
         SET kind = #{kind}, title = #{title}, content = #{content}, source = #{source}, indexed = #{indexed}
         WHERE id = #{id}
+          AND deleted_at IS NULL
     </update>
 
-    <delete id="delete">
-        DELETE FROM interview_knowledge WHERE id = #{id}
-    </delete>
+    <update id="delete">
+        UPDATE interview_knowledge
+           SET deleted_at = COALESCE(deleted_at, NOW()),
+               indexed = 0
+         WHERE id = #{id}
+           AND deleted_at IS NULL
+    </update>
 </mapper>

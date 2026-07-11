@@ -6,6 +6,7 @@ import * as moderationApi from "../api/moderationApi";
 import type { ModerationSettingData, ModerationTestResult } from "../api/moderationApi";
 import type { ModerationReviewAction, ModerationReviewQueueItem } from "../types/moderation";
 import "./moderation-settings.css";
+import { useAdminAuthorization } from "@/admin/auth/useAdminAuthorization";
 
 /* ── 프리셋 정의 ── */
 const PRESETS = [
@@ -71,9 +72,10 @@ function MdResult({ r, th, label, prev }: {
 }
 
 /* ── 숫자 입력(포커스 아웃 시 클램프 후 저장) ── */
-function NumBox({ label, value, min, max, hint, onCommit }: {
+function NumBox({ label, value, min, max, hint, onCommit, disabled = false }: {
   label: string; value: number; min: number; max: number; hint: string;
   onCommit: (v: number) => void;
+  disabled?: boolean;
 }) {
   const [v, setV] = useState(value);
   useEffect(() => { setV(value); }, [value]);
@@ -82,6 +84,7 @@ function NumBox({ label, value, min, max, hint, onCommit }: {
       <span className="av-flabel">{label}</span>
       <input
         type="number" min={min} max={max}
+        disabled={disabled}
         className="av-input" style={{ width: 130 }}
         value={v}
         onChange={(e) => setV(Number(e.target.value))}
@@ -100,6 +103,10 @@ function NumBox({ label, value, min, max, hint, onCommit }: {
    메인 패널
    ══════════════════════════════════════════════════════════ */
 export default function ModerationSettingsPanel({ flash }: { flash: (msg: string) => void }) {
+  const authorization = useAdminAuthorization();
+  const canConfigure = authorization.can("AI_UPDATE");
+  const canTest = authorization.can("AI_CREATE");
+  const canReview = authorization.can("CONTENT_UPDATE");
   /* 설정 상태 */
   const [mode, setMode] = useState("NORMAL");
   const [th, setTh] = useState(0.80);
@@ -198,6 +205,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 프리셋 적용 */
   const applyPreset = async (p: typeof PRESETS[number]) => {
+    if (!canConfigure) return;
     setPending(null);
     try {
       const updated = await moderationApi.updateModerationSettings({
@@ -218,6 +226,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 고급 임계값 변경 */
   const applyTh = async (v: number) => {
+    if (!canConfigure) return;
     setTh(v);
     const isCustom = v !== cur.th;
     setCustom(isCustom);
@@ -233,6 +242,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 사용자 제재 설정 저장 (누적 임계 / 차단 기간) */
   const applySanction = async (next: { sanctionThreshold?: number; blockDays?: number }) => {
+    if (!canConfigure) return;
     try {
       const updated = await moderationApi.updateModerationSettings(next);
       setSanction(updated.sanctionThreshold);
@@ -246,6 +256,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 작성 제한 / 신고 블러 저장 */
   const applyRate = async (next: Parameters<typeof moderationApi.updateModerationSettings>[0], okMsg: string) => {
+    if (!canConfigure) return;
     try {
       const u = await moderationApi.updateModerationSettings(next);
       setReportBlur(u.reportBlurThreshold);
@@ -261,7 +272,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 판정 테스트 */
   const runTest = async () => {
-    if (loading || serverDown || !body.trim()) return;
+    if (!canTest || loading || serverDown || !body.trim()) return;
     setLoading(true);
     if (result) setPrevRes(result);
     try {
@@ -278,7 +289,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   };
 
   const applyReviewDecision = async () => {
-    if (!reviewPending || queueActionId !== null) return;
+    if (!canReview || !reviewPending || queueActionId !== null) return;
     const { item, action } = reviewPending;
     setQueueActionId(item.postId);
     try {
@@ -356,8 +367,9 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             return (
               <button
                 key={p.k}
+                disabled={!canConfigure}
                 className={`md-pre${on ? " on" : ""}`}
-                onClick={() => { if (!on) setPending(p); }}
+                onClick={() => { if (canConfigure && !on) setPending(p); }}
               >
                 <div className="md-pre__top">
                   <span className="md-pre__t">{p.name}</span>
@@ -391,6 +403,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
               <span className="av-muted num">0.50</span>
               <input
                 type="range" min="0.5" max="0.95" step="0.05"
+                disabled={!canConfigure}
                 value={th}
                 onChange={(e) => applyTh(Number(e.target.value))}
               />
@@ -416,6 +429,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             <span className="av-flabel">제재 임계 (누적 숨김 글 수)</span>
             <input
               type="number" min={1} max={100}
+              disabled={!canConfigure}
               className="av-input" style={{ width: 120 }}
               value={sanction}
               onChange={(e) => setSanction(Number(e.target.value))}
@@ -430,6 +444,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             <span className="av-flabel">차단 기간 (일)</span>
             <input
               type="number" min={1} max={3650}
+              disabled={!canConfigure}
               className="av-input" style={{ width: 120 }}
               value={blockDays}
               onChange={(e) => setBlockDays(Number(e.target.value))}
@@ -454,6 +469,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
             <NumBox
               label="신고 누적 블러 임계 (건)"
+              disabled={!canConfigure}
               value={reportBlur} min={1} max={1000}
               hint="이 수 이상 신고되면 비작성자에게 자동 블러(작성자·클릭 시 해제)"
               onCommit={(v) => applyRate({ reportBlurThreshold: v }, "신고 블러 임계가 저장됐어요.")}
@@ -465,8 +481,10 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>게시글 작성 제한</div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
               <NumBox label="윈도 (초)" value={postWin} min={1} max={86400}
+                disabled={!canConfigure}
                 hint="이 시간 창 안의 작성 수를 셈" onCommit={(v) => applyRate({ postRateWindowSeconds: v }, "게시글 제한이 저장됐어요.")} />
               <NumBox label="허용 건수 (0=비활성)" value={postMax} min={0} max={100000}
+                disabled={!canConfigure}
                 hint="윈도 내 이 수 이상이면 429 차단" onCommit={(v) => applyRate({ postRateMax: v }, "게시글 제한이 저장됐어요.")} />
             </div>
           </div>
@@ -476,8 +494,10 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>댓글 작성 제한</div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
               <NumBox label="윈도 (초)" value={commentWin} min={1} max={86400}
+                disabled={!canConfigure}
                 hint="이 시간 창 안의 작성 수를 셈" onCommit={(v) => applyRate({ commentRateWindowSeconds: v }, "댓글 제한이 저장됐어요.")} />
               <NumBox label="허용 건수 (0=비활성)" value={commentMax} min={0} max={100000}
+                disabled={!canConfigure}
                 hint="윈도 내 이 수 이상이면 429 차단" onCommit={(v) => applyRate({ commentRateMax: v }, "댓글 제한이 저장됐어요.")} />
             </div>
           </div>
@@ -489,8 +509,10 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             </div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
               <NumBox label="윈도 (초)" value={inquiryWin} min={1} max={86400}
+                disabled={!canConfigure}
                 hint="이 시간 창 안의 문의 작성 수를 셈" onCommit={(v) => applyRate({ inquiryRateWindowSeconds: v }, "문의 제한 정책이 저장됐어요.")} />
               <NumBox label="허용 건수 (0=비활성)" value={inquiryMax} min={0} max={100000}
+                disabled={!canConfigure}
                 hint="윈도 내 이 수 이상이면 429로 차단" onCommit={(v) => applyRate({ inquiryRateMax: v }, "문의 제한 정책이 저장됐어요.")} />
             </div>
           </div>
@@ -498,7 +520,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       </div>
 
       {/* 테스트 콘솔 */}
-      <div className="md-sec">
+      {canTest && <div className="md-sec">
         <div className="md-sec__h">
           <h2>테스트 콘솔</h2>
           <span className="s">현재 설정으로 즉석 판정 &mdash; 설정을 바꾼 뒤 같은 문장을 다시 판정해보세요</span>
@@ -570,7 +592,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             )}
           </div>
         </section>
-      </div>
+      </div>}
 
       {/* 임계 미만 toxic 결과 수동 검토 큐 */}
       <section className="av-panel md-sec" aria-label="검토 대기 목록">
@@ -623,7 +645,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
                     </div>
                   </div>
                   <p className="md-queue__preview">{item.contentPreview || "본문 미리보기가 없습니다."}</p>
-                  <div className="md-queue__actions">
+                  {canReview && <div className="md-queue__actions">
                     <span className="av-hint">결정 후 목록에서 빠지며 같은 검열 결과에는 다시 나타나지 않습니다.</span>
                     <button
                       className="av-btn"
@@ -639,7 +661,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
                     >
                       <EyeOff /> 숨김
                     </button>
-                  </div>
+                  </div>}
                 </article>
               ))}
             </div>
@@ -653,7 +675,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       </section>
 
       {/* 수동 검토 결정 확인 */}
-      {reviewPending && (
+      {reviewPending && canReview && (
         <div className="md-dim" onClick={(e) => {
           if (e.target === e.currentTarget && queueActionId === null) setReviewPending(null);
         }}>
@@ -682,7 +704,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       )}
 
       {/* 확인 다이얼로그 */}
-      {pending && (
+      {pending && canConfigure && (
         <div className="md-dim" onClick={(e) => { if (e.target === e.currentTarget) setPending(null); }}>
           <div className="md-dlg" role="dialog" aria-modal="true">
             <div className="md-dlg__t">&lsquo;{pending.name}&rsquo; 모드로 변경할까요?</div>

@@ -7,6 +7,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Year;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -82,7 +83,7 @@ public class NationalTechExamScheduleProvider {
         try {
             // serviceKey 는 재인코딩하지 않음(디코딩 키 전제). stdt=현재연도, numOfRows 로 전체.
             String url = qnetBaseUrl + OPERATION + "?serviceKey=" + serviceKey
-                    + "&stdt=" + Year.now().getValue() + "&numOfRows=" + NUM_OF_ROWS + "&pageNo=1";
+                    + "&stdt=" + Year.now(ZoneId.of("Asia/Seoul")).getValue() + "&numOfRows=" + NUM_OF_ROWS + "&pageNo=1";
             HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().build();
             HttpResponse<String> response = httpClient.send(request,
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));

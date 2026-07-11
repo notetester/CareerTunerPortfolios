@@ -28,6 +28,7 @@ import type {
   AdminJobAnalysisSummaryResponse,
 } from "../types";
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 type BooleanFilter = "all" | "true" | "false";
 
@@ -147,6 +148,7 @@ function formatPostingRevision(row: AdminJobAnalysisRow): string {
 }
 
 export function AdminJobAnalysisPage() {
+  const { canUpdate } = useAdminDomainAuthorization("AI");
   const [rows, setRows] = useState<AdminJobAnalysisRow[]>([]);
   const [summary, setSummary] = useState<AdminJobAnalysisSummaryResponse>(EMPTY_SUMMARY);
   const [memos, setMemos] = useState<Record<number, string>>({});
@@ -236,6 +238,7 @@ export function AdminJobAnalysisPage() {
   };
 
   const saveMemo = async (analysisId: number) => {
+    if (!canUpdate) return;
     const nextMemo = memos[analysisId] ?? "";
     setSavingId(analysisId);
     setError(null);
@@ -423,6 +426,7 @@ export function AdminJobAnalysisPage() {
                       onMemoChange={(value) => setMemos((current) => ({ ...current, [selectedRow.id]: value }))}
                       onSaveMemo={() => void saveMemo(selectedRow.id)}
                       saving={savingId === selectedRow.id}
+                      canUpdate={canUpdate}
                     />
                   )}
                 </CardContent>
@@ -461,6 +465,7 @@ export function AdminJobAnalysisPage() {
                           onMemoChange={(value) => setMemos((current) => ({ ...current, [row.id]: value }))}
                           onSaveMemo={() => void saveMemo(row.id)}
                           saving={savingId === row.id}
+                          canUpdate={canUpdate}
                           compact
                         />
                       )}
@@ -558,6 +563,7 @@ function JobAnalysisDetail({
   onMemoChange,
   onSaveMemo,
   saving,
+  canUpdate,
   compact = false,
 }: {
   row: AdminJobAnalysisRow;
@@ -565,6 +571,7 @@ function JobAnalysisDetail({
   onMemoChange: (value: string) => void;
   onSaveMemo: () => void;
   saving: boolean;
+  canUpdate: boolean;
   compact?: boolean;
 }) {
   return (
@@ -611,7 +618,7 @@ function JobAnalysisDetail({
         <CollapsibleTextBlock title="모호 조건" value={row.ambiguousConditions} />
       </div>
 
-      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      {canUpdate ? <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="text-xs font-semibold text-slate-500">운영 메모</div>
         <Textarea
           value={memo}
@@ -625,7 +632,7 @@ function JobAnalysisDetail({
             메모 저장
           </Button>
         </div>
-      </div>
+      </div> : <TextBlock title="운영 메모" value={row.adminMemo} />}
     </div>
   );
 }

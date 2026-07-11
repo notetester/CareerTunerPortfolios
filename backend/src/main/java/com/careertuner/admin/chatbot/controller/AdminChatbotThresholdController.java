@@ -20,7 +20,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot/threshold")
-@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminChatbotThresholdController {
 

@@ -26,7 +26,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/interview")
-@RequireAdminPermission({"INTERVIEW_READ", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminInterviewController {
 
@@ -62,7 +62,7 @@ public class AdminInterviewController {
     }
 
     @PutMapping("/sessions/{id}/memo")
-    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<Void> updateMemo(@AuthenticationPrincipal AuthUser authUser,
                                         @PathVariable Long id,
                                         @RequestBody UpdateAdminMemoRequest request) {

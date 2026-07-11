@@ -15,7 +15,8 @@
     <select id="findServable" resultType="com.careertuner.ads.domain.Advertisement">
         SELECT <include refid="adColumns"/>
           FROM advertisement
-         WHERE active = 1
+         WHERE deleted_at IS NULL
+           AND active = 1
            AND placement = #{placement}
            AND (start_at IS NULL OR start_at &lt;= #{now})
            AND (end_at IS NULL OR end_at &gt; #{now})
@@ -27,14 +28,17 @@
         SELECT <include refid="adColumns"/>
           FROM advertisement
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </select>
 
     <update id="increaseImpression">
-        UPDATE advertisement SET impression_count = impression_count + 1 WHERE id = #{id}
+        UPDATE advertisement SET impression_count = impression_count + 1
+         WHERE id = #{id} AND deleted_at IS NULL
     </update>
 
     <update id="increaseClick">
-        UPDATE advertisement SET click_count = click_count + 1 WHERE id = #{id}
+        UPDATE advertisement SET click_count = click_count + 1
+         WHERE id = #{id} AND deleted_at IS NULL
     </update>
 
     <select id="findUserPlan" resultType="string">
@@ -66,20 +70,27 @@
                priority        = #{priority},
                weight          = #{weight}
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </update>
 
     <update id="updateActive">
-        UPDATE advertisement SET active = #{active} WHERE id = #{id}
+        UPDATE advertisement SET active = #{active}
+         WHERE id = #{id} AND deleted_at IS NULL
     </update>
 
-    <delete id="delete">
-        DELETE FROM advertisement WHERE id = #{id}
-    </delete>
+    <update id="delete">
+        UPDATE advertisement
+           SET deleted_at = COALESCE(deleted_at, NOW()),
+               active = 0
+         WHERE id = #{id}
+           AND deleted_at IS NULL
+    </update>
 
     <select id="findForAdmin" resultType="com.careertuner.ads.domain.Advertisement">
         SELECT <include refid="adColumns"/>
           FROM advertisement
         <where>
+            deleted_at IS NULL
             <if test="placement != null">AND placement = #{placement}</if>
             <if test="platform != null">AND target_platform = #{platform}</if>
             <if test="activeOnly">AND active = 1</if>

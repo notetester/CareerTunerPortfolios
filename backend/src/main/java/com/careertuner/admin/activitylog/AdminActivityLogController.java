@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 활동 로그 + 보안 이력 조회 API. */
 @RestController
 @RequestMapping("/api/admin")
-@RequireAdminPermission({"ADMIN_AUDIT_READ", "SECURITY_LOG_READ", "AUDIT_ADMIN"})
+@RequireAdminPermission({"AUDIT_READ"})
 @RequiredArgsConstructor
 public class AdminActivityLogController {
 

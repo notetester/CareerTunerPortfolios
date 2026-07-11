@@ -18,6 +18,7 @@
     SELECT id, version_label, lede, oks_json, nos_json, rules_json, params_json, published_at
     FROM community_guideline
     WHERE status = 'PUBLISHED'
+      AND deleted_at IS NULL
     ORDER BY published_at DESC
     LIMIT 1
   </select>

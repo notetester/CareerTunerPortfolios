@@ -7,7 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.careertuner.admin.user.dto.AdminUserRow;
+import com.careertuner.admin.common.security.AdminAccountMutationGuard;
+import com.careertuner.admin.common.security.AdminAccountState;
 import com.careertuner.admin.user.mapper.AdminUserMapper;
 import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.community.mapper.CommunityPostMapper;
@@ -46,6 +47,7 @@ public class UserSanctionService {
     private final AuthMapper authMapper;
     private final NotificationService notificationService;
     private final ModerationSettingService settingService;
+    private final AdminAccountMutationGuard accountMutationGuard;
 
     /**
      * 숨김 처리 직후 호출. 누적 숨김 글 수가 제재 임계 이상이고 사용자가 ACTIVE 면 자동 차단.
@@ -98,8 +100,9 @@ public class UserSanctionService {
      * blockedUntil 은 DB NOW()(KST 벽시계)와 비교되므로 KST 로 저장해 시간원을 일치시킨다. actor=null = 시스템.
      */
     private void blockActiveUser(Long userId, String reason) {
-        AdminUserRow user = userMapper.findUser(userId);
-        if (user == null || !ACTIVE.equals(user.getStatus())) {
+        AdminAccountState locked = accountMutationGuard.validateStatusChangeOrSkipDeleted(null, userId, BLOCKED);
+        if (locked == null || !ACTIVE.equals(locked.status())
+                || "ADMIN".equals(locked.role()) || "SUPER_ADMIN".equals(locked.role())) {
             return;
         }
         int blockDays = settingService.getBlockDays();

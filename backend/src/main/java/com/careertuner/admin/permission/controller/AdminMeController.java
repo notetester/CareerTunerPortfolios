@@ -55,6 +55,7 @@ public class AdminMeController {
     }
 
     @PatchMapping("/notification-categories")
+    @AdminRoleOnly
     public ApiResponse<Map<String, Boolean>> updateNotificationCategory(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminNotificationOptOutUpdateRequest request) {

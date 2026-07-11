@@ -15,6 +15,7 @@ import type {
   AdminJobPostingUploadLimitSetting,
   JobPostingFallbackStage,
 } from "../types";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 const STAGE_LABELS: Record<JobPostingFallbackStage, { title: string; description: string }> = {
   JOB_POSTING_PDF_OCR: {
@@ -36,6 +37,7 @@ function sourceLabel(source: string): string {
 }
 
 export function AdminAiSettingsPage() {
+  const { canUpdate } = useAdminDomainAuthorization("AI");
   const [setting, setSetting] = useState<AdminJobPostingFallbackSetting | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [allowedStages, setAllowedStages] = useState<JobPostingFallbackStage[]>([]);
@@ -80,6 +82,7 @@ export function AdminAiSettingsPage() {
   }, []);
 
   const toggleStage = (stage: JobPostingFallbackStage) => {
+    if (!canUpdate) return;
     setAllowedStages((current) =>
       current.includes(stage)
         ? current.filter((item) => item !== stage)
@@ -88,6 +91,7 @@ export function AdminAiSettingsPage() {
   };
 
   const save = async () => {
+    if (!canUpdate) return;
     setSaving(true);
     setError(null);
     setSavedMessage(null);
@@ -113,6 +117,7 @@ export function AdminAiSettingsPage() {
   const uploadDirty = uploadSetting != null && uploadMb !== "" && Number(uploadMb) !== uploadCurrentMb;
 
   const saveUpload = async () => {
+    if (!canUpdate) return;
     const mb = Number(uploadMb);
     if (!Number.isFinite(mb) || mb < uploadMinMb || mb > uploadMaxMb) {
       setError(`업로드 한도는 ${uploadMinMb}MB ~ ${uploadMaxMb}MB 범위여야 합니다.`);
@@ -177,6 +182,7 @@ export function AdminAiSettingsPage() {
                     type="checkbox"
                     className="mt-1 size-4 accent-blue-600"
                     checked={enabled}
+                    disabled={!canUpdate}
                     onChange={(event) => setEnabled(event.target.checked)}
                   />
                   <span className="min-w-0">
@@ -203,7 +209,7 @@ export function AdminAiSettingsPage() {
                           type="checkbox"
                           className="mt-1 size-4 accent-blue-600"
                           checked={allowedStages.includes(stage)}
-                          disabled={!enabled}
+                          disabled={!canUpdate || !enabled}
                           onChange={() => toggleStage(stage)}
                         />
                         <span className="min-w-0">
@@ -225,14 +231,16 @@ export function AdminAiSettingsPage() {
                       저장 후에는 DB 관리자 설정이 환경변수보다 우선합니다. 비용/사용량은 B AI 사용량 로그에서 확인합니다.
                     </div>
                   </div>
-                  <Button
-                    className="bg-blue-600 text-white hover:bg-blue-700"
-                    disabled={saving || loading || !dirty}
-                    onClick={() => void save()}
-                  >
-                    {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
-                    저장
-                  </Button>
+                  {canUpdate && (
+                    <Button
+                      className="bg-blue-600 text-white hover:bg-blue-700"
+                      disabled={saving || loading || !dirty}
+                      onClick={() => void save()}
+                    >
+                      {saving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+                      저장
+                    </Button>
+                  )}
                 </div>
               </>
             )}
@@ -267,6 +275,7 @@ export function AdminAiSettingsPage() {
                     step={1}
                     className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm"
                     value={uploadMb}
+                    disabled={!canUpdate}
                     onChange={(event) => setUploadMb(event.target.value)}
                   />
                   <span className="text-sm text-slate-500">
@@ -279,14 +288,16 @@ export function AdminAiSettingsPage() {
                     <div className="font-semibold text-slate-900">현재 적용 출처: {sourceLabel(uploadSetting?.source ?? "PROPERTIES")}</div>
                     <div className="mt-1">저장하면 DB 관리자 설정이 환경변수 기본값보다 우선합니다.</div>
                   </div>
-                  <Button
-                    className="bg-blue-600 text-white hover:bg-blue-700"
-                    disabled={uploadSaving || loading || !uploadDirty}
-                    onClick={() => void saveUpload()}
-                  >
-                    {uploadSaving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
-                    저장
-                  </Button>
+                  {canUpdate && (
+                    <Button
+                      className="bg-blue-600 text-white hover:bg-blue-700"
+                      disabled={uploadSaving || loading || !uploadDirty}
+                      onClick={() => void saveUpload()}
+                    >
+                      {uploadSaving ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+                      저장
+                    </Button>
+                  )}
                 </div>
               </>
             )}

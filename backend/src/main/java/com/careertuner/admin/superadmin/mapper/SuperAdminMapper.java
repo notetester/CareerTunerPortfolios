@@ -31,6 +31,8 @@ public interface SuperAdminMapper {
 
     List<AdminPermissionGroupRow> findGroups();
 
+    String findGroupRoleScope(String groupCode);
+
     List<AdminPermissionPolicyRow> findGroupPermissions(String groupCode);
 
     List<AdminPermissionAssignmentRow> findUserPermissions(Long userId);
@@ -47,12 +49,12 @@ public interface SuperAdminMapper {
     int updatePermissionMetadata(@Param("code") String code, @Param("displayName") String displayName,
                                  @Param("description") String description, @Param("actorId") Long actorId);
 
-    void togglePermission(@Param("code") String code, @Param("active") boolean active, @Param("actorId") Long actorId);
+    int togglePermission(@Param("code") String code, @Param("active") boolean active, @Param("actorId") Long actorId);
 
     int updateGroupMetadata(@Param("code") String code, @Param("displayName") String displayName,
                             @Param("description") String description, @Param("actorId") Long actorId);
 
-    void toggleGroup(@Param("code") String code, @Param("active") boolean active, @Param("actorId") Long actorId);
+    int toggleGroup(@Param("code") String code, @Param("active") boolean active, @Param("actorId") Long actorId);
 
     void addGroupItem(@Param("groupCode") String groupCode, @Param("permissionCode") String permissionCode,
                       @Param("actorId") Long actorId);

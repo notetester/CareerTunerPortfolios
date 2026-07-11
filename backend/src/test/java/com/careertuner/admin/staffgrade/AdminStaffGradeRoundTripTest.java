@@ -19,7 +19,8 @@ import com.careertuner.common.security.AuthUser;
 
 /**
  * 관리자/직원 등급·급여 <b>실 DB round-trip</b> — 등급/급여 upsert + 변경 이력을 team1_db 상대로 검증.
- * SUPER_ADMIN 전용 접근과 일반 관리자 거부(양상태)를 함께 확인한다. {@code @Transactional} 롤백.
+ * 급여 정보는 서비스 경계에서도 SUPER_ADMIN 역할만 접근 가능한지 확인한다.
+ * {@code @Transactional} 롤백.
  */
 @SpringBootTest
 @Transactional
@@ -57,11 +58,22 @@ class AdminStaffGradeRoundTripTest {
     }
 
     @Test
-    void upsert_rejectedForNonSuperAdmin() {
+    void upsert_rejectsNormalAdminEvenWhenCalledDirectly() {
         Long userId = createStaff("rt.grade.staff2@ct.test");
         AuthUser normalAdmin = new AuthUser(2L, "admin@ct.test", "ADMIN");
 
         assertThatThrownBy(() -> service.upsert(normalAdmin, userId, new AdminStaffGradeUpsertRequest(
+                "운영", "JUNIOR", "T1", "C", "G1", "1", 36_000_000, "KRW",
+                LocalDate.parse("2026-07-01"), "권한 경계 테스트")))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void upsert_rejectsRegularUserRole() {
+        Long userId = createStaff("rt.grade.staff3@ct.test");
+        AuthUser regularUser = new AuthUser(3L, "user@ct.test", "USER");
+
+        assertThatThrownBy(() -> service.upsert(regularUser, userId, new AdminStaffGradeUpsertRequest(
                 null, null, null, null, null, null, 1000, "KRW", null, null)))
                 .isInstanceOf(BusinessException.class);
     }

@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/prompts")
-@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminPromptController {
 

@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/faq")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 @RequiredArgsConstructor
 public class AdminFaqController {
 
@@ -36,6 +36,7 @@ public class AdminFaqController {
     }
 
     @PostMapping
+    @RequireAdminPermission({"CONTENT_CREATE"})
     public ApiResponse<AdminFaqResponse> createFaq(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminFaqRequest request) {
@@ -43,6 +44,7 @@ public class AdminFaqController {
     }
 
     @PutMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminFaqResponse> updateFaq(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -51,6 +53,7 @@ public class AdminFaqController {
     }
 
     @DeleteMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_DELETE"})
     public ApiResponse<Void> deleteFaq(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/refunds")
-@RequireAdminPermission({"BILLING_READ", "BILLING_ADMIN"})
+@RequireAdminPermission({"BILLING_READ"})
 @RequiredArgsConstructor
 public class AdminRefundRequestController {
     private final RefundRequestService service;
@@ -38,7 +38,7 @@ public class AdminRefundRequestController {
 
     @SitesFinancialMutation
     @PostMapping("/{id}/approve")
-    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
+    @RequireAdminPermission({"BILLING_UPDATE"})
     public ApiResponse<RefundRequestResponse> approve(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -48,7 +48,7 @@ public class AdminRefundRequestController {
 
     @SitesFinancialMutation
     @PostMapping("/{id}/reject")
-    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
+    @RequireAdminPermission({"BILLING_UPDATE"})
     public ApiResponse<RefundRequestResponse> reject(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,

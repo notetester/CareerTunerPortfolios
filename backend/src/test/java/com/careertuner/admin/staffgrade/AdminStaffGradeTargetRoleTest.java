@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -28,6 +29,15 @@ class AdminStaffGradeTargetRoleTest {
     private final AdminStaffGradeMapper mapper = mock(AdminStaffGradeMapper.class);
     private final AdminStaffGradeService service = new AdminStaffGradeService(mapper, new ObjectMapper());
     private final AuthUser superAdmin = new AuthUser(1L, "super@test.dev", "SUPER_ADMIN");
+
+    @Test
+    void normalAdminCannotReadSalaryDataThroughServiceBoundary() {
+        AuthUser normalAdmin = new AuthUser(2L, "admin@test.dev", "ADMIN");
+
+        assertThatThrownBy(() -> service.grades(normalAdmin, null, null, 1, 20))
+                .isInstanceOf(BusinessException.class);
+        verifyNoInteractions(mapper);
+    }
 
     @Test
     void directUpsertRejectsRegularUserAtFinalWriteBoundary() {
