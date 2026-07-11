@@ -388,6 +388,19 @@ public class IntakeAskService {
     }
 
     /**
+     * 대화 삭제 동반 정리: DB 슬롯 행 삭제 + 인메모리 트레이스 제거. 행 없으면 no-op.
+     * closeIntakeSession(DONE 전환)과 달리 대화 자체가 사라지는 경우라 흔적을 남기지 않는다 —
+     * 논리참조(FK 없음)라 여기서 안 지우면 고아 슬롯이 남고, 트레이스를 남기면 stale 요청이 인테이크를 되살린다.
+     */
+    public void deleteIntakeState(Long conversationId) {
+        if (conversationId == null) {
+            return;
+        }
+        slotMapper.deleteByConversation(conversationId);
+        trace.drop(conversationId);
+    }
+
+    /**
      * (버그3 대칭) ③ 인테이크 인터럽트 게이트에서 "아니요, 계속할게요"를 고른 턴 — 오프토픽 발화를 슬롯에
      * 넣지 않고 현재 단계를 그대로 재질문한다(qwen3 미경유·결정적). 지원 건 미확정이면 CASE 부터,
      * 확정됐으면 autoPrepIntakeService 로 현재 nextAsk(MODE 등)+칩을 재산출한다.

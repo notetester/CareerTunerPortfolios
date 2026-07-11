@@ -14,6 +14,7 @@ import com.careertuner.admin.chatbot.dto.AdminChatbotConversationRow;
 import com.careertuner.admin.chatbot.mapper.AdminChatbotConversationMapper;
 import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.admin.ops.service.AdminActionLogService;
+import com.careertuner.ai.intake.IntakeAskService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -30,6 +31,8 @@ public class AdminChatbotConversationController {
 
     private final AdminChatbotConversationMapper mapper;
     private final AdminActionLogService actionLogService;
+    // 인테이크 슬롯 동반 정리(사용자 측 삭제와 동일 경로) — memory 행만 지우면 고아 슬롯이 남는다.
+    private final IntakeAskService intakeAskService;
 
     @GetMapping
     public ApiResponse<List<AdminChatbotConversationRow>> list(
@@ -45,6 +48,7 @@ public class AdminChatbotConversationController {
     public ApiResponse<Void> delete(@AuthenticationPrincipal AuthUser authUser,
                                     @PathVariable Long conversationId) {
         AdminAccess.requireAdmin(authUser);
+        intakeAskService.deleteIntakeState(conversationId); // 슬롯 먼저 — 역순은 실패 시 고아 슬롯
         int deleted = mapper.deleteConversation(conversationId);
         actionLogService.record(authUser, null, "CHATBOT_CONVERSATION_DELETED", "CHATBOT_CONVERSATION",
                 null, "conversationId=" + conversationId + ", deleted=" + deleted, null);
