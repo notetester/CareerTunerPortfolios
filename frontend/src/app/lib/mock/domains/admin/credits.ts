@@ -15,6 +15,11 @@ const users = new Map<number, { email: string; name: string; balance: number }>(
 ]);
 
 let transactionSequence = 9206;
+const adjustmentRequests = new Map<string, {
+  amount: number;
+  reason: string;
+  response: AdminCreditAdjustResponse;
+}>();
 const transactions: AdminCreditTransactionRow[] = [
   { id: 9206, userId: 9001, userEmail: "demo@careertuner.dev", userName: "김데모", type: "AI_USAGE", amount: -2, balanceAfter: 118, featureType: "CORRECTION_SELF_INTRO", aiUsageLogId: 8303, reason: "자기소개서 첨삭", createdAt: iso(0) },
   { id: 9205, userId: 9002, userEmail: "jiwon.park@example.com", userName: "박지원", type: "ADMIN_ADJUST", amount: 10, balanceAfter: 42, featureType: "ADMIN_CREDIT_ADJUST", aiUsageLogId: null, reason: "서비스 장애 보상", createdAt: iso(1) },
@@ -42,13 +47,21 @@ export const adminCreditRoutes: MockRoute[] = [
       if (!user) throw new Error("회원을 찾을 수 없습니다.");
       if (!Number.isInteger(request.amount) || request.amount === 0 || Math.abs(request.amount) > 1_000_000) throw new Error("조정 크레딧 값이 올바르지 않습니다.");
       if (!request.reason?.trim()) throw new Error("조정 사유는 필수입니다.");
+      const requestKey = request.requestId ? `${request.userId}:${request.requestId}` : null;
+      const previous = requestKey ? adjustmentRequests.get(requestKey) : null;
+      if (previous) {
+        if (previous.amount !== request.amount || previous.reason !== request.reason.trim()) throw new Error("동일 요청 ID가 다른 크레딧 조정 내용에 사용되었습니다.");
+        return previous.response;
+      }
       const balanceBefore = user.balance;
       const balanceAfter = balanceBefore + request.amount;
       if (balanceAfter < 0) throw new Error("차감할 크레딧이 부족합니다.");
       user.balance = balanceAfter;
       const transactionId = ++transactionSequence;
       transactions.unshift({ id: transactionId, userId: request.userId, userEmail: user.email, userName: user.name, type: "ADMIN_ADJUST", amount: request.amount, balanceAfter, featureType: "ADMIN_CREDIT_ADJUST", aiUsageLogId: null, reason: request.reason.trim(), createdAt: new Date().toISOString() });
-      return { transactionId, userId: request.userId, amount: request.amount, balanceBefore, balanceAfter };
+      const response = { transactionId, userId: request.userId, amount: request.amount, balanceBefore, balanceAfter };
+      if (requestKey) adjustmentRequests.set(requestKey, { amount: request.amount, reason: request.reason.trim(), response });
+      return response;
     },
   },
   {

@@ -379,7 +379,6 @@ const ADMIN_MOCK_MUTATION_POLICIES: readonly AdminMockMutationPolicy[] = [
   { method: "PATCH", pattern: /^\/admin\/tickets\/[^/]+$/, permission: "CONTENT_UPDATE" },
   { method: "POST", pattern: /^\/admin\/tickets\/[^/]+\/reply$/, permission: "CONTENT_CREATE" },
   { method: "POST", pattern: /^\/admin\/notifications$/, permission: "CONTENT_CREATE" },
-  { method: "PATCH", pattern: /^\/admin\/ai\/moderation\/review-queue\/[^/]+$/, permission: "CONTENT_UPDATE" },
   { method: "POST", pattern: /^\/admin\/ai\/moderation\/(?:comments\/)?[^/]+\/restore$/, permission: "CONTENT_UPDATE" },
   { method: "POST", pattern: /^\/admin\/ai\/moderation\/(?:comments\/)?[^/]+\/delete$/, permission: "CONTENT_DELETE" },
 
@@ -440,6 +439,16 @@ function adminMockReportActionPermissions(body: unknown): readonly AdminPermissi
   return null;
 }
 
+function adminMockModerationReviewPermissions(body: unknown): readonly AdminPermissionCode[] | null {
+  if (!body || typeof body !== "object" || !("action" in body)) return null;
+  const rawAction = (body as { action?: unknown }).action;
+  if (typeof rawAction !== "string") return null;
+  const action = rawAction.trim().toUpperCase();
+  if (action === "KEEP") return ["AI_UPDATE"];
+  if (action === "HIDE") return ["AI_UPDATE", "CONTENT_UPDATE"];
+  return null;
+}
+
 function adminMockMutationPermission(
   pathname: string,
   method: string,
@@ -450,6 +459,10 @@ function adminMockMutationPermission(
   if (normalizedMethod === "POST"
     && /^\/admin\/community\/reports\/[^/]+\/action$/.test(pathname)) {
     return adminMockReportActionPermissions(body);
+  }
+  if (normalizedMethod === "PATCH"
+    && /^\/admin\/ai\/moderation\/review-queue\/[^/]+$/.test(pathname)) {
+    return adminMockModerationReviewPermissions(body);
   }
   return ADMIN_MOCK_MUTATION_POLICIES.find((policy) => (
     policy.method === normalizedMethod && policy.pattern.test(pathname)

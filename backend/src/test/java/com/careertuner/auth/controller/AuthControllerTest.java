@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.careertuner.auth.dto.OAuthProviderAvailabilityResponse;
 import com.careertuner.auth.service.AuthService;
 import com.careertuner.auth.service.MfaService;
 import com.careertuner.common.web.FrontendReturnTarget;
@@ -67,5 +68,16 @@ class AuthControllerTest {
 
         assertThat(response.getHeaders().getLocation()).hasToString(
                 "https://careertuner.kro.kr/auth/callback?error=social_login_failed");
+    }
+
+    @Test
+    void oauthProviders_returnsCurrentServiceAvailability() {
+        var availability = new OAuthProviderAvailabilityResponse(true, false, true);
+        when(authService.oauthProviders()).thenReturn(availability);
+
+        var response = controller.oauthProviders();
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.data()).isEqualTo(availability);
     }
 }

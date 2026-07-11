@@ -20,10 +20,11 @@ public interface UserAccountMapper {
 
     User findById(Long id);
 
+    /** 소셜 연결 변경을 직렬화하기 위해 회원 행을 잠근다. */
+    User findByIdForUpdate(Long id);
+
     /** 연결된 소셜 provider 목록(user_social). */
     List<String> findLinkedProviders(Long userId);
-
-    int countLinkedProviders(Long userId);
 
     int countByLoginId(String loginId);
 

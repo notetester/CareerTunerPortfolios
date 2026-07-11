@@ -124,8 +124,11 @@ test("mock /admin API와 outage 관리자 persona를 중앙 차단한다", () =>
   assert.match(mockSource, /new Set<string>\(session\.permissions\)/);
   assert.match(accessSource, /const ADMIN_MOCK_MUTATION_POLICIES: readonly AdminMockMutationPolicy\[\]/);
   assert.match(accessSource, /function adminMockReportActionPermissions/);
+  assert.match(accessSource, /function adminMockModerationReviewPermissions/);
   assert.match(accessSource, /"DELETE_AND_BLOCK"\) return \["CONTENT_DELETE", "USER_UPDATE"\]/);
   assert.match(accessSource, /"BLOCK_AUTHOR"\) return \["CONTENT_UPDATE", "USER_UPDATE"\]/);
+  assert.match(accessSource, /action === "KEEP"\) return \["AI_UPDATE"\]/);
+  assert.match(accessSource, /action === "HIDE"\) return \["AI_UPDATE", "CONTENT_UPDATE"\]/);
   assert.match(accessSource, /requiredPermissions\.every/);
   assert.match(accessSource, /if \(!required\) return false;/);
   assert.match(accessSource, /if \(!domain\) return false;/);

@@ -106,7 +106,8 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   const authorization = useAdminAuthorization();
   const canConfigure = authorization.can("AI_UPDATE");
   const canTest = authorization.can("AI_CREATE");
-  const canReview = authorization.can("CONTENT_UPDATE");
+  const canKeepReview = authorization.can("AI_UPDATE");
+  const canHideReview = canKeepReview && authorization.can("CONTENT_UPDATE");
   /* 설정 상태 */
   const [mode, setMode] = useState("NORMAL");
   const [th, setTh] = useState(0.80);
@@ -289,8 +290,9 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   };
 
   const applyReviewDecision = async () => {
-    if (!canReview || !reviewPending || queueActionId !== null) return;
+    if (!reviewPending || queueActionId !== null) return;
     const { item, action } = reviewPending;
+    if (action === "HIDE" ? !canHideReview : !canKeepReview) return;
     setQueueActionId(item.postId);
     try {
       await moderationApi.decideModerationReview(item.postId, action);
@@ -645,22 +647,26 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
                     </div>
                   </div>
                   <p className="md-queue__preview">{item.contentPreview || "본문 미리보기가 없습니다."}</p>
-                  {canReview && <div className="md-queue__actions">
+                  {(canKeepReview || canHideReview) && <div className="md-queue__actions">
                     <span className="av-hint">결정 후 목록에서 빠지며 같은 검열 결과에는 다시 나타나지 않습니다.</span>
-                    <button
-                      className="av-btn"
-                      disabled={queueActionId !== null}
-                      onClick={() => setReviewPending({ item, action: "KEEP" })}
-                    >
-                      <CheckCircle2 /> 게시 유지
-                    </button>
-                    <button
-                      className="av-btn md-queue__hide"
-                      disabled={queueActionId !== null}
-                      onClick={() => setReviewPending({ item, action: "HIDE" })}
-                    >
-                      <EyeOff /> 숨김
-                    </button>
+                    {canKeepReview && (
+                      <button
+                        className="av-btn"
+                        disabled={queueActionId !== null}
+                        onClick={() => setReviewPending({ item, action: "KEEP" })}
+                      >
+                        <CheckCircle2 /> 게시 유지
+                      </button>
+                    )}
+                    {canHideReview && (
+                      <button
+                        className="av-btn md-queue__hide"
+                        disabled={queueActionId !== null}
+                        onClick={() => setReviewPending({ item, action: "HIDE" })}
+                      >
+                        <EyeOff /> 숨김
+                      </button>
+                    )}
                   </div>}
                 </article>
               ))}
@@ -675,7 +681,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       </section>
 
       {/* 수동 검토 결정 확인 */}
-      {reviewPending && canReview && (
+      {reviewPending && (reviewPending.action === "HIDE" ? canHideReview : canKeepReview) && (
         <div className="md-dim" onClick={(e) => {
           if (e.target === e.currentTarget && queueActionId === null) setReviewPending(null);
         }}>

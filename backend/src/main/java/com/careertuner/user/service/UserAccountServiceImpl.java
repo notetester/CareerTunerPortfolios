@@ -123,15 +123,19 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Override
     @Transactional
     public AccountInfoResponse unlinkSocial(Long userId, String provider) {
-        User user = requireUser(userId);
+        User user = mapper.findByIdForUpdate(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원 정보를 찾을 수 없습니다.");
+        }
         String normalizedProvider = normalizeProvider(provider);
-        int linkedCount = mapper.countLinkedProviders(userId);
-        boolean removingExisting = mapper.findLinkedProviders(userId).stream()
+        var linkedProviders = mapper.findLinkedProviders(userId);
+        boolean removingExisting = linkedProviders.stream()
                 .anyMatch(p -> normalizedProvider.equalsIgnoreCase(p));
         if (!removingExisting) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "연결된 소셜 계정이 없습니다.");
         }
-        boolean remainingSocial = linkedCount > 1;
+        boolean remainingSocial = linkedProviders.stream()
+                .anyMatch(p -> !normalizedProvider.equalsIgnoreCase(p));
         if (!remainingSocial && !hasUsableLocalLogin(user)) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "연동 해제 후 사용할 수 있는 로그인 수단이 남아 있지 않습니다. 먼저 아이디/이메일 로그인 또는 다른 소셜 계정을 추가해 주세요.");
