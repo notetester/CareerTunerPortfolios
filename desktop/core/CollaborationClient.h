@@ -2,10 +2,12 @@
 #include <QObject>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QSet>
 #include <QVariantList>
 #include <QString>
 
 class ApiClient;
+class DesktopCoreTests;
 
 class CollaborationClient : public QObject
 {
@@ -23,8 +25,13 @@ class CollaborationClient : public QObject
     Q_PROPERTY(QString currentConversationType READ currentConversationType NOTIFY currentConversationChanged)
     Q_PROPERTY(bool currentConversationMuted READ currentConversationMuted NOTIFY currentConversationChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
+    Q_PROPERTY(bool sendingMessage READ sendingMessage NOTIFY sendingMessageChanged)
 public:
     explicit CollaborationClient(ApiClient* api, QObject* parent = nullptr);
+
+    /** 전송 성공 시 그 요청에 포함된 ID만 제거해 이후 업로드를 보존한다. */
+    static QVariantList withoutAttachmentIds(
+        const QVariantList& pending, const QSet<qint64>& sentFileIds);
 
     QVariantList searchResults() const { return m_searchResults; }
     QVariantList friends() const { return m_friends; }
@@ -39,6 +46,7 @@ public:
     QString currentConversationType() const { return m_currentConversationType; }
     bool currentConversationMuted() const { return m_currentConversationMuted; }
     bool loading() const { return m_loading; }
+    bool sendingMessage() const { return m_inFlightMessage.requestId != 0; }
 
     Q_INVOKABLE void clear();
     Q_INVOKABLE void refresh();
@@ -77,11 +85,29 @@ signals:
     void pendingAttachmentsChanged();
     void currentConversationChanged();
     void loadingChanged();
+    void sendingMessageChanged();
+    void messageSent(qint64 conversationId, const QString& content,
+                     const QString& postingIdsText);
     void errorOccurred(const QString& message);
     void info(const QString& title, const QString& message);
     void attachmentDownloaded(const QString& path);
 
 private:
+    friend class DesktopCoreTests;
+
+    struct InFlightMessage {
+        quint64 requestId = 0;
+        qint64 conversationId = -1;
+        QSet<qint64> attachmentIds;
+        QString baseUrl;
+        QString bearerToken;
+    };
+
+    static QSet<qint64> attachmentIds(const QVariantList& attachments);
+    static QSet<qint64> cleanupAttachmentIds(
+        const QVariantList& attachments, const QSet<qint64>& excludedIds);
+    static QSet<qint64> missingAttachmentIds(
+        const QSet<qint64>& candidateIds, const QVariantList& attachments);
     void setLoading(bool loading);
     void loadFriends();
     void loadRequests();
@@ -107,6 +133,8 @@ private:
     QVariantList m_messages;
     QVariantList m_pendingAttachments;
     quint64 m_pendingGeneration = 0;
+    quint64 m_nextMessageRequestId = 0;
+    InFlightMessage m_inFlightMessage;
     qint64 m_currentConversationId = -1;
     QString m_currentPeerName;
     QString m_currentConversationType;

@@ -51,6 +51,15 @@ Item {
 
     Component.onCompleted: collaboration.refresh()
 
+    Connections {
+        target: collaboration
+        function onMessageSent(conversationId, content, postingIdsText) {
+            if (collaboration.currentConversationId !== conversationId) return
+            if (messageInput.text === content) messageInput.clear()
+            if (postingIdsInput.text === postingIdsText) postingIdsInput.clear()
+        }
+    }
+
     FileDialog {
         id: attachDialog
         title: "첨부 파일 선택"
@@ -808,11 +817,15 @@ Item {
                             Rectangle {
                                 width: 68; height: 54; radius: 9
                                 color: Theme.accent
-                                opacity: collaboration.currentConversationId > 0 ? 1 : 0.4
-                                Text { anchors.centerIn: parent; text: "보내기"; color: "white"; font.pixelSize: 12; font.bold: true }
+                                opacity: collaboration.currentConversationId > 0 && !collaboration.sendingMessage ? 1 : 0.4
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: collaboration.sendingMessage ? "전송 중…" : "보내기"
+                                    color: "white"; font.pixelSize: 12; font.bold: true
+                                }
                                 MouseArea {
                                     anchors.fill: parent
-                                    enabled: collaboration.currentConversationId > 0
+                                    enabled: collaboration.currentConversationId > 0 && !collaboration.sendingMessage
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
                                         collaboration.sendMessage(
@@ -822,8 +835,6 @@ Item {
                                             Number(temporaryHoursInput.text || 72),
                                             postingIdsInput.text
                                         )
-                                        messageInput.clear()
-                                        postingIdsInput.clear()
                                     }
                                 }
                             }

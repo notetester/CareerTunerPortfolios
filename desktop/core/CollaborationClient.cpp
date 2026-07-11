@@ -18,6 +18,45 @@ CollaborationClient::CollaborationClient(ApiClient* api, QObject* parent)
 {
 }
 
+QVariantList CollaborationClient::withoutAttachmentIds(
+    const QVariantList& pending, const QSet<qint64>& sentFileIds)
+{
+    QVariantList remaining;
+    remaining.reserve(pending.size());
+    for (const QVariant& item : pending) {
+        const qint64 fileId = item.toMap().value("id").toLongLong();
+        if (!sentFileIds.contains(fileId))
+            remaining.push_back(item);
+    }
+    return remaining;
+}
+
+QSet<qint64> CollaborationClient::attachmentIds(const QVariantList& attachments)
+{
+    QSet<qint64> ids;
+    for (const QVariant& item : attachments) {
+        const qint64 fileId = item.toMap().value("id").toLongLong();
+        if (fileId > 0) ids.insert(fileId);
+    }
+    return ids;
+}
+
+QSet<qint64> CollaborationClient::cleanupAttachmentIds(
+    const QVariantList& attachments, const QSet<qint64>& excludedIds)
+{
+    QSet<qint64> ids = attachmentIds(attachments);
+    ids.subtract(excludedIds);
+    return ids;
+}
+
+QSet<qint64> CollaborationClient::missingAttachmentIds(
+    const QSet<qint64>& candidateIds, const QVariantList& attachments)
+{
+    QSet<qint64> ids = candidateIds;
+    ids.subtract(attachmentIds(attachments));
+    return ids;
+}
+
 void CollaborationClient::clear()
 {
     discardPendingAttachments();
@@ -265,28 +304,60 @@ void CollaborationClient::sendMessage(const QString& kind,
                                       int temporaryHours,
                                       const QString& postingIdsText)
 {
-    if (m_currentConversationId <= 0) return;
+    if (m_currentConversationId <= 0 || sendingMessage()) return;
+    const qint64 conversationId = m_currentConversationId;
     QJsonObject body;
     body["kind"] = kind;
     body["content"] = content;
     body["attachmentShareMode"] = shareMode.isEmpty() ? QStringLiteral("TEMPORARY") : shareMode;
     body["temporaryHours"] = temporaryHours > 0 ? temporaryHours : 72;
     QJsonArray attachmentIds;
+    QSet<qint64> sentAttachmentIds;
     for (const QVariant& item : m_pendingAttachments) {
-        attachmentIds.append(item.toMap().value("id").toLongLong());
+        const qint64 fileId = item.toMap().value("id").toLongLong();
+        attachmentIds.append(fileId);
+        if (fileId > 0) sentAttachmentIds.insert(fileId);
     }
     body["attachmentFileIds"] = attachmentIds;
     body["sharedApplicationCaseIds"] = parseIdList(postingIdsText);
 
-    m_api->post(QStringLiteral("/api/collaboration/conversations/%1/messages").arg(m_currentConversationId), body,
-        [this](bool ok, const QJsonValue&, const QString& message) {
+    InFlightMessage request;
+    request.requestId = ++m_nextMessageRequestId;
+    request.conversationId = conversationId;
+    request.attachmentIds = sentAttachmentIds;
+    request.baseUrl = m_api->baseUrl();
+    request.bearerToken = m_api->token();
+    m_inFlightMessage = request;
+    emit sendingMessageChanged();
+
+    m_api->post(QStringLiteral("/api/collaboration/conversations/%1/messages").arg(conversationId), body,
+        [this, request, content, postingIdsText](
+            bool ok, const QJsonValue&, const QString& message) {
+            if (m_inFlightMessage.requestId != request.requestId) return;
+            m_inFlightMessage = InFlightMessage{};
+            emit sendingMessageChanged();
             if (!ok) {
+                const QSet<qint64> orphanedIds =
+                    missingAttachmentIds(request.attachmentIds, m_pendingAttachments);
+                for (qint64 fileId : orphanedIds) {
+                    m_api->deleteResourceWithToken(
+                        QStringLiteral("/api/file/%1").arg(fileId), request.baseUrl,
+                        request.bearerToken, nullptr);
+                }
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("메시지를 보내지 못했습니다") : message);
                 return;
             }
-            m_pendingAttachments.clear();
-            emit pendingAttachmentsChanged();
-            loadMessages(m_currentConversationId);
+            const QVariantList remaining =
+                withoutAttachmentIds(m_pendingAttachments, request.attachmentIds);
+            if (remaining.size() != m_pendingAttachments.size()) {
+                m_pendingAttachments = remaining;
+                emit pendingAttachmentsChanged();
+            }
+            emit messageSent(request.conversationId, content, postingIdsText);
+            if (request.conversationId == m_currentConversationId)
+                loadMessages(request.conversationId);
+            else
+                loadConversations();
         });
 }
 
@@ -346,6 +417,12 @@ void CollaborationClient::removePendingAttachment(int index)
 {
     if (index < 0 || index >= m_pendingAttachments.size()) return;
     const qint64 fileId = m_pendingAttachments.at(index).toMap().value("id").toLongLong();
+    if (m_inFlightMessage.attachmentIds.contains(fileId)) {
+        // 전송 실패 시 callback이 captured token으로 정리하고, 성공 시 메시지가 소유권을 갖는다.
+        m_pendingAttachments.removeAt(index);
+        emit pendingAttachmentsChanged();
+        return;
+    }
     m_api->deleteResource(QStringLiteral("/api/file/%1").arg(fileId),
         [this, fileId](bool ok, const QJsonValue&, const QString& message) {
             if (!ok) {
@@ -371,13 +448,17 @@ void CollaborationClient::discardPendingAttachments()
 {
     ++m_pendingGeneration;
     const QVariantList pending = m_pendingAttachments;
+    const QString cleanupToken = m_api->token();
+    const QString cleanupBaseUrl = m_api->baseUrl();
+    const QSet<qint64> cleanupIds =
+        cleanupAttachmentIds(pending, m_inFlightMessage.attachmentIds);
     m_pendingAttachments.clear();
     emit pendingAttachmentsChanged();
 
-    for (const QVariant& item : pending) {
-        const qint64 fileId = item.toMap().value("id").toLongLong();
-        if (fileId <= 0) continue;
-        m_api->deleteResource(QStringLiteral("/api/file/%1").arg(fileId), nullptr);
+    for (qint64 fileId : cleanupIds) {
+        m_api->deleteResourceWithToken(
+            QStringLiteral("/api/file/%1").arg(fileId), cleanupBaseUrl,
+            cleanupToken, nullptr);
     }
 }
 

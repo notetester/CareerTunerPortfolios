@@ -29,7 +29,10 @@ ApplicationWindow {
     property bool phoneOpen: false
 
     function openSession(jobId, title, mode, caseId) {
-        session.open(jobId, title, mode, caseId)
+        const targetSessionId = Number(jobId)
+        if (session.sessionId >= 0 && session.sessionId !== targetSessionId)
+            sessionInputBar.cancelSessionMedia()
+        session.open(targetSessionId, title, mode, caseId)
         win.view = "thread"
     }
 
@@ -671,6 +674,7 @@ ApplicationWindow {
 
             // 하단 입력바 (홈=인테이크 · 스레드=답변)
             InputBar {
+                id: sessionInputBar
                 Layout.fillWidth: true
                 visible: win.view === "home" || win.view === "thread"
                 mode: win.view === "home" ? "intake" : "answer"

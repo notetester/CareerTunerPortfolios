@@ -8,6 +8,8 @@
 // 마이크 녹음기 (Qt Multimedia).
 // start() → 임시 파일에 녹음 → stop() → recorded(파일경로) 시그널.
 // 업로드는 InterviewSession(ApiClient::postMultipart) 쪽에서 담당한다.
+class DesktopCoreTests;
+
 class VoiceRecorder : public QObject
 {
     Q_OBJECT
@@ -30,6 +32,12 @@ signals:
     void errorOccurred(const QString& message);
 
 private:
+    friend class DesktopCoreTests;
+
+    static QString recordingDir();
+    static bool discardManagedRecording(const QString& filePath);
+    void finishRecording();
+
     QMediaCaptureSession m_session;
     QAudioInput          m_audioInput;
     QMediaRecorder       m_recorder;

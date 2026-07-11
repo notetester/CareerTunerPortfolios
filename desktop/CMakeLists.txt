@@ -76,7 +76,11 @@ if (BUILD_TESTING)
     qt_add_executable(CareerTunerDesktopCoreTests
         tests/DesktopCoreTests.cpp
         core/ApiClient.h core/ApiClient.cpp
+        core/CameraRecorder.h core/CameraRecorder.cpp
+        core/CollaborationClient.h core/CollaborationClient.cpp
+        core/InterviewSession.h core/InterviewSession.cpp
         core/SettingsStore.h core/SettingsStore.cpp
+        core/VoiceRecorder.h core/VoiceRecorder.cpp
         core/PlannerOverlayController.h core/PlannerOverlayController.cpp
     )
     target_include_directories(CareerTunerDesktopCoreTests PRIVATE core)
@@ -84,6 +88,7 @@ if (BUILD_TESTING)
         Qt6::Test
         Qt6::Network
         Qt6::Widgets
+        Qt6::Multimedia
     )
     if (WIN32)
         target_link_libraries(CareerTunerDesktopCoreTests PRIVATE user32)

@@ -9,6 +9,7 @@
 
 class ApiClient;
 class SettingsStore;
+class DesktopCoreTests;
 
 // 선택된 면접 세션 한 건의 "대화 스레드" 상태 + 연습 흐름 + 산출물 내보내기.
 //
@@ -36,6 +37,7 @@ class InterviewSession : public QObject
     Q_PROPERTY(QString      currentQuestionText READ currentQuestionText NOTIFY progressChanged)
 public:
     explicit InterviewSession(ApiClient* api, SettingsStore* store, QObject* parent = nullptr);
+    ~InterviewSession() override;
 
     int sessionId() const { return m_sessionId; }
     QString title() const { return m_title; }
@@ -92,6 +94,10 @@ signals:
     void sessionFinished();                       // 마지막 답변 완료
 
 private:
+    friend class DesktopCoreTests;
+
+    static QString managedLocalMediaPath(const QString& filePath);
+    void cleanupLocalMediaFiles();
     void reloadThread();                          // questions+review 병합 → thread 구성
     void refreshProgress();
     void loadAgentSteps();

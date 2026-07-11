@@ -36,14 +36,7 @@ CameraRecorder::CameraRecorder(QObject* parent) : QObject(parent)
         });
     connect(&m_recorder, &QMediaRecorder::recorderStateChanged, this,
         [this](QMediaRecorder::RecorderState st) {
-            if (st == QMediaRecorder::StoppedState && m_recording) {
-                m_recording = false;
-                emit recordingChanged();
-                if (m_cancelled)
-                    QFile::remove(m_outPath); // 취소된 녹화는 즉시 폐기 (영상 프라이버시)
-                else
-                    emit recorded(m_outPath);
-            }
+            if (st == QMediaRecorder::StoppedState) finishRecording();
         });
     connect(&m_camera, &QCamera::errorOccurred, this,
         [this](QCamera::Error err, const QString& msg) {
@@ -54,6 +47,20 @@ CameraRecorder::CameraRecorder(QObject* parent) : QObject(parent)
     // 카메라/마이크 연결·해제 → 버튼/기기 카드 상태 갱신
     connect(&m_devices, &QMediaDevices::videoInputsChanged, this, &CameraRecorder::devicesChanged);
     connect(&m_devices, &QMediaDevices::audioInputsChanged, this, &CameraRecorder::devicesChanged);
+}
+
+void CameraRecorder::finishRecording()
+{
+    if (!m_recording) return;
+
+    const QString completedPath = m_outPath;
+    const bool cancelled = m_cancelled;
+    m_recording = false;
+    emit recordingChanged();
+    if (cancelled)
+        discard(completedPath); // 취소된 녹화는 즉시 폐기하고 recorder 소유권도 비운다.
+    else
+        emit recorded(completedPath);
 }
 
 QString CameraRecorder::recordingDir()
@@ -128,6 +135,8 @@ void CameraRecorder::stop()
 {
     if (!m_recording) return;
     m_recorder.stop(); // StoppedState 시그널에서 recorded() 발행
+    if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
+        finishRecording();
 }
 
 void CameraRecorder::cancel()
@@ -135,6 +144,8 @@ void CameraRecorder::cancel()
     if (!m_recording) return;
     m_cancelled = true;
     m_recorder.stop();
+    if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
+        finishRecording();
 }
 
 bool CameraRecorder::discard(const QString& filePath)
@@ -160,4 +171,22 @@ bool CameraRecorder::discard(const QString& filePath)
     if (removed && QDir::cleanPath(m_outPath).compare(absolutePath, pathCase) == 0)
         m_outPath.clear();
     return removed;
+}
+
+bool CameraRecorder::release(const QString& filePath)
+{
+    if (filePath.isEmpty() || m_outPath.isEmpty()) return false;
+
+    const Qt::CaseSensitivity pathCase =
+#ifdef Q_OS_WIN
+        Qt::CaseInsensitive;
+#else
+        Qt::CaseSensitive;
+#endif
+    const QString requested = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
+    const QString active = QDir::cleanPath(QFileInfo(m_outPath).absoluteFilePath());
+    if (requested.compare(active, pathCase) != 0) return false;
+
+    m_outPath.clear();
+    return true;
 }

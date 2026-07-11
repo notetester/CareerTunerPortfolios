@@ -46,11 +46,19 @@ void ApiClient::deleteResource(const QString& path, JsonCallback cb)
 
 void ApiClient::deleteResourceWithToken(const QString& path, const QString& bearerToken, JsonCallback cb)
 {
-    QNetworkRequest request{QUrl(m_baseUrl + path)};
+    deleteResourceWithToken(path, m_baseUrl, bearerToken, std::move(cb));
+}
+
+void ApiClient::deleteResourceWithToken(const QString& path, const QString& baseUrl,
+                                        const QString& bearerToken, JsonCallback cb)
+{
+    // origin/token을 값으로 고정한다. 일반 요청의 서버 전환/로그아웃과 독립적으로 끝낸다.
+    const QUrl cleanupUrl(baseUrl + path);
+    QNetworkRequest request{cleanupUrl};
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     if (!bearerToken.isEmpty())
         request.setRawHeader("Authorization", QByteArray("Bearer ") + bearerToken.toUtf8());
-    handle(m_nam.deleteResource(request), std::move(cb));
+    handleIndependentCleanup(m_cleanupNam.deleteResource(request), std::move(cb));
 }
 
 void ApiClient::postMultipart(const QString& path,
@@ -121,6 +129,20 @@ void ApiClient::handle(QNetworkReply* reply, JsonCallback cb)
         const bool ok        = root.value("success").toBool();
         const QJsonValue data = root.value("data");
         const QString message  = root.value("message").toString();
+        if (cb) cb(ok, data, message);
+    });
+}
+
+void ApiClient::handleIndependentCleanup(QNetworkReply* reply, JsonCallback cb)
+{
+    connect(reply, &QNetworkReply::finished, this, [reply, cb = std::move(cb)]() {
+        const QByteArray raw = reply->readAll();
+        reply->deleteLater();
+
+        const QJsonObject root = QJsonDocument::fromJson(raw).object();
+        const bool ok = root.value("success").toBool();
+        const QJsonValue data = root.value("data");
+        const QString message = root.value("message").toString();
         if (cb) cb(ok, data, message);
     });
 }

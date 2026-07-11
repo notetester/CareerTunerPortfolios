@@ -13,6 +13,8 @@
 // startPreview() → QML VideoOutput 프리뷰 → start() → 임시 mp4 녹화(최대 3분)
 // → stop() → recorded(파일경로) 시그널. VoiceRecorder 와 같은 문법.
 // 전송(base64 → avatar-score)은 InterviewSession::submitVideoAnswer 쪽에서 담당한다.
+class DesktopCoreTests;
+
 class CameraRecorder : public QObject
 {
     Q_OBJECT
@@ -43,6 +45,8 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void cancel();
     Q_INVOKABLE bool discard(const QString& filePath);
+    /** 제출 완료 파일의 소유권을 InterviewSession으로 넘겨 다음 녹화가 지우지 않게 한다. */
+    Q_INVOKABLE bool release(const QString& filePath);
 
 signals:
     void recordingChanged();
@@ -54,8 +58,11 @@ signals:
     void errorOccurred(const QString& message);
 
 private:
+    friend class DesktopCoreTests;
+
     static constexpr int kMaxSeconds = 180; // 영상 답변 최대 3분
     static QString recordingDir();
+    void finishRecording();
 
     QMediaCaptureSession m_session;
     QCamera              m_camera;

@@ -51,8 +51,11 @@ public:
         handle(m_nam.sendCustomRequest(makeRequest(path), QByteArrayLiteral("PATCH"), payload), std::move(cb));
     }
     void deleteResource(const QString& path, JsonCallback cb);
-    /** 로그아웃 직전/직후 완료된 업로드 정리에만 쓰는 1회성 bearer override. 토큰은 저장하지 않는다. */
+    /** 로그아웃/서버 전환과 독립적으로 old URL+bearer를 캡처해 끝내는 1회성 업로드 정리 요청. */
     void deleteResourceWithToken(const QString& path, const QString& bearerToken, JsonCallback cb);
+    /** 비동기 작업 시작 시 캡처한 origin+bearer로 지연된 정리를 안전하게 보낸다. */
+    void deleteResourceWithToken(const QString& path, const QString& baseUrl,
+                                 const QString& bearerToken, JsonCallback cb);
     // multipart/form-data POST — 음성 업로드 등
     void postMultipart(const QString& path,
                        const QList<QPair<QString, QString>>& fields,
@@ -64,8 +67,11 @@ public:
 private:
     QNetworkRequest makeRequest(const QString& path) const;
     void handle(QNetworkReply* reply, JsonCallback cb);
+    void handleIndependentCleanup(QNetworkReply* reply, JsonCallback cb);
 
     QNetworkAccessManager m_nam;
+    // 서버 전환 시 m_nam의 일반 요청을 abort해도 이미 시작한 old-server 정리는 끝까지 보낸다.
+    QNetworkAccessManager m_cleanupNam;
     // 기본은 팀 공용 원격 백엔드(Tailscale) — 상수는 SettingsStore 한 곳에서 관리.
     // 실제 기동 시 SettingsStore 에 저장된 값으로 덮어쓴다.
     QString m_baseUrl = SettingsStore::defaultBaseUrl();

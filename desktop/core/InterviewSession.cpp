@@ -8,15 +8,81 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QDateTime>
+#include <QHash>
 #include <QRegularExpression>
+#include <QStandardPaths>
 
 InterviewSession::InterviewSession(ApiClient* api, SettingsStore* store, QObject* parent)
     : QObject(parent), m_api(api), m_store(store) {}
+
+InterviewSession::~InterviewSession()
+{
+    cleanupLocalMediaFiles();
+}
+
+QString InterviewSession::managedLocalMediaPath(const QString& filePath)
+{
+    if (filePath.isEmpty()) return {};
+
+    const QFileInfo info(filePath);
+    const QString expectedDir = QDir::cleanPath(
+        QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+        + QStringLiteral("/careertuner"));
+    const Qt::CaseSensitivity pathCase =
+#ifdef Q_OS_WIN
+        Qt::CaseInsensitive;
+#else
+        Qt::CaseSensitive;
+#endif
+    const bool managedAudio = info.fileName().startsWith(QStringLiteral("answer-"))
+        && info.suffix().compare(QStringLiteral("m4a"), Qt::CaseInsensitive) == 0;
+    const bool managedVideo = info.fileName().startsWith(QStringLiteral("video-answer-"))
+        && info.suffix().compare(QStringLiteral("mp4"), Qt::CaseInsensitive) == 0;
+    if (QDir::cleanPath(info.absolutePath()).compare(expectedDir, pathCase) != 0
+        || (!managedAudio && !managedVideo)) {
+        return {};
+    }
+    return QDir::cleanPath(info.absoluteFilePath());
+}
+
+void InterviewSession::cleanupLocalMediaFiles()
+{
+    QHash<QString, QString> pathsByKey;
+    const auto collect = [&pathsByKey](const QString& filePath) {
+        const QString managedPath = managedLocalMediaPath(filePath);
+        if (managedPath.isEmpty()) return;
+#ifdef Q_OS_WIN
+        pathsByKey.insert(managedPath.toCaseFolded(), managedPath);
+#else
+        pathsByKey.insert(managedPath, managedPath);
+#endif
+    };
+
+    for (const QString& filePath : m_audioFiles) collect(filePath);
+    for (const QString& filePath : m_videoFiles) collect(filePath);
+    for (auto it = m_localMediaPathByAnswerKind.cbegin();
+         it != m_localMediaPathByAnswerKind.cend(); ++it) {
+        collect(it.value());
+    }
+    collect(m_pendingAudioPath);
+
+    for (const QString& filePath : pathsByKey)
+        QFile::remove(filePath);
+
+    m_audioFiles.clear();
+    m_videoFiles.clear();
+    m_localMediaPathByAnswerKind.clear();
+    m_pendingAudioPath.clear();
+    m_pendingAudioQuestionId = -1;
+}
 
 // ─────────────────────────── 세션 열기 ───────────────────────────
 
 void InterviewSession::open(int sessionId, const QString& title, const QString& mode, int caseId)
 {
+    // exportAll이 사용할 원본은 세션을 유지하는 동안 보관하고, 세션 경계에서만 폐기한다.
+    if (m_sessionId >= 0 && m_sessionId != sessionId)
+        cleanupLocalMediaFiles();
     m_sessionId = sessionId;
     m_caseId    = caseId;
     m_title     = title;
@@ -25,11 +91,6 @@ void InterviewSession::open(int sessionId, const QString& title, const QString& 
     m_agentSteps.clear();
     m_report.clear();
     m_review.clear();
-    m_audioFiles.clear();
-    m_videoFiles.clear();
-    m_localMediaPathByAnswerKind.clear();
-    m_pendingAudioPath.clear();
-    m_pendingAudioQuestionId = -1;
     m_audioSourceByQuestion.clear();
     m_voiceScoreByQuestion.clear();
     m_currentQid = -1;
@@ -479,7 +540,8 @@ void InterviewSession::deleteAnswerMedia(qint64 answerId, const QString& kind)
             const QString key = QString::number(answerId) + QStringLiteral(":") + normalized;
             const QString localPath = m_localMediaPathByAnswerKind.take(key);
             if (!localPath.isEmpty()) {
-                QFile::remove(localPath);
+                const QString managedPath = managedLocalMediaPath(localPath);
+                if (!managedPath.isEmpty()) QFile::remove(managedPath);
                 if (normalized == QStringLiteral("AUDIO")) m_audioFiles.removeAll(localPath);
                 else m_videoFiles.removeAll(localPath);
             }

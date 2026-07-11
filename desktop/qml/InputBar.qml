@@ -20,10 +20,18 @@ Item {
     function fill(text) { input.text = text; input.forceActiveFocus() }
     function clear() { input.text = "" }
 
-    function closeVideoPanel() {
+    function cancelSessionMedia() {
+        recorder.cancel()
+        root.closeVideoPanel(true)
+    }
+
+    function closeVideoPanel(discardRecording) {
+        const shouldDiscard = discardRecording !== false
         cameraRecorder.stopPreview()
-        if (root.recordedVideoPath !== "")
-            cameraRecorder.discard(root.recordedVideoPath)
+        if (root.recordedVideoPath !== "") {
+            if (shouldDiscard) cameraRecorder.discard(root.recordedVideoPath)
+            else cameraRecorder.release(root.recordedVideoPath)
+        }
         root.recordedVideoPath = ""
         consentBox.checked = false
         root.videoPanelOpen = false
@@ -50,7 +58,7 @@ Item {
                 input.forceActiveFocus()
             }
         }
-        function onVideoAnswerSubmitted() { root.closeVideoPanel() }
+        function onVideoAnswerSubmitted() { root.closeVideoPanel(false) }
     }
     Connections {
         target: recorder
