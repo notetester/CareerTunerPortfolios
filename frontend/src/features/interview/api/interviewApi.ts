@@ -49,6 +49,7 @@ import type {
 /** 데모/튜토리얼에서 AI 호출처럼 보이도록 더미 응답을 잠깐 지연시킨다. */
 const mockDelay = <T>(value: T, ms = 800): Promise<T> =>
   new Promise((resolve) => setTimeout(() => resolve(value), ms));
+let nextTutorialFileAssetId = 8_000_000;
 
 /** 내 면접 세션 목록 (최근 기록). 더보기 누적용 페이지 응답. */
 export function listInterviewSessions(page = 0, size = 10): Promise<SessionPageResponse> {
@@ -258,10 +259,12 @@ export function scoreVoiceServer(
     fillerCount?: number;
     latencySec?: number;
   },
+  signal?: AbortSignal,
 ): Promise<VoiceScoreServerResult> {
   return api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
     method: "POST",
     body: JSON.stringify(payload),
+    signal,
   });
 }
 
@@ -279,10 +282,12 @@ export function scoreAvatarServer(
     fillerCount?: number;
     latencySec?: number;
   },
+  signal?: AbortSignal,
 ): Promise<AvatarScoreServerResult> {
   return api<AvatarScoreServerResult>(`/interview/sessions/${sessionId}/avatar-score`, {
     method: "POST",
     body: JSON.stringify(payload),
+    signal,
   });
 }
 
@@ -295,10 +300,12 @@ export function transcribeVoice(
   audioBase64: string,
   audioFormat = "webm",
   language = "ko",
+  signal?: AbortSignal,
 ): Promise<TranscribeResult> {
   return api<TranscribeResult>(`/interview/sessions/${sessionId}/voice-transcribe`, {
     method: "POST",
     body: JSON.stringify({ audioBase64, audioFormat, language }),
+    signal,
   });
 }
 
@@ -343,10 +350,10 @@ export function listMediaResults(sessionId: number): Promise<MediaAnalysis[]> {
 export function uploadFile(
   file: Blob,
   kind: FileAsset["kind"],
-  options: { fileName?: string; refType?: string; refId?: number } = {},
+  options: { fileName?: string; refType?: string; refId?: number; signal?: AbortSignal } = {},
 ): Promise<FileAsset> {
   if (isDataMockActive()) {
-    const id = Date.now();
+    const id = ++nextTutorialFileAssetId;
     return Promise.resolve({
       id,
       kind,
@@ -365,7 +372,7 @@ export function uploadFile(
   if (options.refType) form.append("refType", options.refType);
   if (options.refId != null) form.append("refId", String(options.refId));
   // api() 는 FormData 면 Content-Type 을 직접 지정하지 않고(boundary 자동), 인증 헤더만 붙인다.
-  return api<FileAsset>("/file/upload", { method: "POST", body: form });
+  return api<FileAsset>("/file/upload", { method: "POST", body: form, signal: options.signal });
 }
 
 /** 아직 answer에 연결되지 않은 INTERVIEW_ANSWER 원본을 정리한다. */

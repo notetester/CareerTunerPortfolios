@@ -129,6 +129,17 @@ function sessionReview(sessionId: number): SessionReview {
   return reviews[sessionId] ?? { sessionId, mode: "JOB", items: [] };
 }
 
+function deleteAnswerMedia(answerId: number, kind: "AUDIO" | "VIDEO"): null {
+  for (const review of Object.values(reviews)) {
+    const item = review.items.find((candidate) => candidate.answerId === answerId);
+    if (!item) continue;
+    if (kind === "AUDIO") item.audioUrl = null;
+    else item.videoUrl = null;
+    break;
+  }
+  return null;
+}
+
 // ───── 외부 키 보유 여부 (GET /interview/media/capabilities) → api<MediaCapabilities> ─────
 
 const demoCapabilities: MediaCapabilities = {
@@ -272,6 +283,8 @@ export const interviewExtraRoutes: MockRoute[] = [
 
   // 지난 세션 복기 — api<SessionReview>
   { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/review$/, handler: ({ params }) => sessionReview(Number(params[0])) },
+  // 답변·채점은 유지하고 선택한 원본만 삭제한다. 이후 review GET에도 삭제 상태가 유지된다.
+  { method: "DELETE", pattern: /^\/interview\/answers\/(\d+)\/media\/(AUDIO|VIDEO)$/, handler: ({ params }) => deleteAnswerMedia(Number(params[0]), params[1] as "AUDIO" | "VIDEO") },
 
   // 모범답안 생성 — api<{ modelAnswer: string }>
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/model-answer$/, handler: ({ params }) => modelAnswer(Number(params[0])) },

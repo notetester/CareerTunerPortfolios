@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef } from "react";
 import { Mic, Camera, Trash2, Hand } from "lucide-react";
 
 /**
@@ -10,18 +11,24 @@ export type PermKind = "voice" | "avatar";
 
 // v2부터 녹음/녹화 원본을 답변에 저장한다. 즉시 폐기 정책에 동의했던 사용자는
 // 변경된 보관 정책을 다시 확인해야 하므로 기존 동의 키를 재사용하지 않는다.
-const ACCEPT_KEY = (kind: PermKind) => `careertuner.perm.preprompt.v2.${kind}`;
+function acceptKey(kind: PermKind, scope: string): string | null {
+  const normalizedScope = scope.trim().toLocaleLowerCase("en-US");
+  if (!normalizedScope) return null;
+  return `careertuner.perm.preprompt.v2.${encodeURIComponent(normalizedScope)}.${kind}`;
+}
 
-export function isPrepromptAccepted(kind: PermKind): boolean {
+export function isPrepromptAccepted(kind: PermKind, scope: string): boolean {
   try {
-    return localStorage.getItem(ACCEPT_KEY(kind)) === "1";
+    const key = acceptKey(kind, scope);
+    return key !== null && localStorage.getItem(key) === "1";
   } catch {
     return false;
   }
 }
-export function markPrepromptAccepted(kind: PermKind): void {
+export function markPrepromptAccepted(kind: PermKind, scope: string): void {
   try {
-    localStorage.setItem(ACCEPT_KEY(kind), "1");
+    const key = acceptKey(kind, scope);
+    if (key) localStorage.setItem(key, "1");
   } catch {
     /* no-op */
   }
@@ -29,21 +36,95 @@ export function markPrepromptAccepted(kind: PermKind): void {
 
 export function PermissionPreprompt({
   kind,
+  scope,
   open,
   onAllow,
   onClose,
 }: {
   kind: PermKind;
+  /** 안정적인 사용자 ID 또는 정규화 가능한 이메일. 빈 값은 동의를 저장하지 않는다. */
+  scope: string;
   open: boolean;
   onAllow: () => void;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const allowingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+  const descriptionId = useId();
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+
+    returnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    allowingRef.current = false;
+    const focusFrame = window.requestAnimationFrame(() => {
+      cancelButtonRef.current?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const active = document.activeElement;
+      if (!dialog.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && (active === first || active === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      const returnTarget = returnFocusRef.current;
+      returnFocusRef.current = null;
+      if (!allowingRef.current && returnTarget?.isConnected) returnTarget.focus();
+    };
+  }, [open]);
+
   if (!open) return null;
   const voice = kind === "voice";
   return (
     <div className="fixed inset-0 z-[70]">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
+      <div aria-hidden="true" className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
         className="absolute inset-x-0 bottom-0 rounded-t-[20px] border-t border-white/10 bg-[#0a0a0c] px-5 pt-2.5 shadow-[0_-20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)]"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 24px)" }}
       >
@@ -51,10 +132,10 @@ export function PermissionPreprompt({
         <div className="mx-auto mb-3.5 flex size-[52px] items-center justify-center rounded-[14px] border border-[#5E6AD2]/30 bg-[#5E6AD2]/15 text-[#7d88de] shadow-[0_0_30px_rgba(94,106,210,0.15)]">
           {voice ? <Mic className="size-6" /> : <Camera className="size-6" />}
         </div>
-        <h3 className="text-center text-[16px] font-semibold tracking-tight text-[#EDEDEF]">
+        <h3 id={titleId} className="text-center text-[16px] font-semibold tracking-tight text-[#EDEDEF]">
           {voice ? "마이크 사용 안내" : "카메라·마이크 사용 안내"}
         </h3>
-        <p className="mt-2 mb-4 text-center text-[12.5px] leading-relaxed text-[#8A8F98]">
+        <p id={descriptionId} className="mt-2 mb-4 text-center text-[12.5px] leading-relaxed text-[#8A8F98]">
           {voice
             ? "음성 면접 답변을 녹음해 텍스트로 바꾸고 전달력을 채점합니다."
             : "화상 면접에서 표정·자세·음성을 분석해 비언어 피드백을 드립니다."}
@@ -81,14 +162,18 @@ export function PermissionPreprompt({
         </div>
         <div className="flex gap-2">
           <button
+            ref={cancelButtonRef}
+            type="button"
             onClick={onClose}
             className="flex-1 rounded-[10px] border border-white/[0.06] py-3 text-[13.5px] font-semibold text-[#EDEDEF]"
           >
             나중에
           </button>
           <button
+            type="button"
             onClick={() => {
-              markPrepromptAccepted(kind);
+              allowingRef.current = true;
+              markPrepromptAccepted(kind, scope);
               onAllow();
             }}
             className="flex-[2] rounded-[10px] bg-gradient-to-b from-[#7d88de] to-[#5E6AD2] py-3 text-[13.5px] font-semibold text-white shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_4px_12px_rgba(94,106,210,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"

@@ -126,6 +126,40 @@ export function realtimeSession(): RealtimeSession {
   return { clientSecret: "demo-realtime-secret", expiresAt: null, model: "mock-realtime", voice: "alloy", realtimeUrl: "" };
 }
 
-export function fileAsset(): FileAsset {
-  return { id: 70001, kind: "AUDIO", refType: "INTERVIEW_ANSWER", refId: null, originalName: "demo-answer.webm", contentType: "audio/webm", sizeBytes: 12345, contentUrl: "", createdAt: new Date().toISOString() };
+const FILE_KINDS: FileAsset["kind"][] = ["AUDIO", "VIDEO", "RESUME", "PORTFOLIO", "POSTING", "ATTACHMENT"];
+const uploadedFiles = new Map<number, FileAsset>();
+let nextFileAssetId = 70000;
+
+function formValue(body: unknown, name: string): FormDataEntryValue | null {
+  return typeof FormData !== "undefined" && body instanceof FormData ? body.get(name) : null;
+}
+
+export function fileAsset(body: unknown): FileAsset {
+  const rawKind = formValue(body, "kind");
+  const requestedKind = typeof rawKind === "string" ? rawKind.toUpperCase() : "";
+  const kind = FILE_KINDS.includes(requestedKind as FileAsset["kind"])
+    ? requestedKind as FileAsset["kind"]
+    : "ATTACHMENT";
+  const rawRefType = formValue(body, "refType");
+  const rawRefId = formValue(body, "refId");
+  const file = formValue(body, "file");
+  const id = ++nextFileAssetId;
+  const parsedRefId = typeof rawRefId === "string" ? Number(rawRefId) : Number.NaN;
+  const asset: FileAsset = {
+    id,
+    kind,
+    refType: typeof rawRefType === "string" && rawRefType ? rawRefType : null,
+    refId: Number.isSafeInteger(parsedRefId) ? parsedRefId : null,
+    originalName: typeof file !== "string" && file && "name" in file ? file.name : "upload",
+    contentType: typeof file !== "string" && file ? file.type || null : null,
+    sizeBytes: typeof file !== "string" && file ? file.size : null,
+    contentUrl: `/api/file/${id}/content`,
+    createdAt: new Date().toISOString(),
+  };
+  uploadedFiles.set(id, asset);
+  return asset;
+}
+
+export function deleteFileAsset(fileId: number): void {
+  uploadedFiles.delete(fileId);
 }
