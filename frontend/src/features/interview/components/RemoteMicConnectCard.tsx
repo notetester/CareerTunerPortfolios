@@ -122,7 +122,7 @@ export function RemoteMicConnectCard({
     setPhase("idle");
   };
 
-  const remoteUrl = `${window.location.origin}/mic-remote${
+  const remoteUrl = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, "")}/mic-remote${
     code ? `?code=${code}${withVideo ? "&video=1" : ""}` : ""
   }`;
 

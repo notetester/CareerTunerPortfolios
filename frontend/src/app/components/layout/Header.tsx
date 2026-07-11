@@ -46,7 +46,7 @@ const navItems = [
     children: [
       { label: "기본 정보", href: "/profile?tab=basic" },
       { label: "이력서 관리", href: "/profile?tab=resume" },
-      { label: "자기소개서 관리", href: "/profile?tab=cover" },
+      { label: "자기소개서 관리", href: "/profile?tab=selfIntro" },
       { label: "경력/프로젝트 관리", href: "/profile?tab=career" },
       { label: "기술스택 관리", href: "/profile?tab=skills" },
       { label: "자격증/학력 관리", href: "/profile?tab=certificates" },
@@ -197,7 +197,7 @@ export function Header() {
 
   return (
     <header
-      className="bg-background/80 backdrop-blur-xl border-b border-border sticky top-0 z-50 overflow-x-clip"
+      className="bg-background/80 backdrop-blur-xl border-b border-border overflow-x-clip"
       // 노치/상태바 영역 확보 — iOS PWA standalone 및 네이티브 오버레이 상태바에서 헤더가 가리지 않게.
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >

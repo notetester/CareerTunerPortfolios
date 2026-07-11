@@ -1,5 +1,7 @@
 package com.careertuner.admin.prompt.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/prompts")
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminPromptController {
 

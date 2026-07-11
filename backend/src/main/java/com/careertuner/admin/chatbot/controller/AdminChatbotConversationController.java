@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.admin.chatbot.dto.AdminChatbotConversationRow;
 import com.careertuner.admin.chatbot.mapper.AdminChatbotConversationMapper;
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -25,6 +26,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot/conversations")
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminChatbotConversationController {
 
@@ -42,6 +44,7 @@ public class AdminChatbotConversationController {
     }
 
     @DeleteMapping("/{conversationId}")
+    @RequireAdminPermission({"AI_DELETE"})
     public ApiResponse<Void> delete(@AuthenticationPrincipal AuthUser authUser,
                                     @PathVariable Long conversationId) {
         AdminAccess.requireAdmin(authUser);

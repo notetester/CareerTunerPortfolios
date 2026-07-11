@@ -1,5 +1,7 @@
 package com.careertuner.community.search;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.Map;
 
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +16,7 @@ import com.careertuner.common.web.ApiResponse;
  */
 @RestController
 @RequestMapping("/api/admin/community")
+@RequireAdminPermission({"AI_READ"})
 public class CommunityEmbeddingAdminController {
 
     private final CommunityEmbeddingService embeddingService;
@@ -24,6 +27,7 @@ public class CommunityEmbeddingAdminController {
 
     /** POST /api/admin/community/embed-all — 미임베딩 PUBLISHED 글 일괄 임베딩 */
     @PostMapping("/embed-all")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<Map<String, Object>> embedAll() {
         int count = embeddingService.embedAllPosts();
         return ApiResponse.ok(Map.of("embeddedCount", count));

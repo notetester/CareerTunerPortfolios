@@ -6,10 +6,15 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -46,6 +51,76 @@ public class JobPostingAiWorkerClient {
 
     static JobPostingAiWorkerClient disabled() {
         return new JobPostingAiWorkerClient(new JobPostingAiWorkerProperties(), null);
+    }
+
+    /** capabilities 조회는 등록 화면 옵션용이라 추출(120s)과 달리 짧게 잡는다. */
+    private static final Duration CAPABILITIES_TIMEOUT = Duration.ofSeconds(5);
+    /** 옵션 요청마다 원격 왕복하지 않도록 결과(성공·실패 모두)를 짧게 캐시한다(워커 다운 시 반복 timeout 방지). */
+    private static final Duration CAPABILITIES_CACHE_TTL = Duration.ofSeconds(30);
+    /** 앱이 아는 OCR 엔진만 인정한다 — 알 수 없는 엔진명만 오면 Self OCR 을 켜지 않는다(방어). */
+    private static final Set<String> KNOWN_ENGINES = Set.of("paddleocr", "ppstructure");
+
+    private volatile CachedCapabilities cachedCapabilities;
+
+    /**
+     * 워커 {@code GET /capabilities} 로 준비된 OCR 엔진(PaddleOCR/PPStructureV3)을 조회한다.
+     * 모델 옵션 조회는 워커 장애로 실패하면 안 되므로, 비활성·오프라인·타임아웃·파싱 실패·응답 이상은 예외 대신
+     * {@link WorkerCapabilities#unavailable(String)} 로 안전하게 degrade 하고, 결과를 짧게 캐시한다.
+     */
+    public WorkerCapabilities capabilities() {
+        CachedCapabilities cached = cachedCapabilities;
+        if (cached != null && !cached.isExpired()) {
+            return cached.value();
+        }
+        WorkerCapabilities fresh = probeCapabilities();
+        cachedCapabilities = new CachedCapabilities(fresh, Instant.now().plus(CAPABILITIES_CACHE_TTL));
+        return fresh;
+    }
+
+    private WorkerCapabilities probeCapabilities() {
+        if (!properties.isEnabled()) {
+            return WorkerCapabilities.unavailable("disabled");
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(properties.capabilitiesUrl()))
+                    .timeout(CAPABILITIES_TIMEOUT)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return WorkerCapabilities.unavailable("status:" + response.statusCode());
+            }
+            JsonNode root = objectMapper.readTree(response.body());
+            String status = root.path("status").asText("");
+            if (!"ok".equals(status)) {
+                return WorkerCapabilities.unavailable("workerStatus:" + (status.isBlank() ? "missing" : status));
+            }
+            List<String> readyEngines = new ArrayList<>();
+            JsonNode engines = root.path("readyEngines");
+            if (engines.isArray()) {
+                for (JsonNode engine : engines) {
+                    String name = engine.asText("");
+                    if (KNOWN_ENGINES.contains(name)) {
+                        readyEngines.add(name);
+                    }
+                }
+            }
+            return new WorkerCapabilities(true, readyEngines, null);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return WorkerCapabilities.unavailable("interrupted");
+        } catch (RuntimeException | IOException ex) {
+            return WorkerCapabilities.unavailable(ex.getClass().getSimpleName());
+        }
+    }
+
+    private record CachedCapabilities(WorkerCapabilities value, Instant expiresAt) {
+        boolean isExpired() {
+            return Instant.now().isAfter(expiresAt);
+        }
     }
 
     public Optional<ExtractedPosting> extractFile(StoredJobPostingFile file) {
@@ -244,5 +319,25 @@ public class JobPostingAiWorkerClient {
             builder.append(warning.asText());
         }
         return builder.toString();
+    }
+
+    /**
+     * 워커 capabilities 응답. {@code available} 은 워커가 정상 응답했는지, {@code readyEngines} 는 실제 초기화까지
+     * 성공한 OCR 엔진 목록, {@code reason} 은 미가용 사유(가용하면 null)다.
+     */
+    public record WorkerCapabilities(boolean available, List<String> readyEngines, String reason) {
+
+        public WorkerCapabilities {
+            readyEngines = readyEngines == null ? List.of() : List.copyOf(readyEngines);
+        }
+
+        static WorkerCapabilities unavailable(String reason) {
+            return new WorkerCapabilities(false, List.of(), reason);
+        }
+
+        /** Self OCR 선택 가능 조건: 워커가 응답했고 준비된 엔진이 하나 이상. */
+        public boolean anyEngineReady() {
+            return available && !readyEngines.isEmpty();
+        }
     }
 }

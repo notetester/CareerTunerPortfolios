@@ -13,6 +13,8 @@ import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.auth.service.EmailService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.common.web.FrontendReturnTarget;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.domain.UserResumeDetail;
 import com.careertuner.user.dto.AccountInfoResponse;
@@ -38,6 +40,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     private final ObjectMapper objectMapper;
     private final AuthMapper authMapper;
     private final EmailService emailService;
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver;
 
     @Override
     @Transactional(readOnly = true)
@@ -89,6 +92,12 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Override
     @Transactional
     public void requestEmailRegistration(Long userId, String email) {
+        requestEmailRegistration(userId, email, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    @Transactional
+    public void requestEmailRegistration(Long userId, String email, FrontendReturnTarget returnTarget) {
         User user = requireUser(userId);
         String normalized = normalizeEmail(email);
         if (mapper.countByEmailExcludingUser(normalized, userId) > 0) {
@@ -104,24 +113,29 @@ public class UserAccountServiceImpl implements UserAccountService {
                 .email(normalized)
                 .token(UUID.randomUUID().toString())
                 .purpose(purpose)
+                .frontendClient(returnTarget.client())
                 .expiredAt(LocalDateTime.now().plusHours(24))
                 .build();
         authMapper.insertEmailVerification(verification);
-        emailService.sendVerificationEmail(normalized, verification.getToken());
+        emailService.sendVerificationEmail(normalized, verification.getToken(), returnTarget);
     }
 
     @Override
     @Transactional
     public AccountInfoResponse unlinkSocial(Long userId, String provider) {
-        User user = requireUser(userId);
+        User user = mapper.findByIdForUpdate(userId);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원 정보를 찾을 수 없습니다.");
+        }
         String normalizedProvider = normalizeProvider(provider);
-        int linkedCount = mapper.countLinkedProviders(userId);
-        boolean removingExisting = mapper.findLinkedProviders(userId).stream()
+        var linkedProviders = mapper.findLinkedProviders(userId);
+        boolean removingExisting = linkedProviders.stream()
                 .anyMatch(p -> normalizedProvider.equalsIgnoreCase(p));
         if (!removingExisting) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "연결된 소셜 계정이 없습니다.");
         }
-        boolean remainingSocial = linkedCount > 1;
+        boolean remainingSocial = linkedProviders.stream()
+                .anyMatch(p -> !normalizedProvider.equalsIgnoreCase(p));
         if (!remainingSocial && !hasUsableLocalLogin(user)) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "연동 해제 후 사용할 수 있는 로그인 수단이 남아 있지 않습니다. 먼저 아이디/이메일 로그인 또는 다른 소셜 계정을 추가해 주세요.");

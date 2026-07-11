@@ -29,6 +29,7 @@
                created_at
           FROM payment
          WHERE order_id = #{orderId}
+         FOR UPDATE
     </select>
 
     <select id="existsByPaymentKey" resultType="boolean">

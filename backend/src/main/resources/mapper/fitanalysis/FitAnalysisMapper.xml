@@ -32,6 +32,7 @@
         <result property="applicationStatus" column="application_status"/>
         <result property="favorite" column="is_favorite"/>
         <result property="applicationUpdatedAt" column="application_updated_at"/>
+        <result property="deadlineDate" column="deadline_date"/>
     </resultMap>
 
     <sql id="FitAnalysisWithApplicationColumns">
@@ -60,6 +61,7 @@
         ac.company_name,
         ac.job_title,
         ac.posting_date,
+        ac.deadline_date,
         ac.status AS application_status,
         ac.is_favorite,
         ac.updated_at AS application_updated_at

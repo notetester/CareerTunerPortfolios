@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Megaphone, MousePointerClick, Pencil, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
 import AdminShell from "@/admin/components/AdminShell";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
@@ -31,7 +32,7 @@ import {
 
 const PLACEMENTS = Object.keys(PLACEMENT_LABELS) as AdPlacement[];
 const PLATFORMS = Object.keys(PLATFORM_LABELS) as AdTargetPlatform[];
-const selectClass = "h-10 rounded-md border border-slate-200 bg-white px-3 text-sm";
+const selectClass = "h-10 rounded-md border border-slate-200 bg-background px-3 text-sm";
 
 const EMPTY_FORM: AdminAdPayload = {
   title: "",
@@ -84,6 +85,7 @@ const AD_COLUMNS: AdminListColumn<AdminAd>[] = [
 
 /** 광고 관리 콘솔 — 배치/기간/플랫폼/활성/우선순위 편집 + 노출·클릭 통계. */
 export function AdminAdsPage() {
+  const contentAuthorization = useAdminDomainAuthorization("CONTENT");
   const [rows, setRows] = useState<AdminAd[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -139,12 +141,14 @@ export function AdminAdsPage() {
   });
 
   const openCreate = () => {
+    if (!contentAuthorization.canCreate) return;
     setEditing(null);
     setForm(EMPTY_FORM);
     setImagePreview(null);
   };
 
   const openEdit = (ad: AdminAd) => {
+    if (!contentAuthorization.canUpdate) return;
     setEditing(ad);
     setForm({
       title: ad.title,
@@ -168,6 +172,7 @@ export function AdminAdsPage() {
   };
 
   const handleUpload = async (file: File) => {
+    if (editing ? !contentAuthorization.canUpdate : !contentAuthorization.canCreate) return;
     setUploading(true);
     setError(null);
     try {
@@ -182,6 +187,10 @@ export function AdminAdsPage() {
   };
 
   const handleSave = async () => {
+    if (editing ? !contentAuthorization.canUpdate : !contentAuthorization.canCreate) {
+      setError("광고를 저장할 권한이 없습니다.");
+      return;
+    }
     if (!form.title.trim()) {
       setError("제목은 필수입니다.");
       return;
@@ -210,6 +219,7 @@ export function AdminAdsPage() {
   };
 
   const handleToggle = async (ad: AdminAd) => {
+    if (!contentAuthorization.canUpdate) return;
     try {
       await toggleAdActive(ad.id, !ad.active);
       setRows((prev) => prev.map((r) => (r.id === ad.id ? { ...r, active: !ad.active } : r)));
@@ -219,6 +229,7 @@ export function AdminAdsPage() {
   };
 
   const handleDelete = async (ad: AdminAd) => {
+    if (!contentAuthorization.canDelete) return;
     if (!window.confirm(`'${ad.title}' 광고를 삭제할까요?`)) return;
     try {
       await deleteAd(ad.id);
@@ -243,9 +254,11 @@ export function AdminAdsPage() {
           <Button variant="outline" size="sm" onClick={() => void load()}>
             <RefreshCw className="mr-1 h-4 w-4" /> 새로고침
           </Button>
-          <Button size="sm" onClick={openCreate}>
-            <Plus className="mr-1 h-4 w-4" /> 광고 등록
-          </Button>
+          {contentAuthorization.canCreate && (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="mr-1 h-4 w-4" /> 광고 등록
+            </Button>
+          )}
         </div>
       }
     >
@@ -285,7 +298,7 @@ export function AdminAdsPage() {
         )}
 
         {/* 등록/수정 폼 */}
-        {formOpen && (
+        {formOpen && (editing ? contentAuthorization.canUpdate : contentAuthorization.canCreate) && (
           <Card>
             <CardContent className="space-y-4 p-5">
               <h3 className="text-base font-semibold text-slate-800">
@@ -490,18 +503,25 @@ export function AdminAdsPage() {
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <Switch checked={ad.active} onCheckedChange={() => void handleToggle(ad)} />
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(ad)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void handleDelete(ad)}
-                      className="text-red-500 hover:text-red-600"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {contentAuthorization.canUpdate && (
+                      <>
+                        <Switch checked={ad.active} onCheckedChange={() => void handleToggle(ad)} />
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(ad)} aria-label="광고 수정">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                    {contentAuthorization.canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void handleDelete(ad)}
+                        className="text-red-500 hover:text-red-600"
+                        aria-label="광고 삭제"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -27,21 +27,24 @@ ApplicationWindow {
     function showToast(title, body) { toasts.push(title, body) }
 
     // 알림 link → 데스크톱 화면 라우팅.
-    // '/collaboration' → 협업 뷰, '/interview?session=ID' → 해당 세션 스레드.
-    // 그 외(웹 전용 화면)는 데스크톱에 대응 화면이 생기면 여기에 분기를 추가한다.
+    // '/messenger' → 협업 뷰, '/interview?session=ID' → 해당 세션 스레드.
+    // 데스크톱에 대응 화면이 없는 링크는 공개 웹 앱으로 이어서 고아 링크를 만들지 않는다.
     function routeNotificationLink(link) {
         const url = String(link || "")
         if (url.length === 0) return
-        if (url.indexOf("/collaboration") === 0) {
+        if (url.indexOf("/messenger") === 0 || url.indexOf("/collaboration") === 0) {
             win.view = "collaboration"
             collaboration.refresh()
             return
         }
-        if (url.indexOf("/community") === 0) {
+        if (url === "/community" || url.indexOf("/community/posts/") === 0
+                || /[?&]post=\d+/.test(url)) {
             // '/community/posts/{id}' (추천 글 알림 등) 이면 해당 글 상세까지 연다
             win.view = "board"
             const pm = url.match(/\/community\/posts\/(\d+)/)
+            const qm = url.match(/[?&]post=(\d+)/)
             if (pm) community.openPost(Number(pm[1]))
+            else if (qm) community.openPost(Number(qm[1]))
             return
         }
         if (url.indexOf("/interview") === 0) {
@@ -49,8 +52,25 @@ ApplicationWindow {
             if (m) {
                 // 사이드바 목록에 아직 없는 세션일 수 있어 임시 라벨로 열고, 스레드가 실제 내용을 채운다
                 win.openSession(Number(m[1]), "면접 세션 #" + m[1], "이어하기", 0)
+                return
             }
+        }
+        if (url.indexOf("/planner") === 0) {
+            plannerOverlayController.enabled = true
+            plannerClient.refreshNow()
             return
+        }
+        if (url.indexOf("/settings") === 0) {
+            win.view = "settings"
+            return
+        }
+
+        // 웹 전용 화면(지원 건, 결제, 고객센터 등)과 세션 ID 없는 면접 링크.
+        // 알림 링크는 서버가 생성한 내부 경로 또는 http(s) URL만 허용한다.
+        if (url.indexOf("/") === 0) {
+            Qt.openUrlExternally(appSettings.awsServerUrl + url)
+        } else if (/^https?:\/\//i.test(url)) {
+            Qt.openUrlExternally(url)
         }
     }
 

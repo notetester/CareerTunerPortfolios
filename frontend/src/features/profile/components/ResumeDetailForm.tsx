@@ -398,7 +398,7 @@ function FieldSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm"
+        className="h-9 w-full rounded-md border border-slate-200 bg-card px-3 text-sm"
       >
         <option value="">선택</option>
         {options.map((opt) => (

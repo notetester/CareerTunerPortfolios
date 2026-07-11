@@ -104,6 +104,13 @@ export async function getPosts(
   return data.posts.map(mapPost);
 }
 
+/** 챗봇 추천 모아보기 — id 목록으로 정확 조회(입력 순서 보존, 서버가 차단·블라인드 필터 적용). */
+export async function getPostsByIds(ids: number[]) {
+  const params = new URLSearchParams({ ids: ids.join(",") });
+  const data = await api<PostPageData>(`/community/posts?${params}`, {}, { auth: true });
+  return data.posts.map(mapPost);
+}
+
 export async function getPostDetail(id: number) {
   const data = await api<BackendPost>(`/community/posts/${id}`);
   return mapPost(data);
@@ -182,6 +189,12 @@ export async function deletePost(id: number) {
 }
 
 export async function adminUpdatePostStatus(id: number, status: "PUBLISHED" | "HIDDEN" | "DELETED", reason?: string) {
+  if (status === "DELETED") {
+    return api<void>(`/admin/community/posts/${id}`, {
+      method: "DELETE",
+      body: JSON.stringify({ status, reason }),
+    });
+  }
   return api<void>(`/admin/community/posts/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status, reason }),

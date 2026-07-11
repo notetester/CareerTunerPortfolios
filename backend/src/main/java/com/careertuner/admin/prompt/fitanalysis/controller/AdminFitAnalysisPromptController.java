@@ -1,5 +1,7 @@
 package com.careertuner.admin.prompt.fitanalysis.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/prompts/fit-analysis")
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminFitAnalysisPromptController {
 

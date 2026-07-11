@@ -7,8 +7,12 @@ import { Badge } from "../components/ui/badge";
 import { Checkbox } from "../components/ui/checkbox";
 import { Input } from "../components/ui/input";
 import { ApiError } from "../lib/api";
+import { useOutageFallback } from "../lib/outageFallback";
 import { checkEmailDuplicate, checkLoginIdDuplicate } from "../auth/authApi";
+import { useOAuthProviderAvailability } from "../auth/useOAuthProviderAvailability";
 import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2, UserRound } from "lucide-react";
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 export function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -22,6 +26,7 @@ export function LoginPage() {
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [privacyAgreed, setPrivacyAgreed] = useState(false);
   const [aiDataAgreed, setAiDataAgreed] = useState(false);
+  const [resumeAnalysisAgreed, setResumeAnalysisAgreed] = useState(false);
   const [marketingAgreed, setMarketingAgreed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +35,12 @@ export function LoginPage() {
   const [loginIdDuplicate, setLoginIdDuplicate] = useState(false);
   const navigate = useNavigate();
   const { login, register, socialLogin } = useAuth();
+  const { socialOAuthBlocked } = useOutageFallback();
+  const {
+    providers: oauthProviders,
+    loading: oauthProvidersLoading,
+    error: oauthProvidersError,
+  } = useOAuthProviderAvailability();
 
   const switchMode = (nextMode: "login" | "signup") => {
     setMode(nextMode);
@@ -134,6 +145,7 @@ export function LoginPage() {
           termsAgreed,
           privacyAgreed,
           aiDataAgreed,
+          resumeAnalysisAgreed,
           marketingAgreed,
         });
       }
@@ -169,11 +181,37 @@ export function LoginPage() {
     return err.message || "인증 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.";
   };
 
+  const handleSocialLogin = async (provider: "google" | "kakao" | "naver") => {
+    if (!USE_MOCK) {
+      socialLogin(provider);
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await login("demo@careertuner.dev", "demo1234");
+      if (!result.token) throw new Error("데모 로그인 토큰이 없습니다.");
+      const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+      const destination = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
+        ? returnTo
+        : "/dashboard";
+      navigate(destination, { replace: true });
+    } catch {
+      setError("데모 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const socialButtons = [
-    { label: "Google로 계속하기", provider: "google" as const, mark: "G", className: "bg-blue-600" },
-    { label: "카카오로 계속하기", provider: "kakao" as const, mark: "K", className: "bg-yellow-400 text-slate-900" },
-    { label: "네이버로 계속하기", provider: "naver" as const, mark: "N", className: "bg-green-600" },
+    { name: "Google", label: "Google로 계속하기", provider: "google" as const, mark: "G", className: "bg-blue-600" },
+    { name: "카카오", label: "카카오로 계속하기", provider: "kakao" as const, mark: "K", className: "bg-yellow-400 text-slate-900" },
+    { name: "네이버", label: "네이버로 계속하기", provider: "naver" as const, mark: "N", className: "bg-green-600" },
   ];
+  const unavailableSocialLabels = socialButtons
+    .filter(({ provider }) => !oauthProviders[provider])
+    .map(({ name: providerName }) => providerName)
+    .join(", ");
   const identifierPlaceholder = mode === "login" ? "아이디 또는 이메일" : "이메일 (선택)";
   const IdentifierIcon = mode === "login" ? UserRound : Mail;
 
@@ -235,20 +273,50 @@ export function LoginPage() {
 
             {/* Social login */}
             <div className="space-y-2.5">
-              {socialButtons.map((s) => (
-                <Button
-                  key={s.label}
-                  variant="outline"
-                  type="button"
-                  className="w-full h-11 text-sm font-medium"
-                  onClick={() => socialLogin(s.provider)}
-                >
-                  <span className={`mr-2 inline-flex size-5 items-center justify-center rounded-full text-[11px] font-black text-white ${s.className}`}>
-                    {s.mark}
-                  </span>
-                  {s.label}
-                </Button>
-              ))}
+              {socialButtons.map((s) => {
+                const unavailable = oauthProvidersLoading || !oauthProviders[s.provider];
+                const title = socialOAuthBlocked
+                  ? "AWS 연결 복구 후 소셜 로그인을 이용할 수 있습니다."
+                  : oauthProvidersLoading
+                    ? "소셜 로그인 설정을 확인하고 있습니다."
+                    : unavailable
+                      ? `${s.name} 로그인 설정이 완료되지 않았습니다.`
+                      : undefined;
+                return (
+                  <Button
+                    key={s.label}
+                    variant="outline"
+                    type="button"
+                    className="w-full h-11 text-sm font-medium"
+                    onClick={() => void handleSocialLogin(s.provider)}
+                    disabled={submitting || socialOAuthBlocked || unavailable}
+                    title={title}
+                  >
+                    <span className={`mr-2 inline-flex size-5 items-center justify-center rounded-full text-[11px] font-black text-white ${s.className}`}>
+                      {s.mark}
+                    </span>
+                    {s.label}
+                  </Button>
+                );
+              })}
+              {socialOAuthBlocked && (
+                <p className="text-center text-xs font-medium text-amber-700 dark:text-amber-300">
+                  장애 체험 중에는 소셜 로그인을 사용할 수 없습니다. 아이디·이메일 체험 로그인을 이용해 주세요.
+                </p>
+              )}
+              {!socialOAuthBlocked && oauthProvidersLoading && (
+                <p className="text-center text-xs text-slate-500 dark:text-slate-400">소셜 로그인 설정을 확인하고 있습니다.</p>
+              )}
+              {!socialOAuthBlocked && !oauthProvidersLoading && oauthProvidersError && (
+                <p className="text-center text-xs font-medium text-amber-700 dark:text-amber-300">
+                  소셜 로그인 상태를 확인하지 못했습니다. 아이디·이메일 로그인을 이용해 주세요.
+                </p>
+              )}
+              {!socialOAuthBlocked && !oauthProvidersLoading && !oauthProvidersError && unavailableSocialLabels && (
+                <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+                  {unavailableSocialLabels} 로그인은 현재 준비 중입니다.
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -357,23 +425,33 @@ export function LoginPage() {
                       checked={termsAgreed}
                       onCheckedChange={setTermsAgreed}
                       label="이용약관 동의"
+                      href="/legal/terms"
                       required
                     />
                     <ConsentCheckbox
                       checked={privacyAgreed}
                       onCheckedChange={setPrivacyAgreed}
                       label="개인정보 처리방침 동의"
+                      href="/legal/privacy"
                       required
                     />
                     <ConsentCheckbox
                       checked={aiDataAgreed}
                       onCheckedChange={setAiDataAgreed}
                       label="AI 분석 데이터 활용 동의"
+                      href="/legal/ai-data-consent"
+                    />
+                    <ConsentCheckbox
+                      checked={resumeAnalysisAgreed}
+                      onCheckedChange={setResumeAnalysisAgreed}
+                      label="이력서 분석 개인정보 수집·이용 동의"
+                      href="/legal/resume-analysis-consent"
                     />
                     <ConsentCheckbox
                       checked={marketingAgreed}
                       onCheckedChange={setMarketingAgreed}
                       label="마케팅 정보 수신 동의"
+                      href="/legal/marketing"
                     />
                   </div>
                 </>
@@ -416,8 +494,7 @@ export function LoginPage() {
 
             {mode === "signup" && (
               <p className="text-xs text-slate-400 text-center">
-                가입하면 <Link to="/legal/terms" className="text-blue-600 hover:underline">이용약관</Link>과{" "}
-                <Link to="/legal/privacy" className="text-blue-600 hover:underline">개인정보처리방침</Link>에 동의하게 됩니다.
+                필수 동의와 선택 동의는 각각 전문을 확인할 수 있으며, 가입 후 설정에서 언제든지 철회하거나 다시 동의할 수 있습니다.
               </p>
             )}
           </CardContent>
@@ -431,23 +508,25 @@ function ConsentCheckbox({
   checked,
   onCheckedChange,
   label,
+  href,
   required = false,
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: string;
+  href: string;
   required?: boolean;
 }) {
   return (
-    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-      <Checkbox
-        checked={checked}
-        onCheckedChange={(nextChecked) => onCheckedChange(nextChecked === true)}
-      />
-      <span>
-        {required && <span className="text-red-500">[필수] </span>}
-        {label}
-      </span>
-    </label>
+    <div className="flex items-center justify-between gap-3 text-xs">
+      <label className="flex min-w-0 items-center gap-2 font-medium text-slate-700">
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(nextChecked) => onCheckedChange(nextChecked === true)}
+        />
+        <span>{required ? <span className="text-red-500">[필수] </span> : <span className="text-slate-400">[선택] </span>}{label}</span>
+      </label>
+      <Link className="shrink-0 font-semibold text-blue-700 hover:underline" to={href}>전문</Link>
+    </div>
   );
 }

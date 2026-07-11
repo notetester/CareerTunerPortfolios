@@ -53,8 +53,10 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
           );
           const tone = scoreTone(analysis.fitScore);
 
+          // min-w-0: 그리드 자식이 내부 테이블(min-w-[420px])의 최소폭으로 부풀어 모바일 페이지가 가로로 넘치는 것 방지
+          // — 카드가 뷰포트에 맞춰지면 테이블은 자체 overflow-x-auto 래퍼 안에서 스크롤된다.
           return (
-            <Card key={analysis.id} className="border border-slate-200 bg-card">
+            <Card key={analysis.id} className="min-w-0 border border-slate-200 bg-card">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>

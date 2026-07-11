@@ -14,7 +14,7 @@ class PrivateCertRegistrationProviderTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private PrivateCertRegistrationProvider provider(String key) {
-        return new PrivateCertRegistrationProvider(key, "https://unused.invalid",
+        return new PrivateCertRegistrationProvider(key, null, "https://unused.invalid",
                 "uddi:test", "20251231", Duration.ofSeconds(1), mapper, HttpClient.newHttpClient());
     }
 

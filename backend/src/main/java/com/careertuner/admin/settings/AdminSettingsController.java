@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.admin.settings.dto.SettingsExport;
 import com.careertuner.admin.settings.dto.SettingsImportResult;
@@ -29,6 +30,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/settings")
+@RequireAdminPermission({"POLICY_READ"})
 @RequiredArgsConstructor
 public class AdminSettingsController {
 
@@ -38,7 +40,7 @@ public class AdminSettingsController {
     /** 지원 섹션 키 목록(콘솔 체크박스용). */
     @GetMapping("/sections")
     public ApiResponse<List<String>> sections(@AuthenticationPrincipal AuthUser authUser) {
-        AdminAccess.requireAdmin(authUser);
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(List.copyOf(SettingsExportService.SECTION_KEYS));
     }
 
@@ -46,16 +48,17 @@ public class AdminSettingsController {
     @GetMapping("/export")
     public ApiResponse<SettingsExport> export(@AuthenticationPrincipal AuthUser authUser,
                                               @RequestParam(required = false) String sections) {
-        AdminAccess.requireAdmin(authUser);
-        return ApiResponse.ok(service.export(parseSections(sections)));
+        AdminAccess.requireSuperAdmin(authUser);
+        return ApiResponse.ok(service.export(authUser, parseSections(sections)));
     }
 
     /** 설정 import(upsert). 적용/스킵 건수·사유를 반환하고 감사 로그를 남긴다. */
     @PostMapping("/import")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<SettingsImportResult> importSettings(@AuthenticationPrincipal AuthUser authUser,
                                                             @RequestBody SettingsExport payload) {
-        AdminAccess.requireAdmin(authUser);
-        SettingsImportResult result = service.importSettings(payload, authUser.id());
+        AdminAccess.requireSuperAdmin(authUser);
+        SettingsImportResult result = service.importSettings(authUser, payload);
         actionLogService.record(authUser, null, "SETTINGS_IMPORTED", "ADMIN_SETTINGS",
                 null,
                 "applied=" + result.totalApplied() + ", skipped=" + result.totalSkipped(),

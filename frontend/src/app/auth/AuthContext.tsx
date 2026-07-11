@@ -1,7 +1,17 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
+import { apiBase } from "../lib/apiBase";
 import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
-import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "../lib/tokenStore";
+import { isOutageFallbackActive, isSocialOAuthBlocked } from "../lib/outageFallback";
+import {
+  clearTokens,
+  clearTokensIfUnchanged,
+  getRefreshToken,
+  getTokenStoreSnapshot,
+  isTokenStoreSnapshotCurrent,
+  setTokens,
+  subscribeTokenStore,
+} from "../lib/tokenStore";
 
 export interface MeUser {
   id: number;
@@ -39,6 +49,7 @@ export interface RegisterConsents {
   termsAgreed: boolean;
   privacyAgreed: boolean;
   aiDataAgreed?: boolean;
+  resumeAnalysisAgreed?: boolean;
   marketingAgreed?: boolean;
 }
 
@@ -60,28 +71,63 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MeUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const refreshGeneration = useRef(0);
 
   const refreshMe = useCallback(async () => {
-    if (!getAccessToken()) {
-      setUser(null);
-      return;
-    }
+    const generation = ++refreshGeneration.current;
+    const sessionSnapshot = getTokenStoreSnapshot();
+    setLoading(true);
     try {
+      if (!sessionSnapshot.tokens?.accessToken) {
+        if (
+          generation === refreshGeneration.current
+          && isTokenStoreSnapshotCurrent(sessionSnapshot)
+        ) {
+          setUser(null);
+        }
+        return;
+      }
       const me = await api<MeUser>("/auth/me", { method: "GET" });
-      setUser(me);
+      if (
+        generation === refreshGeneration.current
+        && isTokenStoreSnapshotCurrent(sessionSnapshot)
+      ) {
+        setUser(me);
+      }
     } catch {
-      clearTokens();
-      setUser(null);
+      if (
+        generation === refreshGeneration.current
+        && isTokenStoreSnapshotCurrent(sessionSnapshot)
+      ) {
+        setUser(null);
+        clearTokensIfUnchanged(sessionSnapshot);
+      }
+    } finally {
+      if (generation === refreshGeneration.current) setLoading(false);
     }
   }, []);
 
+  // refresh가 토큰을 바꾸면 /auth/me로 role을 다시 검증한다. 검증 중에는 loading으로 관리자 경계를 닫는다.
+  useEffect(() => subscribeTokenStore((event) => {
+    if (event === "cleared") {
+      refreshGeneration.current += 1;
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+    void refreshMe();
+  }), [refreshMe]);
+
   // 새로고침 시 저장된 토큰으로 세션 복원
   useEffect(() => {
-    refreshMe().finally(() => setLoading(false));
+    void refreshMe();
   }, [refreshMe]);
 
   const completeLogin = useCallback((token: TokenResponse) => {
-    setTokens({ accessToken: token.accessToken, refreshToken: token.refreshToken });
+    // 장애 체험용 mock 토큰으로 기존 운영 세션을 덮어쓰지 않는다. 복구 reload 후 실제 토큰을 다시 사용한다.
+    if (!isOutageFallbackActive()) {
+      setTokens({ accessToken: token.accessToken, refreshToken: token.refreshToken });
+    }
     setUser(token.user);
   }, []);
 
@@ -118,13 +164,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       { method: "POST", body: JSON.stringify({ loginId, email, password, name, ...consents }) },
       { auth: false },
     );
-    setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+    if (!isOutageFallbackActive()) {
+      setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+    }
     setUser(res.user);
   }, []);
 
   const socialLogin = useCallback((provider: SocialProvider) => {
+    if (isSocialOAuthBlocked()) return;
     // 전체 페이지 이동 → 백엔드가 제공자로 리다이렉트
-    window.location.href = `/api/auth/oauth/${provider}`;
+    window.location.href = `${apiBase()}/auth/oauth/${provider}`;
   }, []);
 
   const logout = useCallback(async () => {

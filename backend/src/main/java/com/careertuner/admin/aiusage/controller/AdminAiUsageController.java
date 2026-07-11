@@ -1,5 +1,7 @@
 package com.careertuner.admin.aiusage.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.time.LocalDate;
 import java.util.List;
 
@@ -21,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/ai-usage")
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminAiUsageController {
 

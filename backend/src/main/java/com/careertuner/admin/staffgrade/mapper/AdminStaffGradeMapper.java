@@ -37,5 +37,7 @@ public interface AdminStaffGradeMapper {
 
     Long findUserIdByEmail(@Param("email") String email);
 
+    String findUserRoleForUpdate(@Param("userId") Long userId);
+
     List<AdminStaffCandidate> findCandidates();
 }

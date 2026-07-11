@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.company.dto.AdminRejectRequest;
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.company.dto.CompanyApplicationResponse;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 /** 기업 신청 승인/반려 콘솔 API. */
 @RestController
 @RequestMapping("/api/admin/company/applications")
+@RequireAdminPermission({"USER_READ"})
 @RequiredArgsConstructor
 public class AdminCompanyApplicationController {
 
@@ -37,6 +39,7 @@ public class AdminCompanyApplicationController {
     }
 
     @PostMapping("/{id}/approve")
+    @RequireAdminPermission({"USER_UPDATE"})
     public ApiResponse<CompanyApplicationResponse> approve(@AuthenticationPrincipal AuthUser authUser,
                                                            @PathVariable Long id) {
         AdminAccess.requireAdmin(authUser);
@@ -44,6 +47,7 @@ public class AdminCompanyApplicationController {
     }
 
     @PostMapping("/{id}/reject")
+    @RequireAdminPermission({"USER_UPDATE"})
     public ApiResponse<CompanyApplicationResponse> reject(@AuthenticationPrincipal AuthUser authUser,
                                                           @PathVariable Long id,
                                                           @RequestBody AdminRejectRequest request) {

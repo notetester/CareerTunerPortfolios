@@ -53,6 +53,7 @@ import type {
   NotificationType,
   NotificationCategory,
 } from "../types/notification";
+import { publicInternalAppPath } from "../lib/navigationLink";
 import "../styles/toast.css";
 
 /* ─── Types ─── */
@@ -578,6 +579,7 @@ function NotifyToast({
   const [exiting, setExiting] = useState(false);
   const Icon = NOTI_ICON_MAP[item.notiType];
   const style = CATEGORY_STYLE[item.category] ?? CATEGORY_STYLE.all;
+  const navigationTarget = publicInternalAppPath(item.link);
 
   const handleClose = useCallback(() => {
     setExiting(true);
@@ -585,8 +587,8 @@ function NotifyToast({
   }, [onClose]);
 
   const handleClick = () => {
-    if (item.link) {
-      window.location.href = item.link;
+    if (navigationTarget) {
+      window.location.assign(navigationTarget);
     }
     handleClose();
   };
@@ -619,8 +621,8 @@ function NotifyToast({
       <div
         className="ct-toast__noti-body"
         onClick={handleClick}
-        role={item.link ? "link" : undefined}
-        style={item.link ? { cursor: "pointer" } : undefined}
+        role={navigationTarget ? "link" : undefined}
+        style={navigationTarget ? { cursor: "pointer" } : undefined}
       >
         <span className="ct-toast__noti-title">
           {item.actorName && (

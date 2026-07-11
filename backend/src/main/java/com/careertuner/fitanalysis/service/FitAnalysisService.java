@@ -3,6 +3,7 @@ package com.careertuner.fitanalysis.service;
 import java.util.List;
 
 import com.careertuner.fitanalysis.dto.CareerCertificateStrategyResponse;
+import com.careertuner.fitanalysis.dto.CareerRoadmapResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisHistoryEntryResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
@@ -33,6 +34,9 @@ public interface FitAnalysisService {
 
     /** 장기 커리어 자격증 전략(desiredJob 기준, 현재 지원 건 전략과 분리). 결정론 규칙만 사용(외부 API 미호출). */
     CareerCertificateStrategyResponse careerCertificateStrategy(Long userId);
+
+    /** 장기 커리어 로드맵(결정론) — 확인된 실일정 + 월 단위 학습 계획 블록. */
+    CareerRoadmapResponse careerRoadmap(Long userId, int months);
 
     FitAnalysisLearningTaskResponse updateLearningTask(Long userId,
                                                        Long fitAnalysisId,

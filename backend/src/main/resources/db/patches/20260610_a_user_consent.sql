@@ -4,7 +4,8 @@
 CREATE TABLE IF NOT EXISTS user_consent (
     id           BIGINT      NOT NULL AUTO_INCREMENT,
     user_id      BIGINT      NOT NULL COMMENT '동의 주체 회원 ID',
-    consent_type VARCHAR(40) NOT NULL COMMENT '동의 유형. TERMS/PRIVACY/AI_DATA/MARKETING',
+    consent_type VARCHAR(40) NOT NULL COMMENT '동의 유형. TERMS/PRIVACY/AI_DATA/RESUME_ANALYSIS/MARKETING',
+    consent_version VARCHAR(40) NOT NULL COMMENT '동의 시점의 법적 문서 버전',
     agreed       TINYINT(1)  NOT NULL COMMENT '동의 여부',
     agreed_at    DATETIME    NULL COMMENT '동의한 시각',
     revoked_at   DATETIME    NULL COMMENT '철회한 시각',

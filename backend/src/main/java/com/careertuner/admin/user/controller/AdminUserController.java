@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,10 +24,12 @@ import com.careertuner.admin.common.grid.ExportScope;
 import com.careertuner.admin.common.grid.GridExporter;
 import com.careertuner.admin.common.grid.PageResult;
 import com.careertuner.admin.user.dto.AdminUserDetail;
+import com.careertuner.admin.user.dto.AdminUserCreateRequest;
 import com.careertuner.admin.user.dto.AdminUserLoginHistoryRow;
 import com.careertuner.admin.user.dto.AdminUserRow;
 import com.careertuner.admin.user.dto.AdminUserStatusUpdateRequest;
 import com.careertuner.admin.user.service.AdminUserService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -37,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/users")
+@RequireAdminPermission({"USER_READ"})
 @RequiredArgsConstructor
 public class AdminUserController {
 
@@ -59,6 +63,14 @@ public class AdminUserController {
             ExportColumn.of("가입일", AdminUserRow::getCreatedAt));
 
     private final AdminUserService service;
+
+    /** 일반 회원 생성. 관리자 역할 생성·승격은 /api/admin/super 경로에서만 수행한다. */
+    @PostMapping
+    @RequireAdminPermission({"USER_CREATE"})
+    public ApiResponse<AdminUserRow> create(@AuthenticationPrincipal AuthUser authUser,
+                                            @Valid @RequestBody AdminUserCreateRequest request) {
+        return ApiResponse.ok(service.create(authUser, request));
+    }
 
     @GetMapping
     public ApiResponse<List<AdminUserRow>> users(
@@ -90,6 +102,7 @@ public class AdminUserController {
 
     /** 일괄 작업 — 현재는 status(상태 일괄 변경)만 지원. */
     @PostMapping("/bulk/{action}")
+    @RequireAdminPermission({"USER_UPDATE"})
     public ApiResponse<BulkActionResult> bulk(@AuthenticationPrincipal AuthUser authUser,
                                               @PathVariable String action,
                                               @RequestBody BulkRequest request) {
@@ -114,9 +127,27 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{id}/status")
+    @RequireAdminPermission({"USER_UPDATE"})
     public ApiResponse<AdminUserRow> updateStatus(@AuthenticationPrincipal AuthUser authUser,
                                                   @PathVariable Long id,
                                                   @Valid @RequestBody AdminUserStatusUpdateRequest request) {
         return ApiResponse.ok(service.updateStatus(authUser, id, request));
+    }
+
+    /** 회원 삭제는 행을 제거하지 않고 status=DELETED/deleted_at으로 기록한다. */
+    @DeleteMapping("/{id}")
+    @RequireAdminPermission({"USER_DELETE"})
+    public ApiResponse<AdminUserRow> delete(@AuthenticationPrincipal AuthUser authUser,
+                                            @PathVariable Long id,
+                                            @RequestParam(required = false) String reason) {
+        return ApiResponse.ok(service.softDelete(authUser, id, reason));
+    }
+
+    /** 선택 회원 일괄 소프트 삭제. 일반 상태 변경 endpoint에서는 DELETED를 받지 않는다. */
+    @PostMapping("/bulk-delete")
+    @RequireAdminPermission({"USER_DELETE"})
+    public ApiResponse<BulkActionResult> bulkDelete(@AuthenticationPrincipal AuthUser authUser,
+                                                    @RequestBody BulkRequest request) {
+        return ApiResponse.ok(service.bulkSoftDelete(authUser, request));
     }
 }

@@ -3,6 +3,7 @@
 // 모든 응답 타입은 admin/features 의 api 모듈이 기대하는 T(백엔드 응답 shape) 그대로 반환한다(transform 없음).
 import type { MockRoute, MockContext } from "../../registry";
 import { iso } from "../../registry";
+import { NULL_ANALYSIS_PROVENANCE } from "@/features/applications/types/analysis";
 import type {
   AdminAnalyticsSummary,
   AdminAnalysisFailure,
@@ -32,6 +33,7 @@ import type {
   AdminApplicationCaseRow,
   AdminApplicationCaseSummaryResponse,
   AdminApplicationCaseDetail,
+  AdminStatusHistoryEntry,
   AdminApplicationJobAnalysis,
   AdminApplicationCompanyAnalysis,
 } from "@/admin/features/application-cases/types";
@@ -671,6 +673,7 @@ const jobAnalysisRows: AdminJobAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 1,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.kakao.userId,
     userEmail: CASE.kakao.email,
     companyName: CASE.kakao.company,
@@ -696,6 +699,7 @@ const jobAnalysisRows: AdminJobAnalysisRow[] = [
     jobPostingRevision: 2,
     latestJobPostingRevision: 2,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.naver.userId,
     userEmail: CASE.naver.email,
     companyName: CASE.naver.company,
@@ -721,6 +725,7 @@ const jobAnalysisRows: AdminJobAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 2,
     staleAgainstLatestPosting: true,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.toss.userId,
     userEmail: CASE.toss.email,
     companyName: CASE.toss.company,
@@ -746,6 +751,7 @@ const jobAnalysisRows: AdminJobAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 1,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.line.userId,
     userEmail: CASE.line.email,
     companyName: CASE.line.company,
@@ -788,6 +794,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 1,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.kakao.userId,
     userEmail: CASE.kakao.email,
     companyName: CASE.kakao.company,
@@ -815,6 +822,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     jobPostingRevision: 2,
     latestJobPostingRevision: 2,
     staleAgainstLatestPosting: false,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.naver.userId,
     userEmail: CASE.naver.email,
     companyName: CASE.naver.company,
@@ -842,6 +850,7 @@ const companyAnalysisRows: AdminCompanyAnalysisRow[] = [
     jobPostingRevision: 1,
     latestJobPostingRevision: 2,
     staleAgainstLatestPosting: true,
+    ...NULL_ANALYSIS_PROVENANCE,
     userId: CASE.toss.userId,
     userEmail: CASE.toss.email,
     companyName: CASE.toss.company,
@@ -1076,6 +1085,50 @@ const applicationCaseRows: AdminApplicationCaseRow[] = [
   },
 ];
 
+let nextStatusHistoryId = 20_000;
+
+function seedStatusHistory(row: AdminApplicationCaseRow): AdminStatusHistoryEntry[] {
+  const history: AdminStatusHistoryEntry[] = [
+    {
+      id: nextStatusHistoryId++,
+      applicationCaseId: row.id,
+      previousStatus: null,
+      newStatus: "DRAFT",
+      memo: null,
+      changedByName: row.userEmail,
+      createdAt: row.createdAt,
+    },
+  ];
+  if (row.status === "DRAFT") return history;
+
+  const firstOperationalStatus = row.status === "APPLIED" || row.status === "CLOSED" ? "READY" : row.status;
+  history.unshift({
+    id: nextStatusHistoryId++,
+    applicationCaseId: row.id,
+    previousStatus: "DRAFT",
+    newStatus: firstOperationalStatus,
+    memo: "공고 등록 후 준비 상태 갱신",
+    changedByName: "한관리",
+    createdAt: iso(3),
+  });
+  if (row.status === "APPLIED" || row.status === "CLOSED") {
+    history.unshift({
+      id: nextStatusHistoryId++,
+      applicationCaseId: row.id,
+      previousStatus: "READY",
+      newStatus: row.status,
+      memo: row.status === "APPLIED" ? "서류 접수 확인" : "채용 절차 종료 확인",
+      changedByName: "한관리",
+      createdAt: iso(1),
+    });
+  }
+  return history;
+}
+
+const statusHistoryByCase = new Map<number, AdminStatusHistoryEntry[]>(
+  applicationCaseRows.map((row) => [row.id, seedStatusHistory(row)]),
+);
+
 const applicationCaseSummary: AdminApplicationCaseSummaryResponse = {
   totalCount: 4,
   draftCount: 1,
@@ -1128,6 +1181,7 @@ function buildAppCaseDetail(id: number): AdminApplicationCaseDetail {
           ambiguousConditions: job.ambiguousConditions,
           confirmedAt: job.confirmedAt,
           adminMemo: job.adminMemo,
+          ...NULL_ANALYSIS_PROVENANCE,
           createdAt: job.createdAt,
         },
       ]
@@ -1154,6 +1208,7 @@ function buildAppCaseDetail(id: number): AdminApplicationCaseDetail {
           refreshRecommendedAt: company.refreshRecommendedAt,
           confirmedAt: company.confirmedAt,
           adminMemo: company.adminMemo,
+          ...NULL_ANALYSIS_PROVENANCE,
           createdAt: company.createdAt,
         },
       ]
@@ -1165,6 +1220,7 @@ function buildAppCaseDetail(id: number): AdminApplicationCaseDetail {
     jobAnalyses,
     companyAnalyses,
     usageLogs,
+    statusHistory: (statusHistoryByCase.get(row.id) ?? []).map((entry) => ({ ...entry })),
   };
 }
 
@@ -1444,7 +1500,21 @@ export const adminAnalysisOpsRoutes: MockRoute[] = [
     handler: ({ params, body }: MockContext) => {
       const row = applicationCaseRows.find((r) => r.id === Number(params[0])) ?? applicationCaseRows[0];
       const req = (body ?? {}) as { status?: AdminApplicationCaseRow["status"]; memo?: string };
-      if (req.status) row.status = req.status;
+      const previousStatus = row.status;
+      if (req.status && req.status !== previousStatus) {
+        const history = statusHistoryByCase.get(row.id) ?? [];
+        history.unshift({
+          id: nextStatusHistoryId++,
+          applicationCaseId: row.id,
+          previousStatus,
+          newStatus: req.status,
+          memo: req.memo?.trim() || null,
+          changedByName: "한관리",
+          createdAt: new Date().toISOString(),
+        });
+        statusHistoryByCase.set(row.id, history);
+        row.status = req.status;
+      }
       row.updatedAt = new Date().toISOString();
       return { ...row };
     },

@@ -1,5 +1,4 @@
 export interface AdminSystemPolicyRow {
-  id: number;
   policyCode: string;
   displayName: string;
   description: string | null;

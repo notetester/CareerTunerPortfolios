@@ -41,6 +41,7 @@ export interface AdminCreditAdjustRequest {
   userId: number;
   amount: number;
   reason: string;
+  requestId: string;
 }
 
 export interface AdminCreditAdjustResponse {

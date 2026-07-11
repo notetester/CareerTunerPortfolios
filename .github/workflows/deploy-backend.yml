@@ -30,7 +30,7 @@ permissions:
   packages: write   # GHCR push
 
 concurrency:
-  group: deploy-backend
+  group: careertuner-ec2-deploy
   cancel-in-progress: false   # 배포는 중간에 끊지 않는다
 
 env:
@@ -44,7 +44,7 @@ env:
 jobs:
   correction-ollama-preflight:
     if: github.event_name == 'workflow_dispatch' && inputs.correction_preflight_only == true
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     steps:
       - name: Verify deploy secrets are configured
         env:
@@ -114,7 +114,7 @@ jobs:
 
   detect-changes:
     if: github.event_name != 'workflow_dispatch' || inputs.correction_preflight_only != true
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     outputs:
       backend: ${{ steps.changes.outputs.backend }}
       worker: ${{ steps.changes.outputs.worker }}
@@ -165,63 +165,48 @@ jobs:
   build-backend:
     needs: detect-changes
     if: needs.detect-changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build & push backend
-        uses: docker/build-push-action@v6
-        with:
-          context: ./backend
-          push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:latest
-            ${{ env.BACKEND_IMAGE }}:sha-${{ needs.detect-changes.outputs.short_sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker buildx build \
+            --push \
+            --tag "${BACKEND_IMAGE}:latest" \
+            --tag "${BACKEND_IMAGE}:sha-${{ needs.detect-changes.outputs.short_sha }}" \
+            ./backend
 
   build-worker:
     needs: detect-changes
     if: needs.detect-changes.outputs.worker == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build & push job-posting-worker
-        uses: docker/build-push-action@v6
-        with:
-          context: ./ml/job-posting-worker
-          push: true
-          build-args: |
-            PYTHON_VERSION=3.13
-            INSTALL_OCR=true
-          tags: |
-            ${{ env.WORKER_IMAGE }}:latest
-            ${{ env.WORKER_IMAGE }}:sha-${{ needs.detect-changes.outputs.short_sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker buildx build \
+            --push \
+            --build-arg PYTHON_VERSION=3.12 \
+            --build-arg INSTALL_OCR=true \
+            --tag "${WORKER_IMAGE}:latest" \
+            --tag "${WORKER_IMAGE}:sha-${{ needs.detect-changes.outputs.short_sha }}" \
+            ./ml/job-posting-worker
 
   deploy:
     needs: [detect-changes, build-backend, build-worker]
@@ -232,7 +217,7 @@ jobs:
         && (needs.build-backend.result == 'success' || needs.build-backend.result == 'skipped')
         && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped')
       }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-trusted]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -269,11 +254,12 @@ jobs:
           CT_CORRECTION_BASE_URL: ${{ env.CORRECTION_AI_BASE_URL }}
           CT_CORRECTION_MODEL: ${{ env.CORRECTION_AI_MODEL }}
           CT_CORRECTION_PREFLIGHT_REQUIRED: ${{ env.CORRECTION_AI_PREFLIGHT_REQUIRED }}
+          CT_CERT_DATA_GO_KR_KEY: ${{ secrets.CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: CT_CORRECTION_PROVIDER,CT_CORRECTION_BASE_URL,CT_CORRECTION_MODEL,CT_CORRECTION_PREFLIGHT_REQUIRED
+          envs: CT_CORRECTION_PROVIDER,CT_CORRECTION_BASE_URL,CT_CORRECTION_MODEL,CT_CORRECTION_PREFLIGHT_REQUIRED,CT_CERT_DATA_GO_KR_KEY
           script: |
             set -eu
             cd ~/careertuner
@@ -308,6 +294,12 @@ jobs:
             upsert_env CAREERTUNER_CORRECTION_AI_SELF_BASE_URL "$CT_CORRECTION_BASE_URL"
             upsert_env CAREERTUNER_CORRECTION_AI_SELF_MODEL "$CT_CORRECTION_MODEL"
             upsert_env CAREERTUNER_CORRECTION_AI_SELF_TEMPERATURE "0.0"
+            # C 자격증 근거 라이브 조회 키(공공데이터포털, 디코딩 raw — repo secret). 미설정이면 기존 값 유지
+            # (빈 값 덮어쓰기 금지 — 키 없어도 앱은 안전 degrade). compose prod 가 .env 전체를 컨테이너에 주입한다.
+            if [ -n "${CT_CERT_DATA_GO_KR_KEY:-}" ]; then
+              upsert_env CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY "$CT_CERT_DATA_GO_KR_KEY"
+              echo "C cert data.go.kr service key updated"
+            fi
             echo "EC2 env backup: $backup"
             echo "E correction env updated"
 

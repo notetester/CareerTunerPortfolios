@@ -18,6 +18,8 @@ import com.careertuner.payment.domain.Payment;
 public interface RefundRequestMapper {
     Payment findOwnedPayment(@Param("paymentId") Long paymentId, @Param("userId") Long userId);
 
+    Long lockUserForRefund(@Param("userId") Long userId);
+
     boolean existsCreditUsageAfter(@Param("userId") Long userId, @Param("paidAt") LocalDateTime paidAt);
 
     boolean existsBenefitUsageAfter(@Param("userId") Long userId, @Param("paidAt") LocalDateTime paidAt);

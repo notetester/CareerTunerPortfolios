@@ -1,5 +1,7 @@
 package com.careertuner.admin.settings.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -19,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/ai-settings")
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminAiSettingsController {
 
@@ -31,6 +34,7 @@ public class AdminAiSettingsController {
     }
 
     @PatchMapping("/job-posting-fallback")
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<AdminJobPostingFallbackSettingResponse> updateJobPostingFallback(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminJobPostingFallbackSettingRequest request) {
@@ -44,6 +48,7 @@ public class AdminAiSettingsController {
     }
 
     @PatchMapping("/upload-size")
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<AdminJobPostingUploadLimitSettingResponse> updateJobPostingUploadLimit(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminJobPostingUploadLimitSettingRequest request) {

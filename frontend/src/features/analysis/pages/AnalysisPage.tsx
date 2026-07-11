@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import { Button } from "@/app/components/ui/button";
@@ -524,7 +524,9 @@ export function AnalysisPage() {
             <CardContent>
               {scoreHistory.length > 0 ? (
                 <>
-                  <div className="flex items-end gap-3 h-32 pt-2">
+                  {/* 포인트 수 무제한 + nowrap 라벨이라 좁은 화면에서 카드 밖으로 넘침 → 차트만 내부 가로 스크롤 */}
+                  <div className="overflow-x-auto">
+                  <div className="flex items-end gap-3 h-32 pt-2 min-w-fit">
                     {scoreHistory.map((s, i) => (
                       <div key={`${s.label}-${i}`} className="flex-1 flex flex-col items-center gap-1">
                         <div className="text-xs font-black text-slate-700">{s.score}</div>
@@ -535,6 +537,7 @@ export function AnalysisPage() {
                         <div className="text-[9px] text-slate-400 text-center whitespace-nowrap">{s.label}</div>
                       </div>
                     ))}
+                  </div>
                   </div>
                   {scoreHistory.length >= 2 && (
                     <div className={`mt-3 flex items-center gap-2 text-xs ${scoreDelta >= 0 ? "text-green-600" : "text-red-500"}`}>
@@ -588,6 +591,15 @@ export function AnalysisPage() {
           </Card>
 
           {/* 피해야 할 공고 유형 — 반복 부족 역량이 필수인 공고는 보완 전까지 우선순위를 낮춘다. */}
+          <div className={`rounded-xl border border-indigo-200 bg-indigo-50 p-4 ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-bold text-indigo-900">장기 커리어 로드맵</p>
+                <p className="mt-0.5 text-xs text-indigo-700">자격증 실일정·학습 계획·지원 마감을 연 단위로 배치해 플래너에 반영할 수 있습니다.</p>
+              </div>
+              <RouterLink to="/career-roadmap" className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">로드맵 열기</RouterLink>
+            </div>
+          </div>
           <CareerPlanCard hidden={activeTab !== "recommendation"} />
 
           <Card className={`min-w-0 border border-blue-200 bg-blue-50/40 ${activeTab !== "recommendation" ? "hidden" : ""}`}>
@@ -773,7 +785,8 @@ export function AnalysisPage() {
             </CardHeader>
             <CardContent>
               {monthlyFitTrend.length > 0 ? (
-                <div className="flex items-end gap-3 h-36 pt-2">
+                <div className="overflow-x-auto">
+                <div className="flex items-end gap-3 h-36 pt-2 min-w-fit">
                   {monthlyFitTrend.map((point, index) => (
                     <div key={point.month} className="flex-1 flex flex-col items-center gap-1">
                       <div className="text-xs font-black text-slate-700">{point.averageScore}</div>
@@ -785,6 +798,7 @@ export function AnalysisPage() {
                       <div className="text-[9px] text-slate-300">{point.analysisCount}건</div>
                     </div>
                   ))}
+                </div>
                 </div>
               ) : (
                 <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">

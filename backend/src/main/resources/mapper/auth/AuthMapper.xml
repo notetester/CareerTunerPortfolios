@@ -26,8 +26,8 @@
 
     <!-- 이메일 인증 토큰 -->
     <insert id="insertEmailVerification" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO email_verification (user_id, email, token, purpose, expired_at)
-        VALUES (#{userId}, #{email}, #{token}, #{purpose}, #{expiredAt})
+        INSERT INTO email_verification (user_id, email, token, purpose, frontend_client, expired_at)
+        VALUES (#{userId}, #{email}, #{token}, #{purpose}, COALESCE(#{frontendClient}, 'primary'), #{expiredAt})
     </insert>
 
     <select id="findEmailVerificationByToken" resultType="com.careertuner.auth.domain.EmailVerification">
@@ -82,8 +82,8 @@
     </insert>
 
     <insert id="insertUserConsent" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO user_consent (user_id, consent_type, agreed, agreed_at, revoked_at, source)
-        VALUES (#{userId}, #{consentType}, #{agreed}, #{agreedAt}, #{revokedAt}, #{source})
+        INSERT INTO user_consent (user_id, consent_type, consent_version, agreed, agreed_at, revoked_at, source)
+        VALUES (#{userId}, #{consentType}, #{consentVersion}, #{agreed}, #{agreedAt}, #{revokedAt}, #{source})
     </insert>
 
     <insert id="insertUserStatusHistory">
@@ -96,16 +96,22 @@
     </insert>
 
     <select id="findActivePermissionCodes" resultType="string">
-        SELECT DISTINCT permission_code
-        FROM admin_user_permission
-        WHERE user_id = #{userId}
-          AND revoked_at IS NULL
+        SELECT DISTINCT assignment.permission_code
+          FROM admin_user_permission assignment
+          JOIN admin_permission_policy policy
+            ON policy.permission_code = assignment.permission_code
+           AND policy.active = 1
+         WHERE assignment.user_id = #{userId}
+           AND assignment.revoked_at IS NULL
     </select>
 
     <select id="findActivePermissionGroups" resultType="string">
-        SELECT DISTINCT group_code
-        FROM admin_user_group
-        WHERE user_id = #{userId}
-          AND revoked_at IS NULL
+        SELECT DISTINCT assignment.group_code
+          FROM admin_user_group assignment
+          JOIN admin_permission_group permission_group
+            ON permission_group.group_code = assignment.group_code
+           AND permission_group.active = 1
+         WHERE assignment.user_id = #{userId}
+           AND assignment.revoked_at IS NULL
     </select>
 </mapper>

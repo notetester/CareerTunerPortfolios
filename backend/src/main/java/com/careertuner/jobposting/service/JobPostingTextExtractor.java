@@ -93,61 +93,128 @@ public class JobPostingTextExtractor {
         this.httpFetcher = Objects.requireNonNull(httpFetcher, "httpFetcher");
     }
 
+    /** OCR provider 선택이 없는 경로(동기 업로드 등)용 — 기본 자동 체인으로 추출한다. */
     public ExtractedPosting extractFile(StoredJobPostingFile file) {
-        if ("PDF".equals(file.sourceType())) {
-            String text = extractTextPdf(file);
-            if (!text.isBlank()) {
-                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null, "pdfbox", null);
-            }
-            // 텍스트가 없는 스캔/이미지 PDF → OCR 폴백.
-            return ocrFallback(file, true);
-        }
-        return ocrFallback(file, false);
+        return extractFile(file, null);
     }
 
     /**
-     * 이미지/스캔 공고문 OCR: Claude(Haiku) Vision(1순위) → OpenAI Vision(정책 허용 시) → OCR 워커(OpenAI 미허용 시 폴백) → 추출 실패 안내.
-     * Claude 를 1순위로, OpenAI 는 fallback policy 가 허용할 때 워커보다 우선한다. 원격 OCR 워커는 최후 폴백으로만 태운다(워커 강화는 후속).
+     * @param requestedOcrProvider 사용자가 등록 시 고른 OCR provider(CLAUDE/OPENAI/SELF_OCR). null 이면 기본 자동 체인.
+     */
+    public ExtractedPosting extractFile(StoredJobPostingFile file, String requestedOcrProvider) {
+        if ("PDF".equals(file.sourceType())) {
+            String text = extractTextPdf(file);
+            if (!text.isBlank()) {
+                // 텍스트 PDF 는 PDFBox 로 직접 추출(OCR 미적용) → provider 선택과 무관하다.
+                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null, "pdfbox", null);
+            }
+            // 텍스트가 없는 스캔/이미지 PDF → OCR 폴백.
+            return ocrFallback(file, true, requestedOcrProvider);
+        }
+        return ocrFallback(file, false, requestedOcrProvider);
+    }
+
+    /**
+     * 이미지/스캔 공고문 OCR. 사용자가 고른 provider 가 있으면 그것을 <b>primary</b> 로 먼저 시도하고(관리자 자동폴백
+     * 정책을 우회), 실패·빈 결과면 기본 자동 체인으로 폴백한다(초기 실행은 strict 아님 — "선택 우선 후 체인").
+     * 기본 자동 체인: Claude(Haiku) Vision → OpenAI Vision(정책 허용 시) → OCR 워커 → 추출 실패 안내.
+     * 이미 primary 로 시도한 provider 는 체인에서 건너뛴다. {@code requestedOcrProvider == null} 이면 기존 자동 체인과 동일하다.
      * 최종 안내 단계는 목업이 아니다 — 가짜 공고문은 잘못된 분석으로 이어지므로, 실패 시 사용자가 텍스트로 직접 입력하도록 안내한다.
      */
-    private ExtractedPosting ocrFallback(StoredJobPostingFile file, boolean pdf) {
-        // 1) Claude(Haiku) Vision — 1순위. 미설정/예외/빈 결과면 다음 단계로.
-        //    빈 텍스트를 성공으로 반환하면 뒤의 좋은 폴백(OpenAI/워커)에 도달하지 못하므로, blank 는 "추출 실패"로 본다.
-        if (anthropicClient != null && anthropicClient.configured()) {
-            try {
-                OcrPayload claude = pdf
-                        ? anthropicClient.extractPdfText(file.bytes())
-                        : anthropicClient.extractImageText(file.contentType(), file.bytes());
-                if (claude.text() != null && !claude.text().isBlank()) {
-                    return new ExtractedPosting(file.sourceType(), file.fileReference(), null,
-                            limit(claude.text()), claude.usage(), claude.provider(), claude.model());
-                }
-                log.warn("공고 OCR: Claude 빈 결과 → 다음 폴백 ({})", pdf ? "PDF" : "IMAGE");
-            } catch (RuntimeException ex) {
-                log.warn("공고 OCR: Claude 실패 → 다음 폴백 ({}): {}", pdf ? "PDF" : "IMAGE", ex.getMessage());
+    private ExtractedPosting ocrFallback(StoredJobPostingFile file, boolean pdf, String requestedOcrProvider) {
+        String selected = normalizeOcrProvider(requestedOcrProvider);
+
+        // 1) 사용자 명시 선택(primary) — 관리자 자동폴백 정책을 우회해 먼저 시도한다.
+        //    primary 가 빈 결과이거나 예외면(=이 provider 로 못 얻음) 아래 기본 자동 체인으로 폴백한다.
+        if (selected != null) {
+            Optional<ExtractedPosting> primary = tryPrimaryOcr(selected, file, pdf);
+            if (primary.isPresent()) {
+                return primary.get();
             }
         }
-        // 2) OpenAI Vision — 폴백 정책이 허용할 때만. 예외는 상위로 전파하고(시스템 오류를 빈 결과로 삼키지 않음),
-        //    성공했지만 빈 텍스트면 워커로 넘긴다.
+
+        // 2) 기본 자동 체인. 이미 primary 로 시도한 provider 는 건너뛴다(selected == null 이면 전부 순서대로).
+        // 2a) Claude(Haiku) Vision. blank 를 성공으로 반환하면 뒤의 좋은 폴백에 도달하지 못하므로 blank 는 "실패"로 본다.
+        if (!"CLAUDE".equals(selected)) {
+            Optional<ExtractedPosting> claude = tryClaudeOcr(file, pdf);
+            if (claude.isPresent()) {
+                return claude.get();
+            }
+        }
+        // 2b) OpenAI Vision — 폴백 정책이 허용할 때만(관리자 자동폴백 제어). 예외는 상위로 전파하고
+        //     (시스템 오류를 빈 결과로 삼키지 않음), 성공했지만 빈 텍스트면 워커로 넘긴다.
         String stage = pdf ? JobPostingFallbackPolicy.STAGE_PDF_OCR : JobPostingFallbackPolicy.STAGE_IMAGE_OCR;
-        if (fallbackPolicy.allowed(stage)) {
-            OcrPayload payload = pdf
-                    ? openAiClient.extractPdfText(file.originalFilename(), file.bytes())
-                    : openAiClient.extractImageText(file.contentType(), file.bytes());
-            String text = payload.text();
-            if (text != null && !text.isBlank()) {
-                return new ExtractedPosting(file.sourceType(), file.fileReference(), null,
-                        limit(text), payload.usage(), payload.provider(), payload.model());
+        if (!"OPENAI".equals(selected) && fallbackPolicy.allowed(stage)) {
+            ExtractedPosting openAi = extractOpenAiOcr(file, pdf);
+            if (openAi != null) {
+                return openAi;
             }
-            log.warn("공고 OCR: OpenAI 빈 결과 → 워커 폴백 ({})", pdf ? "PDF" : "IMAGE");
         }
-        // 3) OCR 워커 — Claude/OpenAI 가 텍스트를 못 준 경우의 폴백(설정 시). 미설정이면 Optional.empty → 실패 안내로.
-        //    워커의 응답 오류/타임아웃/malformed 는 기존대로 fail-closed 로 상위 전파된다.
-        Optional<ExtractedPosting> worker = aiWorkerClient.extractFile(file);
-        if (worker.isPresent()) {
-            return worker.get();
+        // 2c) OCR 워커 — 최후 폴백(설정 시). 미설정이면 Optional.empty → 실패 안내로.
+        //     워커의 응답 오류/타임아웃/malformed 는 기존대로 fail-closed 로 상위 전파된다.
+        if (!"SELF_OCR".equals(selected)) {
+            Optional<ExtractedPosting> worker = aiWorkerClient.extractFile(file);
+            if (worker.isPresent()) {
+                return worker.get();
+            }
         }
-        // 4) 최종: 추출 실패 안내(목업 아님 — 가짜 공고문은 잘못된 분석을 부른다).
+        // 3) 최종: 추출 실패 안내(목업 아님 — 가짜 공고문은 잘못된 분석을 부른다).
+        return failedExtraction(file, pdf);
+    }
+
+    /**
+     * 사용자 선택 primary OCR — 관리자 자동폴백 정책을 우회한다. 실패(예외·빈 결과)면 Optional.empty 로
+     * 기본 자동 체인에 폴백을 맡긴다(초기 실행은 strict 아님). OpenAI 예외도 여기선 삼켜 체인으로 넘긴다.
+     */
+    private Optional<ExtractedPosting> tryPrimaryOcr(String selected, StoredJobPostingFile file, boolean pdf) {
+        try {
+            return switch (selected) {
+                case "CLAUDE" -> tryClaudeOcr(file, pdf);
+                case "OPENAI" -> Optional.ofNullable(extractOpenAiOcr(file, pdf)); // primary 는 정책 우회
+                case "SELF_OCR" -> aiWorkerClient.extractFile(file);
+                default -> Optional.empty();
+            };
+        } catch (RuntimeException ex) {
+            log.warn("공고 OCR: 선택 provider({}) 실패 → 기본 체인 폴백 ({}): {}", selected, pdf ? "PDF" : "IMAGE", ex.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** Claude(Haiku) Vision — 미설정/예외/빈 결과면 Optional.empty(항상 lenient — 다음 폴백으로 넘긴다). */
+    private Optional<ExtractedPosting> tryClaudeOcr(StoredJobPostingFile file, boolean pdf) {
+        if (anthropicClient == null || !anthropicClient.configured()) {
+            return Optional.empty();
+        }
+        try {
+            OcrPayload claude = pdf
+                    ? anthropicClient.extractPdfText(file.bytes())
+                    : anthropicClient.extractImageText(file.contentType(), file.bytes());
+            if (claude.text() != null && !claude.text().isBlank()) {
+                return Optional.of(new ExtractedPosting(file.sourceType(), file.fileReference(), null,
+                        limit(claude.text()), claude.usage(), claude.provider(), claude.model()));
+            }
+            log.warn("공고 OCR: Claude 빈 결과 → 다음 폴백 ({})", pdf ? "PDF" : "IMAGE");
+        } catch (RuntimeException ex) {
+            log.warn("공고 OCR: Claude 실패 → 다음 폴백 ({}): {}", pdf ? "PDF" : "IMAGE", ex.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    /** OpenAI Vision — 예외는 상위로 전파(fail-closed), 빈 텍스트면 null(다음 폴백으로). 정책 게이트는 호출부가 판단한다. */
+    private ExtractedPosting extractOpenAiOcr(StoredJobPostingFile file, boolean pdf) {
+        OcrPayload payload = pdf
+                ? openAiClient.extractPdfText(file.originalFilename(), file.bytes())
+                : openAiClient.extractImageText(file.contentType(), file.bytes());
+        String text = payload.text();
+        if (text != null && !text.isBlank()) {
+            return new ExtractedPosting(file.sourceType(), file.fileReference(), null,
+                    limit(text), payload.usage(), payload.provider(), payload.model());
+        }
+        log.warn("공고 OCR: OpenAI 빈 결과 → 워커 폴백 ({})", pdf ? "PDF" : "IMAGE");
+        return null;
+    }
+
+    private static ExtractedPosting failedExtraction(StoredJobPostingFile file, boolean pdf) {
         return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
                 pdf ? "IMAGE_PDF_OCR" : "IMAGE_OCR",
                 0,
@@ -156,6 +223,89 @@ public class JobPostingTextExtractor {
                 null,
                 false,
                 "OCR providers unavailable (Claude/OpenAI/worker). 공고문을 텍스트로 직접 입력해 주세요.",
+                null,
+                null);
+    }
+
+    /** OCR provider 정규화 — CLAUDE/OPENAI/SELF_OCR 만 인정하고 그 외(미선택·미지 값)는 null(기본 자동 체인). */
+    private static String normalizeOcrProvider(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "CLAUDE", "OPENAI", "SELF_OCR" -> normalized;
+            default -> null;
+        };
+    }
+
+    /**
+     * strict OCR 재추출 — 사용자가 고른 provider 하나만 호출한다(수동 재추출 정책: 교차 provider 폴백 금지,
+     * 동일 provider 통신 재시도만[각 client 내부 재시도에 위임]). 등록 초기 실행의 "선택 우선 후 체인"과 다르다.
+     * <ul>
+     * <li>provider 는 필수(CLAUDE/OPENAI/SELF_OCR) — 미선택·미지 값이면 400.</li>
+     * <li>텍스트 PDF 는 PDFBox 직접 추출이 우선이라 선택한 OCR provider 가 실제로 쓰이지 않는다(ocrProvider="pdfbox").</li>
+     * <li>선택 provider 가 미설정/빈 결과/통신 실패면 다른 provider 로 넘어가지 않고 FAILED 를 반환한다
+     *     (호출부가 기존 공고문·분석을 보존). SELF_OCR 은 워커의 구조화 실패 메타를 그대로 싣는다.</li>
+     * </ul>
+     */
+    public ExtractedPosting extractFileStrict(StoredJobPostingFile file, String requestedOcrProvider) {
+        String selected = normalizeOcrProvider(requestedOcrProvider);
+        if (selected == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "strict 재추출에는 OCR 모델(provider) 선택이 필요합니다.");
+        }
+        if ("PDF".equals(file.sourceType())) {
+            String text = extractTextPdf(file);
+            if (!text.isBlank()) {
+                // 텍스트 PDF: PDFBox 우선 — 선택한 OCR provider 는 사용되지 않는다(호출부가 응답 메타로 안내).
+                return new ExtractedPosting(file.sourceType(), file.fileReference(), null, limit(text), null, "pdfbox", null);
+            }
+        }
+        return strictOcr(selected, file, "PDF".equals(file.sourceType()));
+    }
+
+    /** 선택 provider 하나만 호출하고, 성공(비어있지 않은 텍스트)이면 그 결과를, 아니면 폴백 없이 FAILED 를 반환한다. */
+    private ExtractedPosting strictOcr(String provider, StoredJobPostingFile file, boolean pdf) {
+        try {
+            switch (provider) {
+                case "CLAUDE" -> {
+                    Optional<ExtractedPosting> claude = tryClaudeOcr(file, pdf);
+                    if (claude.isPresent()) {
+                        return claude.get();
+                    }
+                }
+                case "OPENAI" -> {
+                    // 사용자 명시 선택 → 관리자 자동폴백 정책 무관하게 실행. blank 면 null.
+                    ExtractedPosting openAi = extractOpenAiOcr(file, pdf);
+                    if (openAi != null) {
+                        return openAi;
+                    }
+                }
+                case "SELF_OCR" -> {
+                    // 워커가 응답하면(성공이든 구조화 FAILED 든) 그 결과를 그대로 쓴다 — 다른 provider 로 넘기지 않는다.
+                    Optional<ExtractedPosting> worker = aiWorkerClient.extractFile(file);
+                    if (worker.isPresent()) {
+                        return worker.get();
+                    }
+                }
+                default -> { /* normalize 로 걸러짐 */ }
+            }
+        } catch (RuntimeException ex) {
+            // 동일 provider 통신 실패(내부 재시도 소진). 교차 폴백 없이 FAILED 로 종료.
+            log.warn("strict OCR({}) 통신 실패 → FAILED (폴백 없음): {}", provider, ex.getMessage());
+        }
+        return strictFailedExtraction(file, pdf, provider);
+    }
+
+    private static ExtractedPosting strictFailedExtraction(StoredJobPostingFile file, boolean pdf, String provider) {
+        return new ExtractedPosting(file.sourceType(), file.fileReference(), null, "", null,
+                pdf ? "IMAGE_PDF_OCR" : "IMAGE_OCR",
+                0,
+                "FAILED",
+                null,
+                null,
+                false,
+                "선택한 OCR 모델(%s)로 공고문을 추출하지 못했습니다. 다른 모델을 고르거나 공고문을 텍스트로 직접 입력해 주세요.".formatted(provider),
                 null,
                 null);
     }

@@ -39,3 +39,25 @@ export interface ModerationStats {
   categories: { category: string; count: number }[];
   total: number;
 }
+
+export interface ModerationReviewQueueItem {
+  postId: number;
+  title: string;
+  contentPreview: string;
+  authorName: string;
+  category: string;
+  aiCategory: string | null;
+  confidence: number;
+  createdAt: string;
+  moderatedAt: string | null;
+}
+
+export interface ModerationReviewQueuePage {
+  items: ModerationReviewQueueItem[];
+  total: number;
+  page: number;
+  size: number;
+  hasNext: boolean;
+}
+
+export type ModerationReviewAction = "HIDE" | "KEEP";

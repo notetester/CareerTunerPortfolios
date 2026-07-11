@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { QRCodeSVG } from "qrcode.react";
 import { Copy, KeyRound, Loader2, RefreshCw, ShieldCheck, ShieldOff, Smartphone } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ interface StoredTotpSecret {
 }
 
 export function MfaSettingsCard() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<MfaStatusResponse | null>(null);
   const [setup, setSetup] = useState<MfaSetupStartResponse | null>(null);
   const [storedSecret, setStoredSecret] = useState<StoredTotpSecret | null>(() => readStoredSecret());
@@ -189,8 +191,10 @@ export function MfaSettingsCard() {
     setStoredSecret(null);
   }
 
+  // 테마 대응: 강제 흰 배경(dark:bg-white)은 다크에서 제목·버튼(foreground=밝은색)이 백-온-화이트로 불가시가 된다.
+  // Card 기본(bg-card/text-card-foreground)에 맡기고, QR 래퍼만 스캔 가독성을 위해 흰색을 유지한다.
   return (
-    <Card className="border border-slate-200 bg-white text-slate-950 shadow-sm dark:bg-white dark:text-slate-950">
+    <Card className="border border-slate-200 shadow-sm">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <ShieldCheck className="size-4 text-blue-600" />
@@ -223,7 +227,8 @@ export function MfaSettingsCard() {
 
         {setup && (
           <div className="grid gap-4 lg:grid-cols-[180px_1fr]">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-xl border border-slate-200 bg-card p-4 shadow-sm">
+              {/* QR 래퍼는 스캔 가독성을 위해 테마와 무관하게 흰색 유지 */}
               <div className="rounded-lg bg-white p-2">
                 <QRCodeSVG value={setup.otpauthUri} size={148} bgColor="#ffffff" fgColor="#0f172a" />
               </div>
@@ -232,18 +237,18 @@ export function MfaSettingsCard() {
             <div className="space-y-3">
               <div>
                 <div className="text-xs font-semibold text-slate-600">수동 입력 키</div>
-                <code className="mt-1 block break-all rounded-lg border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-900 shadow-sm">{setup.secret}</code>
+                <code className="mt-1 block break-all rounded-lg border border-slate-200 bg-card p-3 text-sm font-semibold text-slate-900 shadow-sm">{setup.secret}</code>
               </div>
               {storedSecret?.secret === setup.secret && (
                 <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 shadow-sm">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <div className="text-sm font-bold text-blue-950">CareerTuner 앱에서 생성된 코드</div>
+                      <div className="text-sm font-bold text-foreground">CareerTuner 앱에서 생성된 코드</div>
                       <div className="text-xs text-blue-800">이 코드를 아래 검증 입력칸에 넣으면 2단계 인증이 활성화됩니다.</div>
                     </div>
-                    <Badge className="bg-white text-blue-700 ring-1 ring-blue-100">{secondsLeft}초</Badge>
+                    <Badge className="bg-card text-blue-700 ring-1 ring-blue-100">{secondsLeft}초</Badge>
                   </div>
-                  <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white px-4 py-3 shadow-sm">
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-card px-4 py-3 shadow-sm">
                     <code className="text-3xl font-black tracking-[0.25em] text-slate-950">{appCode || "------"}</code>
                     <Button variant="outline" size="sm" type="button" onClick={() => void copyAppCode()} disabled={!appCode}>
                       <Copy className="size-4" />
@@ -274,22 +279,22 @@ export function MfaSettingsCard() {
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm font-bold text-blue-950">CareerTuner 앱 인증 코드</div>
+                    <div className="text-sm font-bold text-foreground">CareerTuner 앱 인증 코드</div>
                     <div className="mt-1 text-xs text-blue-800">
                       {storedSecret ? `${storedSecret.label}에 저장된 키로 생성 중` : "이 기기에 저장된 인증 키가 없습니다."}
                     </div>
                   </div>
-                  <Badge className="bg-white text-blue-700 ring-1 ring-blue-100">{secondsLeft}초</Badge>
+                  <Badge className="bg-card text-blue-700 ring-1 ring-blue-100">{secondsLeft}초</Badge>
                 </div>
                 {storedSecret ? (
-                  <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-white px-4 py-3 shadow-sm">
+                  <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-blue-100 bg-card px-4 py-3 shadow-sm">
                     <code className="text-3xl font-black tracking-[0.25em] text-slate-950">{appCode || "------"}</code>
                     <Button variant="outline" size="sm" onClick={() => void copyAppCode()} disabled={!appCode}>
                       <Copy className="size-4" />
                     </Button>
                   </div>
                 ) : (
-                  <div className="mt-4 rounded-lg border border-dashed border-blue-200 bg-white p-3 text-sm leading-6 text-blue-800">
+                  <div className="mt-4 rounded-lg border border-dashed border-blue-200 bg-card p-3 text-sm leading-6 text-blue-800">
                     이 기능은 설정 시작 시 표시되는 키를 이 기기에 저장해야 사용할 수 있습니다.
                     이미 외부 인증 앱으로만 등록했다면 2단계 인증을 해제 후 다시 설정하면서
                     "CareerTuner 앱 코드 생성기로 사용"을 선택해 주세요.
@@ -297,7 +302,7 @@ export function MfaSettingsCard() {
                 )}
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-card p-4 shadow-sm">
                 <div className="text-sm font-bold text-slate-900">푸시 승인형 로그인</div>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
                   이 기기를 푸시 수신 기기로 등록하면, PC에서 로그인할 때 앱 알림을 눌러 승인할 수 있습니다.
@@ -308,7 +313,7 @@ export function MfaSettingsCard() {
                     <Smartphone className="size-4" />
                     이 기기에서 푸시 승인 받기
                   </Button>
-                  <Button variant="outline" className="gap-2" onClick={() => { window.location.href = "/m/mfa-approvals"; }}>
+                  <Button variant="outline" className="gap-2" onClick={() => navigate("/m/mfa-approvals")}>
                     승인 요청 보기
                   </Button>
                 </div>
@@ -338,7 +343,7 @@ export function MfaSettingsCard() {
             <div className="mb-2 text-sm font-bold text-amber-900">백업 코드</div>
             <div className="grid gap-2 sm:grid-cols-2">
               {backupCodes.map((item) => (
-                <code key={item} className="rounded bg-white px-3 py-2 text-sm text-slate-700">{item}</code>
+                <code key={item} className="rounded bg-card px-3 py-2 text-sm text-slate-700">{item}</code>
               ))}
             </div>
           </div>

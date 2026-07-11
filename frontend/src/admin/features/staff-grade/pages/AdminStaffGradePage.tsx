@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BadgeDollarSign, Download, RotateCw, Upload } from "lucide-react";
 
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import {
   applyStaffImport,
   downloadStaffGradeExport,
@@ -34,6 +35,8 @@ const EMPTY_FORM: StaffGradeUpsert = {
 };
 
 export function AdminStaffGradePage() {
+  const policyAuthorization = useAdminDomainAuthorization("POLICY");
+  const canAssignStaffGrade = policyAuthorization.canCreate || policyAuthorization.canUpdate;
   const [rows, setRows] = useState<StaffGradeRow[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -41,7 +44,11 @@ export function AdminStaffGradePage() {
   const [department, setDepartment] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ row: StaffGradeRow; form: StaffGradeUpsert } | null>(null);
+  const [editing, setEditing] = useState<{
+    row: StaffGradeRow;
+    form: StaffGradeUpsert;
+    mode: "create" | "update";
+  } | null>(null);
   const [candidates, setCandidates] = useState<StaffCandidate[]>([]);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [history, setHistory] = useState<{ userId: number; items: StaffGradeHistory[] } | null>(null);
@@ -67,9 +74,17 @@ export function AdminStaffGradePage() {
   const totalPages = Math.max(1, Math.ceil(total / size));
 
   const openEdit = async (userId: number) => {
+    const hasExistingGrade = rows.some((row) => row.userId === userId)
+      || candidates.find((candidate) => candidate.userId === userId)?.hasGrade === true;
+    const mode = hasExistingGrade ? "update" : "create";
+    if ((mode === "update" && !policyAuthorization.canUpdate) || (mode === "create" && !policyAuthorization.canCreate)) {
+      flash("직원 등급을 추가하거나 수정할 권한이 없습니다.");
+      return;
+    }
     const row = await getStaffGrade(userId);
     setEditing({
       row,
+      mode,
       form: {
         department: row.department ?? "", seniority: row.seniority ?? "", jobTier: row.jobTier ?? "",
         payBand: row.payBand ?? "", jobGrade: row.jobGrade ?? "", payStep: row.payStep ?? "",
@@ -80,7 +95,11 @@ export function AdminStaffGradePage() {
   };
 
   const saveEdit = async () => {
-    if (!editing) return;
+    if (
+      !editing
+      || (editing.mode === "create" && !policyAuthorization.canCreate)
+      || (editing.mode === "update" && !policyAuthorization.canUpdate)
+    ) return;
     await upsertStaffGrade(editing.row.userId, {
       ...editing.form,
       baseSalary: editing.form.baseSalary === null || String(editing.form.baseSalary) === "" ? null : Number(editing.form.baseSalary),
@@ -93,6 +112,7 @@ export function AdminStaffGradePage() {
   };
 
   const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canAssignStaffGrade) return;
     const file = e.target.files?.[0];
     if (!file) return;
     try {
@@ -105,7 +125,7 @@ export function AdminStaffGradePage() {
   };
 
   const applyImport = async () => {
-    if (!preview) return;
+    if (!preview || !canAssignStaffGrade) return;
     const res = await applyStaffImport(preview.rows);
     flash(`적용 ${res.appliedCount}건 · 스킵 ${res.skippedCount}건`);
     setPreview(null);
@@ -122,7 +142,7 @@ export function AdminStaffGradePage() {
       breadcrumb="정책/감사 / 직원 등급"
       title="직원 등급/급여 관리"
       icon={BadgeDollarSign}
-      desc="관리자/직원 계정의 조직 등급(연차·티어·밴드·직급·호봉)과 기본급을 관리합니다. 급여는 민감정보로 최고 관리자 전용이며 모든 변경은 이력에 남습니다."
+      desc="관리자/직원 계정의 조직 등급과 기본급을 정책 권한에 따라 조회·관리합니다. 모든 변경은 이력에 남습니다."
       actions={(
         <button type="button" className="av-btn" onClick={() => void load(page, keyword, department)} disabled={loading}>
           <RotateCw size={14} className={loading ? "animate-spin" : ""} /> 새로고침
@@ -143,30 +163,36 @@ export function AdminStaffGradePage() {
           <button type="button" className="av-btn" onClick={() => void downloadStaffGradeExport("csv", keyword, department)}>
             <Download size={14} /> CSV
           </button>
-          <button type="button" className="av-btn" onClick={() => fileRef.current?.click()}>
-            <Upload size={14} /> 업로드
-          </button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={onFile} />
+          {canAssignStaffGrade && (
+            <>
+              <button type="button" className="av-btn" onClick={() => fileRef.current?.click()}>
+                <Upload size={14} /> 업로드
+              </button>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" hidden onChange={onFile} />
+            </>
+          )}
         </div>
       </div>
 
       {/* 등급 배정(신규) */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+      {canAssignStaffGrade && <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
         <span className="text-slate-600">등급 배정/편집:</span>
         <select className="av-input" defaultValue="" onChange={(e) => { if (e.target.value) void openEdit(Number(e.target.value)); e.target.value = ""; }}>
           <option value="">관리자/직원 선택…</option>
-          {candidates.map((c) => (
+          {candidates.filter((candidate) => (
+            candidate.hasGrade ? policyAuthorization.canUpdate : policyAuthorization.canCreate
+          )).map((c) => (
             <option key={c.userId} value={c.userId}>
               {c.email} ({c.name}) {c.hasGrade ? "· 등급있음" : "· 미배정"}
             </option>
           ))}
         </select>
-      </div>
+      </div>}
 
       {/* 목록 */}
-      <div className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200 bg-white">
+      <div className="max-h-[55vh] overflow-auto rounded-xl border border-slate-200 bg-card">
         <table className="w-full min-w-[1000px] text-sm">
-          <thead className="sticky top-0 z-10 bg-white">
+          <thead className="sticky top-0 z-10 bg-card">
             <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
               <th className="px-3 py-2">사용자</th>
               <th className="px-3 py-2">부서</th>
@@ -197,7 +223,9 @@ export function AdminStaffGradePage() {
                 <td className="px-3 py-2 text-xs text-slate-500">{r.effectiveDate ?? "-"}</td>
                 <td className="px-3 py-2">
                   <div className="flex gap-1">
-                    <button type="button" className="av-btn text-xs" onClick={() => void openEdit(r.userId)}>편집</button>
+                    {policyAuthorization.canUpdate && (
+                      <button type="button" className="av-btn text-xs" onClick={() => void openEdit(r.userId)}>편집</button>
+                    )}
                     <button type="button" className="av-btn text-xs" onClick={() => void showHistory(r.userId)}>이력</button>
                   </div>
                 </td>
@@ -221,7 +249,7 @@ export function AdminStaffGradePage() {
 
       {/* Excel 업로드 미리보기 */}
       {preview && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+        <section className="mt-5 rounded-xl border border-slate-200 bg-card p-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">
               업로드 미리보기 — 총 {preview.totalRows} · <span className="text-emerald-600">정상 {preview.okCount}</span> · <span className="text-rose-600">오류 {preview.errorCount}</span>
@@ -235,7 +263,7 @@ export function AdminStaffGradePage() {
           </div>
           <div className="max-h-[40vh] overflow-auto rounded-lg border border-slate-100">
             <table className="w-full min-w-[820px] text-sm">
-              <thead className="sticky top-0 bg-white">
+              <thead className="sticky top-0 bg-card">
                 <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                   <th className="px-3 py-2">#</th><th className="px-3 py-2">email</th><th className="px-3 py-2">부서</th>
                   <th className="px-3 py-2">기본급</th><th className="px-3 py-2">상태</th><th className="px-3 py-2">메시지</th>
@@ -263,7 +291,7 @@ export function AdminStaffGradePage() {
 
       {/* 변경 이력 */}
       {history && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+        <section className="mt-5 rounded-xl border border-slate-200 bg-card p-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">변경 이력 — 사용자 {history.userId}</h3>
             <button type="button" className="av-btn text-xs" onClick={() => setHistory(null)}>닫기</button>
@@ -295,10 +323,12 @@ export function AdminStaffGradePage() {
       )}
 
       {/* 편집 모달 */}
-      {editing && (
+      {canAssignStaffGrade && editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditing(null)}>
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-semibold text-slate-800">등급/급여 편집</h3>
+          <div className="w-full max-w-lg rounded-xl bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-slate-800">
+              등급/급여 {editing.mode === "create" ? "추가" : "편집"}
+            </h3>
             <p className="mt-0.5 text-xs text-slate-400">{editing.row.userName} ({editing.row.userEmail}) · {editing.row.userRole}</p>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <Field label="부서" value={editing.form.department ?? ""} onChange={(v) => setEditing({ ...editing, form: { ...editing.form, department: v } })} />

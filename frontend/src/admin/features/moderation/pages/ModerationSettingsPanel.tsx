@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  PlugZap, ScanText, Inbox, ChevronRight, CheckCircle2, AlertCircle,
+  PlugZap, ScanText, Inbox, ChevronRight, CheckCircle2, AlertCircle, EyeOff, RefreshCw,
 } from "lucide-react";
 import * as moderationApi from "../api/moderationApi";
 import type { ModerationSettingData, ModerationTestResult } from "../api/moderationApi";
+import type { ModerationReviewAction, ModerationReviewQueueItem } from "../types/moderation";
 import "./moderation-settings.css";
+import { useAdminAuthorization } from "@/admin/auth/useAdminAuthorization";
 
 /* ── 프리셋 정의 ── */
 const PRESETS = [
@@ -70,9 +72,10 @@ function MdResult({ r, th, label, prev }: {
 }
 
 /* ── 숫자 입력(포커스 아웃 시 클램프 후 저장) ── */
-function NumBox({ label, value, min, max, hint, onCommit }: {
+function NumBox({ label, value, min, max, hint, onCommit, disabled = false }: {
   label: string; value: number; min: number; max: number; hint: string;
   onCommit: (v: number) => void;
+  disabled?: boolean;
 }) {
   const [v, setV] = useState(value);
   useEffect(() => { setV(value); }, [value]);
@@ -81,6 +84,7 @@ function NumBox({ label, value, min, max, hint, onCommit }: {
       <span className="av-flabel">{label}</span>
       <input
         type="number" min={min} max={max}
+        disabled={disabled}
         className="av-input" style={{ width: 130 }}
         value={v}
         onChange={(e) => setV(Number(e.target.value))}
@@ -99,6 +103,11 @@ function NumBox({ label, value, min, max, hint, onCommit }: {
    메인 패널
    ══════════════════════════════════════════════════════════ */
 export default function ModerationSettingsPanel({ flash }: { flash: (msg: string) => void }) {
+  const authorization = useAdminAuthorization();
+  const canConfigure = authorization.can("AI_UPDATE");
+  const canTest = authorization.can("AI_CREATE");
+  const canKeepReview = authorization.can("AI_UPDATE");
+  const canHideReview = canKeepReview && authorization.can("CONTENT_UPDATE");
   /* 설정 상태 */
   const [mode, setMode] = useState("NORMAL");
   const [th, setTh] = useState(0.80);
@@ -123,6 +132,20 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   const [advOpen, setAdvOpen] = useState(false);
   const [pending, setPending] = useState<typeof PRESETS[number] | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  /* 임계 미만 toxic 결과 수동 검토 큐 */
+  const [queue, setQueue] = useState<ModerationReviewQueueItem[]>([]);
+  const [queuePage, setQueuePage] = useState(1);
+  const [queueTotal, setQueueTotal] = useState(0);
+  const [queueHasNext, setQueueHasNext] = useState(false);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [queueError, setQueueError] = useState("");
+  const [queueReloadKey, setQueueReloadKey] = useState(0);
+  const [queueActionId, setQueueActionId] = useState<number | null>(null);
+  const [reviewPending, setReviewPending] = useState<{
+    item: ModerationReviewQueueItem;
+    action: ModerationReviewAction;
+  } | null>(null);
 
   /* 테스트 상태 */
   const [title, setTitle] = useState("");
@@ -155,6 +178,23 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
+  const loadReviewQueue = useCallback(async () => {
+    setQueueLoading(true);
+    setQueueError("");
+    try {
+      const result = await moderationApi.getModerationReviewQueue(queuePage, 5);
+      setQueue(result.items);
+      setQueueTotal(result.total);
+      setQueueHasNext(result.hasNext);
+    } catch (error) {
+      setQueueError(error instanceof Error ? error.message : "검토 대기 목록을 불러오지 못했습니다.");
+    } finally {
+      setQueueLoading(false);
+    }
+  }, [queuePage]);
+
+  useEffect(() => { void loadReviewQueue(); }, [loadReviewQueue, queueReloadKey]);
+
   /* 토스트 자동 소멸 */
   useEffect(() => {
     if (!toast) return;
@@ -166,6 +206,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 프리셋 적용 */
   const applyPreset = async (p: typeof PRESETS[number]) => {
+    if (!canConfigure) return;
     setPending(null);
     try {
       const updated = await moderationApi.updateModerationSettings({
@@ -176,6 +217,8 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       setTh(updated.hideThreshold);
       setCustom(false);
       setChangedAt(updated.updatedAt);
+      setQueuePage(1);
+      setQueueReloadKey((key) => key + 1);
       setToast({ ok: true, msg: `'${p.name}' 모드 적용됨 \u2014 임계값 ${p.th.toFixed(2)}` });
     } catch {
       setToast({ ok: false, msg: "저장 실패 \u2014 검열 서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요." });
@@ -184,12 +227,15 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 고급 임계값 변경 */
   const applyTh = async (v: number) => {
+    if (!canConfigure) return;
     setTh(v);
     const isCustom = v !== cur.th;
     setCustom(isCustom);
     try {
       const updated = await moderationApi.updateModerationSettings({ hideThreshold: v });
       setChangedAt(updated.updatedAt);
+      setQueuePage(1);
+      setQueueReloadKey((key) => key + 1);
     } catch {
       setToast({ ok: false, msg: "임계값 저장 실패" });
     }
@@ -197,6 +243,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 사용자 제재 설정 저장 (누적 임계 / 차단 기간) */
   const applySanction = async (next: { sanctionThreshold?: number; blockDays?: number }) => {
+    if (!canConfigure) return;
     try {
       const updated = await moderationApi.updateModerationSettings(next);
       setSanction(updated.sanctionThreshold);
@@ -210,6 +257,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 작성 제한 / 신고 블러 저장 */
   const applyRate = async (next: Parameters<typeof moderationApi.updateModerationSettings>[0], okMsg: string) => {
+    if (!canConfigure) return;
     try {
       const u = await moderationApi.updateModerationSettings(next);
       setReportBlur(u.reportBlurThreshold);
@@ -225,7 +273,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   /* 판정 테스트 */
   const runTest = async () => {
-    if (loading || serverDown || !body.trim()) return;
+    if (!canTest || loading || serverDown || !body.trim()) return;
     setLoading(true);
     if (result) setPrevRes(result);
     try {
@@ -241,7 +289,34 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
     }
   };
 
-  const fmtDate = (iso: string) => {
+  const applyReviewDecision = async () => {
+    if (!reviewPending || queueActionId !== null) return;
+    const { item, action } = reviewPending;
+    if (action === "HIDE" ? !canHideReview : !canKeepReview) return;
+    setQueueActionId(item.postId);
+    try {
+      await moderationApi.decideModerationReview(item.postId, action);
+      setReviewPending(null);
+      setToast({
+        ok: true,
+        msg: action === "HIDE" ? "게시글을 숨김 처리했습니다." : "게시 유지 결정을 저장했습니다.",
+      });
+      if (queue.length === 1 && queuePage > 1) {
+        setQueuePage((page) => page - 1);
+      } else {
+        setQueueReloadKey((key) => key + 1);
+      }
+    } catch (error) {
+      setToast({
+        ok: false,
+        msg: error instanceof Error ? error.message : "검토 결정을 저장하지 못했습니다.",
+      });
+    } finally {
+      setQueueActionId(null);
+    }
+  };
+
+  const fmtDate = (iso: string | null | undefined) => {
     if (!iso) return "-";
     const d = new Date(iso);
     return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -294,8 +369,9 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             return (
               <button
                 key={p.k}
+                disabled={!canConfigure}
                 className={`md-pre${on ? " on" : ""}`}
-                onClick={() => { if (!on) setPending(p); }}
+                onClick={() => { if (canConfigure && !on) setPending(p); }}
               >
                 <div className="md-pre__top">
                   <span className="md-pre__t">{p.name}</span>
@@ -329,6 +405,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
               <span className="av-muted num">0.50</span>
               <input
                 type="range" min="0.5" max="0.95" step="0.05"
+                disabled={!canConfigure}
                 value={th}
                 onChange={(e) => applyTh(Number(e.target.value))}
               />
@@ -354,6 +431,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             <span className="av-flabel">제재 임계 (누적 숨김 글 수)</span>
             <input
               type="number" min={1} max={100}
+              disabled={!canConfigure}
               className="av-input" style={{ width: 120 }}
               value={sanction}
               onChange={(e) => setSanction(Number(e.target.value))}
@@ -368,6 +446,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             <span className="av-flabel">차단 기간 (일)</span>
             <input
               type="number" min={1} max={3650}
+              disabled={!canConfigure}
               className="av-input" style={{ width: 120 }}
               value={blockDays}
               onChange={(e) => setBlockDays(Number(e.target.value))}
@@ -392,6 +471,7 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
             <NumBox
               label="신고 누적 블러 임계 (건)"
+              disabled={!canConfigure}
               value={reportBlur} min={1} max={1000}
               hint="이 수 이상 신고되면 비작성자에게 자동 블러(작성자·클릭 시 해제)"
               onCommit={(v) => applyRate({ reportBlurThreshold: v }, "신고 블러 임계가 저장됐어요.")}
@@ -403,8 +483,10 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>게시글 작성 제한</div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
               <NumBox label="윈도 (초)" value={postWin} min={1} max={86400}
+                disabled={!canConfigure}
                 hint="이 시간 창 안의 작성 수를 셈" onCommit={(v) => applyRate({ postRateWindowSeconds: v }, "게시글 제한이 저장됐어요.")} />
               <NumBox label="허용 건수 (0=비활성)" value={postMax} min={0} max={100000}
+                disabled={!canConfigure}
                 hint="윈도 내 이 수 이상이면 429 차단" onCommit={(v) => applyRate({ postRateMax: v }, "게시글 제한이 저장됐어요.")} />
             </div>
           </div>
@@ -414,29 +496,33 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>댓글 작성 제한</div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
               <NumBox label="윈도 (초)" value={commentWin} min={1} max={86400}
+                disabled={!canConfigure}
                 hint="이 시간 창 안의 작성 수를 셈" onCommit={(v) => applyRate({ commentRateWindowSeconds: v }, "댓글 제한이 저장됐어요.")} />
               <NumBox label="허용 건수 (0=비활성)" value={commentMax} min={0} max={100000}
+                disabled={!canConfigure}
                 hint="윈도 내 이 수 이상이면 429 차단" onCommit={(v) => applyRate({ commentRateMax: v }, "댓글 제한이 저장됐어요.")} />
             </div>
           </div>
 
-          {/* 문의 rate-limit (정책값) */}
+          {/* 문의 rate-limit */}
           <div>
             <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>
-              문의 작성 제한 <span className="md-v2">정책값 · 집행 예정</span>
+              문의 작성 제한 <span className="md-v2">즉시 집행</span>
             </div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
               <NumBox label="윈도 (초)" value={inquiryWin} min={1} max={86400}
-                hint="문의 도메인이 이 정책을 참조해 집행" onCommit={(v) => applyRate({ inquiryRateWindowSeconds: v }, "문의 제한 정책이 저장됐어요.")} />
+                disabled={!canConfigure}
+                hint="이 시간 창 안의 문의 작성 수를 셈" onCommit={(v) => applyRate({ inquiryRateWindowSeconds: v }, "문의 제한 정책이 저장됐어요.")} />
               <NumBox label="허용 건수 (0=비활성)" value={inquiryMax} min={0} max={100000}
-                hint="현재는 정책 저장까지 — 집행 배선은 문의 담당" onCommit={(v) => applyRate({ inquiryRateMax: v }, "문의 제한 정책이 저장됐어요.")} />
+                disabled={!canConfigure}
+                hint="윈도 내 이 수 이상이면 429로 차단" onCommit={(v) => applyRate({ inquiryRateMax: v }, "문의 제한 정책이 저장됐어요.")} />
             </div>
           </div>
         </section>
       </div>
 
       {/* 테스트 콘솔 */}
-      <div className="md-sec">
+      {canTest && <div className="md-sec">
         <div className="md-sec__h">
           <h2>테스트 콘솔</h2>
           <span className="s">현재 설정으로 즉석 판정 &mdash; 설정을 바꾼 뒤 같은 문장을 다시 판정해보세요</span>
@@ -508,22 +594,123 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             )}
           </div>
         </section>
-      </div>
+      </div>}
 
-      {/* 검토 대기 목록 placeholder */}
+      {/* 임계 미만 toxic 결과 수동 검토 큐 */}
       <section className="av-panel md-sec" aria-label="검토 대기 목록">
         <div className="av-mod__h">
-          <span className="av-mod__t">검토 대기 목록 <span className="md-v2">v2 예정</span></span>
-          <span className="av-mod__s">toxic 판정이지만 임계값 미달로 게시 중인 글</span>
+          <div>
+            <span className="av-mod__t">검토 대기 목록</span>
+            <span className="md-queue__count">{queueTotal.toLocaleString()}건</span>
+            <div className="av-mod__s">toxic 판정이지만 임계값 {th.toFixed(2)} 미만으로 게시 중인 글</div>
+          </div>
+          <button
+            className="av-btn md-queue__refresh"
+            onClick={() => setQueueReloadKey((key) => key + 1)}
+            disabled={queueLoading}
+            aria-label="검토 대기 목록 새로고침"
+          >
+            <RefreshCw className={queueLoading ? "md-queue__spin" : ""} />
+            새로고침
+          </button>
         </div>
-        <div className="md-queue__empty">
-          <Inbox size={18} />
-          <p>여기에 확신도가 임계값에 못 미친 글이 모여요.<br />운영자가 직접 숨김/유지를 결정하는 화면으로 준비 중입니다.</p>
-        </div>
+        {queueLoading ? (
+          <div className="md-queue__loading" role="status">검토 대기 목록을 불러오는 중입니다.</div>
+        ) : queueError ? (
+          <div className="md-queue__error" role="alert">
+            <AlertCircle />
+            <span>{queueError}</span>
+            <button className="av-btn" onClick={() => setQueueReloadKey((key) => key + 1)}>다시 시도</button>
+          </div>
+        ) : queue.length === 0 ? (
+          <div className="md-queue__empty">
+            <Inbox size={18} />
+            <p>현재 직접 검토할 경계 판정 게시글이 없습니다.</p>
+          </div>
+        ) : (
+          <>
+            <div className="md-queue__list">
+              {queue.map((item) => (
+                <article className="md-queue__item" key={item.postId}>
+                  <div className="md-queue__item-head">
+                    <div className="md-queue__title-wrap">
+                      <h3>{item.title}</h3>
+                      <div className="md-queue__meta">
+                        <span>{item.category}</span>
+                        <span>{item.authorName}</span>
+                        <span>검열 {fmtDate(item.moderatedAt)}</span>
+                      </div>
+                    </div>
+                    <div className="md-queue__score">
+                      <span>{item.aiCategory ?? "분류 없음"}</span>
+                      <b className="num">{item.confidence.toFixed(2)}</b>
+                    </div>
+                  </div>
+                  <p className="md-queue__preview">{item.contentPreview || "본문 미리보기가 없습니다."}</p>
+                  {(canKeepReview || canHideReview) && <div className="md-queue__actions">
+                    <span className="av-hint">결정 후 목록에서 빠지며 같은 검열 결과에는 다시 나타나지 않습니다.</span>
+                    {canKeepReview && (
+                      <button
+                        className="av-btn"
+                        disabled={queueActionId !== null}
+                        onClick={() => setReviewPending({ item, action: "KEEP" })}
+                      >
+                        <CheckCircle2 /> 게시 유지
+                      </button>
+                    )}
+                    {canHideReview && (
+                      <button
+                        className="av-btn md-queue__hide"
+                        disabled={queueActionId !== null}
+                        onClick={() => setReviewPending({ item, action: "HIDE" })}
+                      >
+                        <EyeOff /> 숨김
+                      </button>
+                    )}
+                  </div>}
+                </article>
+              ))}
+            </div>
+            <div className="md-queue__pager" aria-label="검토 대기 목록 페이지">
+              <button className="av-btn" disabled={queuePage <= 1} onClick={() => setQueuePage((page) => page - 1)}>이전</button>
+              <span className="num">{queuePage} / {Math.max(1, Math.ceil(queueTotal / 5))}</span>
+              <button className="av-btn" disabled={!queueHasNext} onClick={() => setQueuePage((page) => page + 1)}>다음</button>
+            </div>
+          </>
+        )}
       </section>
 
+      {/* 수동 검토 결정 확인 */}
+      {reviewPending && (reviewPending.action === "HIDE" ? canHideReview : canKeepReview) && (
+        <div className="md-dim" onClick={(e) => {
+          if (e.target === e.currentTarget && queueActionId === null) setReviewPending(null);
+        }}>
+          <div className="md-dlg" role="dialog" aria-modal="true" aria-labelledby="review-decision-title">
+            <div className="md-dlg__t" id="review-decision-title">
+              {reviewPending.action === "HIDE" ? "이 게시글을 숨길까요?" : "게시 유지로 결정할까요?"}
+            </div>
+            <div className="md-dlg__s">
+              <b>{reviewPending.item.title}</b><br />
+              {reviewPending.action === "HIDE"
+                ? "게시글은 HIDDEN 상태로 전환되고 작성자에게 숨김 알림이 한 번 전송됩니다. 이후 기존 검열 목록에서 복원 또는 삭제할 수 있습니다."
+                : "게시 상태는 그대로 유지됩니다. 이 검열 결과의 수동 결정은 저장되며 검토 대기 목록에 다시 나타나지 않습니다."}
+            </div>
+            <div className="md-dlg__r">
+              <button className="av-btn" disabled={queueActionId !== null} onClick={() => setReviewPending(null)}>취소</button>
+              <button
+                className={`av-btn ${reviewPending.action === "HIDE" ? "md-queue__hide" : "av-btn--ink"}`}
+                disabled={queueActionId !== null}
+                onClick={() => void applyReviewDecision()}
+              >
+                {queueActionId !== null ? "저장 중…" : reviewPending.action === "HIDE" ? "숨김 결정" : "게시 유지 결정"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 확인 다이얼로그 */}
-      {pending && (
+      {pending && canConfigure && (
         <div className="md-dim" onClick={(e) => { if (e.target === e.currentTarget) setPending(null); }}>
           <div className="md-dlg" role="dialog" aria-modal="true">
             <div className="md-dlg__t">&lsquo;{pending.name}&rsquo; 모드로 변경할까요?</div>

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.billing.dto.AdminPaymentRow;
 import com.careertuner.billing.dto.AdminPaymentSummary;
 import com.careertuner.billing.service.BillingService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.web.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 결제 조회. 권한은 SecurityConfig 의 /api/admin/** = ADMIN 정책으로 보호된다. */
 @RestController
 @RequestMapping("/api/admin/payments")
+@RequireAdminPermission({"BILLING_READ"})
 @RequiredArgsConstructor
 public class AdminPaymentController {
 

@@ -218,7 +218,9 @@ public class AdminLegalServiceImpl implements AdminLegalService {
         if (!STATUS_DRAFT.equals(version.getStatus())) {
             throw new BusinessException(ErrorCode.CONFLICT, "게시된 버전은 삭제할 수 없습니다(법적/감사 보존). 초안만 삭제 가능합니다.");
         }
-        adminLegalMapper.deleteVersion(id); // 조항은 FK CASCADE.
+        // 법적 문서와 기존 조항은 감사 보존 대상이므로 행을 물리 삭제하지 않는다.
+        adminLegalMapper.deleteClausesByVersionId(id);
+        adminLegalMapper.deleteVersion(id);
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────

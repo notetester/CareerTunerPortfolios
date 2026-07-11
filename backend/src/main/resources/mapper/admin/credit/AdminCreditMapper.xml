@@ -60,13 +60,49 @@
         SELECT id, email, name, credit
           FROM users
          WHERE id = #{userId}
+           AND status &lt;&gt; 'DELETED'
+           AND deleted_at IS NULL
          FOR UPDATE
     </select>
+
+    <select id="findAdminAdjustmentByRequestKey" resultType="com.careertuner.credit.domain.CreditTransaction">
+        SELECT id,
+               user_id,
+               type,
+               amount,
+               balance_after,
+               feature_type,
+               reason,
+               request_key,
+               created_at
+          FROM credit_transaction
+         WHERE user_id = #{userId}
+           AND type = 'ADMIN_ADJUST'
+           AND request_key = #{requestKey}
+    </select>
+
+    <insert id="insertAdminAdjustment" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO credit_transaction
+            (user_id, ai_usage_log_id, type, amount, balance_after, feature_type, reason, request_key)
+        VALUES
+            (#{userId}, #{aiUsageLogId}, #{type}, #{amount}, #{balanceAfter}, #{featureType}, #{reason}, #{requestKey})
+    </insert>
 
     <update id="addUserCredit">
         UPDATE users
            SET credit = credit + #{amount}
          WHERE id = #{userId}
+           AND status &lt;&gt; 'DELETED'
+           AND deleted_at IS NULL
            AND credit &lt;= 2147483647 - #{amount}
+    </update>
+
+    <update id="deductUserCreditIfEnough">
+        UPDATE users
+           SET credit = credit - #{amount}
+         WHERE id = #{userId}
+           AND status &lt;&gt; 'DELETED'
+           AND deleted_at IS NULL
+           AND credit &gt;= #{amount}
     </update>
 </mapper>

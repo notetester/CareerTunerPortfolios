@@ -8,6 +8,7 @@ import { Input } from "@/app/components/ui/input";
 import { toast } from "@/features/notification/components/toast";
 import { adjustAdminCredit, getAdminCredits, getAdminCreditSummary } from "../api";
 import { CreditAdjustDialog } from "../components/CreditAdjustDialog";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import type {
   AdminCreditAdjustRequest,
   AdminCreditAdjustResponse,
@@ -20,6 +21,7 @@ import type {
 const EMPTY_PAGE: AdminCreditPage = { items: [], total: 0, page: 1, size: 20 };
 
 export function AdminCreditsPage() {
+  const { canUpdate } = useAdminDomainAuthorization("BILLING");
   const [pageData, setPageData] = useState<AdminCreditPage>(EMPTY_PAGE);
   const [summary, setSummary] = useState<AdminCreditSummary | null>(null);
   const [filters, setFilters] = useState<AdminCreditFilters>({ page: 1, size: 20 });
@@ -81,11 +83,13 @@ export function AdminCreditsPage() {
   };
 
   const openAdjust = (targetUserId: number | null = null) => {
+    if (!canUpdate) return;
     setAdjustUserId(targetUserId);
     setAdjustOpen(true);
   };
 
   const submitAdjustment = async (request: AdminCreditAdjustRequest): Promise<AdminCreditAdjustResponse> => {
+    if (!canUpdate) throw new Error("크레딧을 조정할 권한이 없습니다.");
     const response = await adjustAdminCredit(request);
     toast.success(`${request.amount > 0 ? "지급" : "차감"}을 완료했습니다. 잔액 ${response.balanceAfter.toLocaleString("ko-KR")} 크레딧`);
     await load(filters);
@@ -101,7 +105,7 @@ export function AdminCreditsPage() {
       title="크레딧 관리"
       icon={Coins}
       desc="크레딧 변동 원장을 조회하고 사유가 있는 수동 조정을 처리합니다."
-      actions={<div className="flex gap-2"><Button variant="outline" size="icon" title="새로고침" onClick={() => void load(filters)} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /></Button><Button onClick={() => openAdjust()}><SlidersHorizontal className="size-4" />수동 조정</Button></div>}
+      actions={<div className="flex gap-2"><Button variant="outline" size="icon" title="새로고침" onClick={() => void load(filters)} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /></Button>{canUpdate && <Button onClick={() => openAdjust()}><SlidersHorizontal className="size-4" />수동 조정</Button>}</div>}
     >
       <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-5">
         <SummaryCard label="전체 변동" value={summary?.totalTransactions ?? 0} />
@@ -124,13 +128,13 @@ export function AdminCreditsPage() {
       {error && <ErrorBanner message={error} onRetry={() => void load(filters)} />}
 
       <Card className="border-border bg-card"><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-sm"><thead><tr className="border-b border-border text-left text-xs font-semibold text-muted-foreground"><th className="px-4 py-3">회원</th><th className="px-4 py-3">유형</th><th className="px-4 py-3 text-right">변동</th><th className="px-4 py-3 text-right">변동 후 잔액</th><th className="px-4 py-3">기능/사유</th><th className="px-4 py-3">처리 시각</th><th className="px-4 py-3 text-right">작업</th></tr></thead><tbody>
-        {pageData.items.map((row) => <tr key={row.id} className="border-b border-border/60 align-top"><td className="px-4 py-3"><div className="font-semibold">{row.userName}</div><div className="text-xs text-muted-foreground">{row.userEmail} · #{row.userId}</div></td><td className="px-4 py-3"><Badge className={typeClass(row.type)}>{typeLabel(row.type)}</Badge></td><td className={`px-4 py-3 text-right font-bold ${row.amount > 0 ? "text-emerald-600" : "text-rose-600"}`}>{row.amount > 0 ? "+" : ""}{row.amount.toLocaleString("ko-KR")}</td><td className="px-4 py-3 text-right font-semibold">{row.balanceAfter.toLocaleString("ko-KR")}</td><td className="max-w-sm px-4 py-3"><div className="text-xs font-semibold text-muted-foreground">{row.featureType ?? "일반"}</div><div className="mt-1 break-words leading-5">{row.reason ?? "사유 기록 없음"}</div></td><td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(row.createdAt)}</td><td className="px-4 py-3 text-right"><Button size="sm" variant="outline" onClick={() => openAdjust(row.userId)}>조정</Button></td></tr>)}
+        {pageData.items.map((row) => <tr key={row.id} className="border-b border-border/60 align-top"><td className="px-4 py-3"><div className="font-semibold">{row.userName}</div><div className="text-xs text-muted-foreground">{row.userEmail} · #{row.userId}</div></td><td className="px-4 py-3"><Badge className={typeClass(row.type)}>{typeLabel(row.type)}</Badge></td><td className={`px-4 py-3 text-right font-bold ${row.amount > 0 ? "text-emerald-600" : "text-rose-600"}`}>{row.amount > 0 ? "+" : ""}{row.amount.toLocaleString("ko-KR")}</td><td className="px-4 py-3 text-right font-semibold">{row.balanceAfter.toLocaleString("ko-KR")}</td><td className="max-w-sm px-4 py-3"><div className="text-xs font-semibold text-muted-foreground">{row.featureType ?? "일반"}</div><div className="mt-1 break-words leading-5">{row.reason ?? "사유 기록 없음"}</div></td><td className="px-4 py-3 text-xs text-muted-foreground">{formatDate(row.createdAt)}</td><td className="px-4 py-3 text-right">{canUpdate ? <Button size="sm" variant="outline" onClick={() => openAdjust(row.userId)}>조정</Button> : <span className="text-muted-foreground">-</span>}</td></tr>)}
         {!loading && pageData.items.length === 0 && <EmptyRow message="조건에 맞는 크레딧 변동 내역이 없습니다." />}{loading && pageData.items.length === 0 && <EmptyRow message="크레딧 원장을 불러오는 중입니다." />}
       </tbody></table></div></CardContent></Card>
 
       {pageData.total > 0 && <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted-foreground"><span>총 {pageData.total.toLocaleString("ko-KR")}건</span><div className="flex items-center gap-2"><Button variant="outline" size="sm" disabled={loading || pageData.page <= 1} onClick={() => movePage(pageData.page - 1)}>이전</Button><span>{pageData.page} / {totalPages}</span><Button variant="outline" size="sm" disabled={loading || pageData.page >= totalPages} onClick={() => movePage(pageData.page + 1)}>다음</Button></div></div>}
 
-      <CreditAdjustDialog open={adjustOpen} initialUserId={adjustUserId} onOpenChange={setAdjustOpen} onSubmit={submitAdjustment} />
+      {canUpdate && <CreditAdjustDialog open={adjustOpen} initialUserId={adjustUserId} onOpenChange={setAdjustOpen} onSubmit={submitAdjustment} />}
     </AdminShell>
   );
 }

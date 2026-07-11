@@ -60,21 +60,27 @@ public interface BillingMapper {
 
     String findUserPlanCode(@Param("userId") Long userId);
 
+    Long lockUserForBilling(@Param("userId") Long userId);
+
     List<UserBenefitBalance> findBenefitBalances(@Param("userId") Long userId,
                                                  @Param("periodStart") LocalDateTime periodStart,
                                                  @Param("periodEnd") LocalDateTime periodEnd);
 
     UserBenefitBalance findBenefitBalance(@Param("userId") Long userId,
-                                          @Param("benefitCode") String benefitCode,
-                                          @Param("periodStart") LocalDateTime periodStart);
+                                            @Param("benefitCode") String benefitCode,
+                                            @Param("periodStart") LocalDateTime periodStart);
+
+    UserBenefitBalance findBenefitBalanceForUpdate(@Param("userId") Long userId,
+                                                    @Param("benefitCode") String benefitCode,
+                                                    @Param("periodStart") LocalDateTime periodStart);
 
     void insertBenefitBalance(UserBenefitBalance balance);
 
     int consumeBenefitIfEnough(@Param("balanceId") Long balanceId);
 
-    boolean existsConsumeTransaction(@Param("benefitCode") String benefitCode,
-                                     @Param("refType") String refType,
-                                     @Param("refId") Long refId);
+    Long findConsumeTransactionIdForUpdate(@Param("benefitCode") String benefitCode,
+                                           @Param("refType") String refType,
+                                           @Param("refId") Long refId);
 
     void insertBenefitTransaction(BenefitTransaction transaction);
 

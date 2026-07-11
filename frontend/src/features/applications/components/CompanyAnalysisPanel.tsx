@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { Building2, Eye, Loader2, Pencil, PlayCircle } from "lucide-react";
+import { Building2, Eye, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
@@ -24,8 +24,11 @@ import {
   serializeTextareaList,
   serializeVerifiedFactRows,
 } from "../types/analysis";
+import type { ApplicationSourceType } from "../types/applicationCase";
 import { formatKoreaDateTime } from "../utils/dateFormat";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
+import { AnalysisReanalyzeButton } from "./AnalysisReanalyzeButton";
+import { AnalysisProvenanceBadge } from "./AnalysisProvenanceBadge";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
 import { VerifiedFactsList } from "./VerifiedFactsList";
@@ -43,7 +46,9 @@ interface CompanyAnalysisPanelProps {
   reviewError: string | null;
   failures: BAnalysisFailureLog[];
   latestJobPostingRevision: number | null;
-  onGenerate(): Promise<CompanyAnalysis | null>;
+  /** model-options 조회용(분석 선택지는 sourceType 무관하나 API 계약상 전달). */
+  sourceType: ApplicationSourceType;
+  onGenerate(provider: string): Promise<CompanyAnalysis | null>;
   onReview(analysisId: number, request: CompanyAnalysisReviewRequest): Promise<CompanyAnalysis | null>;
 }
 
@@ -103,6 +108,7 @@ export function CompanyAnalysisPanel({
   reviewError,
   failures,
   latestJobPostingRevision,
+  sourceType,
   onGenerate,
   onReview,
 }: CompanyAnalysisPanelProps) {
@@ -178,7 +184,7 @@ export function CompanyAnalysisPanel({
   // 재조회 권장 시점(refreshRecommendedAt) 경과 여부(신선도 · D-5). null/파싱 불가면 false.
   const isRefreshDue = isCompanyAnalysisRefreshDue(analysis?.refreshRecommendedAt);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (provider: string) => {
     if (
       isDirty &&
       !window.confirm("저장하지 않은 검토 수정 내용이 있습니다. 재분석을 진행하면 입력 중인 내용이 사라질 수 있습니다. 계속할까요?")
@@ -187,7 +193,7 @@ export function CompanyAnalysisPanel({
     }
 
     setReviewSuccess(null);
-    await onGenerate();
+    await onGenerate(provider);
   };
 
   // 백엔드 virtual unknowns(확인 불가 항목) — 읽기 전용 표시. 검수 저장 대상이 아니다.
@@ -244,11 +250,14 @@ export function CompanyAnalysisPanel({
               )}
             </CardTitle>
             {analysis ? (
-              <p className="mt-1 text-xs text-slate-500">
-                최근 분석: {formatKoreaDateTime(analysis.createdAt)}
-                {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
-                {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
-              </p>
+              <>
+                <p className="mt-1 text-xs text-slate-500">
+                  최근 분석: {formatKoreaDateTime(analysis.createdAt)}
+                  {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
+                  {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
+                </p>
+                <AnalysisProvenanceBadge source={analysis} className="mt-1.5" />
+              </>
             ) : (
               <p className="mt-1 text-xs text-slate-500">분석 결과 없음</p>
             )}
@@ -274,16 +283,16 @@ export function CompanyAnalysisPanel({
                 </Link>
               </Button>
             )}
-            <Button
-              type="button"
-              size="sm"
+            <AnalysisReanalyzeButton
+              stage="companyAnalysis"
+              sourceType={sourceType}
+              onReanalyze={(provider) => void handleGenerate(provider)}
+              pending={generating}
+              disabled={loading || reviewSaving}
+              label={analysis ? "AI 재분석" : "AI 분석 실행"}
+              variant="default"
               className="bg-blue-600 text-white hover:bg-blue-700"
-              disabled={loading || generating || reviewSaving}
-              onClick={() => void handleGenerate()}
-            >
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-              {analysis ? "AI 재분석" : "AI 분석 실행"}
-            </Button>
+            />
           </div>
         </div>
       </CardHeader>
@@ -292,9 +301,16 @@ export function CompanyAnalysisPanel({
           <AnalysisFailureNotice
             failures={failures}
             featureType="COMPANY_RESEARCH"
-            onRetry={() => void handleGenerate()}
-            retrying={generating}
-            retryLabel="기업 분석 다시 시도"
+            retryAction={
+              <AnalysisReanalyzeButton
+                stage="companyAnalysis"
+                sourceType={sourceType}
+                onReanalyze={(provider) => void handleGenerate(provider)}
+                pending={generating}
+                disabled={loading || reviewSaving}
+                label="기업 분석 다시 시도"
+              />
+            }
           />
         )}
 
@@ -303,17 +319,15 @@ export function CompanyAnalysisPanel({
             <span>
               현재 분석은 공고 rev {analysis?.jobPostingRevision ?? "-"} 기준입니다. 최신 공고 rev {latestJobPostingRevision} 기준으로 다시 분석할 수 있습니다.
             </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
+            <AnalysisReanalyzeButton
+              stage="companyAnalysis"
+              sourceType={sourceType}
+              onReanalyze={(provider) => void handleGenerate(provider)}
+              pending={generating}
+              disabled={loading || reviewSaving}
+              label="최신 공고로 재분석"
               className="border-amber-300 bg-card text-amber-800 hover:bg-amber-100"
-              disabled={loading || generating || reviewSaving}
-              onClick={() => void handleGenerate()}
-            >
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-              최신 공고로 재분석
-            </Button>
+            />
           </div>
         )}
 
@@ -322,17 +336,15 @@ export function CompanyAnalysisPanel({
             <span>
               이 분석의 재조회 권장 시점이 지났습니다. 최신 정보로 다시 분석하는 것을 권장합니다.
             </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
+            <AnalysisReanalyzeButton
+              stage="companyAnalysis"
+              sourceType={sourceType}
+              onReanalyze={(provider) => void handleGenerate(provider)}
+              pending={generating}
+              disabled={loading || reviewSaving}
+              label="지금 다시 분석"
               className="border-sky-300 bg-card text-sky-800 hover:bg-sky-100"
-              disabled={loading || generating || reviewSaving}
-              onClick={() => void handleGenerate()}
-            >
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-              지금 다시 분석
-            </Button>
+            />
           </div>
         )}
 

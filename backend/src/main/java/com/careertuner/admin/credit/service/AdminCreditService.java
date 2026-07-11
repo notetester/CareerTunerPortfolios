@@ -19,7 +19,6 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.credit.domain.CreditTransaction;
-import com.careertuner.credit.mapper.CreditMapper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -32,7 +31,6 @@ public class AdminCreditService {
             "AI_USAGE", "CHARGE", "REFUND", "ADMIN_ADJUST");
 
     private final AdminCreditMapper mapper;
-    private final CreditMapper creditMapper;
     private final AdminActionLogService actionLogService;
 
     @Transactional(readOnly = true)
@@ -79,10 +77,28 @@ public class AdminCreditService {
         Long userId = normalizeUserId(request.userId());
         int amount = normalizeAmount(request.amount());
         String reason = requireReason(request.reason());
+        String requestKey = normalizeRequestId(request.requestId());
 
         AdminCreditUserBalance user = mapper.findUserBalanceForUpdate(userId);
         if (user == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "회원을 찾을 수 없습니다.");
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원을 찾을 수 없거나 삭제된 회원입니다.");
+        }
+
+        CreditTransaction previous = requestKey == null
+                ? null
+                : mapper.findAdminAdjustmentByRequestKey(userId, requestKey);
+        if (previous != null) {
+            if (previous.getAmount() != amount || !reason.equals(previous.getReason())) {
+                throw new BusinessException(
+                        ErrorCode.CONFLICT,
+                        "동일 요청 ID가 다른 크레딧 조정 내용에 사용되었습니다.");
+            }
+            return new AdminCreditAdjustResponse(
+                    previous.getId(),
+                    userId,
+                    previous.getAmount(),
+                    previous.getBalanceAfter() - previous.getAmount(),
+                    previous.getBalanceAfter());
         }
 
         int balanceBefore = user.getCredit();
@@ -92,15 +108,12 @@ public class AdminCreditService {
             }
         } else {
             int deduction = -amount;
-            if (creditMapper.deductUserCreditIfEnough(userId, deduction) != 1) {
+            if (mapper.deductUserCreditIfEnough(userId, deduction) != 1) {
                 throw new BusinessException(ErrorCode.INSUFFICIENT_CREDIT, "차감할 크레딧이 부족합니다.");
             }
         }
 
-        Integer balanceAfter = creditMapper.findUserCredit(userId);
-        if (balanceAfter == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "회원을 찾을 수 없습니다.");
-        }
+        int balanceAfter = balanceBefore + amount;
 
         CreditTransaction transaction = CreditTransaction.builder()
                 .userId(userId)
@@ -109,8 +122,9 @@ public class AdminCreditService {
                 .balanceAfter(balanceAfter)
                 .featureType("ADMIN_CREDIT_ADJUST")
                 .reason(reason)
+                .requestKey(requestKey)
                 .build();
-        creditMapper.insertCreditTransaction(transaction);
+        mapper.insertAdminAdjustment(transaction);
 
         actionLogService.record(
                 authUser,
@@ -155,6 +169,14 @@ public class AdminCreditService {
         }
         if (normalized.length() > 255) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "조정 사유는 255자 이하여야 합니다.");
+        }
+        return normalized;
+    }
+
+    private static String normalizeRequestId(String requestId) {
+        String normalized = blankToNull(requestId);
+        if (normalized != null && normalized.length() > 120) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "요청 ID는 120자 이하여야 합니다.");
         }
         return normalized;
     }

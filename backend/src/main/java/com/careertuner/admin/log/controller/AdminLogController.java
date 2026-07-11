@@ -1,5 +1,7 @@
 package com.careertuner.admin.log.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 시스템 로그(현재는 AI 사용 로그). /api/admin/** = ADMIN 정책으로 보호. */
 @RestController
 @RequestMapping("/api/admin/logs")
+@RequireAdminPermission({"AUDIT_READ"})
 @RequiredArgsConstructor
 public class AdminLogController {
 

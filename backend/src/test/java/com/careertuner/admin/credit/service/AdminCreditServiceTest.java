@@ -24,14 +24,12 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.credit.domain.CreditTransaction;
-import com.careertuner.credit.mapper.CreditMapper;
 
 class AdminCreditServiceTest {
 
     private final AdminCreditMapper mapper = mock(AdminCreditMapper.class);
-    private final CreditMapper creditMapper = mock(CreditMapper.class);
     private final AdminActionLogService actionLogService = mock(AdminActionLogService.class);
-    private final AdminCreditService service = new AdminCreditService(mapper, creditMapper, actionLogService);
+    private final AdminCreditService service = new AdminCreditService(mapper, actionLogService);
 
     @Test
     void transactionsNormalizesFiltersAndPaging() {
@@ -78,14 +76,13 @@ class AdminCreditServiceTest {
     void positiveAdjustmentUpdatesBalanceAndWritesBothLedgers() {
         when(mapper.findUserBalanceForUpdate(10L)).thenReturn(user(10L, 30));
         when(mapper.addUserCredit(10L, 5)).thenReturn(1);
-        when(creditMapper.findUserCredit(10L)).thenReturn(35);
         doAnswer(invocation -> {
             invocation.getArgument(0, CreditTransaction.class).setId(100L);
             return null;
-        }).when(creditMapper).insertCreditTransaction(any());
+        }).when(mapper).insertAdminAdjustment(any());
 
         AdminCreditAdjustResponse response = service.adjust(
-                admin(), new AdminCreditAdjustRequest(10L, 5, " 고객 보상 "));
+                admin(), new AdminCreditAdjustRequest(10L, 5, " 고객 보상 ", "admin-credit:req-1"));
 
         assertThat(response.transactionId()).isEqualTo(100L);
         assertThat(response.balanceBefore()).isEqualTo(30);
@@ -93,13 +90,14 @@ class AdminCreditServiceTest {
 
         ArgumentCaptor<CreditTransaction> transactionCaptor =
                 ArgumentCaptor.forClass(CreditTransaction.class);
-        verify(creditMapper).insertCreditTransaction(transactionCaptor.capture());
+        verify(mapper).insertAdminAdjustment(transactionCaptor.capture());
         CreditTransaction transaction = transactionCaptor.getValue();
         assertThat(transaction.getType()).isEqualTo("ADMIN_ADJUST");
         assertThat(transaction.getAmount()).isEqualTo(5);
         assertThat(transaction.getBalanceAfter()).isEqualTo(35);
         assertThat(transaction.getFeatureType()).isEqualTo("ADMIN_CREDIT_ADJUST");
         assertThat(transaction.getReason()).isEqualTo("고객 보상");
+        assertThat(transaction.getRequestKey()).isEqualTo("admin-credit:req-1");
         verify(actionLogService).record(
                 admin(), 10L, "CREDIT_ADJUSTED", "CREDIT", "30", "35", "고객 보상");
     }
@@ -107,22 +105,21 @@ class AdminCreditServiceTest {
     @Test
     void negativeAdjustmentUsesGuardedDeduction() {
         when(mapper.findUserBalanceForUpdate(10L)).thenReturn(user(10L, 30));
-        when(creditMapper.deductUserCreditIfEnough(10L, 7)).thenReturn(1);
-        when(creditMapper.findUserCredit(10L)).thenReturn(23);
+        when(mapper.deductUserCreditIfEnough(10L, 7)).thenReturn(1);
 
         AdminCreditAdjustResponse response = service.adjust(
                 admin(), new AdminCreditAdjustRequest(10L, -7, "오지급 회수"));
 
         assertThat(response.amount()).isEqualTo(-7);
         assertThat(response.balanceAfter()).isEqualTo(23);
-        verify(creditMapper).deductUserCreditIfEnough(10L, 7);
+        verify(mapper).deductUserCreditIfEnough(10L, 7);
         verify(mapper, never()).addUserCredit(any(), any(Integer.class));
     }
 
     @Test
     void insufficientBalanceDoesNotWriteLedger() {
         when(mapper.findUserBalanceForUpdate(10L)).thenReturn(user(10L, 3));
-        when(creditMapper.deductUserCreditIfEnough(10L, 7)).thenReturn(0);
+        when(mapper.deductUserCreditIfEnough(10L, 7)).thenReturn(0);
 
         assertThatThrownBy(() -> service.adjust(
                 admin(), new AdminCreditAdjustRequest(10L, -7, "오지급 회수")))
@@ -130,7 +127,7 @@ class AdminCreditServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INSUFFICIENT_CREDIT);
 
-        verify(creditMapper, never()).insertCreditTransaction(any());
+        verify(mapper, never()).insertAdminAdjustment(any());
         verify(actionLogService, never()).record(any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -159,6 +156,67 @@ class AdminCreditServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.NOT_FOUND);
+    }
+
+    @Test
+    void repeatedRequestReturnsOriginalTransactionWithoutApplyingBalanceAgain() {
+        when(mapper.findUserBalanceForUpdate(10L)).thenReturn(user(10L, 35));
+        CreditTransaction previous = CreditTransaction.builder()
+                .id(100L)
+                .userId(10L)
+                .type("ADMIN_ADJUST")
+                .amount(5)
+                .balanceAfter(35)
+                .reason("고객 보상")
+                .requestKey("admin-credit:req-1")
+                .build();
+        when(mapper.findAdminAdjustmentByRequestKey(10L, "admin-credit:req-1"))
+                .thenReturn(previous);
+
+        AdminCreditAdjustResponse response = service.adjust(
+                admin(), new AdminCreditAdjustRequest(10L, 5, "고객 보상", "admin-credit:req-1"));
+
+        assertThat(response).isEqualTo(new AdminCreditAdjustResponse(100L, 10L, 5, 30, 35));
+        verify(mapper, never()).addUserCredit(any(), any(Integer.class));
+        verify(mapper, never()).deductUserCreditIfEnough(any(), any(Integer.class));
+        verify(mapper, never()).insertAdminAdjustment(any());
+        verify(actionLogService, never()).record(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void reusedRequestIdWithDifferentPayloadIsRejected() {
+        when(mapper.findUserBalanceForUpdate(10L)).thenReturn(user(10L, 35));
+        CreditTransaction previous = CreditTransaction.builder()
+                .id(100L)
+                .userId(10L)
+                .type("ADMIN_ADJUST")
+                .amount(5)
+                .balanceAfter(35)
+                .reason("고객 보상")
+                .requestKey("admin-credit:req-1")
+                .build();
+        when(mapper.findAdminAdjustmentByRequestKey(10L, "admin-credit:req-1"))
+                .thenReturn(previous);
+
+        assertThatThrownBy(() -> service.adjust(
+                admin(), new AdminCreditAdjustRequest(10L, 7, "추가 보상", "admin-credit:req-1")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        verify(mapper, never()).addUserCredit(any(), any(Integer.class));
+        verify(mapper, never()).insertAdminAdjustment(any());
+    }
+
+    @Test
+    void oversizedRequestIdIsRejectedBeforeLock() {
+        assertThatThrownBy(() -> service.adjust(
+                admin(), new AdminCreditAdjustRequest(10L, 1, "테스트", "x".repeat(121))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT);
+
+        verify(mapper, never()).findUserBalanceForUpdate(any());
     }
 
     private static AdminCreditUserBalance user(Long id, int credit) {

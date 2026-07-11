@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { BarChart3, Eye, Loader2, Pencil, PlayCircle } from "lucide-react";
+import { BarChart3, Eye, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
@@ -23,8 +23,11 @@ import {
   serializeEvidenceRows,
   serializeTextareaList,
 } from "../types/analysis";
+import type { ApplicationSourceType } from "../types/applicationCase";
 import { formatKoreaDateTime } from "../utils/dateFormat";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
+import { AnalysisReanalyzeButton } from "./AnalysisReanalyzeButton";
+import { AnalysisProvenanceBadge } from "./AnalysisProvenanceBadge";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
 
@@ -41,7 +44,9 @@ interface JobAnalysisPanelProps {
   reviewError: string | null;
   failures: BAnalysisFailureLog[];
   latestJobPostingRevision: number | null;
-  onGenerate(): Promise<JobAnalysis | null>;
+  /** model-options 조회용(분석 선택지는 sourceType 무관하나 API 계약상 전달). */
+  sourceType: ApplicationSourceType;
+  onGenerate(provider: string): Promise<JobAnalysis | null>;
   onReview(analysisId: number, request: JobAnalysisReviewRequest): Promise<JobAnalysis | null>;
 }
 
@@ -101,6 +106,7 @@ export function JobAnalysisPanel({
   reviewError,
   failures,
   latestJobPostingRevision,
+  sourceType,
   onGenerate,
   onReview,
 }: JobAnalysisPanelProps) {
@@ -179,7 +185,7 @@ export function JobAnalysisPanel({
     analysis.jobPostingRevision !== latestJobPostingRevision,
   );
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (provider: string) => {
     if (
       isDirty &&
       !window.confirm("저장하지 않은 검토 수정 내용이 있습니다. 재분석을 진행하면 입력 중인 내용이 사라질 수 있습니다. 계속할까요?")
@@ -188,7 +194,7 @@ export function JobAnalysisPanel({
     }
 
     setReviewSuccess(null);
-    await onGenerate();
+    await onGenerate(provider);
   };
 
   const handleReview = async () => {
@@ -224,11 +230,14 @@ export function JobAnalysisPanel({
               )}
             </CardTitle>
             {analysis ? (
-              <p className="mt-1 text-xs text-slate-500">
-                최근 분석: {formatKoreaDateTime(analysis.createdAt)}
-                {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
-                {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
-              </p>
+              <>
+                <p className="mt-1 text-xs text-slate-500">
+                  최근 분석: {formatKoreaDateTime(analysis.createdAt)}
+                  {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
+                  {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
+                </p>
+                <AnalysisProvenanceBadge source={analysis} className="mt-1.5" />
+              </>
             ) : (
               <p className="mt-1 text-xs text-slate-500">분석 결과 없음</p>
             )}
@@ -254,16 +263,16 @@ export function JobAnalysisPanel({
                 </Link>
               </Button>
             )}
-            <Button
-              type="button"
-              size="sm"
+            <AnalysisReanalyzeButton
+              stage="jobAnalysis"
+              sourceType={sourceType}
+              onReanalyze={(provider) => void handleGenerate(provider)}
+              pending={generating}
+              disabled={loading || reviewSaving}
+              label={analysis ? "AI 재분석" : "AI 분석 실행"}
+              variant="default"
               className="bg-blue-600 text-white hover:bg-blue-700"
-              disabled={loading || generating || reviewSaving}
-              onClick={() => void handleGenerate()}
-            >
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-              {analysis ? "AI 재분석" : "AI 분석 실행"}
-            </Button>
+            />
           </div>
         </div>
       </CardHeader>
@@ -272,9 +281,16 @@ export function JobAnalysisPanel({
           <AnalysisFailureNotice
             failures={failures}
             featureType="JOB_ANALYSIS"
-            onRetry={() => void handleGenerate()}
-            retrying={generating}
-            retryLabel="공고 분석 다시 시도"
+            retryAction={
+              <AnalysisReanalyzeButton
+                stage="jobAnalysis"
+                sourceType={sourceType}
+                onReanalyze={(provider) => void handleGenerate(provider)}
+                pending={generating}
+                disabled={loading || reviewSaving}
+                label="공고 분석 다시 시도"
+              />
+            }
           />
         )}
 
@@ -283,17 +299,15 @@ export function JobAnalysisPanel({
             <span>
               현재 분석은 공고 rev {analysis?.jobPostingRevision ?? "-"} 기준입니다. 최신 공고 rev {latestJobPostingRevision} 기준으로 다시 분석할 수 있습니다.
             </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
+            <AnalysisReanalyzeButton
+              stage="jobAnalysis"
+              sourceType={sourceType}
+              onReanalyze={(provider) => void handleGenerate(provider)}
+              pending={generating}
+              disabled={loading || reviewSaving}
+              label="최신 공고로 재분석"
               className="border-amber-300 bg-card text-amber-800 hover:bg-amber-100"
-              disabled={loading || generating || reviewSaving}
-              onClick={() => void handleGenerate()}
-            >
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <PlayCircle className="size-4" />}
-              최신 공고로 재분석
-            </Button>
+            />
           </div>
         )}
 

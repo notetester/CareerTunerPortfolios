@@ -31,7 +31,7 @@ concurrency:
 
 jobs:
   typecheck-build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, careertuner-ci]
     defaults:
       run:
         working-directory: frontend
@@ -51,6 +51,9 @@ jobs:
 
       - name: Type check
         run: npm run typecheck
+
+      - name: Test admin access boundary
+        run: npm run test:admin-access
 
       - name: Build
         run: npm run build

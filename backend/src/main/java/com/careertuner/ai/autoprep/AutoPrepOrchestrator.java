@@ -139,6 +139,17 @@ public class AutoPrepOrchestrator {
                          List<PrepAttachment> attachments, AutoPrepRequest request,
                          Map<String, Object> prior, List<PrepStepResult> results, PartListener listener) {
         listener.onPartStart(key);
+        List<String> unavailableDependencies = DEPS.getOrDefault(key, List.of()).stream()
+                .filter(dependency -> !prior.containsKey(dependency))
+                .toList();
+        if (!unavailableDependencies.isEmpty()) {
+            PrepStepResult skipped = PrepStepResult.skipped(
+                    key,
+                    "선행 단계(%s)가 완료되지 않아 건너뜀".formatted(String.join(", ", unavailableDependencies)));
+            results.add(skipped);
+            listener.onPartDone(skipped);
+            return;
+        }
         PrepStepHandler handler = byKey.get(key);
         if (handler == null || !handler.enabled()) {
             PrepStepResult skipped = PrepStepResult.skipped(key, "준비중");

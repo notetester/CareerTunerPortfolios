@@ -77,7 +77,8 @@ final class QnetXmlSupport {
         return blocks;
     }
 
-    private static String norm(String s) {
+    /** 자격명 정규화(공백 제거·소문자) — 응답 매칭과 오프라인 스냅샷 조회가 같은 규칙을 쓴다. */
+    static String norm(String s) {
         return s.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
     }
 }

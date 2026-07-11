@@ -17,7 +17,10 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.careertuner.common.security.AdminAccountStateFilter;
 import com.careertuner.common.security.JwtAuthenticationFilter;
+import com.careertuner.common.security.SecurityErrorResponseWriter;
+import com.careertuner.user.mapper.UserMapper;
 
 /**
  * 보안 설정 — JWT 기반 stateless 인증.
@@ -31,7 +34,11 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
+                                                   JwtAuthenticationFilter jwtAuthenticationFilter,
+                                                   UserMapper userMapper,
+                                                   SecurityErrorResponseWriter securityErrorResponseWriter) throws Exception {
+        AdminAccountStateFilter adminAccountStateFilter =
+                new AdminAccountStateFilter(userMapper, securityErrorResponseWriter);
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {})
@@ -81,9 +88,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                         // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
-                .exceptionHandling(e -> e.authenticationEntryPoint(
-                        (req, res, ex) -> res.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED)))
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint((req, res, ex) -> securityErrorResponseWriter.unauthorized(res))
+                        .accessDeniedHandler((req, res, ex) -> securityErrorResponseWriter.forbidden(res)))
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(adminAccountStateFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 

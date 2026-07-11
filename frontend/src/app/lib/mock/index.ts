@@ -28,12 +28,14 @@ import {
 import {
   communityPostPage, demoHotPosts, findCommunityPost, communityCommentsFor, demoPublishedGuideline,
   demoFaqs, demoNotices,
-  demoAdminReports, moderationPage, demoModerationStats, demoModerationSetting,
+  demoAdminReports,
   demoAdminNotices, demoAdminFaqs, demoAdminGuidelines, demoAdminTickets, adminTicketDetail,
   demoAdminNotifications,
 } from "./domains/f-area";
 
 import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
+import { ADMIN_PERMISSION_CODES, canAccessMockApi } from "@/admin/auth/adminAccess";
+import { getOutageFallbackSnapshot } from "../outageFallback";
 
 import type { MockRoute } from "./registry";
 import { ok } from "./registry";
@@ -49,13 +51,18 @@ import { applicationsExtraRoutes } from "./domains/applicationsExtra";
 import { interviewExtraRoutes } from "./domains/interviewExtra";
 import { collaborationRoutes } from "./domains/collaboration";
 import { privacyRoutes } from "./domains/privacy";
+import { mfaRoutes } from "./domains/mfa";
 import { companyRoutes } from "./domains/company";
+import { legalRoutes } from "./domains/legal";
 import { adsRoutes } from "./domains/ads";
 import { nicknameProfileRoutes } from "./domains/nicknameProfile";
+import { plannerRoutes, rewardRoutes } from "./domains/planner";
 import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
 export const MOCK_UNHANDLED = Symbol("mock-unhandled");
+/** 현재 mock 세션으로 접근할 수 없는 관리자 API sentinel. */
+export const MOCK_FORBIDDEN = Symbol("mock-forbidden");
 
 let demoJobPostingFallbackSetting = {
   enabled: false,
@@ -70,24 +77,40 @@ const demoAdminUser = {
   email: "admin@careertuner.dev",
   name: "한관리",
   role: "ADMIN",
-  permissionGroups: ["MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN"],
+  permissions: ADMIN_PERMISSION_CODES.filter((code) => !code.startsWith("ADMIN_PERMISSION_")),
 };
 let mockSessionUser = demoUser;
 const MOCK_ROLE_KEY = "careertuner.mock.role";
 
 function setMockSession(user: typeof demoUser) {
-  mockSessionUser = user;
+  // 장애 fallback은 운영자 콘솔 대체 수단이 아니다. static-demo에서만 명시적 관리자 persona를 허용한다.
+  const nextUser = user.role === "ADMIN" && getOutageFallbackSnapshot().mode !== "static-demo"
+    ? demoUser
+    : user;
+  mockSessionUser = nextUser;
   if (typeof localStorage !== "undefined") {
-    if (user.role === "ADMIN") localStorage.setItem(MOCK_ROLE_KEY, "ADMIN");
+    if (nextUser.role === "ADMIN") localStorage.setItem(MOCK_ROLE_KEY, "ADMIN");
     else localStorage.removeItem(MOCK_ROLE_KEY);
   }
 }
 
 function getMockSession() {
-  if (typeof localStorage !== "undefined" && localStorage.getItem(MOCK_ROLE_KEY) === "ADMIN") {
+  if (
+    getOutageFallbackSnapshot().mode === "static-demo"
+    && typeof localStorage !== "undefined"
+    && localStorage.getItem(MOCK_ROLE_KEY) === "ADMIN"
+  ) {
     return demoAdminUser;
   }
-  return mockSessionUser;
+  return getOutageFallbackSnapshot().mode === "static-demo" ? mockSessionUser : demoUser;
+}
+
+export function canResolveMockRequest(rawPath: string, method = "GET", body?: unknown): boolean {
+  const session = getMockSession();
+  const permissions = "permissions" in session && Array.isArray(session.permissions)
+    ? new Set<string>(session.permissions)
+    : new Set<string>();
+  return canAccessMockApi(rawPath, session.role, permissions, method, body);
 }
 
 // ── C: 적합도 분석 mock 세션 상태 ──
@@ -138,7 +161,7 @@ const coreRoutes: MockRoute[] = [
     pattern: /^\/auth\/login$/,
     handler: ({ body }) => {
       const email = String((body as { email?: unknown })?.email ?? "").toLowerCase();
-      setMockSession(email.startsWith("admin@") ? demoAdminUser : demoUser);
+      setMockSession(email === demoAdminUser.email ? demoAdminUser : demoUser);
       // MFA 도입 이후 LoginResponse 는 token 을 중첩으로 담는다 — flat 반환 시 로그인이 조용히 실패(토큰 미저장).
       return {
         mfaRequired: false,
@@ -153,6 +176,11 @@ const coreRoutes: MockRoute[] = [
   { method: "POST", pattern: /^\/auth\/register$/, handler: ok(demoTokenResponse) },
   { method: "GET", pattern: /^\/auth\/me$/, handler: () => getMockSession() },
   { method: "POST", pattern: /^\/auth\/logout$/, handler: () => { setMockSession(demoUser); return null; } },
+  {
+    method: "GET",
+    pattern: /^\/auth\/oauth\/providers$/,
+    handler: () => ({ google: true, kakao: true, naver: true }),
+  },
 
   {
     method: "GET",
@@ -342,6 +370,7 @@ const coreRoutes: MockRoute[] = [
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/answers$/, handler: ({ params, body }) => submitInterviewAnswer(Number(params[0]), body as { answerText: string }) },
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/follow-ups$/, handler: ({ params }) => followUps(Number(params[0])) },
   { method: "POST", pattern: /^\/file\/upload$/, handler: () => fileAsset() },
+  { method: "DELETE", pattern: /^\/file\/(\d+)$/, handler: () => null },
 
   // ── C: 적합도 분석 ──
   { method: "GET", pattern: /^\/fit-analyses$/, handler: () => [...demoFitAnalyses, ...generatedFitAnalyses.values()] },
@@ -426,10 +455,6 @@ const coreRoutes: MockRoute[] = [
   // ── F(관리자): 신고 / AI 검열 ──
   { method: "GET", pattern: /^\/admin\/community\/reports$/, handler: ok(demoAdminReports) },
   { method: "GET", pattern: /^\/admin\/community\/reports\/(\d+)$/, handler: ({ params }) => ({ ...(demoAdminReports.find((r) => r.id === Number(params[0])) ?? demoAdminReports[0]), reasons: ["욕설/비방", "허위사실"], aiOpinion: { label: "ABUSE", confidence: 0.91 } }) },
-  { method: "GET", pattern: /^\/admin\/ai\/moderation$/, handler: () => moderationPage() },
-  { method: "GET", pattern: /^\/admin\/ai\/moderation\/stats$/, handler: ok(demoModerationStats) },
-  { method: "GET", pattern: /^\/admin\/ai\/moderation\/settings$/, handler: ok(demoModerationSetting) },
-
   // ── F(관리자): 공지 / FAQ / 가이드라인 ──
   { method: "GET", pattern: /^\/admin\/notices$/, handler: ok(demoAdminNotices) },
   { method: "GET", pattern: /^\/admin\/faq$/, handler: ok(demoAdminFaqs) },
@@ -456,9 +481,13 @@ const routes: MockRoute[] = [
   ...correctionRoutes,
   ...collaborationRoutes,
   ...privacyRoutes,
+  ...mfaRoutes,
   ...companyRoutes,
+  ...legalRoutes,
   ...adsRoutes,
   ...nicknameProfileRoutes,
+  ...plannerRoutes,
+  ...rewardRoutes,
   ...adminRoutes,
 ];
 
@@ -469,16 +498,9 @@ const routes: MockRoute[] = [
 export async function resolveMock(
   rawPath: string,
   options: RequestInit,
-): Promise<unknown | typeof MOCK_UNHANDLED> {
+): Promise<unknown | typeof MOCK_UNHANDLED | typeof MOCK_FORBIDDEN> {
   const method = (options.method ?? "GET").toUpperCase();
-  const [path, queryString = ""] = rawPath.split("?");
-  const query = new URLSearchParams(queryString);
-  const route = routes.find((r) => r.method === method && r.pattern.test(path));
-  if (!route) return MOCK_UNHANDLED;
-
-  const match = route.pattern.exec(path);
-  const params = match ? match.slice(1) : [];
-  let body: unknown;
+  let body: unknown = options.body;
   if (typeof options.body === "string") {
     try {
       body = JSON.parse(options.body);
@@ -486,6 +508,14 @@ export async function resolveMock(
       body = options.body;
     }
   }
+  if (!canResolveMockRequest(rawPath, method, body)) return MOCK_FORBIDDEN;
+  const [path, queryString = ""] = rawPath.split("?");
+  const query = new URLSearchParams(queryString);
+  const route = routes.find((r) => r.method === method && r.pattern.test(path));
+  if (!route) return MOCK_UNHANDLED;
+
+  const match = route.pattern.exec(path);
+  const params = match ? match.slice(1) : [];
   await new Promise((resolve) => setTimeout(resolve, 220));
   return route.handler({ method, path, query, params, body });
 }

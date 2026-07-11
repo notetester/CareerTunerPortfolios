@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { fetchAds, recordAdClick, recordAdImpression } from "../api/adsApi";
 import type { Ad, AdPlacement, AdPlatform } from "../types/ads";
+import { safeWebOrInternalUrl } from "@/features/notification/lib/navigationLink";
 
 /** 현재 실행 플랫폼 추정. 네이티브 앱 래퍼는 전역 플래그를 세팅할 수 있어 우선 확인한다. */
 function detectPlatform(): AdPlatform {
@@ -86,8 +87,9 @@ export function AdSlot({ placement, platform, limit = 1, className }: AdSlotProp
 }
 
 function openLink(url: string | null) {
-  if (!url) return;
-  window.open(url, "_blank", "noopener,noreferrer");
+  const target = safeWebOrInternalUrl(url);
+  if (!target) return;
+  window.open(target, "_blank", "noopener,noreferrer");
 }
 
 interface AdItemProps {
@@ -141,12 +143,12 @@ function AdItem({ ad, onVisible, onClick }: AdItemProps) {
           : undefined
       }
       className={[
-        "relative overflow-hidden rounded-lg border border-slate-200 bg-white",
+        "relative overflow-hidden rounded-lg border border-slate-200 bg-card",
         clickable ? "cursor-pointer transition hover:border-slate-300 hover:shadow-sm" : "",
       ].join(" ")}
       aria-label={clickable ? `광고: ${ad.title}` : undefined}
     >
-      <span className="absolute right-2 top-2 z-10 rounded bg-slate-900/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+      <span className="absolute right-2 top-2 z-10 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
         AD
       </span>
       {ad.imageUrl ? (

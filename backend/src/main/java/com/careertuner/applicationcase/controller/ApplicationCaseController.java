@@ -34,6 +34,8 @@ import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +54,7 @@ public class ApplicationCaseController {
     }
 
     @PostMapping("/from-job-posting")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ApplicationCaseFromJobPostingResponse> createFromJobPosting(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody CreateApplicationCaseFromJobPostingRequest request) {
@@ -59,12 +62,17 @@ public class ApplicationCaseController {
     }
 
     @PostMapping(value = "/from-job-posting/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ApplicationCaseFromJobPostingResponse> createFromJobPostingUpload(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam("file") MultipartFile file,
             @RequestParam("sourceType") String sourceType,
-            @RequestParam(defaultValue = "false") boolean favorite) {
-        return ApiResponse.ok(applicationCaseService.createFromJobPostingUpload(authUser.id(), file, sourceType, favorite));
+            @RequestParam(defaultValue = "false") boolean favorite,
+            @RequestParam(required = false) String jobAnalysisProvider,
+            @RequestParam(required = false) String companyAnalysisProvider,
+            @RequestParam(required = false) String ocrProvider) {
+        return ApiResponse.ok(applicationCaseService.createFromJobPostingUpload(
+                authUser.id(), file, sourceType, favorite, jobAnalysisProvider, companyAnalysisProvider, ocrProvider));
     }
 
     @GetMapping
@@ -75,11 +83,13 @@ public class ApplicationCaseController {
     }
 
     @GetMapping("/extractions/active")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<List<ApplicationCaseExtractionResponse>> getActiveExtractions(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(applicationCaseService.getActiveExtractions(authUser.id()));
     }
 
     @GetMapping("/job-posting/extractions/latest")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<List<ApplicationCaseExtractionResponse>> getLatestJobPostingExtractions(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(required = false) List<Long> applicationCaseIds) {
@@ -121,6 +131,7 @@ public class ApplicationCaseController {
     }
 
     @PostMapping("/{id}/job-posting")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<JobPostingResponse> saveJobPosting(@AuthenticationPrincipal AuthUser authUser,
                                                           @PathVariable Long id,
                                                           @Valid @RequestBody JobPostingRequest request) {
@@ -128,6 +139,7 @@ public class ApplicationCaseController {
     }
 
     @PostMapping(value = "/{id}/job-posting/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<JobPostingResponse> uploadJobPostingFile(@AuthenticationPrincipal AuthUser authUser,
                                                                 @PathVariable Long id,
                                                                 @RequestParam("file") MultipartFile file,
@@ -148,18 +160,23 @@ public class ApplicationCaseController {
     }
 
     @GetMapping("/{id}/job-posting/extraction")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ApplicationCaseExtractionResponse> getJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
                                                                                   @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getLatestJobPostingExtraction(authUser.id(), id));
     }
 
     @PostMapping("/{id}/job-posting/extraction/retry")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ApplicationCaseExtractionResponse> retryJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
-                                                                                   @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id));
+                                                                                   @PathVariable Long id,
+                                                                                   @RequestParam(value = "ocrProvider", required = false) String ocrProvider) {
+        // provider 누락은 파라미터 바인딩 예외(500)가 아니라 서비스의 명시적 검증(400 INVALID_INPUT)으로 처리한다.
+        return ApiResponse.ok(applicationCaseService.retryJobPostingExtraction(authUser.id(), id, ocrProvider));
     }
 
     @PatchMapping("/{id}/job-posting/extraction/review")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ApplicationCaseExtractionResponse> reviewJobPostingExtraction(@AuthenticationPrincipal AuthUser authUser,
                                                                                     @PathVariable Long id,
                                                                                     @Valid @RequestBody ReviewJobPostingExtractionRequest request) {
@@ -167,31 +184,39 @@ public class ApplicationCaseController {
     }
 
     @PatchMapping("/{id}/job-posting/extraction/confirm")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ApplicationCaseExtractionResponse> confirmEditedPosting(@AuthenticationPrincipal AuthUser authUser,
                                                                               @PathVariable Long id,
                                                                               @Valid @RequestBody ConfirmJobPostingExtractionRequest request) {
         return ApiResponse.ok(applicationCaseService.confirmEditedPosting(authUser.id(), id, request));
     }
 
+    // 수동 재분석은 strict — provider 필수. required=false 로 받아 서비스에서 검증(누락·무효 400)하므로 자동 체인
+    // (무인자 서비스 메서드)에는 컨트롤러에서 도달하지 않는다. 자동 체인은 autoprep/초기 파이프라인 내부에만 남는다.
     @PostMapping("/{id}/job-analysis")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<JobAnalysisResponse> createJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                              @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createJobAnalysis(authUser.id(), id));
+                                                              @PathVariable Long id,
+                                                              @RequestParam(required = false) String provider) {
+        return ApiResponse.ok(applicationCaseService.createJobAnalysis(authUser.id(), id, provider));
     }
 
     @GetMapping("/{id}/job-analysis")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<JobAnalysisResponse> getJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                            @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getJobAnalysis(authUser.id(), id));
     }
 
     @GetMapping("/{id}/job-analysis/history")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<List<JobAnalysisResponse>> getJobAnalysisHistory(@AuthenticationPrincipal AuthUser authUser,
                                                                         @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getJobAnalysisHistory(authUser.id(), id));
     }
 
     @PatchMapping("/{id}/job-analysis/{analysisId}/review")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<JobAnalysisResponse> reviewJobAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                               @PathVariable Long id,
                                                               @PathVariable Long analysisId,
@@ -200,24 +225,29 @@ public class ApplicationCaseController {
     }
 
     @PostMapping("/{id}/company-analysis")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<CompanyAnalysisResponse> createCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
-                                                                      @PathVariable Long id) {
-        return ApiResponse.ok(applicationCaseService.createCompanyAnalysis(authUser.id(), id));
+                                                                      @PathVariable Long id,
+                                                                      @RequestParam(required = false) String provider) {
+        return ApiResponse.ok(applicationCaseService.createCompanyAnalysis(authUser.id(), id, provider));
     }
 
     @GetMapping("/{id}/company-analysis")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<CompanyAnalysisResponse> getCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                                    @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getCompanyAnalysis(authUser.id(), id));
     }
 
     @GetMapping("/{id}/company-analysis/history")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<List<CompanyAnalysisResponse>> getCompanyAnalysisHistory(@AuthenticationPrincipal AuthUser authUser,
                                                                                 @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getCompanyAnalysisHistory(authUser.id(), id));
     }
 
     @PatchMapping("/{id}/company-analysis/{analysisId}/review")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<CompanyAnalysisResponse> reviewCompanyAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                                       @PathVariable Long id,
                                                                       @PathVariable Long analysisId,
@@ -226,6 +256,7 @@ public class ApplicationCaseController {
     }
 
     @GetMapping("/{id}/analysis")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<AnalysisResponse> getAnalysis(@AuthenticationPrincipal AuthUser authUser,
                                                      @PathVariable Long id) {
         return ApiResponse.ok(applicationCaseService.getAnalysis(authUser.id(), id));

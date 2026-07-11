@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.admin.guideline.dto.AdminGuidelineRequest;
 import com.careertuner.admin.guideline.dto.AdminGuidelineResponse;
 import com.careertuner.admin.guideline.service.AdminGuidelineService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/guidelines")
+@RequireAdminPermission({"CONTENT_READ"})
 @RequiredArgsConstructor
 public class AdminGuidelineController {
 
@@ -47,6 +49,7 @@ public class AdminGuidelineController {
     }
 
     @PostMapping
+    @RequireAdminPermission({"CONTENT_CREATE"})
     public ApiResponse<AdminGuidelineResponse> createGuideline(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminGuidelineRequest request) {
@@ -54,6 +57,7 @@ public class AdminGuidelineController {
     }
 
     @PutMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminGuidelineResponse> updateGuideline(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -62,6 +66,7 @@ public class AdminGuidelineController {
     }
 
     @PostMapping("/{id}/publish")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminGuidelineResponse> publishGuideline(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
@@ -69,6 +74,7 @@ public class AdminGuidelineController {
     }
 
     @DeleteMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_DELETE"})
     public ApiResponse<Void> deleteGuideline(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

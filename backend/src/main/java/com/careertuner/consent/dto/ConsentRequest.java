@@ -4,6 +4,7 @@ public record ConsentRequest(
         boolean termsAgreed,
         boolean privacyAgreed,
         boolean aiDataAgreed,
+        boolean resumeAnalysisAgreed,
         boolean marketingAgreed
 ) {
 }

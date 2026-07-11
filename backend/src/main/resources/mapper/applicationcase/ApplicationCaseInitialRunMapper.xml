@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper">
+
+    <resultMap id="ApplicationCaseInitialRunResultMap"
+               type="com.careertuner.applicationcase.domain.ApplicationCaseInitialRun">
+        <id property="applicationCaseId" column="application_case_id"/>
+        <result property="state" column="state"/>
+        <result property="jobAnalysisProvider" column="job_analysis_provider"/>
+        <result property="companyAnalysisProvider" column="company_analysis_provider"/>
+        <result property="executionToken" column="execution_token"/>
+        <result property="startedAt" column="started_at"/>
+        <result property="finishedAt" column="finished_at"/>
+        <result property="failureReason" column="failure_reason"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <insert id="insertPending">
+        INSERT INTO application_case_initial_run
+            (application_case_id, state, job_analysis_provider, company_analysis_provider)
+        VALUES
+            (#{applicationCaseId}, 'PENDING', #{jobAnalysisProvider}, #{companyAnalysisProvider})
+    </insert>
+
+    <select id="findByApplicationCaseId" resultMap="ApplicationCaseInitialRunResultMap">
+        SELECT *
+        FROM application_case_initial_run
+        WHERE application_case_id = #{applicationCaseId}
+    </select>
+
+    <update id="claimForRun">
+        UPDATE application_case_initial_run
+        SET state = 'RUNNING',
+            execution_token = #{executionToken},
+            started_at = NOW()
+        WHERE application_case_id = #{applicationCaseId}
+          AND state = 'PENDING'
+    </update>
+
+    <update id="closePendingAsFailed">
+        UPDATE application_case_initial_run
+        SET state = 'FAILED',
+            finished_at = NOW(),
+            failure_reason = #{failureReason}
+        WHERE application_case_id = #{applicationCaseId}
+          AND state = 'PENDING'
+    </update>
+
+    <update id="markDone">
+        UPDATE application_case_initial_run
+        SET state = 'DONE',
+            finished_at = NOW()
+        WHERE application_case_id = #{applicationCaseId}
+          AND state = 'RUNNING'
+          AND execution_token = #{executionToken}
+    </update>
+
+    <update id="markFailed">
+        UPDATE application_case_initial_run
+        SET state = 'FAILED',
+            finished_at = NOW(),
+            failure_reason = #{failureReason}
+        WHERE application_case_id = #{applicationCaseId}
+          AND state = 'RUNNING'
+          AND execution_token = #{executionToken}
+    </update>
+
+    <select id="findStaleRunning" resultMap="ApplicationCaseInitialRunResultMap">
+        SELECT *
+        FROM application_case_initial_run
+        WHERE state = 'RUNNING'
+          AND started_at &lt; DATE_SUB(NOW(), INTERVAL #{timeoutMinutes} MINUTE)
+        ORDER BY started_at ASC, application_case_id ASC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

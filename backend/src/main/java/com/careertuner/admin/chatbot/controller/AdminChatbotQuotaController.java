@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot/quota-policy")
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminChatbotQuotaController {
 
@@ -36,6 +38,7 @@ public class AdminChatbotQuotaController {
     }
 
     @PatchMapping
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<ChatbotQuotaPolicy> update(@AuthenticationPrincipal AuthUser authUser,
                                                   @RequestBody ChatbotQuotaPolicyRequest request) {
         AdminAccess.requireAdmin(authUser);

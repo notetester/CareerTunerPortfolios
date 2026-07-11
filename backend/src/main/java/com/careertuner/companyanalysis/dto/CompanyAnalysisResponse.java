@@ -23,6 +23,12 @@ public record CompanyAnalysisResponse(
         LocalDateTime refreshRecommendedAt,
         LocalDateTime confirmedAt,
         String adminMemo,
+        String requestedProvider,
+        String actualProvider,
+        String actualModel,
+        Boolean fallbackUsed,
+        String attemptPath,
+        String runMode,
         LocalDateTime createdAt
 ) {
     /**
@@ -53,6 +59,12 @@ public record CompanyAnalysisResponse(
                 analysis.getRefreshRecommendedAt(),
                 analysis.getConfirmedAt(),
                 analysis.getAdminMemo(),
+                analysis.getRequestedProvider(),
+                analysis.getActualProvider(),
+                analysis.getActualModel(),
+                analysis.getFallbackUsed(),
+                analysis.getAttemptPath(),
+                analysis.getRunMode(),
                 analysis.getCreatedAt());
     }
 }

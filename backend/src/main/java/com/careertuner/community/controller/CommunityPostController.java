@@ -53,10 +53,20 @@ public class CommunityPostController {
             @RequestParam(defaultValue = "latest") String sort,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+            // 챗봇 추천 모아보기: "12,45,78" — 있으면 다른 필터 무시하고 그 글들만(입력 순서 보존, 최대 20건).
+            @RequestParam(required = false) String ids,
             @AuthenticationPrincipal AuthUser authUser
     ) {
         // 로그인 뷰어만 개인 차단 필터 대상 — 비로그인은 필터 없음
         Long viewerId = authUser != null ? authUser.id() : null;
+        if (ids != null && !ids.isBlank()) {
+            List<Long> idList = java.util.Arrays.stream(ids.split(","))
+                    .map(String::trim)
+                    .filter(s -> s.matches("\\d+"))
+                    .map(Long::valueOf)
+                    .toList();
+            return ApiResponse.ok(postService.getPostsByIds(idList, viewerId));
+        }
         return ApiResponse.ok(postService.getPosts(category, keyword, sort, page, size, viewerId));
     }
 

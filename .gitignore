@@ -51,6 +51,7 @@ frontend/ios/
 !.env.tailscale
 !.env.aws
 !.env.domain
+!.env.sites
 *.local
 backend/src/main/resources/application.yaml
 

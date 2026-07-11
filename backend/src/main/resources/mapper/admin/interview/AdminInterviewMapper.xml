@@ -35,7 +35,7 @@
 
     <select id="findSessions" resultType="com.careertuner.admin.interview.dto.AdminInterviewSessionRow">
         <include refid="SessionSelect"/>
-        WHERE 1 = 1
+        WHERE s.deleted_at IS NULL
         <if test="keyword != null">
             AND (
                 ac.company_name LIKE CONCAT('%', #{keyword}, '%')
@@ -46,8 +46,15 @@
         <if test="mode != null">
             AND s.mode = #{mode}
         </if>
-        <if test="hasReport != null and hasReport">
-            AND s.report IS NOT NULL AND s.report &lt;&gt; ''
+        <if test="hasReport != null">
+            <choose>
+                <when test="hasReport">
+                    AND s.report IS NOT NULL AND s.report &lt;&gt; ''
+                </when>
+                <otherwise>
+                    AND (s.report IS NULL OR s.report = '')
+                </otherwise>
+            </choose>
         </if>
         ORDER BY s.created_at DESC, s.id DESC
         LIMIT #{size} OFFSET #{offset}
@@ -58,7 +65,7 @@
         FROM interview_session s
         JOIN application_case ac ON ac.id = s.application_case_id
         JOIN users u ON u.id = ac.user_id
-        WHERE 1 = 1
+        WHERE s.deleted_at IS NULL
         <if test="keyword != null">
             AND (
                 ac.company_name LIKE CONCAT('%', #{keyword}, '%')
@@ -69,28 +76,41 @@
         <if test="mode != null">
             AND s.mode = #{mode}
         </if>
-        <if test="hasReport != null and hasReport">
-            AND s.report IS NOT NULL AND s.report &lt;&gt; ''
+        <if test="hasReport != null">
+            <choose>
+                <when test="hasReport">
+                    AND s.report IS NOT NULL AND s.report &lt;&gt; ''
+                </when>
+                <otherwise>
+                    AND (s.report IS NULL OR s.report = '')
+                </otherwise>
+            </choose>
         </if>
     </select>
 
     <select id="findSummary" resultType="com.careertuner.admin.interview.dto.AdminInterviewSummary">
         SELECT
-            (SELECT COUNT(*) FROM interview_session) AS total_sessions,
-            (SELECT ROUND(AVG(total_score)) FROM interview_session WHERE total_score IS NOT NULL) AS avg_score,
+            (SELECT COUNT(*) FROM interview_session WHERE deleted_at IS NULL) AS total_sessions,
+            (SELECT ROUND(AVG(total_score)) FROM interview_session
+             WHERE total_score IS NOT NULL AND deleted_at IS NULL) AS avg_score,
             (SELECT COUNT(*) FROM ai_usage_log WHERE status = 'FAILED' AND feature_type LIKE 'INTERVIEW%') AS ai_failures,
-            (SELECT COUNT(*) FROM interview_media_analysis) AS media_count
+            (SELECT COUNT(*)
+             FROM interview_media_analysis media
+             JOIN interview_session active_session ON active_session.id = media.interview_session_id
+             WHERE active_session.deleted_at IS NULL) AS media_count
     </select>
 
     <select id="findSession" resultType="com.careertuner.admin.interview.dto.AdminInterviewSessionRow">
         <include refid="SessionSelect"/>
         WHERE s.id = #{id}
+          AND s.deleted_at IS NULL
     </select>
 
     <select id="findReport" resultType="java.lang.String">
         SELECT report
         FROM interview_session
         WHERE id = #{id}
+          AND deleted_at IS NULL
     </select>
 
     <select id="findAiFailures" resultType="com.careertuner.admin.interview.dto.AdminInterviewAiFailureRow">
@@ -114,12 +134,24 @@
     </select>
 
     <select id="findAdminMemo" resultType="java.lang.String">
-        SELECT admin_memo FROM interview_session WHERE id = #{id}
+        SELECT admin_memo
+        FROM interview_session
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </select>
+
+    <select id="findAdminMemoForUpdate" resultType="java.lang.String">
+        SELECT admin_memo
+        FROM interview_session
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+        FOR UPDATE
     </select>
 
     <update id="updateAdminMemo">
         UPDATE interview_session
         SET admin_memo = #{adminMemo}
         WHERE id = #{id}
+          AND deleted_at IS NULL
     </update>
 </mapper>

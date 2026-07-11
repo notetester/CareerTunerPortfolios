@@ -13,12 +13,15 @@ import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
 import com.careertuner.analysis.service.AnalysisService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 
 import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/analysis")
 @RequiredArgsConstructor
+@RequiresConsent(ConsentType.AI_DATA)
 public class AnalysisController {
 
     private final AnalysisService analysisService;

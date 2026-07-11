@@ -16,17 +16,17 @@ const DOC_LABELS: Record<LegalDocType, string> = {
   privacy: "개인정보처리방침",
   marketing: "마케팅 수신 동의",
   "ai-data-consent": "AI 데이터 이용 동의",
+  "resume-analysis-consent": "이력서 분석 개인정보 수집·이용 동의",
   copyright: "저작권 정책",
 };
 
-/** `/legal/<docType>` 라우트가 실제로 존재하는 docType만 — app/routes.ts 와 동기화.
- *  routes.ts(팀장 소유)에는 legal/terms·legal/privacy·legal/ai-data-consent·legal/copyright 가 있고
- *  legal/marketing 라우트는 없다. marketing 카드를 누르면 매칭 라우트가 없어 빈 화면으로 떨어지므로,
- *  라우트가 생기기 전까지 '관련 문서' 카드에서 제외해 죽은 링크를 만들지 않는다. */
+/** `/legal/<docType>` 라우트가 실제로 존재하는 docType만 — app/routes.ts 와 동기화. */
 const ROUTED_DOC_TYPES: ReadonlySet<LegalDocType> = new Set<LegalDocType>([
   "terms",
   "privacy",
+  "marketing",
   "ai-data-consent",
+  "resume-analysis-consent",
   "copyright",
 ]);
 
@@ -178,7 +178,7 @@ export default function LegalDocPage() {
   }, [sections]);
 
   const title = doc?.title ?? (docType ? DOC_LABELS[docType] : "약관 및 정책");
-  // 라우트가 존재하는 docType만 관련 문서 카드로 노출(라우트 없는 marketing 등은 죽은 링크 방지로 제외).
+  // 라우트가 존재하는 docType만 관련 문서 카드로 노출해 죽은 링크를 만들지 않는다.
   const otherDocs = LEGAL_DOC_TYPES.filter((k) => k !== docType && ROUTED_DOC_TYPES.has(k));
 
   return (

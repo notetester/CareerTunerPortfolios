@@ -1,6 +1,6 @@
 import { api } from "@/app/lib/api";
 import { runWithAiCharge } from "@/features/billing/api/aiChargePreviewApi";
-import type { CareerCertificateStrategy, FitAnalysisDetail, FitAnalysisHistoryEntry, FitAnalysisLearningTask } from "../types/fitAnalysis";
+import type { CareerCertificateStrategy, CareerRoadmap, FitAnalysisDetail, FitAnalysisHistoryEntry, FitAnalysisLearningTask } from "../types/fitAnalysis";
 
 export function getFitAnalyses() {
   return api<FitAnalysisDetail[]>("/fit-analyses");
@@ -13,6 +13,11 @@ export function getFitAnalysisByApplicationCase(applicationCaseId: number) {
 /** 장기 커리어 자격증 전략(희망직무 기준) — 현재 지원 건 전략과 분리된 사용자 단위 조회. 외부 API 미호출(결정론). */
 export function getCareerCertificateStrategy() {
   return api<CareerCertificateStrategy>("/fit-analyses/career-certificate-strategy");
+}
+
+/** 장기 커리어 로드맵(결정론) — 확인된 실일정(자격증 회차·지원 마감) + 월 단위 학습 계획 블록. 근거 수집 포함이라 수 초 걸릴 수 있다. */
+export function getCareerRoadmap(months: number) {
+  return api<CareerRoadmap>(`/fit-analyses/career-roadmap?months=${months}`);
 }
 
 /** 재분석 히스토리(최신순). 직전 분석 대비 점수·역량 변화를 포함한다. */

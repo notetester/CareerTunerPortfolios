@@ -9,6 +9,7 @@ import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.community.moderation.domain.AiTaskType;
 import com.careertuner.community.moderation.domain.ModerationView;
+import com.careertuner.community.moderation.domain.ModerationReviewQueueView;
 import com.careertuner.community.moderation.domain.PostAiResult;
 
 @Mapper
@@ -51,6 +52,19 @@ public interface PostAiResultMapper {
                             @Param("toxic") Boolean toxic);
 
     ModerationView findModerationDetail(@Param("postId") Long postId);
+
+    List<ModerationReviewQueueView> findReviewQueue(@Param("hideThreshold") double hideThreshold,
+                                                    @Param("offset") int offset,
+                                                    @Param("limit") int limit);
+
+    int countReviewQueue(@Param("hideThreshold") double hideThreshold);
+
+    int recordReviewAction(@Param("postId") Long postId,
+                           @Param("action") String action,
+                           @Param("reviewerId") Long reviewerId,
+                           @Param("hideThreshold") double hideThreshold);
+
+    String findReviewAction(@Param("postId") Long postId);
 
     List<Map<String, Object>> countByAiCategory();
 }

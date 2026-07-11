@@ -15,7 +15,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.careertuner.admin.aiusage.mapper.AdminAiUsageMapper;
+import com.careertuner.admin.applicationcase.dto.AdminApplicationCaseRow;
 import com.careertuner.admin.applicationcase.dto.AdminApplicationCaseSearchCriteria;
+import com.careertuner.admin.applicationcase.dto.AdminStatusUpdateRequest;
 import com.careertuner.admin.applicationcase.mapper.AdminApplicationCaseMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.common.exception.BusinessException;
@@ -138,6 +140,31 @@ class AdminApplicationCaseServiceTest {
                         .isEqualTo(ErrorCode.INVALID_INPUT));
 
         verify(mapper, never()).findApplicationCases(any());
+    }
+
+    @Test
+    void updateStatusDoesNotRecordSameStatusAsTransition() {
+        AdminApplicationCaseMapper mapper = mock(AdminApplicationCaseMapper.class);
+        ApplicationCaseMapper historyMapper = mock(ApplicationCaseMapper.class);
+        AdminApplicationCaseService service = new AdminApplicationCaseService(
+                mapper,
+                historyMapper,
+                mock(JobPostingMapper.class),
+                mock(JobAnalysisMapper.class),
+                mock(CompanyAnalysisMapper.class),
+                mock(AdminAiUsageMapper.class),
+                mock(com.careertuner.companyanalysis.service.BCompanyAnalysisCanonicalizer.class));
+        AdminApplicationCaseRow existing = new AdminApplicationCaseRow();
+        existing.setId(10L);
+        existing.setStatus("READY");
+        when(mapper.findApplicationCase(10L)).thenReturn(existing);
+
+        AdminApplicationCaseRow result = service.updateStatus(
+                admin(), 10L, new AdminStatusUpdateRequest("ready", "상태 유지 메모"));
+
+        assertThat(result.getStatus()).isEqualTo("READY");
+        verify(mapper, never()).updateStatus(any(), any());
+        verify(historyMapper, never()).insertStatusHistory(any(), any(), any(), any(), any());
     }
 
     private static AdminApplicationCaseService service(AdminApplicationCaseMapper mapper) {

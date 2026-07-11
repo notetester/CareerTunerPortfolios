@@ -26,6 +26,9 @@ import org.junit.jupiter.api.Test;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.careertuner.applicationcase.service.AiUsage;
@@ -782,6 +785,237 @@ class JobPostingTextExtractorTest {
         extractor.extractUrl("http://jobs.example.com?job=123");
 
         assertThat(requestTarget.get()).isEqualTo("/?job=123");
+    }
+
+    @Test
+    void selectedOpenAiRunsAsPrimaryEvenWhenFallbackPolicyDisabled() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.extractImageText(any(), any()))
+                .thenReturn(new OcrPayload("OpenAI primary posting", "openai", "gpt-4o", null));
+
+        // 폴백 정책 OFF(자동 체인이라면 OpenAI 를 건너뜀) + 워커 비활성 + Claude 미주입 → 자동 체인만으로는 실패한다.
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+
+        // 사용자가 OPENAI 를 명시 선택 → 관리자 자동폴백 정책을 우회해 primary 로 실행된다.
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(imageFile(), "OPENAI");
+
+        assertThat(result.extractedText()).isEqualTo("OpenAI primary posting");
+        assertThat(result.ocrProvider()).isEqualTo("openai");
+        verify(openAiClient).extractImageText(any(), any());
+    }
+
+    @Test
+    void selectedSelfOcrRunsWorkerBeforeDefaultClaude() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        AtomicInteger workerRequests = new AtomicInteger();
+        server.createContext("/extract/job-posting", exchange -> {
+            workerRequests.incrementAndGet();
+            sendJson(exchange, "{\"text\":\"worker OCR posting\"}");
+        });
+        server.start();
+
+        try {
+            JobPostingAiWorkerProperties workerProperties = new JobPostingAiWorkerProperties();
+            workerProperties.setEnabled(true);
+            workerProperties.setBaseUrl("http://127.0.0.1:%d".formatted(server.getAddress().getPort()));
+            workerProperties.setTimeout(Duration.ofSeconds(5));
+
+            JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                    mock(OpenAiResponsesClient.class),
+                    new JobPostingAiWorkerClient(workerProperties, new ObjectMapper()),
+                    JobPostingFallbackPolicy.fromProperties(null),
+                    InetAddress::getAllByName,
+                    target -> {
+                        throw new AssertionError("File extraction should not fetch URLs");
+                    });
+            // Claude 는 configured 이고 텍스트를 주지만, SELF_OCR 선택이 primary 라 워커가 먼저 실행되고 Claude 는 호출되지 않는다.
+            BAnthropicClient anthropic = mock(BAnthropicClient.class);
+            when(anthropic.configured()).thenReturn(true);
+            when(anthropic.extractImageText(any(), any()))
+                    .thenReturn(new OcrPayload("Claude should not run", "claude", "claude-haiku-4-5", null));
+            ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+            JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(imageFile(), "SELF_OCR");
+
+            assertThat(result.extractedText()).isEqualTo("worker OCR posting");
+            assertThat(workerRequests).hasValue(1);
+            verify(anthropic, never()).extractImageText(any(), any());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void selectedPrimaryFallsThroughToDefaultChainOnFailure() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.extractImageText(any(), any())).thenThrow(new RuntimeException("openai down"));
+
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+        // 기본 체인의 Claude 가 성공 — primary(OPENAI) 예외를 삼키고 폴백해야 한다(선택 우선 후 체인).
+        BAnthropicClient anthropic = mock(BAnthropicClient.class);
+        when(anthropic.configured()).thenReturn(true);
+        when(anthropic.extractImageText(any(), any()))
+                .thenReturn(new OcrPayload("Claude fallback posting", "claude", "claude-haiku-4-5", null));
+        ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFile(imageFile(), "OPENAI");
+
+        assertThat(result.extractedText()).isEqualTo("Claude fallback posting");
+        verify(openAiClient).extractImageText(any(), any()); // primary 시도(정책 우회)
+        verify(anthropic).extractImageText(any(), any());     // 기본 체인 폴백
+    }
+
+    @Test
+    void strictExtractionRunsOnlySelectedProviderWithoutTouchingOthers() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.extractImageText(any(), any()))
+                .thenReturn(new OcrPayload("OpenAI strict posting", "openai", "gpt-4o", null));
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+        // Claude 도 configured 이지만 strict 는 선택 provider(OPENAI)만 호출 → Claude 는 쓰이지 않는다.
+        BAnthropicClient anthropic = mock(BAnthropicClient.class);
+        when(anthropic.configured()).thenReturn(true);
+        ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFileStrict(imageFile(), "OPENAI");
+
+        assertThat(result.extractedText()).isEqualTo("OpenAI strict posting");
+        assertThat(result.ocrProvider()).isEqualTo("openai");
+        verify(anthropic, never()).extractImageText(any(), any());
+    }
+
+    @Test
+    void strictExtractionFailsWithoutCrossProviderFallback() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        when(openAiClient.extractImageText(any(), any())).thenThrow(new RuntimeException("openai down"));
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+        // Claude 가 텍스트를 줄 수 있어도 strict OPENAI 실패는 다른 provider 로 폴백하지 않는다(수동 재추출 정책).
+        BAnthropicClient anthropic = mock(BAnthropicClient.class);
+        when(anthropic.configured()).thenReturn(true);
+        when(anthropic.extractImageText(any(), any()))
+                .thenReturn(new OcrPayload("Claude should not be used", "claude", "claude-haiku-4-5", null));
+        ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFileStrict(imageFile(), "OPENAI");
+
+        assertThat(result.extractedText()).isEmpty();
+        assertThat(result.qualityStatus()).isEqualTo("FAILED");
+        assertThat(result.fallbackReason()).contains("OPENAI");
+        verify(anthropic, never()).extractImageText(any(), any());
+    }
+
+    @Test
+    void strictExtractionWithUnavailableSelectedProviderFailsWithoutUsingOthers() {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+        // CLAUDE 선택했지만 미설정 → strict 는 OpenAI 로 넘어가지 않고 FAILED.
+        BAnthropicClient anthropic = mock(BAnthropicClient.class);
+        when(anthropic.configured()).thenReturn(false);
+        ReflectionTestUtils.setField(extractor, "anthropicClient", anthropic);
+
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFileStrict(imageFile(), "CLAUDE");
+
+        assertThat(result.qualityStatus()).isEqualTo("FAILED");
+        verify(openAiClient, never()).extractImageText(any(), any());
+    }
+
+    @Test
+    void strictExtractionRequiresProvider() {
+        JobPostingTextExtractor extractor = extractor();
+
+        Throwable thrown = catchThrowable(() -> extractor.extractFileStrict(imageFile(), null));
+
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
+    }
+
+    @Test
+    void strictExtractionUsesPdfBoxForTextPdfWithoutCallingSelectedProvider() throws IOException {
+        OpenAiResponsesClient openAiClient = mock(OpenAiResponsesClient.class);
+        JobPostingTextExtractor extractor = new JobPostingTextExtractor(
+                openAiClient,
+                JobPostingAiWorkerClient.disabled(),
+                JobPostingFallbackPolicy.fromProperties(null),
+                InetAddress::getAllByName,
+                target -> {
+                    throw new AssertionError("File extraction should not fetch URLs");
+                });
+
+        // 텍스트 PDF 는 PDFBox 우선 — strict 로 OPENAI 를 골라도 OCR provider 는 호출되지 않는다.
+        JobPostingTextExtractor.ExtractedPosting result = extractor.extractFileStrict(new StoredJobPostingFile(
+                "PDF",
+                "local:application-postings/10/posting.pdf",
+                "posting.pdf",
+                "application/pdf",
+                java.nio.file.Path.of("posting.pdf"),
+                pdfWithText("Backend Engineer at Acme")), "OPENAI");
+
+        assertThat(result.extractedText()).contains("Backend Engineer at Acme");
+        assertThat(result.ocrProvider()).isEqualTo("pdfbox");
+        verify(openAiClient, never()).extractPdfText(any(), any());
+        verify(openAiClient, never()).extractImageText(any(), any());
+    }
+
+    private static StoredJobPostingFile imageFile() {
+        return new StoredJobPostingFile(
+                "IMAGE",
+                "local:application-postings/10/posting.png",
+                "posting.png",
+                "image/png",
+                java.nio.file.Path.of("posting.png"),
+                new byte[]{1, 2, 3});
+    }
+
+    /** 텍스트가 들어있는 1페이지 PDF — strict 텍스트 PDF 우선(PDFBox) 검증용. */
+    private static byte[] pdfWithText(String text) throws IOException {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+                content.beginText();
+                content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+                content.newLineAtOffset(72, 700);
+                content.showText(text);
+                content.endText();
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            document.save(out);
+            return out.toByteArray();
+        }
     }
 
     private static JobPostingTextExtractor extractor() {

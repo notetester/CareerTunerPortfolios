@@ -9,15 +9,17 @@
                JSON_LENGTH(messages_json) AS messageCount,
                updated_at      AS updatedAt
           FROM chatbot_conversation_memory
-        <where>
-            <if test="userId != null">AND user_id = #{userId}</if>
-        </where>
+         WHERE deleted_at IS NULL
+        <if test="userId != null">AND user_id = #{userId}</if>
          ORDER BY updated_at DESC
          LIMIT #{limit}
     </select>
 
-    <delete id="deleteConversation">
-        DELETE FROM chatbot_conversation_memory WHERE conversation_id = #{conversationId}
-    </delete>
+    <update id="deleteConversation">
+        UPDATE chatbot_conversation_memory
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
+    </update>
 
 </mapper>

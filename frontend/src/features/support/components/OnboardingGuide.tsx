@@ -85,7 +85,7 @@ function StepDots({ step, dots = STEP_DOTS }: { step: GuideStep; dots?: GuideSte
 
 /* ════════════════ 첨부 칩 ════════════════ */
 function FileChip({ name, uploading, error, onRemove }: {
-  name: string; uploading: boolean; error?: boolean; onRemove: () => void;
+  name: string; uploading: boolean; error?: boolean; onRemove?: () => void;
 }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11.5px] max-w-full"
@@ -98,9 +98,11 @@ function FileChip({ name, uploading, error, onRemove }: {
         : error ? <X size={12} className="shrink-0" />
         : <Check size={12} className="shrink-0" style={{ color: "var(--orch-violet)" }} />}
       <span className="truncate">{name}</span>
-      <button onClick={onRemove} aria-label="첨부 제거" className="text-muted-foreground hover:text-foreground shrink-0">
-        <X size={12} />
-      </button>
+      {onRemove && (
+        <button onClick={onRemove} aria-label="첨부 제거" className="text-muted-foreground hover:text-foreground shrink-0">
+          <X size={12} />
+        </button>
+      )}
     </span>
   );
 }
@@ -197,7 +199,19 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
    */
   const submitServer = async (step: "role" | "skills" | "jd", text: string) => {
     if (!server) return;
-    const meta = { coverLetterFileIds: g.collect().coverLetterFileIds };
+    const collected = g.collect();
+    const meta = { coverLetterFileIds: collected.coverLetterFileIds };
+    if (step === "jd") {
+      try {
+        await Promise.all([
+          g.syncPortfolioFiles(collected.portfolioFileIds),
+          g.syncPortfolioLinks(collected.links),
+        ]);
+      } catch (e) {
+        setSubmitError(e instanceof Error ? e.message : "포트폴리오를 프로필에 연결하지 못했어요.");
+        return;
+      }
+    }
     // ensureCase 우선순위(파일>텍스트>URL)와 정합: 텍스트가 있으면 기존 텍스트 프로토콜이 처리하므로
     // 파일 또는 (텍스트 없이) URL 만 있을 때 케이스 선생성 경로를 탄다.
     const viaCase = step === "jd" && (g.jd.file || (!text && g.jd.url.trim()));
@@ -207,6 +221,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
       try {
         const caseId = await g.ensureCase();
         if (caseId != null) {
+          g.markDocsHandedOff();
           const label = g.jd.file ? `공고 파일(${g.jd.file.name})을 올렸어요` : "공고 링크로 올렸어요";
           server.onSubmit("jd", label, { ...meta, caseId });
           return;
@@ -218,6 +233,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
         setSubmitting(false);
       }
     }
+    if (step === "jd") g.markDocsHandedOff();
     server.onSubmit(step, text, meta);
   };
 
@@ -230,12 +246,18 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const collected = g.collect();
+      await Promise.all([
+        g.syncPortfolioFiles(collected.portfolioFileIds),
+        g.syncPortfolioLinks(collected.links),
+      ]);
       const caseId = await g.ensureCase();
       if (caseId == null) {
         setSubmitError("공고 파일이나 내용을 넣어야 지원 건을 만들 수 있어요.");
         return;
       }
-      onSlotFilled({ caseId, coverLetterFileIds: g.collect().coverLetterFileIds });
+      g.markDocsHandedOff();
+      onSlotFilled({ caseId, coverLetterFileIds: collected.coverLetterFileIds });
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "지원 건 생성에 실패했어요. 잠시 후 다시 시도해 주세요.");
     } finally {
@@ -309,7 +331,7 @@ export function OnboardingGuide({ onClose, onGotoInterview, onNavigate, wide, on
                 )}
                 {g.step === "analyzing" && (
                   g.runParts.length === 0 ? (
-                    <AnalyzingStep />
+                    <AnalyzingStep g={g} />
                   ) : (
                     <AutoPrepWorkView
                       running={g.runRunning}
@@ -611,9 +633,20 @@ function DocRow({ slot, g, inputRef }: { slot: DocSlot; g: G; inputRef: React.Re
       </div>
       {mine.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {mine.map((d, i) => (
-            <FileChip key={i} name={d.file.name} uploading={d.uploading} error={d.error}
-              onRemove={() => g.removeDoc(d)} />
+          {mine.map((d) => (
+            <span key={d.clientId} className="max-w-full">
+              <FileChip
+                name={d.file.name}
+                uploading={d.uploading || !!d.deleting}
+                error={d.error || !!d.deleteError}
+                onRemove={d.uploading || d.deleting ? undefined : () => void g.removeDoc(d)}
+              />
+              {d.deleteError && (
+                <span className="mt-1 block max-w-64 text-[10.5px] leading-snug text-red-600">
+                  {d.deleteError}
+                </span>
+              )}
+            </span>
           ))}
         </div>
       )}
@@ -736,7 +769,25 @@ function JdStep({ g, jdRef, bubble, serverMode }: {
 }
 
 /* ── (목) 적합도 계산 중 ── */
-function AnalyzingStep() {
+function AnalyzingStep({ g }: { g: G }) {
+  // 공고 추출 실패로 분석이 차단된 경우(ensureCase 가 OnboardingPostingExtractionFailedError 로 조기 종료):
+  // 스피너 대신 사유와 상세 이동만 노출한다. 무인자 자동 재추출은 하지 않으므로 '다시 분석하기'는 없다.
+  if (g.extractionFailedCaseId != null) {
+    return (
+      <>
+        <GuideBubble text={COPY.fitEmpty} />
+        <div className="rounded-xl border border-border px-4 py-3 flex flex-col gap-2.5">
+          <div className="text-[12px] leading-[1.55] text-muted-foreground">
+            {g.runError ?? "공고문 추출에 실패했어요. 지원 건 상세에서 OCR 모델을 골라 다시 추출한 뒤 이어가 주세요."}
+          </div>
+          <a href={`/applications/${g.extractionFailedCaseId}/overview`}
+            className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full border border-border px-3 text-[11.5px] font-bold text-muted-foreground transition-colors hover:bg-muted">
+            지원 건 상세로 이동
+          </a>
+        </div>
+      </>
+    );
+  }
   return (
     <div className="flex flex-col items-center justify-center text-center py-10">
       <Loader2 size={32} className="animate-spin mb-4" style={{ color: "var(--orch-violet)" }} />
@@ -767,12 +818,24 @@ function FitStep({ g }: { g: G }) {
         <GuideBubble text={COPY.fitEmpty} />
         <div className="rounded-xl border border-border px-4 py-3 flex flex-col gap-2.5">
           <div className="text-[12px] leading-[1.55] text-muted-foreground">{g.runError}</div>
-          <button type="button" onClick={() => void g.runReal()}
-            className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold text-white transition-transform hover:brightness-110"
-            style={{ background: "var(--gradient-orchestrator)" }}>
-            <RotateCcw size={13} />
-            다시 분석하기
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 공고 추출 실패로 분석이 차단된 경우 '다시 분석하기'는 같은 실패만 반복하므로 숨기고,
+                상세에서 OCR 모델을 골라 재추출하도록 이동 경로만 남긴다. */}
+            {g.extractionFailedCaseId == null && (
+              <button type="button" onClick={() => void g.runReal()}
+                className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 text-[11.5px] font-bold text-white transition-transform hover:brightness-110"
+                style={{ background: "var(--gradient-orchestrator)" }}>
+                <RotateCcw size={13} />
+                다시 분석하기
+              </button>
+            )}
+            {g.extractionFailedCaseId != null && (
+              <a href={`/applications/${g.extractionFailedCaseId}/overview`}
+                className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-full border border-border px-3 text-[11.5px] font-bold text-muted-foreground transition-colors hover:bg-muted">
+                지원 건 상세로 이동
+              </a>
+            )}
+          </div>
         </div>
       </>
     );
@@ -1036,8 +1099,17 @@ function GuideFooter({ g, onClose, order, intakeMode, serverMode, serverSubmitti
     <div className="px-4 py-3 border-t border-border flex flex-col gap-2">
       {/* intake/온보딩 제출 오류 — 지어내지 않고 이유를 그대로. */}
       {submitError && (
-        <div className="text-[11px] leading-[1.5]" style={{ color: "var(--destructive)" }}>
-          {submitError}
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[11px] leading-[1.5]" style={{ color: "var(--destructive)" }}>
+            {submitError}
+          </div>
+          {/* 실패한 기존 지원 건을 이어 쓰는 경우 — 상세에서 OCR 모델을 골라 재추출하도록 이동 경로 제공. */}
+          {g.extractionFailedCaseId != null && (
+            <a href={`/applications/${g.extractionFailedCaseId}/overview`}
+              className="inline-flex w-fit items-center gap-1 text-[11px] font-semibold text-muted-foreground underline underline-offset-2 hover:text-foreground">
+              지원 건 상세로 이동
+            </a>
+          )}
         </div>
       )}
       <div className="flex items-center gap-2">

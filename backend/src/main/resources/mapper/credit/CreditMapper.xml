@@ -14,6 +14,7 @@
                created_at
           FROM ai_usage_log
          WHERE id = #{aiUsageLogId}
+         FOR UPDATE
     </select>
 
     <!-- 같은 AI 사용량 로그가 이미 AI_USAGE 차감으로 반영됐는지 확인한다. -->

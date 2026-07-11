@@ -13,6 +13,7 @@ careertuner:
   app:
     # 도메인 확정 전 플레이스홀더 — 예: https://careertuner.kr / https://api.careertuner.kr
     frontend-url: ${APP_FRONTEND_URL:https://careertuner.kr}
+    sites-frontend-url: ${APP_SITES_FRONTEND_URL:}
     api-base-url: ${APP_API_BASE_URL:https://api.careertuner.kr}
   oauth:
     mock-enabled: ${OAUTH_MOCK_ENABLED:false}

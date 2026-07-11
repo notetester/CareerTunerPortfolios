@@ -19,6 +19,7 @@ import com.careertuner.admin.legal.dto.PublishLegalRequest;
 import com.careertuner.admin.legal.dto.PublishLegalResponse;
 import com.careertuner.admin.legal.dto.SaveLegalDraftRequest;
 import com.careertuner.admin.legal.service.AdminLegalService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -30,6 +31,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/legal")
+@RequireAdminPermission({"POLICY_READ"})
 @RequiredArgsConstructor
 public class AdminLegalController {
 
@@ -50,6 +52,7 @@ public class AdminLegalController {
     }
 
     @PostMapping("/{docType}/versions")
+    @RequireAdminPermission({"POLICY_CREATE"})
     public ApiResponse<AdminLegalVersionDetail> createDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable String docType,
@@ -58,6 +61,7 @@ public class AdminLegalController {
     }
 
     @PutMapping("/versions/{id}")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<AdminLegalVersionDetail> saveDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -66,6 +70,7 @@ public class AdminLegalController {
     }
 
     @PostMapping("/versions/{id}/publish")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<PublishLegalResponse> publish(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -74,6 +79,7 @@ public class AdminLegalController {
     }
 
     @DeleteMapping("/versions/{id}")
+    @RequireAdminPermission({"POLICY_DELETE"})
     public ApiResponse<Void> deleteVersion(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

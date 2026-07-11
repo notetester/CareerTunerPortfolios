@@ -97,7 +97,17 @@
     </select>
 
     <select id="findUserIdByEmail" resultType="long">
-        SELECT id FROM users WHERE email = #{email}
+        SELECT id
+        FROM users
+        WHERE email = #{email}
+          AND role IN ('ADMIN', 'SUPER_ADMIN')
+    </select>
+
+    <select id="findUserRoleForUpdate" resultType="string">
+        SELECT role
+        FROM users
+        WHERE id = #{userId}
+        FOR UPDATE
     </select>
 
     <select id="findCandidates" resultType="com.careertuner.admin.staffgrade.dto.AdminStaffCandidate">

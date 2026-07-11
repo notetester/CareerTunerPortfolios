@@ -30,7 +30,10 @@ public interface ApplicationCaseService {
     ApplicationCaseFromJobPostingResponse createFromJobPostingUpload(Long userId,
                                                                      MultipartFile file,
                                                                      String sourceType,
-                                                                     Boolean favorite);
+                                                                     Boolean favorite,
+                                                                     String jobAnalysisProvider,
+                                                                     String companyAnalysisProvider,
+                                                                     String ocrProvider);
 
     List<ApplicationCaseResponse> list(Long userId, String view, boolean includeArchived);
 
@@ -58,7 +61,7 @@ public interface ApplicationCaseService {
 
     List<ApplicationCaseExtractionResponse> getLatestJobPostingExtractions(Long userId, List<Long> applicationCaseIds);
 
-    ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId);
+    ApplicationCaseExtractionResponse retryJobPostingExtraction(Long userId, Long applicationCaseId, String ocrProvider);
 
     ApplicationCaseExtractionResponse reviewJobPostingExtraction(Long userId,
                                                                  Long applicationCaseId,
@@ -70,6 +73,9 @@ public interface ApplicationCaseService {
 
     JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId);
 
+    /** strict 수동 재분석 — provider 필수(누락·무효 400). 자동 체인은 이 경로로 오지 않는다. */
+    JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId, String provider);
+
     JobAnalysisResponse getJobAnalysis(Long userId, Long applicationCaseId);
 
     List<JobAnalysisResponse> getJobAnalysisHistory(Long userId, Long applicationCaseId);
@@ -77,6 +83,9 @@ public interface ApplicationCaseService {
     JobAnalysisResponse reviewJobAnalysis(Long userId, Long applicationCaseId, Long analysisId, JobAnalysisReviewRequest request);
 
     CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId);
+
+    /** strict 수동 재분석 — provider 필수(누락·무효 400). 자동 체인은 이 경로로 오지 않는다. */
+    CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId, String provider);
 
     CompanyAnalysisResponse getCompanyAnalysis(Long userId, Long applicationCaseId);
 

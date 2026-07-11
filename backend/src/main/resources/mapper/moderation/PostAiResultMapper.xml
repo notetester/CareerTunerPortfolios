@@ -9,6 +9,7 @@
         VALUES (#{postId}, #{taskType}, 'PENDING', 1)
         ON DUPLICATE KEY UPDATE
             status = 'PENDING', result_json = NULL, error_message = NULL,
+            review_action = NULL, reviewed_by = NULL, reviewed_at = NULL,
             completed_at = NULL, created_at = CURRENT_TIMESTAMP,
             attempt_count = attempt_count + 1
     </insert>
@@ -40,7 +41,8 @@
     <!-- 단건 조회 -->
     <select id="findByPostIdAndTaskType" resultType="com.careertuner.community.moderation.domain.PostAiResult">
         SELECT id, post_id, task_type, status, result_json, model,
-               error_message, attempt_count, created_at, completed_at
+               error_message, attempt_count, review_action, reviewed_by, reviewed_at,
+               created_at, completed_at
           FROM post_ai_result
          WHERE post_id = #{postId} AND task_type = #{taskType}
     </select>
@@ -121,6 +123,72 @@
           LEFT JOIN users u ON cp.user_id = u.id
          WHERE ar.task_type = 'MODERATION'
            AND ar.post_id = #{postId}
+    </select>
+
+    <!-- 자동 숨김 임계 미만의 toxic 결과 중 아직 사람이 결정하지 않은 게시 중 글 -->
+    <select id="findReviewQueue" resultType="com.careertuner.community.moderation.domain.ModerationReviewQueueView">
+        SELECT cp.id AS post_id,
+               cp.title,
+               cp.content,
+               cp.is_anonymous AS anonymous,
+               cp.category AS post_category,
+               u.name AS author_name,
+               JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.category')) AS ai_category,
+               CAST(JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.confidence')) AS DECIMAL(10,6)) AS confidence,
+               cp.created_at,
+               ar.completed_at
+          FROM post_ai_result ar
+          JOIN community_post cp ON cp.id = ar.post_id
+          LEFT JOIN users u ON u.id = cp.user_id
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.status = 'COMPLETED'
+           AND ar.review_action IS NULL
+           AND cp.status = 'PUBLISHED'
+           AND ar.result_json IS NOT NULL
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = TRUE
+           AND JSON_TYPE(JSON_EXTRACT(ar.result_json, '$.confidence')) IN ('INTEGER', 'DOUBLE', 'DECIMAL')
+           AND CAST(JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.confidence')) AS DECIMAL(10,6)) &lt; #{hideThreshold}
+         ORDER BY ar.completed_at ASC, cp.created_at ASC
+         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countReviewQueue" resultType="int">
+        SELECT COUNT(*)
+          FROM post_ai_result ar
+          JOIN community_post cp ON cp.id = ar.post_id
+         WHERE ar.task_type = 'MODERATION'
+           AND ar.status = 'COMPLETED'
+           AND ar.review_action IS NULL
+           AND cp.status = 'PUBLISHED'
+           AND ar.result_json IS NOT NULL
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = TRUE
+           AND JSON_TYPE(JSON_EXTRACT(ar.result_json, '$.confidence')) IN ('INTEGER', 'DOUBLE', 'DECIMAL')
+           AND CAST(JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.confidence')) AS DECIMAL(10,6)) &lt; #{hideThreshold}
+    </select>
+
+    <!-- 큐 조건을 여전히 만족할 때만 결정을 선점한다. 동일 요청 재시도는 서비스가 기존 action을 읽어 멱등 처리한다. -->
+    <update id="recordReviewAction">
+        UPDATE post_ai_result ar
+        JOIN community_post cp ON cp.id = ar.post_id
+           SET ar.review_action = #{action},
+               ar.reviewed_by = #{reviewerId},
+               ar.reviewed_at = NOW()
+         WHERE ar.post_id = #{postId}
+           AND ar.task_type = 'MODERATION'
+           AND ar.status = 'COMPLETED'
+           AND ar.review_action IS NULL
+           AND cp.status = 'PUBLISHED'
+           AND ar.result_json IS NOT NULL
+           AND JSON_EXTRACT(ar.result_json, '$.toxic') = TRUE
+           AND JSON_TYPE(JSON_EXTRACT(ar.result_json, '$.confidence')) IN ('INTEGER', 'DOUBLE', 'DECIMAL')
+           AND CAST(JSON_UNQUOTE(JSON_EXTRACT(ar.result_json, '$.confidence')) AS DECIMAL(10,6)) &lt; #{hideThreshold}
+    </update>
+
+    <select id="findReviewAction" resultType="string">
+        SELECT review_action
+          FROM post_ai_result
+         WHERE post_id = #{postId}
+           AND task_type = 'MODERATION'
     </select>
 
     <!-- AI 판정 카테고리별 통계 -->

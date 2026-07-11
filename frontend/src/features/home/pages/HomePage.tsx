@@ -335,7 +335,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
                 )}
               </div>
               <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0">
-                <Button className="bg-blue-600 hover:bg-blue-700 gap-2" onClick={() => navigate("/applications")}>
+                <Button className="bg-blue-600 hover:bg-blue-700 gap-2" onClick={() => navigate("/applications/new")}>
                   <Plus className="size-4" />
                   새 지원 건
                 </Button>
@@ -614,7 +614,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
         </section>
 
         {loading && summary && (
-          <div className="fixed bottom-5 right-5 rounded-full border border-slate-200 bg-card px-4 py-2 text-sm text-slate-600 shadow-lg">
+          <div className="fixed right-5 z-40 bottom-[calc(56px+1.25rem+env(safe-area-inset-bottom,0px))] xl:bottom-5 rounded-full border border-slate-200 bg-card px-4 py-2 text-sm text-slate-600 shadow-lg">
             <Loader2 className="mr-2 inline size-4 animate-spin text-blue-600" />
             최신 데이터 동기화 중
           </div>
@@ -749,7 +749,7 @@ export function HomePage() {
                   size="lg"
                   variant="outline"
                   className="w-full sm:w-auto justify-center border-white/20 text-white bg-card/10 hover:bg-card/20 text-base px-8"
-                  onClick={() => navigate("/applications/demo")}
+                  onClick={() => navigate("/login")}
                 >
                   <Play className="mr-2 size-4" />
                   데모 체험하기
@@ -933,7 +933,7 @@ export function HomePage() {
             <Button
               size="lg"
               className="bg-primary text-base px-10"
-              onClick={() => window.location.href = "/login"}
+              onClick={() => navigate("/login")}
             >
               지금 바로 시작하기
               <ArrowRight className="ml-2 size-5" />

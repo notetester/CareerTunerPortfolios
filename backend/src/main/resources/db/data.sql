@@ -1,17 +1,154 @@
 -- =====================================================================
---  CareerTuner — 개발용 샘플 데이터
+--  CareerTuner — 개발/demo 전용 샘플 데이터
 --  ※ 최초 1회(빈 DB) 적용 가정. 회원/소셜/프로필은 INSERT IGNORE 로 재실행 안전,
 --    도메인 샘플(지원 건 등)은 재실행 시 중복될 수 있다.
 --  ※ 비밀번호 계정 공통 비번: "Career1234!"  (BCrypt 해시는 spring-security-crypto 로 생성)
+--  ※ 알려진 비밀번호의 SUPER_ADMIN이 포함되므로 운영 DB에는 절대 적용하지 않는다.
+--     운영 bootstrap은 별도 one-time 계정 생성/승격 절차와 운영 비밀값을 사용한다.
 -- =====================================================================
 
 -- 회원 ---------------------------------------------------------------
 INSERT IGNORE INTO users (email, password, password_enabled, name, email_verified, user_type, role, status, plan, credit) VALUES
- ('admin@careertuner.dev',       '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '관리자',  1, 'JOB_SEEKER',     'ADMIN', 'ACTIVE', 'PRO',   999),
+ ('admin@careertuner.dev',       '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '관리자',  1, 'JOB_SEEKER',     'SUPER_ADMIN', 'ACTIVE', 'PRO',   999),
  ('jiwon.kim@careertuner.dev',   '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '김지원',  1, 'JOB_SEEKER',     'USER',  'ACTIVE', 'FREE',  10),
  ('seoyeon.lee@careertuner.dev', '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '이서연',  1, 'CAREER_CHANGER', 'USER',  'ACTIVE', 'BASIC', 30),
  ('minsu.park@careertuner.dev',  NULL,                                                           0, '박민수',  1, 'JOB_SEEKER',     'USER',  'ACTIVE', 'FREE',  5),
  ('pending@careertuner.dev',     '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja', 1, '최유진',  0, 'JOB_SEEKER',     'USER',  'ACTIVE', 'FREE',  3);
+
+-- 관리자 CRUD 권한 카탈로그 -----------------------------------------
+-- 로컬/demo의 SUPER_ADMIN은 역할로 전체 접근한다. 아래 exact catalog와 runtime 그룹 템플릿은
+-- 권한 관리 UI 검증용이며 공유·운영 DB에는 data.sql 대신 patch를 적용한다.
+INSERT INTO admin_permission_menu_group (
+    menu_group_code, display_name, description, display_order, active
+)
+VALUES
+    ('MEMBER', '회원 운영', '회원 계정과 프로필 운영 권한', 10, 1),
+    ('AI', 'AI 운영', 'AI 분석과 모델 운영 권한', 20, 1),
+    ('BILLING', '결제 운영', '결제와 구독 운영 권한', 30, 1),
+    ('CONTENT', '콘텐츠 운영', '콘텐츠와 고객지원 운영 권한', 40, 1),
+    ('AUDIT', '보안·감사 운영', '보안 설정과 감사 로그 운영 권한', 50, 1),
+    ('POLICY', '정책·권한 운영', '운영 정책과 관리자 권한 운영', 60, 1)
+ON DUPLICATE KEY UPDATE
+    display_name = VALUES(display_name),
+    description = VALUES(description),
+    display_order = VALUES(display_order),
+    active = VALUES(active);
+
+INSERT INTO admin_permission_policy (
+    permission_code, display_name, description, menu_group_code, display_order, active
+)
+VALUES
+    ('USER_READ', '회원 조회', '회원 데이터를 조회하는 권한.', 'MEMBER', 100, 1),
+    ('USER_CREATE', '회원 생성', '회원 데이터를 생성하는 권한.', 'MEMBER', 101, 1),
+    ('USER_UPDATE', '회원 수정', '회원 데이터를 수정하는 권한.', 'MEMBER', 102, 1),
+    ('USER_DELETE', '회원 삭제', '회원 데이터를 삭제하는 권한. 삭제 표시는 소프트 삭제로 처리한다.', 'MEMBER', 103, 1),
+    ('SECURITY_READ', '보안 조회', '보안 데이터를 조회하는 권한.', 'AUDIT', 200, 1),
+    ('SECURITY_CREATE', '보안 생성', '보안 데이터를 생성하는 권한.', 'AUDIT', 201, 1),
+    ('SECURITY_UPDATE', '보안 수정', '보안 데이터를 수정하는 권한.', 'AUDIT', 202, 1),
+    ('SECURITY_DELETE', '보안 삭제', '보안 데이터를 삭제하는 권한. 삭제 표시는 소프트 삭제로 처리한다.', 'AUDIT', 203, 1),
+    ('BILLING_READ', '결제 조회', '결제 데이터를 조회하는 권한.', 'BILLING', 300, 1),
+    ('BILLING_CREATE', '결제 생성', '결제 데이터를 생성하는 권한.', 'BILLING', 301, 1),
+    ('BILLING_UPDATE', '결제 수정', '결제 데이터를 수정하는 권한.', 'BILLING', 302, 1),
+    ('BILLING_DELETE', '결제 삭제', '결제 데이터를 삭제하는 권한. 삭제 표시는 소프트 삭제로 처리한다.', 'BILLING', 303, 1),
+    ('CONTENT_READ', '콘텐츠 조회', '콘텐츠 데이터를 조회하는 권한.', 'CONTENT', 400, 1),
+    ('CONTENT_CREATE', '콘텐츠 생성', '콘텐츠 데이터를 생성하는 권한.', 'CONTENT', 401, 1),
+    ('CONTENT_UPDATE', '콘텐츠 수정', '콘텐츠 데이터를 수정하는 권한.', 'CONTENT', 402, 1),
+    ('CONTENT_DELETE', '콘텐츠 삭제', '콘텐츠 데이터를 삭제하는 권한. 삭제 표시는 소프트 삭제로 처리한다.', 'CONTENT', 403, 1),
+    ('AI_READ', 'AI 운영 조회', 'AI 운영 데이터를 조회하는 권한.', 'AI', 500, 1),
+    ('AI_CREATE', 'AI 운영 생성', 'AI 운영 데이터를 생성하는 권한.', 'AI', 501, 1),
+    ('AI_UPDATE', 'AI 운영 수정', 'AI 운영 데이터를 수정하는 권한.', 'AI', 502, 1),
+    ('AI_DELETE', 'AI 운영 삭제', 'AI 운영 데이터를 삭제하는 권한. 삭제 표시는 소프트 삭제로 처리한다.', 'AI', 503, 1),
+    ('POLICY_READ', '정책 조회', '정책 데이터를 조회하는 권한.', 'POLICY', 600, 1),
+    ('POLICY_CREATE', '정책 생성', '정책 데이터를 생성하는 권한.', 'POLICY', 601, 1),
+    ('POLICY_UPDATE', '정책 수정', '정책 데이터를 수정하는 권한.', 'POLICY', 602, 1),
+    ('POLICY_DELETE', '정책 삭제', '정책 데이터를 삭제하는 권한. 삭제 표시는 소프트 삭제로 처리한다.', 'POLICY', 603, 1),
+    ('ADMIN_PERMISSION_READ', '관리자 권한 조회', '관리자 권한 데이터를 조회하는 권한.', 'POLICY', 700, 1),
+    ('ADMIN_PERMISSION_CREATE', '관리자 권한 생성', '관리자 권한 데이터를 생성하는 권한.', 'POLICY', 701, 1),
+    ('ADMIN_PERMISSION_UPDATE', '관리자 권한 수정', '관리자 권한 데이터를 수정하는 권한.', 'POLICY', 702, 1),
+    ('ADMIN_PERMISSION_DELETE', '관리자 권한 삭제', '관리자 권한 데이터를 삭제하는 권한. 삭제 표시는 소프트 삭제로 처리한다.', 'POLICY', 703, 1),
+    ('AUDIT_READ', '감사 로그 조회', '관리자 및 보안 감사 로그를 조회하는 권한.', 'AUDIT', 800, 1)
+ON DUPLICATE KEY UPDATE
+    display_name = VALUES(display_name),
+    description = VALUES(description),
+    menu_group_code = VALUES(menu_group_code),
+    display_order = VALUES(display_order),
+    active = VALUES(active);
+
+INSERT INTO admin_permission_group (
+    group_code, display_name, description, role_scope, display_order, active
+)
+VALUES
+    ('MEMBER_ADMIN', '회원 운영 권한 템플릿', '회원 데이터 조회·생성·수정 기본 권한', 'ADMIN', 10, 1),
+    ('SECURITY_OPERATOR', '보안 운영 권한 템플릿', '보안 데이터 조회·생성·수정 기본 권한', 'ADMIN', 20, 1),
+    ('BILLING_ADMIN', '결제 운영 권한 템플릿', '결제 데이터 조회·생성·수정 기본 권한', 'ADMIN', 30, 1),
+    ('CONTENT_ADMIN', '콘텐츠 운영 권한 템플릿', '콘텐츠 데이터 조회·생성·수정 기본 권한', 'ADMIN', 40, 1),
+    ('AI_ADMIN', 'AI 운영 권한 템플릿', 'AI 운영 데이터 조회·생성·수정 기본 권한', 'ADMIN', 50, 1),
+    ('AUDIT_ADMIN', '감사 조회 권한 템플릿', '감사 로그 조회 전용 권한', 'ADMIN', 60, 1),
+    ('POLICY_ADMIN', '정책·권한 운영 템플릿', '정책과 관리자 권한 전체 CRUD를 수행하는 슈퍼 관리자 전용 권한', 'SUPER_ADMIN', 70, 1),
+    ('SUPER_ADMIN_GROUP', '슈퍼 관리자 그룹', '모든 관리자 CRUD와 감사 조회 권한', 'SUPER_ADMIN', 100, 1)
+ON DUPLICATE KEY UPDATE
+    display_name = VALUES(display_name),
+    description = VALUES(description),
+    role_scope = VALUES(role_scope),
+    display_order = VALUES(display_order),
+    active = VALUES(active);
+
+INSERT INTO admin_permission_group_item (group_code, permission_code, deleted_at)
+VALUES
+    ('MEMBER_ADMIN', 'USER_READ', NULL),
+    ('MEMBER_ADMIN', 'USER_CREATE', NULL),
+    ('MEMBER_ADMIN', 'USER_UPDATE', NULL),
+    ('SECURITY_OPERATOR', 'SECURITY_READ', NULL),
+    ('SECURITY_OPERATOR', 'SECURITY_CREATE', NULL),
+    ('SECURITY_OPERATOR', 'SECURITY_UPDATE', NULL),
+    ('BILLING_ADMIN', 'BILLING_READ', NULL),
+    ('BILLING_ADMIN', 'BILLING_CREATE', NULL),
+    ('BILLING_ADMIN', 'BILLING_UPDATE', NULL),
+    ('CONTENT_ADMIN', 'CONTENT_READ', NULL),
+    ('CONTENT_ADMIN', 'CONTENT_CREATE', NULL),
+    ('CONTENT_ADMIN', 'CONTENT_UPDATE', NULL),
+    ('AI_ADMIN', 'AI_READ', NULL),
+    ('AI_ADMIN', 'AI_CREATE', NULL),
+    ('AI_ADMIN', 'AI_UPDATE', NULL),
+    ('AUDIT_ADMIN', 'AUDIT_READ', NULL),
+    ('POLICY_ADMIN', 'POLICY_READ', NULL),
+    ('POLICY_ADMIN', 'POLICY_CREATE', NULL),
+    ('POLICY_ADMIN', 'POLICY_UPDATE', NULL),
+    ('POLICY_ADMIN', 'POLICY_DELETE', NULL),
+    ('POLICY_ADMIN', 'ADMIN_PERMISSION_READ', NULL),
+    ('POLICY_ADMIN', 'ADMIN_PERMISSION_CREATE', NULL),
+    ('POLICY_ADMIN', 'ADMIN_PERMISSION_UPDATE', NULL),
+    ('POLICY_ADMIN', 'ADMIN_PERMISSION_DELETE', NULL),
+    ('SUPER_ADMIN_GROUP', 'USER_READ', NULL),
+    ('SUPER_ADMIN_GROUP', 'USER_CREATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'USER_UPDATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'USER_DELETE', NULL),
+    ('SUPER_ADMIN_GROUP', 'SECURITY_READ', NULL),
+    ('SUPER_ADMIN_GROUP', 'SECURITY_CREATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'SECURITY_UPDATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'SECURITY_DELETE', NULL),
+    ('SUPER_ADMIN_GROUP', 'BILLING_READ', NULL),
+    ('SUPER_ADMIN_GROUP', 'BILLING_CREATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'BILLING_UPDATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'BILLING_DELETE', NULL),
+    ('SUPER_ADMIN_GROUP', 'CONTENT_READ', NULL),
+    ('SUPER_ADMIN_GROUP', 'CONTENT_CREATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'CONTENT_UPDATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'CONTENT_DELETE', NULL),
+    ('SUPER_ADMIN_GROUP', 'AI_READ', NULL),
+    ('SUPER_ADMIN_GROUP', 'AI_CREATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'AI_UPDATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'AI_DELETE', NULL),
+    ('SUPER_ADMIN_GROUP', 'POLICY_READ', NULL),
+    ('SUPER_ADMIN_GROUP', 'POLICY_CREATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'POLICY_UPDATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'POLICY_DELETE', NULL),
+    ('SUPER_ADMIN_GROUP', 'ADMIN_PERMISSION_READ', NULL),
+    ('SUPER_ADMIN_GROUP', 'ADMIN_PERMISSION_CREATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'ADMIN_PERMISSION_UPDATE', NULL),
+    ('SUPER_ADMIN_GROUP', 'ADMIN_PERMISSION_DELETE', NULL),
+    ('SUPER_ADMIN_GROUP', 'AUDIT_READ', NULL)
+ON DUPLICATE KEY UPDATE deleted_at = NULL;
 
 -- 소셜 연동 (박민수 = 카카오 전용 계정) -------------------------------
 INSERT IGNORE INTO user_social (user_id, provider, provider_user_id)

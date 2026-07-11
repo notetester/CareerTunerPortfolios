@@ -40,35 +40,37 @@ def load_extraction_module():
 
 def create_sample_image(path: Path) -> None:
     try:
-        from PIL import Image, ImageDraw
+        from PIL import Image, ImageDraw, ImageFont
     except ImportError as exc:
         raise RuntimeError("Pillow is required to create the OCR smoke image.") from exc
     image = Image.new("RGB", (1200, 760), "white")
     draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=40)
     y = 40
     for line in SAMPLE_TEXT.splitlines():
-        draw.text((40, y), line, fill="black")
+        draw.text((40, y), line, fill="black", font=font)
         y += 70
     image.save(path)
 
 
 def create_sample_pdf(path: Path) -> None:
     try:
-        from PIL import Image, ImageDraw
+        from PIL import Image, ImageDraw, ImageFont
     except ImportError as exc:
         raise RuntimeError("Pillow is required to create the OCR smoke PDF.") from exc
     image = Image.new("RGB", (1200, 760), "white")
     draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=40)
     y = 40
     for line in SAMPLE_TEXT.splitlines():
-        draw.text((40, y), line, fill="black")
+        draw.text((40, y), line, fill="black", font=font)
         y += 70
     image.save(path, "PDF", resolution=150.0)
 
 
 def extraction_ok(result: dict[str, Any], extracted_text: str) -> bool:
     return bool(
-        result.get("textSource") == "PADDLE_OCR"
+        result.get("textSource") in {"PADDLE_OCR", "PPSTRUCTURE"}
         and result.get("qualityStatus") in {"PASS", "REVIEW_REQUIRED"}
         and len(extracted_text.strip()) >= 100
     )

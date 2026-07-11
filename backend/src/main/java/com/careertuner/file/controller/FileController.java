@@ -5,6 +5,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,6 +48,14 @@ public class FileController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "inline; filename=\"" + safeName(download.asset().getOriginalName(), id) + "\"")
                 .body(download.bytes());
+    }
+
+    /** 업로드 소유자만 파일 메타데이터와 실제 저장 파일을 제거할 수 있다. */
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@AuthenticationPrincipal AuthUser authUser,
+                                    @PathVariable Long id) {
+        fileService.deleteOwnedUnlinked(authUser.id(), id);
+        return ApiResponse.ok();
     }
 
     private String safeName(String originalName, Long id) {

@@ -1,5 +1,7 @@
 package com.careertuner.admin.securityops.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -32,6 +34,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/security")
+@RequireAdminPermission({"SECURITY_READ"})
 @RequiredArgsConstructor
 public class AdminBlockController {
 
@@ -53,6 +56,7 @@ public class AdminBlockController {
     }
 
     @PostMapping("/block-batches")
+    @RequireAdminPermission({"SECURITY_CREATE"})
     public ApiResponse<IpBlockBatchRow> createBatch(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody IpBlockBatchRequest request) {
@@ -61,6 +65,7 @@ public class AdminBlockController {
 
     /** 배치 ON/OFF + cascade 전략(BATCH_ONLY/CASCADE_ACTIVE_RULES/RESTORE_BATCH_CONTROL/FORCE_ENABLE_ALL). */
     @PostMapping("/block-batches/{id}/toggle")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<IpBlockBatchRow> toggleBatch(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -71,6 +76,7 @@ public class AdminBlockController {
 
     /** CSV/JSON 파일 업로드로 정책 피드 대량 import. */
     @PostMapping("/policy-feed/upload")
+    @RequireAdminPermission({"SECURITY_CREATE"})
     public ApiResponse<PolicyFeedImportResult> uploadPolicyFeed(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam("file") MultipartFile file,
@@ -92,6 +98,7 @@ public class AdminBlockController {
 
     /** JSON 본문(rawText 또는 rows)으로 정책 피드 import. */
     @PostMapping("/policy-feed/import")
+    @RequireAdminPermission({"SECURITY_CREATE"})
     public ApiResponse<PolicyFeedImportResult> importPolicyFeed(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody PolicyFeedImportRequest request) {

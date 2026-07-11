@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,12 +14,15 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import com.careertuner.auth.domain.EmailVerification;
 import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.auth.service.EmailService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.common.web.FrontendReturnTarget;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.dto.AccountInfoResponse;
 import com.careertuner.user.mapper.UserAccountMapper;
@@ -35,11 +39,13 @@ class UserAccountServiceImplTest {
     private final UserAccountMapper mapper = mock(UserAccountMapper.class);
     private final AuthMapper authMapper = mock(AuthMapper.class);
     private final EmailService emailService = mock(EmailService.class);
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver = mock(FrontendReturnUrlResolver.class);
     private final UserAccountServiceImpl service = new UserAccountServiceImpl(
             mapper,
             new ObjectMapper(),
             authMapper,
-            emailService);
+            emailService,
+            frontendReturnUrlResolver);
 
     private User user(Long id, String loginId, String phone) {
         return User.builder().id(id).email("redacted-826b0cff85484558@example.com").name("홍길동")
@@ -124,24 +130,26 @@ class UserAccountServiceImplTest {
         when(mapper.countByEmailExcludingUser("new@example.com", 1L)).thenReturn(0);
         ArgumentCaptor<EmailVerification> captor = ArgumentCaptor.forClass(EmailVerification.class);
 
-        service.requestEmailRegistration(1L, " New@Example.COM ");
+        FrontendReturnTarget target = new FrontendReturnTarget(
+                "sites", "https://careertuner.career-tuner-4654.chatgpt.site");
+        service.requestEmailRegistration(1L, " New@Example.COM ", target);
 
         verify(authMapper).insertEmailVerification(captor.capture());
         EmailVerification verification = captor.getValue();
         assertThat(verification.getUserId()).isEqualTo(1L);
         assertThat(verification.getEmail()).isEqualTo("new@example.com");
         assertThat(verification.getPurpose()).isEqualTo("EMAIL_CHANGE");
+        assertThat(verification.getFrontendClient()).isEqualTo("sites");
         assertThat(verification.getToken()).isNotBlank();
         assertThat(verification.getExpiredAt()).isAfter(LocalDateTime.now().plusHours(23));
-        verify(emailService).sendVerificationEmail("new@example.com", verification.getToken());
+        verify(emailService).sendVerificationEmail("new@example.com", verification.getToken(), target);
     }
 
     @Test
     void unlinkSocial_rejectsWhenNoLoginMethodRemains() {
         User socialOnly = User.builder().id(1L).email("kakao_1@social.careertuner")
                 .name("소셜").passwordEnabled(false).emailVerified(false).build();
-        when(mapper.findById(1L)).thenReturn(socialOnly);
-        when(mapper.countLinkedProviders(1L)).thenReturn(1);
+        when(mapper.findByIdForUpdate(1L)).thenReturn(socialOnly);
         when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO"));
 
         assertThatThrownBy(() -> service.unlinkSocial(1L, "kakao"))
@@ -152,13 +160,30 @@ class UserAccountServiceImplTest {
     }
 
     @Test
+    void unlinkSocial_rejectsDuplicateRowsOfSameProviderAsRemainingMethod() {
+        User socialOnly = User.builder().id(1L).email("kakao_1@social.careertuner")
+                .name("소셜").passwordEnabled(false).emailVerified(false).build();
+        when(mapper.findByIdForUpdate(1L)).thenReturn(socialOnly);
+        when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO", "KAKAO"));
+
+        assertThatThrownBy(() -> service.unlinkSocial(1L, "kakao"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+        verify(mapper, never()).deleteSocial(org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void unlinkSocial_allowsWhenPasswordLoginRemains() {
+        when(mapper.findByIdForUpdate(1L)).thenReturn(user(1L, "gildong", null));
         when(mapper.findById(1L)).thenReturn(user(1L, "gildong", null));
-        when(mapper.countLinkedProviders(1L)).thenReturn(1);
         when(mapper.findLinkedProviders(1L)).thenReturn(List.of("KAKAO"));
 
         service.unlinkSocial(1L, "kakao");
 
-        verify(mapper).deleteSocial(1L, "KAKAO");
+        InOrder order = inOrder(mapper);
+        order.verify(mapper).findByIdForUpdate(1L);
+        order.verify(mapper).findLinkedProviders(1L);
+        order.verify(mapper).deleteSocial(1L, "KAKAO");
     }
 }

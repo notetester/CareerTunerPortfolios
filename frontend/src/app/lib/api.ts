@@ -1,6 +1,19 @@
 import { apiBase } from "./apiBase";
-import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./tokenStore";
-import { MOCK_UNHANDLED, resolveMock } from "./mock";
+import {
+  clearTokensIfUnchanged,
+  getAccessToken,
+  getRefreshToken,
+  getTokenStoreSnapshot,
+  setTokensIfUnchanged,
+  type TokenStoreSnapshot,
+} from "./tokenStore";
+import {
+  activateOutageFallbackIfConfirmed,
+  isNetworkOutageError,
+  isOutageFallbackActive,
+  isOutageStatus,
+  shouldUseMockData,
+} from "./outageFallback";
 
 /** 백엔드 공통 응답 envelope. */
 export interface ApiEnvelope<T> {
@@ -25,8 +38,89 @@ export class ApiError extends Error {
 //  - 우선순위: (네이티브 앱/dev 의) 런타임 오버라이드 → VITE_API_BASE_URL → 상대경로 "/api"
 //  - 런타임 오버라이드가 바뀔 수 있어 상수 캐시 없이 매 요청 시 평가한다.
 
-// 데모/목 모드: 백엔드 없이 동작(자체완결 APK·GitHub Pages 데모). 등록된 mock 핸들러로 응답한다.
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
+type RequestResult<T> =
+  | { kind: "real"; response: Response }
+  | { kind: "mock"; value: T };
+
+let mockModulePromise: Promise<typeof import("./mock")> | null = null;
+
+function loadMockModule(): Promise<typeof import("./mock")> {
+  mockModulePromise ??= import("./mock");
+  return mockModulePromise;
+}
+
+function canFallbackSameRequest(init: RequestInit): boolean {
+  const method = (init.method ?? "GET").toUpperCase();
+  return method === "GET" || method === "HEAD";
+}
+
+function demoUnavailableMessage(kind: "data" | "file"): string {
+  const prefix = isOutageFallbackActive() ? "장애 체험 모드" : "데모 모드";
+  return kind === "file"
+    ? `${prefix}에서는 제공되지 않는 파일입니다.`
+    : `${prefix}에서는 제공되지 않는 데이터입니다.`;
+}
+
+async function resolveMockData<T>(path: string, options: RequestInit): Promise<T> {
+  const mock = await loadMockModule();
+  const value = await mock.resolveMock(path, options);
+  if (value === mock.MOCK_FORBIDDEN) {
+    throw new ApiError("관리자 권한이 필요한 데모 요청입니다.", "FORBIDDEN", 403);
+  }
+  if (value !== mock.MOCK_UNHANDLED) return value as T;
+  throw new ApiError(demoUnavailableMessage("data"), "DEMO_UNAVAILABLE", 501);
+}
+
+async function resolveMockBlob(path: string, options: RequestInit): Promise<Blob> {
+  const mock = await loadMockModule();
+  const value = await mock.resolveMock(path, options);
+  if (value === mock.MOCK_FORBIDDEN) {
+    throw new ApiError("관리자 권한이 필요한 데모 요청입니다.", "FORBIDDEN", 403);
+  }
+  if (value === mock.MOCK_UNHANDLED) {
+    throw new ApiError(demoUnavailableMessage("file"), "DEMO_UNAVAILABLE", 501);
+  }
+  if (value instanceof Blob) return value;
+  throw new ApiError("데모 파일 응답 형식이 올바르지 않습니다.", "DEMO_INVALID_RESPONSE", 500);
+}
+
+/** 실제 요청을 우선한다. 장애가 확인되면 조회만 즉시 mock으로 대체하고 mutation은 첫 시도를 실패 처리한다. */
+async function requestRealFirst<T>(
+  url: string,
+  init: RequestInit,
+  resolveFallback: () => Promise<T>,
+): Promise<RequestResult<T>> {
+  if (shouldUseMockData()) {
+    return { kind: "mock", value: await resolveFallback() };
+  }
+
+  try {
+    const response = await fetch(url, init);
+    if (isOutageStatus(response.status) && await activateOutageFallbackIfConfirmed()) {
+      if (canFallbackSameRequest(init)) {
+        return { kind: "mock", value: await resolveFallback() };
+      }
+      throw createOutageMutationUncertainError();
+    }
+    return { kind: "real", response };
+  } catch (error) {
+    if (isNetworkOutageError(error) && await activateOutageFallbackIfConfirmed()) {
+      if (canFallbackSameRequest(init)) {
+        return { kind: "mock", value: await resolveFallback() };
+      }
+      throw createOutageMutationUncertainError();
+    }
+    throw error;
+  }
+}
+
+export function createOutageMutationUncertainError(): ApiError {
+  return new ApiError(
+    "운영 서비스가 요청을 처리했는지 확인할 수 없어 안전을 위해 결과를 반영하지 않았습니다. 장애 체험 모드에서 다시 시도해 주세요.",
+    "OUTAGE_MUTATION_UNCERTAIN",
+    503,
+  );
+}
 
 function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
   const headers = new Headers(options.headers ?? {});
@@ -42,14 +136,33 @@ function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
   return headers;
 }
 
-// 동시 401에 대해 refresh 가 한 번만 일어나도록 단일 프라미스로 공유한다.
-let refreshPromise: Promise<boolean> | null = null;
+interface RefreshAttempt {
+  snapshot: TokenStoreSnapshot;
+  refreshToken: string;
+  promise: Promise<boolean>;
+}
+
+// 같은 세션의 동시 401만 하나로 합친다. 세션이 바뀌면 이전 응답은 CAS에서 폐기한다.
+let refreshAttempt: RefreshAttempt | null = null;
 
 function tryRefresh(): Promise<boolean> {
-  if (refreshPromise) return refreshPromise;
-  const refreshToken = getRefreshToken();
+  const snapshot = getTokenStoreSnapshot();
+  const refreshToken = snapshot.tokens?.refreshToken;
   if (!refreshToken) return Promise.resolve(false);
-  refreshPromise = (async () => {
+  if (
+    refreshAttempt
+    && refreshAttempt.snapshot.revision === snapshot.revision
+    && refreshAttempt.refreshToken === refreshToken
+  ) {
+    return refreshAttempt.promise;
+  }
+
+  const attempt: RefreshAttempt = {
+    snapshot,
+    refreshToken,
+    promise: Promise.resolve(false),
+  };
+  attempt.promise = (async () => {
     try {
       const res = await fetch(`${apiBase()}/auth/refresh`, {
         method: "POST",
@@ -61,18 +174,21 @@ function tryRefresh(): Promise<boolean> {
         refreshToken: string;
       }> | null;
       if (res.ok && env?.success && env.data) {
-        setTokens({ accessToken: env.data.accessToken, refreshToken: env.data.refreshToken });
-        return true;
+        return setTokensIfUnchanged(snapshot, {
+          accessToken: env.data.accessToken,
+          refreshToken: env.data.refreshToken,
+        });
       }
-      clearTokens();
+      clearTokensIfUnchanged(snapshot);
       return false;
     } catch {
       return false;
     } finally {
-      refreshPromise = null;
+      if (refreshAttempt === attempt) refreshAttempt = null;
     }
   })();
-  return refreshPromise;
+  refreshAttempt = attempt;
+  return attempt.promise;
 }
 
 /** ApiResponse 를 풀어 data 를 반환. 실패 시 ApiError 를 던진다. */
@@ -82,20 +198,25 @@ export async function api<T = unknown>(
   config: { auth?: boolean } = {},
 ): Promise<T> {
   const withAuth = config.auth ?? true;
-
-  // 데모/목 모드: 네트워크 대신 mock 레지스트리로 응답. 미등록 엔드포인트는 "데모 미제공" 에러.
-  if (USE_MOCK) {
-    const mocked = await resolveMock(path, options);
-    if (mocked !== MOCK_UNHANDLED) return mocked as T;
-    throw new ApiError("데모 모드에서는 제공되지 않는 데이터입니다.", "DEMO_UNAVAILABLE", 501);
-  }
-
-  let res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, withAuth) });
+  const resolveFallback = () => resolveMockData<T>(path, options);
+  let result = await requestRealFirst(
+    `${apiBase()}${path}`,
+    { ...options, headers: buildHeaders(options, withAuth) },
+    resolveFallback,
+  );
+  if (result.kind === "mock") return result.value;
+  let res = result.response;
 
   if (res.status === 401 && withAuth && getRefreshToken()) {
     const refreshed = await tryRefresh();
     if (refreshed) {
-      res = await fetch(`${apiBase()}${path}`, { ...options, headers: buildHeaders(options, true) });
+      result = await requestRealFirst(
+        `${apiBase()}${path}`,
+        { ...options, headers: buildHeaders(options, true) },
+        resolveFallback,
+      );
+      if (result.kind === "mock") return result.value;
+      res = result.response;
     }
   }
 
@@ -104,4 +225,38 @@ export async function api<T = unknown>(
     throw new ApiError(env?.message ?? `요청에 실패했습니다 (${res.status})`, env?.code ?? "ERROR", res.status);
   }
   return env.data as T;
+}
+
+/** JSON envelope가 아닌 파일 바이트를 받는 API. mock 모드에서도 같은 route registry를 사용한다. */
+export async function apiBlob(
+  path: string,
+  options: RequestInit = {},
+  config: { auth?: boolean } = {},
+): Promise<Blob> {
+  const withAuth = config.auth ?? true;
+  const resolveFallback = () => resolveMockBlob(path, options);
+  let result = await requestRealFirst(
+    `${apiBase()}${path}`,
+    { ...options, headers: buildHeaders(options, withAuth) },
+    resolveFallback,
+  );
+  if (result.kind === "mock") return result.value;
+  let res = result.response;
+  if (res.status === 401 && withAuth && getRefreshToken()) {
+    const refreshed = await tryRefresh();
+    if (refreshed) {
+      result = await requestRealFirst(
+        `${apiBase()}${path}`,
+        { ...options, headers: buildHeaders(options, true) },
+        resolveFallback,
+      );
+      if (result.kind === "mock") return result.value;
+      res = result.response;
+    }
+  }
+  if (!res.ok) {
+    const env = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(env?.message ?? `파일 요청에 실패했습니다 (${res.status})`, env?.code ?? "ERROR", res.status);
+  }
+  return res.blob();
 }

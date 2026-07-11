@@ -1,5 +1,7 @@
 package com.careertuner.admin.analytics.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import jakarta.validation.Valid;
@@ -31,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/analytics")
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminAnalyticsController {
 
@@ -57,6 +60,7 @@ public class AdminAnalyticsController {
     }
 
     @PatchMapping("/quality-flags/{fitAnalysisId}/{flagType}/resolve")
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<Void> resolveQualityFlag(@AuthenticationPrincipal AuthUser authUser,
                                                 @PathVariable Long fitAnalysisId,
                                                 @PathVariable String flagType) {
@@ -89,6 +93,7 @@ public class AdminAnalyticsController {
     }
 
     @PostMapping("/runs/{runId}/memos")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<AdminCareerRunMemoResponse> createMemo(@AuthenticationPrincipal AuthUser authUser,
                                                               @PathVariable Long runId,
                                                               @Valid @RequestBody AdminCareerRunMemoRequest request) {
@@ -97,6 +102,7 @@ public class AdminAnalyticsController {
     }
 
     @PatchMapping("/runs/{runId}/memos/{memoId}")
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<AdminCareerRunMemoResponse> updateMemo(@AuthenticationPrincipal AuthUser authUser,
                                                               @PathVariable Long runId,
                                                               @PathVariable Long memoId,
@@ -106,6 +112,7 @@ public class AdminAnalyticsController {
     }
 
     @DeleteMapping("/runs/{runId}/memos/{memoId}")
+    @RequireAdminPermission({"AI_DELETE"})
     public ApiResponse<Void> deleteMemo(@AuthenticationPrincipal AuthUser authUser,
                                         @PathVariable Long runId,
                                         @PathVariable Long memoId) {

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.AdminRoleOnly;
 import com.careertuner.admin.permission.dto.AdminMePermissionsResponse;
 import com.careertuner.admin.permission.dto.AdminNotificationOptOutUpdateRequest;
 import com.careertuner.admin.permission.service.AdminNotificationOptOutService;
@@ -31,6 +32,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/me")
+@AdminRoleOnly
 @RequiredArgsConstructor
 public class AdminMeController {
 
@@ -53,6 +55,7 @@ public class AdminMeController {
     }
 
     @PatchMapping("/notification-categories")
+    @AdminRoleOnly
     public ApiResponse<Map<String, Boolean>> updateNotificationCategory(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminNotificationOptOutUpdateRequest request) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Brain, ClipboardList, Mic, MessageCircle, PenLine, Target, Users } from "lucide-react";
 import { Link } from "react-router";
+import { FOOTER_SECTIONS, FOOTER_SOCIAL_LINKS } from "@/app/components/layout/Footer";
 import "../styles/landing.css";
 
 const CHIPS = ["카카오 프론트엔드 면접 준비해줘", "압박 면접 연습하고 싶어", "자소서부터 봐줘"];
@@ -197,7 +198,33 @@ export function LandingPage() {
         </div>
       </section>
 
-      <footer>© 2026 CareerTuner · AI 취업 전략 플랫폼 · 팀 프로젝트 시안</footer>
+      <footer className="landing-footer">
+        <div className="wrap">
+          <div className="landing-footer-grid">
+            <div className="landing-footer-brand">
+              <Link className="landing-footer-logo" to="/">CareerTuner</Link>
+              <p>채용공고와 사용자 근거를 지원 건 하나로 연결하는 AI 취업 전략 플랫폼</p>
+              <a href="mailto:support@careertuner.dev">support@careertuner.dev</a>
+              <div className="landing-footer-social">
+                {FOOTER_SOCIAL_LINKS.map((social) => (
+                  <Link key={social.label} to={social.href}>{social.label}</Link>
+                ))}
+              </div>
+            </div>
+            {FOOTER_SECTIONS.map((section) => (
+              <section key={section.title} className="landing-footer-section">
+                <h3>{section.title}</h3>
+                <ul>
+                  {section.links.map((item) => (
+                    <li key={item.label}><Link to={item.href}>{item.label}</Link></li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+          <div className="landing-footer-bottom">© 2026 CareerTuner. 포트폴리오·공개 베타 프로젝트.</div>
+        </div>
+      </footer>
     </div>
   );
 }

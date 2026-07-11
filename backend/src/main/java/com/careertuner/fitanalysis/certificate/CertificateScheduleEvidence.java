@@ -11,7 +11,7 @@ import java.util.List;
  * @param certName   종목명(공식 응답에서 확인, 없으면 조회 힌트)
  * @param sourceName 출처명
  * @param sourceUrl  출처 URL(사용자 재확인용)
- * @param rounds     확인된 회차별 일정(status=VERIFIED_CURRENT 일 때만 비어있지 않음)
+ * @param rounds     확인된 회차별 일정(status=VERIFIED_CURRENT 또는 PREANNOUNCED 일 때만 비어있지 않음)
  */
 public record CertificateScheduleEvidence(
         ScheduleEvidenceStatus status,

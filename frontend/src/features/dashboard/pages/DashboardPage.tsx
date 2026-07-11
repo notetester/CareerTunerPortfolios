@@ -218,7 +218,7 @@ export function DashboardPage() {
             <GuideButton steps={DASHBOARD_TOUR_STEPS} />
             <Button
               className="bg-primary gap-2"
-              onClick={() => navigate("/applications")}
+              onClick={() => navigate("/applications/new")}
             >
               <Plus className="size-4" />
               새 지원 건 만들기
@@ -474,7 +474,7 @@ export function DashboardPage() {
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-2">
                     {[
-                      { label: "새 지원 건", icon: Plus, href: "/applications", color: "text-blue-600" },
+                      { label: "새 지원 건", icon: Plus, href: "/applications/new", color: "text-blue-600" },
                       { label: "가상 면접", icon: MessageSquare, href: "/interview", color: "text-purple-600" },
                       { label: "취업 분석", icon: BarChart3, href: "/analysis", color: "text-green-600" },
                       { label: "커뮤니티", icon: BookOpen, href: "/community", color: "text-orange-600" },
@@ -548,11 +548,11 @@ export function DashboardPage() {
       {/* 모바일 하단 고정 주요 CTA 1개(디자인 분석 §7.1, 모바일 고려 §6.1). 데스크톱에서는 상단 버튼 사용. */}
       <div
         className="fixed inset-x-4 z-40 lg:hidden"
-        style={{ bottom: "calc(1rem + env(safe-area-inset-bottom, 0px))" }}
+        style={{ bottom: "calc(56px + 1rem + env(safe-area-inset-bottom, 0px))" }} /* 하단 탭(56px) 위로 — z-40<z-50 이라 겹치면 탭에 덮여 클릭 불가였음 */
       >
         <Button
           className="h-12 w-full bg-primary gap-2 shadow-lg"
-          onClick={() => navigate("/applications")}
+          onClick={() => navigate("/applications/new")}
         >
           <Plus className="size-4" />
           새 지원 건 만들기

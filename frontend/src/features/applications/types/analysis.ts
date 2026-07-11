@@ -15,6 +15,14 @@ export interface JobAnalysis {
   ambiguousConditions: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
+  // 모델 선택·실행 provenance(응답이 항상 내려주는 nullable 필드). 자동 초기 실행·strict 재분석만 값이 있고
+  // 레거시 행은 NULL(표시 안 함). 계약 강화를 위해 optional 이 아니라 required-nullable 로 둔다(필드 누락을 tsc 가 잡음).
+  requestedProvider: string | null;
+  actualProvider: string | null;
+  actualModel: string | null;
+  fallbackUsed: boolean | null;
+  attemptPath: string | null;
+  runMode: string | null;
   createdAt: string;
 }
 
@@ -41,6 +49,14 @@ export interface CompanyAnalysis {
   refreshRecommendedAt: string | null;
   confirmedAt: string | null;
   adminMemo: string | null;
+  // 모델 선택·실행 provenance(응답이 항상 내려주는 nullable 필드). 자동 초기 실행·strict 재분석만 값이 있고
+  // 레거시 행은 NULL(표시 안 함). 계약 강화를 위해 optional 이 아니라 required-nullable 로 둔다(필드 누락을 tsc 가 잡음).
+  requestedProvider: string | null;
+  actualProvider: string | null;
+  actualModel: string | null;
+  fallbackUsed: boolean | null;
+  attemptPath: string | null;
+  runMode: string | null;
   createdAt: string;
 }
 
@@ -524,4 +540,133 @@ export function getDifficultyLabel(value: string | null | undefined): string {
     default:
       return value ?? "미정";
   }
+}
+
+// ── 분석 provenance(생성 모델·실행 이력) 표시 헬퍼 (지원건별 모델 선택·재실행) ──
+
+/**
+ * provenance 미기록(레거시·mock·자동 무선택) 분석 행용 기본값 — 6필드 전부 null.
+ * required-nullable 타입을 만족시키면서 "기록 없음"을 표현하는 fixture·과거 데이터 구성에 쓴다.
+ */
+export const NULL_ANALYSIS_PROVENANCE = {
+  requestedProvider: null,
+  actualProvider: null,
+  actualModel: null,
+  fallbackUsed: null,
+  attemptPath: null,
+  runMode: null,
+} as const;
+
+const ANALYSIS_PROVIDER_LABELS: Record<string, string> = {
+  LOCAL: "자체 모델",
+  CLAUDE: "Claude",
+  OPENAI: "OpenAI",
+  SELF_RULES: "규칙 기반",
+};
+
+const ANALYSIS_RUN_MODE_LABELS: Record<string, string> = {
+  INITIAL: "초기 자동 분석",
+  MANUAL: "수동 재분석",
+};
+
+/** provider 식별자(LOCAL/CLAUDE/OPENAI/SELF_RULES)를 사람이 읽는 라벨로. 미지의 값은 원본을 그대로 쓴다. */
+export function getAnalysisProviderLabel(provider: string | null | undefined): string | null {
+  if (!provider) return null;
+  return ANALYSIS_PROVIDER_LABELS[provider] ?? provider;
+}
+
+/** run_mode(INITIAL/MANUAL)를 라벨로. */
+export function getAnalysisRunModeLabel(runMode: string | null | undefined): string | null {
+  if (!runMode) return null;
+  return ANALYSIS_RUN_MODE_LABELS[runMode] ?? runMode;
+}
+
+export interface AnalysisProvenanceSource {
+  requestedProvider?: string | null;
+  actualProvider?: string | null;
+  actualModel?: string | null;
+  fallbackUsed?: boolean | null;
+  attemptPath?: string | null;
+  runMode?: string | null;
+}
+
+export interface AnalysisProvenanceView {
+  /** 실제 생성 provider 라벨(예: "Claude"). */
+  actualProviderLabel: string;
+  /** 실제 모델명(예: "claude-haiku-4-5"). 없으면 null. */
+  actualModel: string | null;
+  /** 사용자가 등록/재분석 시 고른 provider 라벨. 없으면 null(자동 체인). */
+  requestedProviderLabel: string | null;
+  /** 고른 provider 로 실패해 다른 모델로 폴백했는지. */
+  fallbackUsed: boolean;
+  /**
+   * 폴백 표시 라벨. 명시 선택 폴백이면 "폴백(요청 X)", AUTO(요청 provider 없음) 폴백이면 "자동 폴백".
+   * 폴백이 없었으면 null — AUTO 는 requested 가 NULL 이라 requestedProviderLabel 만으로는 폴백이 숨는다.
+   */
+  fallbackLabel: string | null;
+  /** 실제 시도 순서 라벨(예: ["Local LLM","Claude"]). attempt_path 미기록/파싱 불가면 null. */
+  attemptPathLabels: string[] | null;
+  /** 실행 모드 라벨("초기 자동 분석"/"수동 재분석"). 없으면 null. */
+  runModeLabel: string | null;
+}
+
+/** attempt_path JSON(["LOCAL","CLAUDE",...])을 라벨 배열로. 비정상 값은 조용히 null(표시 생략). */
+function parseAttemptPathLabels(attemptPath: string | null | undefined): string[] | null {
+  if (!attemptPath) return null;
+  try {
+    const parsed: unknown = JSON.parse(attemptPath);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    const labels = parsed
+      .filter((token): token is string => typeof token === "string")
+      .map((token) => getAnalysisProviderLabel(token))
+      .filter((label): label is string => label !== null);
+    return labels.length > 0 ? labels : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 분석 행의 provenance 표시 뷰. <b>실제 생성 provider(actualProvider)가 기록된 행만</b> 표시 대상이다
+ * (초기 등록 preferred·strict 재분석). provider 미기록(레거시·자동 무선택·mock)이면 null → 뱃지 미표시.
+ */
+export function parseAnalysisProvenance(
+  source: AnalysisProvenanceSource | null | undefined,
+): AnalysisProvenanceView | null {
+  const actualLabel = getAnalysisProviderLabel(source?.actualProvider);
+  if (!source || !actualLabel) {
+    return null;
+  }
+  const requestedLabel = getAnalysisProviderLabel(source.requestedProvider);
+  const fallbackUsed = source.fallbackUsed === true;
+  const shownRequestedLabel = fallbackUsed ? requestedLabel : null;
+  return {
+    actualProviderLabel: actualLabel,
+    actualModel: source.actualModel ?? null,
+    // 요청=실제면 중복이라 숨긴다. 폴백이 일어난 경우에만 "요청: X" 를 따로 보여준다.
+    requestedProviderLabel: shownRequestedLabel,
+    fallbackUsed,
+    // AUTO(요청 없음)의 폴백도 표시되도록 requested 유무로 라벨을 분기한다.
+    fallbackLabel: fallbackUsed
+      ? (shownRequestedLabel ? `폴백(요청 ${shownRequestedLabel})` : "자동 폴백")
+      : null,
+    attemptPathLabels: parseAttemptPathLabels(source.attemptPath),
+    runModeLabel: getAnalysisRunModeLabel(source.runMode),
+  };
+}
+
+/**
+ * provenance 를 한 줄 요약 문자열로. 기록이 없으면(레거시·자동 무선택) {@code "미기록"}.
+ * 관리자 상세의 단문 표시(MetaBlock)처럼 컴포넌트 대신 문자열이 필요한 곳에서 쓴다.
+ */
+export function formatAnalysisProvenanceSummary(source: AnalysisProvenanceSource | null | undefined): string {
+  const prov = parseAnalysisProvenance(source);
+  if (!prov) {
+    return "미기록";
+  }
+  const parts = [prov.actualProviderLabel];
+  if (prov.actualModel) parts.push(prov.actualModel);
+  if (prov.fallbackLabel) parts.push(prov.fallbackLabel); // AUTO 폴백("자동 폴백")도 포함
+  if (prov.runModeLabel) parts.push(prov.runModeLabel);
+  return parts.join(" · ");
 }

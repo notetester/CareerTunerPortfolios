@@ -41,8 +41,11 @@ import {
   type CreateApplicationCaseFromJobPostingResponse,
 } from "../api/applicationCasesApi";
 import { getJobPosting } from "../api/jobPostingsApi";
+import { getModelOptions, type ModelOptions } from "../api/modelOptionsApi";
 import { ApplicationExtractionBadge, getApplicationExtractionStatusLabel } from "../components/ApplicationExtractionBadge";
 import { LoginRequiredState } from "../components/LoginRequiredState";
+import { OcrRetryButton } from "../components/OcrRetryButton";
+import { AUTO_PROVIDER, RegistrationModelSelect } from "../components/RegistrationModelSelect";
 import type { ApplicationCase, ApplicationCaseExtraction, ApplicationSourceType } from "../types/applicationCase";
 import {
   APPLICATION_SOURCE_OPTIONS,
@@ -130,6 +133,15 @@ export function NewApplicationPage() {
     url: "",
     file: null,
   });
+  // 등록 시 초기 실행 모델 선택. AUTO = 미선택(백엔드 기본 체인). OCR 은 파일 공고(PDF/IMAGE)에서만 쓴다.
+  const [jobAnalysisProvider, setJobAnalysisProvider] = useState(AUTO_PROVIDER);
+  const [companyAnalysisProvider, setCompanyAnalysisProvider] = useState(AUTO_PROVIDER);
+  const [ocrProvider, setOcrProvider] = useState(AUTO_PROVIDER);
+  const [modelOptions, setModelOptions] = useState<ModelOptions | null>(null);
+  const [modelOptionsLoading, setModelOptionsLoading] = useState(false);
+  // 조회 실패(네트워크·서버 오류)와 "선택지가 없음"을 구분한다 — 실패면 안내 + 재시도 버튼을 보여준다.
+  const [modelOptionsError, setModelOptionsError] = useState(false);
+  const [modelOptionsReloadKey, setModelOptionsReloadKey] = useState(0);
 
   const activePostingText = useMemo(() => displayPostingText(jobPosting), [jobPosting]);
   const extractionActive = extractionJob ? isApplicationCaseExtractionActive(extractionJob.status) : false;
@@ -156,6 +168,8 @@ export function NewApplicationPage() {
         file: null,
       };
     });
+    // OCR provider 는 파일 공고 전용이라 등록 방식이 바뀌면 초기화한다(공고·기업 분석 선택은 유지).
+    setOcrProvider(AUTO_PROVIDER);
     setError(null);
   };
 
@@ -232,6 +246,10 @@ export function NewApplicationPage() {
     setError(null);
     try {
       let response: CreateApplicationCaseFromJobPostingResponse;
+      // AUTO(미선택)는 요청에서 빼서 백엔드 기본 체인을 쓰게 한다.
+      const resolveProvider = (value: string) => (value === AUTO_PROVIDER ? undefined : value);
+      const selectedJobProvider = resolveProvider(jobAnalysisProvider);
+      const selectedCompanyProvider = resolveProvider(companyAnalysisProvider);
 
       if (isFileSource(postingForm.sourceType)) {
         if (!postingForm.file) {
@@ -241,7 +259,12 @@ export function NewApplicationPage() {
         if (validationError) {
           throw new Error(validationError);
         }
-        response = await uploadApplicationCaseFromJobPosting(postingForm.file, postingForm.sourceType, false);
+        response = await uploadApplicationCaseFromJobPosting(postingForm.file, postingForm.sourceType, {
+          favorite: false,
+          ocrProvider: resolveProvider(ocrProvider),
+          jobAnalysisProvider: selectedJobProvider,
+          companyAnalysisProvider: selectedCompanyProvider,
+        });
       } else if (postingForm.sourceType === "URL") {
         const url = postingForm.url.trim();
         if (!url) {
@@ -254,6 +277,8 @@ export function NewApplicationPage() {
           uploadedFileUrl: url,
           sourceType: "URL",
           favorite: false,
+          jobAnalysisProvider: selectedJobProvider,
+          companyAnalysisProvider: selectedCompanyProvider,
         });
       } else {
         const text = postingForm.text.trim();
@@ -264,6 +289,8 @@ export function NewApplicationPage() {
           originalText: text,
           sourceType: postingForm.sourceType,
           favorite: false,
+          jobAnalysisProvider: selectedJobProvider,
+          companyAnalysisProvider: selectedCompanyProvider,
         });
       }
 
@@ -315,6 +342,35 @@ export function NewApplicationPage() {
       window.clearInterval(intervalId);
     };
   }, [activeExtractionCaseId, activeExtractionId, applyCompletedExtraction]);
+
+  // 등록 화면(step 0)에서 현재 등록 방식 기준으로 단계별 모델 선택지를 조회한다. sourceType 이 바뀌면
+  // OCR 선택지가 달라지므로 다시 조회한다(공고·기업 분석 선택지는 sourceType 과 무관하지만 같은 응답에 온다).
+  // 조회 실패해도 등록은 막지 않는다 — "자동"으로 진행할 수 있고, 실패는 안내 + 재시도 버튼으로 노출한다
+  // (modelOptionsReloadKey 를 올리면 재조회). "선택지가 없음"(성공했으나 전부 불가)과 조회 실패를 구분한다.
+  useEffect(() => {
+    if (step !== 0 || !isAuthenticated) return;
+
+    let cancelled = false;
+    setModelOptionsLoading(true);
+    setModelOptionsError(false);
+    void getModelOptions(postingForm.sourceType)
+      .then((options) => {
+        if (!cancelled) setModelOptions(options);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setModelOptions(null);
+          setModelOptionsError(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setModelOptionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [step, isAuthenticated, postingForm.sourceType, modelOptionsReloadKey]);
 
   const saveConfirmation = async (): Promise<ApplicationCase> => {
     if (!createdCase || !jobPosting) {
@@ -399,13 +455,13 @@ export function NewApplicationPage() {
     }
   };
 
-  const handleRetryExtraction = async () => {
+  const handleRetryExtraction = async (ocrProvider: string) => {
     if (!createdCase) return;
 
     setBusy(true);
     setError(null);
     try {
-      const nextExtraction = await retryApplicationCaseExtraction(createdCase.id);
+      const nextExtraction = await retryApplicationCaseExtraction(createdCase.id, ocrProvider);
       setExtractionJob(nextExtraction);
       registerApplicationCaseExtraction(nextExtraction);
       setConfirmedText("");
@@ -565,6 +621,60 @@ export function NewApplicationPage() {
                   </Field>
                 )}
 
+                <div className="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                    <Sparkles className="size-4 text-blue-600" />
+                    분석 모델 선택 <span className="text-xs font-normal text-slate-500">(선택 사항 · 기본은 자동)</span>
+                  </div>
+                  <p className="text-xs leading-5 text-slate-500">
+                    초기 공고·기업 분석에 쓸 모델을 고를 수 있습니다. 고른 모델을 먼저 시도하고, 실패하면 자동으로 다른 모델로 이어서 처리합니다. 그대로 두면 기본 추천 순서로 실행합니다.
+                  </p>
+                  {modelOptionsError && !modelOptionsLoading && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      <span>
+                        모델 선택지를 불러오지 못했습니다. 그대로 &quot;자동&quot;으로 진행할 수 있고, 다시 시도할 수도 있습니다.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setModelOptionsReloadKey((key) => key + 1)}
+                        disabled={busy}
+                        className="rounded border border-amber-300 bg-white px-2 py-1 font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        다시 시도
+                      </button>
+                    </div>
+                  )}
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {isFileSource(postingForm.sourceType) && (
+                      <RegistrationModelSelect
+                        label="공고문 추출(OCR) 모델"
+                        hint="이미지·스캔 PDF에서 텍스트를 뽑는 모델입니다. 텍스트 PDF는 OCR 없이 처리됩니다."
+                        stage={modelOptions?.ocr ?? null}
+                        loading={modelOptionsLoading}
+                        value={ocrProvider}
+                        onChange={setOcrProvider}
+                        disabled={busy}
+                      />
+                    )}
+                    <RegistrationModelSelect
+                      label="공고 분석 모델"
+                      stage={modelOptions?.jobAnalysis ?? null}
+                      loading={modelOptionsLoading}
+                      value={jobAnalysisProvider}
+                      onChange={setJobAnalysisProvider}
+                      disabled={busy}
+                    />
+                    <RegistrationModelSelect
+                      label="기업 분석 모델"
+                      stage={modelOptions?.companyAnalysis ?? null}
+                      loading={modelOptionsLoading}
+                      value={companyAnalysisProvider}
+                      onChange={setCompanyAnalysisProvider}
+                      disabled={busy}
+                    />
+                  </div>
+                </div>
+
                 <StepActions
                   busy={busy}
                   primaryLabel={busy ? "지원 건 생성 및 추출 준비 중" : "공고문 추출 시작"}
@@ -586,7 +696,7 @@ export function NewApplicationPage() {
                   <ExtractionFailureState
                     extraction={extractionJob}
                     busy={busy}
-                    onRetry={() => void handleRetryExtraction()}
+                    onRetry={(provider) => void handleRetryExtraction(provider)}
                     onExit={handleExitCreatedCase}
                   />
                 ) : (
@@ -780,7 +890,7 @@ function ExtractionFailureState({
 }: {
   extraction: ApplicationCaseExtraction;
   busy: boolean;
-  onRetry(): void;
+  onRetry(ocrProvider: string): void;
   onExit(): void;
 }) {
   return (
@@ -802,10 +912,14 @@ function ExtractionFailureState({
         <Button type="button" variant="outline" disabled={busy} onClick={onExit}>
           상세로 이동
         </Button>
-        <Button type="button" className="bg-red-600 text-white hover:bg-red-700" disabled={busy} onClick={onRetry}>
-          {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-          다시 추출
-        </Button>
+        <OcrRetryButton
+          sourceType={extraction.sourceType}
+          retrying={busy}
+          onRetry={onRetry}
+          size="default"
+          variant="default"
+          className="bg-red-600 text-white hover:bg-red-700"
+        />
       </div>
     </div>
   );

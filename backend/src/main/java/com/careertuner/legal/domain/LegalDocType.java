@@ -14,6 +14,7 @@ public enum LegalDocType {
     PRIVACY("privacy", "개인정보처리방침"),
     MARKETING("marketing", "마케팅수신동의"),
     AI_CONSENT("ai-data-consent", "AI 데이터 이용 동의"),
+    RESUME_CONSENT("resume-analysis-consent", "이력서 분석 개인정보 수집·이용 동의"),
     COPYRIGHT("copyright", "저작권 정책");
 
     private final String slug;

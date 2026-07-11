@@ -21,6 +21,13 @@ public interface ApplicationCaseMapper {
 
     ApplicationCase findApplicationCaseByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
+    /**
+     * 케이스 행을 {@code FOR UPDATE} 로 잠가 읽는다 — 수동 분석 획득 TX 와 strict 재추출 획득 TX 가
+     * 같은 행 잠금으로 직렬화되어, 스냅샷 검사 사이의 TOCTOU(동시 재추출·분석 시작)를 없앤다.
+     * 짧은 획득 트랜잭션 안에서만 호출한다(원격 OCR/LLM 호출은 잠금 밖).
+     */
+    ApplicationCase lockApplicationCaseById(@Param("id") Long id);
+
     int updateApplicationCase(ApplicationCase applicationCase);
 
     int updateApplicationCaseSourceType(@Param("id") Long id,
@@ -52,6 +59,10 @@ public interface ApplicationCaseMapper {
                              @Param("previousStatus") String previousStatus,
                              @Param("newStatus") String newStatus,
                              @Param("memo") String memo);
+
+    /** 상태 변경 타임라인(관리자 상세 노출용, 최신순). */
+    java.util.List<com.careertuner.applicationcase.domain.ApplicationCaseStatusHistory> findStatusHistoryByCaseId(
+            @Param("applicationCaseId") Long applicationCaseId);
 
     FitAnalysis findLatestFitAnalysisByCaseId(Long applicationCaseId);
 

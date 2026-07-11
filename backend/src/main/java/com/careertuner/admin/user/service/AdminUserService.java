@@ -9,13 +9,18 @@ import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.careertuner.admin.user.dto.AdminUserDetail;
+import com.careertuner.admin.user.dto.AdminUserCreateRequest;
 import com.careertuner.admin.user.dto.AdminUserLoginHistoryRow;
 import com.careertuner.admin.user.dto.AdminUserRow;
 import com.careertuner.admin.user.dto.AdminUserStatusUpdateRequest;
 import com.careertuner.admin.user.mapper.AdminUserMapper;
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.common.security.AdminAccountMutationGuard;
+import com.careertuner.admin.common.security.AdminAccountState;
 import com.careertuner.admin.common.grid.AdminGridSpec;
 import com.careertuner.admin.common.grid.AdminListNormalizer;
 import com.careertuner.admin.common.grid.AdminListQuery;
@@ -29,6 +34,8 @@ import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.user.domain.User;
+import com.careertuner.user.mapper.UserMapper;
 
 import lombok.RequiredArgsConstructor;
 
@@ -37,6 +44,7 @@ import lombok.RequiredArgsConstructor;
 public class AdminUserService {
 
     private static final Set<String> STATUSES = Set.of("ACTIVE", "DORMANT", "BLOCKED", "DELETED");
+    private static final Set<String> MUTABLE_STATUSES = Set.of("ACTIVE", "DORMANT", "BLOCKED");
     private static final Set<String> ROLES = Set.of("USER", "ADMIN", "SUPER_ADMIN");
 
     /** 회원 그리드 화이트리스트(검색 컬럼/정렬 키/enum 필터). */
@@ -50,6 +58,39 @@ public class AdminUserService {
     private final AdminUserMapper mapper;
     private final AuthMapper authMapper;
     private final AdminActionLogService actionLogService;
+    private final AdminAccountMutationGuard accountMutationGuard;
+    private final UserMapper userMapper;
+    private final PasswordEncoder passwordEncoder;
+
+    @Transactional
+    public AdminUserRow create(AuthUser authUser, AdminUserCreateRequest request) {
+        requireAdmin(authUser);
+        String email = request.email().trim().toLowerCase(Locale.ROOT);
+        if (userMapper.countByEmail(email) > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 이메일입니다.");
+        }
+
+        User user = User.builder()
+                .email(email)
+                .password(passwordEncoder.encode(request.password()))
+                .passwordEnabled(true)
+                .name(request.name().trim())
+                .emailVerified(false)
+                .userType("JOB_SEEKER")
+                .role("USER")
+                .status("ACTIVE")
+                .plan("FREE")
+                .credit(0)
+                .build();
+        try {
+            userMapper.insert(user);
+        } catch (DuplicateKeyException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 이메일입니다.");
+        }
+        actionLogService.record(authUser, user.getId(), "USER_CREATED", "USER",
+                null, "{\"role\":\"USER\",\"status\":\"ACTIVE\"}", "관리자 콘솔 회원 생성");
+        return mapper.findUser(user.getId());
+    }
 
     @Transactional(readOnly = true)
     public List<AdminUserRow> users(AuthUser authUser, String keyword, String status, String role, int limit) {
@@ -122,7 +163,7 @@ public class AdminUserService {
         if (authUser != null && ids.contains(authUser.id())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "본인 계정은 일괄 상태 변경 대상에 포함할 수 없습니다.");
         }
-        String nextStatus = normalize(request.param("status"), STATUSES, true);
+        String nextStatus = normalize(request.param("status"), MUTABLE_STATUSES, true);
         String reason = blankToNull(request.param("reason"));
         LocalDateTime blockedUntil = "BLOCKED".equals(nextStatus)
                 ? parseDateTime(request.param("blockedUntil"))
@@ -131,11 +172,12 @@ public class AdminUserService {
         int updated = 0;
         int skipped = 0;
         for (Long id : ids) {
-            AdminUserRow existing = mapper.findUser(id);
-            if (existing == null || nextStatus.equals(existing.getStatus())) {
+            AdminAccountState locked = accountMutationGuard.validateStatusChange(authUser, id, nextStatus);
+            if (locked == null || nextStatus.equals(locked.status())) {
                 skipped++;
                 continue;
             }
+            AdminUserRow existing = mapper.findUser(id);
             mapper.updateStatus(id, nextStatus, reason, blockedUntil, authUser.id());
             mapper.insertStatusHistory(id, authUser.id(), existing.getStatus(), nextStatus, reason,
                     null, blockedUntil);
@@ -176,8 +218,12 @@ public class AdminUserService {
     @Transactional
     public AdminUserRow updateStatus(AuthUser authUser, Long id, AdminUserStatusUpdateRequest request) {
         requireAdmin(authUser);
+        String nextStatus = normalize(request.status(), MUTABLE_STATUSES, true);
+        AdminAccountState locked = accountMutationGuard.validateStatusChange(authUser, id, nextStatus);
+        if (locked == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원을 찾을 수 없습니다.");
+        }
         AdminUserRow existing = findExisting(id);
-        String nextStatus = normalize(request.status(), STATUSES, true);
         LocalDateTime blockedUntil = "BLOCKED".equals(nextStatus) ? request.blockedUntil() : null;
         String reason = blankToNull(request.reason());
         int updated = mapper.updateStatus(id, nextStatus, reason, blockedUntil, authUser.id());
@@ -194,6 +240,60 @@ public class AdminUserService {
             authMapper.revokeAllForUser(id);
         }
         return mapper.findUser(id);
+    }
+
+    @Transactional
+    public AdminUserRow softDelete(AuthUser authUser, Long id, String reason) {
+        requireAdmin(authUser);
+        AdminAccountState locked = accountMutationGuard.validateStatusChange(authUser, id, "DELETED");
+        if (locked == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원을 찾을 수 없습니다.");
+        }
+        if ("DELETED".equals(locked.status())) {
+            return findExisting(id);
+        }
+        AdminUserRow existing = findExisting(id);
+        String normalizedReason = blankToNull(reason);
+        mapper.updateStatus(id, "DELETED", normalizedReason, null, authUser.id());
+        mapper.insertStatusHistory(id, authUser.id(), existing.getStatus(), "DELETED",
+                normalizedReason, "관리자 소프트 삭제", null);
+        actionLogService.record(authUser, id, "USER_SOFT_DELETED", "USER",
+                "{\"status\":\"%s\"}".formatted(existing.getStatus()),
+                "{\"status\":\"DELETED\"}", normalizedReason);
+        authMapper.revokeAllForUser(id);
+        return mapper.findUser(id);
+    }
+
+    @Transactional
+    public BulkActionResult bulkSoftDelete(AuthUser authUser, BulkRequest request) {
+        requireAdmin(authUser);
+        List<Long> ids = request.sanitizedIds(GRID_SPEC.bulkIdsMax());
+        if (ids.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "일괄 삭제할 대상이 없습니다.");
+        }
+        if (ids.contains(authUser.id())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "본인 계정은 일괄 삭제 대상에 포함할 수 없습니다.");
+        }
+        String reason = blankToNull(request.param("reason"));
+        int updated = 0;
+        int skipped = 0;
+        for (Long id : ids) {
+            AdminAccountState locked = accountMutationGuard.validateStatusChange(authUser, id, "DELETED");
+            if (locked == null || "DELETED".equals(locked.status())) {
+                skipped++;
+                continue;
+            }
+            AdminUserRow existing = findExisting(id);
+            mapper.updateStatus(id, "DELETED", reason, null, authUser.id());
+            mapper.insertStatusHistory(id, authUser.id(), existing.getStatus(), "DELETED",
+                    reason, "관리자 일괄 소프트 삭제", null);
+            actionLogService.record(authUser, id, "USER_SOFT_DELETED", "USER",
+                    "{\"status\":\"%s\"}".formatted(existing.getStatus()),
+                    "{\"status\":\"DELETED\"}", reason);
+            authMapper.revokeAllForUser(id);
+            updated++;
+        }
+        return new BulkActionResult(ids.size(), updated, skipped);
     }
 
     private AdminUserRow findExisting(Long id) {

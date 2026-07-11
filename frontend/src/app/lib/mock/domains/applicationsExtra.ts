@@ -14,6 +14,7 @@ import type {
 } from "@/features/applications/types/applicationCase";
 import type { JobPosting, JobPostingMetadata } from "@/features/applications/types/jobPosting";
 import type { JobAnalysis, CompanyAnalysis } from "@/features/applications/types/analysis";
+import { NULL_ANALYSIS_PROVENANCE } from "@/features/applications/types/analysis";
 
 // from-job-posting 응답 타입(applicationCasesApi 에서 export). 타입 전용 import.
 import type { CreateApplicationCaseFromJobPostingResponse } from "@/features/applications/api/applicationCasesApi";
@@ -76,7 +77,19 @@ function buildExtraction(
 const latestExtractions: Record<number, ApplicationCaseExtraction> = {
   101: buildExtraction({ id: 7101, applicationCaseId: 101, jobPostingId: 1101, sourceType: "TEXT", status: "SUCCEEDED", createdAt: iso(5), startedAt: iso(5), finishedAt: iso(5) }),
   102: buildExtraction({ id: 7102, applicationCaseId: 102, jobPostingId: 1102, sourceType: "TEXT", status: "SUCCEEDED", createdAt: iso(8), startedAt: iso(8), finishedAt: iso(8) }),
-  103: buildExtraction({ id: 7103, applicationCaseId: 103, jobPostingId: 1103, sourceType: "PDF", status: "RUNNING", startedAt: iso(0), finishedAt: null, createdAt: iso(0), updatedAt: iso(0) }),
+  103: buildExtraction({
+    id: 7103,
+    applicationCaseId: 103,
+    jobPostingId: 1103,
+    sourceType: "PDF",
+    status: "SUCCEEDED",
+    qualityScore: 0.72,
+    qualityStatus: "REVIEW_REQUIRED",
+    startedAt: iso(1),
+    finishedAt: iso(1),
+    createdAt: iso(1),
+    updatedAt: iso(1),
+  }),
   104: buildExtraction({ id: 7104, applicationCaseId: 104, jobPostingId: 1104, sourceType: "IMAGE", status: "SUCCEEDED", createdAt: iso(12), startedAt: iso(12), finishedAt: iso(12) }),
 };
 
@@ -114,6 +127,37 @@ const analysisOverviews: Record<number, ApplicationCaseAnalysisOverview> = {
 let nextCaseId = 901;
 let nextJobPostingId = 1901;
 let nextExtractionId = 7901;
+const extractionPollsRemaining = new Map<number, number>();
+
+function rememberExtraction(job: ApplicationCaseExtraction, activePolls = 0) {
+  latestExtractions[job.applicationCaseId] = job;
+  if (job.status === "QUEUED" || job.status === "RUNNING") {
+    extractionPollsRemaining.set(job.id, activePolls);
+  }
+}
+
+function pollActiveExtractions(): ApplicationCaseExtraction[] {
+  const active: ApplicationCaseExtraction[] = [];
+  for (const job of Object.values(latestExtractions)) {
+    if (job.status !== "QUEUED" && job.status !== "RUNNING") continue;
+    const remaining = extractionPollsRemaining.get(job.id) ?? 1;
+    if (remaining > 0) {
+      extractionPollsRemaining.set(job.id, remaining - 1);
+      active.push(job);
+      continue;
+    }
+    latestExtractions[job.applicationCaseId] = {
+      ...job,
+      status: "SUCCEEDED",
+      qualityScore: 0.96,
+      qualityStatus: "PASS",
+      finishedAt: iso(0),
+      updatedAt: iso(0),
+    };
+    extractionPollsRemaining.delete(job.id);
+  }
+  return active;
+}
 
 // 리뷰(PATCH) echo 용 기준 분석본. core 의 findJobAnalysis/findCompanyAnalysis 와 같은 값 모양.
 function buildJobAnalysis(applicationCaseId: number, analysisId: number): JobAnalysis {
@@ -134,6 +178,7 @@ function buildJobAnalysis(applicationCaseId: number, analysisId: number): JobAna
     ambiguousConditions: JSON.stringify([]),
     confirmedAt: iso(1),
     adminMemo: null,
+    ...NULL_ANALYSIS_PROVENANCE,
     createdAt: iso(3),
   };
 }
@@ -159,6 +204,7 @@ function buildCompanyAnalysis(applicationCaseId: number, analysisId: number): Co
     refreshRecommendedAt: iso(-27),
     confirmedAt: iso(1),
     adminMemo: null,
+    ...NULL_ANALYSIS_PROVENANCE,
     createdAt: iso(3),
   };
 }
@@ -235,6 +281,7 @@ export const applicationsExtraRoutes: MockRoute[] = [
         metadata,
         extractionJob,
       };
+      rememberExtraction(extractionJob);
       return response;
     },
   },
@@ -281,18 +328,16 @@ export const applicationsExtraRoutes: MockRoute[] = [
         metadata,
         extractionJob,
       };
+      rememberExtraction(extractionJob, 2);
       return response;
     },
   },
 
-  // ── 진행 중인 추출 잡 목록(QUEUED/RUNNING). 103(토스)만 진행 중으로 둔다. ──
+  // ── 진행 중인 추출 잡 목록(QUEUED/RUNNING). 새 업로드/재시도에서 만들어진 잡만 노출한다. ──
   {
     method: "GET",
     pattern: /^\/application-cases\/extractions\/active$/,
-    handler: (): ApplicationCaseExtraction[] =>
-      Object.values(latestExtractions).filter(
-        (item) => item.status === "QUEUED" || item.status === "RUNNING",
-      ),
+    handler: (): ApplicationCaseExtraction[] => pollActiveExtractions(),
   },
 
   // ── 여러 지원 건의 최신 추출 잡(목록 화면 배지용). query applicationCaseIds 필터. ──
@@ -333,7 +378,7 @@ export const applicationsExtraRoutes: MockRoute[] = [
         finishedAt: null,
         createdAt: iso(0),
       });
-      latestExtractions[applicationCaseId] = retried;
+      rememberExtraction(retried, 2);
       return retried;
     },
   },

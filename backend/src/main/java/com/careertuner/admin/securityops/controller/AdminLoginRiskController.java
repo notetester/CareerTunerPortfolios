@@ -1,5 +1,7 @@
 package com.careertuner.admin.securityops.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -25,6 +27,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/security/login-risk-policy")
+@RequireAdminPermission({"SECURITY_READ"})
 @RequiredArgsConstructor
 public class AdminLoginRiskController {
 
@@ -38,6 +41,7 @@ public class AdminLoginRiskController {
     }
 
     @PatchMapping
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<LoginRiskPolicy> update(@AuthenticationPrincipal AuthUser authUser,
                                                @RequestBody LoginRiskPolicyRequest request) {
         AdminAccess.requireAdmin(authUser);

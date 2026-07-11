@@ -1,0 +1,769 @@
+{
+ "year": 2026,
+ "source": "한국산업인력공단 2026년도 국가전문자격시험 시행일정(안) 사전공고(2025-12-05) × 통합 일정 API(B490007) 날짜 조인 — EXACT 53/54 스테이지",
+ "note": "사전공고(안) 기반 — 자격별 최종 시행계획 공고로 확정됨. 정수시설운영관리사는 사전공고 제외(재공고 예정)라 미포함.",
+ "byName": {
+  "가맹거래사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260126",
+    "docRegEnd": "20260227",
+    "docExam": "20260307",
+    "docPass": "20260415",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260518",
+    "docRegEnd": "20260612",
+    "docExam": "20260620",
+    "docPass": "20260812",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "감정평가사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260202",
+    "docRegEnd": "20260206",
+    "docExam": "20260404",
+    "docPass": "20260506",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260518",
+    "docRegEnd": "20260522",
+    "docExam": "20260704",
+    "docPass": "20261021",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "검수사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260420",
+    "docRegEnd": "20260522",
+    "docExam": "20260530",
+    "docPass": "20260701",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260420",
+    "docRegEnd": "20260522",
+    "docExam": "20260821",
+    "docPass": "20260916",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "검량사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260420",
+    "docRegEnd": "20260522",
+    "docExam": "20260530",
+    "docPass": "20260701",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260420",
+    "docRegEnd": "20260522",
+    "docExam": "20260821",
+    "docPass": "20260916",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "감정사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260420",
+    "docRegEnd": "20260522",
+    "docExam": "20260530",
+    "docPass": "20260701",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260420",
+    "docRegEnd": "20260522",
+    "docExam": "20260821",
+    "docPass": "20260916",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "경매사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260202",
+    "docRegEnd": "20260227",
+    "docExam": "20260307",
+    "docPass": "20260408",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260518",
+    "docRegEnd": "20260522",
+    "docExam": "20260620",
+    "docPass": "20260715",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "경비지도사": [
+   {
+    "round": "2026년 1·2차 동시",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261113",
+    "docExam": "20261121",
+    "docPass": "20261231",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "경영지도사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260309",
+    "docRegEnd": "20260313",
+    "docExam": "20260411",
+    "docPass": "20260513",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260615",
+    "docRegEnd": "20260619",
+    "docExam": "20260711",
+    "docPass": "20261007",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "기술지도사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260309",
+    "docRegEnd": "20260313",
+    "docExam": "20260411",
+    "docPass": "20260513",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260615",
+    "docRegEnd": "20260619",
+    "docExam": "20260711",
+    "docPass": "20261007",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "공인노무사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260330",
+    "docRegEnd": "20260403",
+    "docExam": "20260523",
+    "docPass": "20260624",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260713",
+    "docRegEnd": "20260720",
+    "docExam": "20260829",
+    "docPass": "20261118",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 3차",
+    "docRegStart": "20260713",
+    "docRegEnd": "20260720",
+    "docExam": "20261127",
+    "docPass": "20261209",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "공인중개사": [
+   {
+    "round": "2026년 1·2차 동시",
+    "docRegStart": "20260803",
+    "docRegEnd": "20261002",
+    "docExam": "20261031",
+    "docPass": "20261202",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "관광통역안내사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260706",
+    "docRegEnd": "20260710",
+    "docExam": "20260905",
+    "docPass": "20261021",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260706",
+    "docRegEnd": "20260710",
+    "docExam": "20261114",
+    "docPass": "20261216",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "관세사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260202",
+    "docRegEnd": "20260306",
+    "docExam": "20260314",
+    "docPass": "20260415",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260511",
+    "docRegEnd": "20260605",
+    "docExam": "20260613",
+    "docPass": "20261014",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "국내여행안내사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261030",
+    "docExam": "20261107",
+    "docPass": "20261202",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261030",
+    "docExam": "20261212",
+    "docPass": "20261230",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "호텔관리사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261030",
+    "docExam": "20261107",
+    "docPass": "20261202",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261030",
+    "docExam": "20261212",
+    "docPass": "20261230",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "호텔서비스사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261030",
+    "docExam": "20261107",
+    "docPass": "20261202",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261030",
+    "docExam": "20261212",
+    "docPass": "20261230",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "호텔경영사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261030",
+    "docExam": "20261107",
+    "docPass": "20261202",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260914",
+    "docRegEnd": "20261030",
+    "docExam": "20261212",
+    "docPass": "20261230",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "농산물품질관리사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260223",
+    "docRegEnd": "20260327",
+    "docExam": "20260404",
+    "docPass": "20260506",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260518",
+    "docRegEnd": "20260626",
+    "docExam": "20260704",
+    "docPass": "20260812",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "국가유산수리기능자": [
+   {
+    "round": "2026년 시행",
+    "docRegStart": "20260209",
+    "docRegEnd": "20260213",
+    "docExam": "20260411",
+    "docPass": "20260527",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "국가유산수리기술자": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260223",
+    "docRegEnd": "20260227",
+    "docExam": "20260321",
+    "docPass": "20260513",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260622",
+    "docRegEnd": "20260626",
+    "docExam": "20260725",
+    "docPass": "20260812",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "물류관리사": [
+   {
+    "round": "2026년 시행",
+    "docRegStart": "20260622",
+    "docRegEnd": "20260717",
+    "docExam": "20260725",
+    "docPass": "20260826",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "박물관및미술관준학예사": [
+   {
+    "round": "2026년 시행",
+    "docRegStart": "20261012",
+    "docRegEnd": "20261016",
+    "docExam": "20261114",
+    "docPass": "20261223",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "변리사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260112",
+    "docRegEnd": "20260116",
+    "docExam": "20260228",
+    "docPass": "20260325",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260420",
+    "docRegEnd": "20260424",
+    "docExam": "20260731",
+    "docPass": "20261028",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "사회복지사1급": [
+   {
+    "round": "2026년 시행",
+    "docRegStart": "20251208",
+    "docRegEnd": "20260109",
+    "docExam": "20260117",
+    "docPass": "20260325",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "산업안전지도사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260223",
+    "docRegEnd": "20260320",
+    "docExam": "20260328",
+    "docPass": "20260429",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260511",
+    "docRegEnd": "20260529",
+    "docExam": "20260606",
+    "docPass": "20260722",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 3차",
+    "docRegStart": "20260511",
+    "docRegEnd": "20260529",
+    "docExam": "20260812",
+    "docPass": "20260923",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "산업보건지도사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260223",
+    "docRegEnd": "20260320",
+    "docExam": "20260328",
+    "docPass": "20260429",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260511",
+    "docRegEnd": "20260529",
+    "docExam": "20260606",
+    "docPass": "20260722",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 3차",
+    "docRegStart": "20260511",
+    "docRegEnd": "20260529",
+    "docExam": "20260812",
+    "docPass": "20260923",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "세무사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260323",
+    "docRegEnd": "20260327",
+    "docExam": "20260425",
+    "docPass": "20260527",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260615",
+    "docRegEnd": "20260619",
+    "docExam": "20260718",
+    "docPass": "20261028",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "소방시설관리사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260330",
+    "docRegEnd": "20260424",
+    "docExam": "20260502",
+    "docPass": "20260604",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260727",
+    "docRegEnd": "20260828",
+    "docExam": "20260905",
+    "docPass": "20261209",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "소방안전교육사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260608",
+    "docRegEnd": "20260807",
+    "docExam": "20260815",
+    "docPass": "20261014",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260608",
+    "docRegEnd": "20260807",
+    "docExam": "20260815",
+    "docPass": "20261209",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "손해평가사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260406",
+    "docRegEnd": "20260501",
+    "docExam": "20260509",
+    "docPass": "20260610",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260720",
+    "docRegEnd": "20260821",
+    "docExam": "20260829",
+    "docPass": "20261118",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "수산물품질관리사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260406",
+    "docRegEnd": "20260501",
+    "docExam": "20260509",
+    "docPass": "20260610",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260810",
+    "docRegEnd": "20260911",
+    "docExam": "20260919",
+    "docPass": "20261028",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "주택관리사보": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260511",
+    "docRegEnd": "20260619",
+    "docExam": "20260627",
+    "docPass": "20260729",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260810",
+    "docRegEnd": "20260911",
+    "docExam": "20260919",
+    "docPass": "20261202",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "청소년상담사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260720",
+    "docRegEnd": "20260904",
+    "docExam": "20260912",
+    "docPass": "20261021",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20261102",
+    "docRegEnd": "20261106",
+    "docExam": "20261130",
+    "docPass": "20261223",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "청소년지도사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260629",
+    "docRegEnd": "20260814",
+    "docExam": "20260822",
+    "docPass": "20261104",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20261116",
+    "docRegEnd": "20261120",
+    "docExam": "20261207",
+    "docPass": "20261230",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "한국어교육능력검정": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260706",
+    "docRegEnd": "20260731",
+    "docExam": "20260808",
+    "docPass": "20260916",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20261019",
+    "docRegEnd": "20261023",
+    "docExam": "20261107",
+    "docPass": "20261125",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ],
+  "행정사": [
+   {
+    "round": "2026년 1차",
+    "docRegStart": "20260413",
+    "docRegEnd": "20260417",
+    "docExam": "20260530",
+    "docPass": "20260701",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   },
+   {
+    "round": "2026년 2차",
+    "docRegStart": "20260727",
+    "docRegEnd": "20260731",
+    "docExam": "20261003",
+    "docPass": "20261216",
+    "pracExamStart": null,
+    "pracExamEnd": null,
+    "pracPass": null
+   }
+  ]
+ }
+}

@@ -97,6 +97,25 @@ class AdminAdServiceImplTest {
     }
 
     @Test
+    void executableOrProtocolRelativeLinkIsRejectedBeforeInsert() {
+        AdminAdRequest script = new AdminAdRequest("광고", null, "javascript:alert(1)",
+                "HOME_BANNER", "WEB", null, null, true, 0, 1);
+        AdminAdRequest protocolRelative = new AdminAdRequest("광고", null, "//evil.example",
+                "HOME_BANNER", "WEB", null, null, true, 0, 1);
+
+        assertThatThrownBy(() -> service.create(ADMIN, script))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT);
+        assertThatThrownBy(() -> service.create(ADMIN, protocolRelative))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT);
+
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
     void deleteMissingAdThrows() {
         when(mapper.findById(404L)).thenReturn(null);
 

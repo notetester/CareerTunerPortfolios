@@ -106,7 +106,7 @@ export interface CertificateScheduleRound {
 export interface CertificateEvidenceItem {
   certName: string;
   kind: string; // NATIONAL_TECHNICAL | NATIONAL_PROFESSIONAL | PRIVATE_OR_OTHER | UNKNOWN
-  scheduleStatus: string; // VERIFIED_CURRENT | OFFICIAL_NO_SCHEDULE | UPSTREAM_UNAVAILABLE | MANUAL_REQUIRED | NOT_APPLICABLE
+  scheduleStatus: string; // VERIFIED_CURRENT | PREANNOUNCED | OFFICIAL_NO_SCHEDULE | UPSTREAM_UNAVAILABLE | MANUAL_REQUIRED | NOT_APPLICABLE
   registrationStatus: string | null;
   message: string;
   sourceName: string | null;
@@ -124,6 +124,26 @@ export interface CertificateEvidenceSnapshot {
 }
 
 // 장기 커리어 자격증 전략(희망직무 기준). 현재 지원 건 전략과 분리 — "이번 지원"이 아니라 커리어 관점.
+export interface CareerRoadmapItem {
+  type: string; // CERT_REGISTRATION | CERT_EXAM | CERT_PRACTICAL | SKILL_LEARNING | APPLICATION_DEADLINE
+  title: string;
+  startDate: string; // yyyy-MM-dd
+  endDate: string | null;
+  certName: string | null;
+  detail: string | null;
+  sourceName: string | null;
+  /** true=월 단위 학습 '계획 제안'(실일정 아님), false=공식/사용자 확인 실일정 */
+  planningBlock: boolean;
+}
+
+export interface CareerRoadmap {
+  desiredJob: string | null;
+  horizonMonths: number;
+  generatedAt: string;
+  items: CareerRoadmapItem[];
+  basisNotes: string[];
+}
+
 export interface CareerCertificateStrategy {
   desiredJob: string | null;
   heldStrengths: string[];

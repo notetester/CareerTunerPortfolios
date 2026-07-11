@@ -16,7 +16,11 @@ import { Card, CardContent } from "@/app/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/app/components/ui/collapsible";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import { parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
+import {
+  formatAnalysisProvenanceSummary,
+  parseJsonArrayOrText,
+  parseJsonStringArray,
+} from "@/features/applications/types/analysis";
 import { getAdminJobAnalyses, getAdminJobAnalysisSummary, updateAdminJobAnalysisMemo } from "../api";
 import type {
   AdminJobAnalysisQueryParams,
@@ -24,6 +28,7 @@ import type {
   AdminJobAnalysisSummaryResponse,
 } from "../types";
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 type BooleanFilter = "all" | "true" | "false";
 
@@ -143,6 +148,7 @@ function formatPostingRevision(row: AdminJobAnalysisRow): string {
 }
 
 export function AdminJobAnalysisPage() {
+  const { canUpdate } = useAdminDomainAuthorization("AI");
   const [rows, setRows] = useState<AdminJobAnalysisRow[]>([]);
   const [summary, setSummary] = useState<AdminJobAnalysisSummaryResponse>(EMPTY_SUMMARY);
   const [memos, setMemos] = useState<Record<number, string>>({});
@@ -232,6 +238,7 @@ export function AdminJobAnalysisPage() {
   };
 
   const saveMemo = async (analysisId: number) => {
+    if (!canUpdate) return;
     const nextMemo = memos[analysisId] ?? "";
     setSavingId(analysisId);
     setError(null);
@@ -419,6 +426,7 @@ export function AdminJobAnalysisPage() {
                       onMemoChange={(value) => setMemos((current) => ({ ...current, [selectedRow.id]: value }))}
                       onSaveMemo={() => void saveMemo(selectedRow.id)}
                       saving={savingId === selectedRow.id}
+                      canUpdate={canUpdate}
                     />
                   )}
                 </CardContent>
@@ -457,6 +465,7 @@ export function AdminJobAnalysisPage() {
                           onMemoChange={(value) => setMemos((current) => ({ ...current, [row.id]: value }))}
                           onSaveMemo={() => void saveMemo(row.id)}
                           saving={savingId === row.id}
+                          canUpdate={canUpdate}
                           compact
                         />
                       )}
@@ -554,6 +563,7 @@ function JobAnalysisDetail({
   onMemoChange,
   onSaveMemo,
   saving,
+  canUpdate,
   compact = false,
 }: {
   row: AdminJobAnalysisRow;
@@ -561,6 +571,7 @@ function JobAnalysisDetail({
   onMemoChange: (value: string) => void;
   onSaveMemo: () => void;
   saving: boolean;
+  canUpdate: boolean;
   compact?: boolean;
 }) {
   return (
@@ -592,6 +603,7 @@ function JobAnalysisDetail({
         <MetaBlock label="공고 revision" value={formatPostingRevision(row)} />
         <MetaBlock label="생성일" value={formatDateTime(row.createdAt)} />
         <MetaBlock label="확정일" value={row.confirmedAt ? formatDateTime(row.confirmedAt) : "미확정"} />
+        <MetaBlock label="생성 모델" value={formatAnalysisProvenanceSummary(row)} />
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
@@ -606,7 +618,7 @@ function JobAnalysisDetail({
         <CollapsibleTextBlock title="모호 조건" value={row.ambiguousConditions} />
       </div>
 
-      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      {canUpdate ? <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="text-xs font-semibold text-slate-500">운영 메모</div>
         <Textarea
           value={memo}
@@ -620,7 +632,7 @@ function JobAnalysisDetail({
             메모 저장
           </Button>
         </div>
-      </div>
+      </div> : <TextBlock title="운영 메모" value={row.adminMemo} />}
     </div>
   );
 }

@@ -16,7 +16,11 @@ import { Card, CardContent } from "@/app/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/app/components/ui/collapsible";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import { parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
+import {
+  formatAnalysisProvenanceSummary,
+  parseJsonArrayOrText,
+  parseJsonStringArray,
+} from "@/features/applications/types/analysis";
 import { VerifiedFactsList } from "@/features/applications/components/VerifiedFactsList";
 import {
   getAdminCompanyAnalyses,
@@ -30,6 +34,7 @@ import type {
   AdminCompanyAnalysisSummaryResponse,
 } from "../types";
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 type BooleanFilter = "all" | "true" | "false";
 
@@ -157,6 +162,7 @@ function formatPostingRevision(row: AdminCompanyAnalysisRow): string {
 }
 
 export function AdminCompanyAnalysisPage() {
+  const { canUpdate } = useAdminDomainAuthorization("AI");
   const [rows, setRows] = useState<AdminCompanyAnalysisRow[]>([]);
   const [summary, setSummary] = useState<AdminCompanyAnalysisSummaryResponse>(EMPTY_SUMMARY);
   const [memos, setMemos] = useState<Record<number, string>>({});
@@ -289,6 +295,7 @@ export function AdminCompanyAnalysisPage() {
   };
 
   const saveMemo = async (analysisId: number) => {
+    if (!canUpdate) return;
     const nextMemo = memos[analysisId] ?? "";
     setSavingMemoId(analysisId);
     setError(null);
@@ -303,6 +310,7 @@ export function AdminCompanyAnalysisPage() {
   };
 
   const saveMetadata = async (analysisId: number) => {
+    if (!canUpdate) return;
     const metadata = metadataForms[analysisId] ?? { sourceType: "", checkedAt: "", refreshRecommendedAt: "" };
     const original = rows.find((row) => row.id === analysisId);
     const nextSourceType = blankToNull(metadata.sourceType);
@@ -551,6 +559,7 @@ export function AdminCompanyAnalysisPage() {
                       onSaveMetadata={() => void saveMetadata(selectedRow.id)}
                       savingMemo={savingMemoId === selectedRow.id}
                       savingMetadata={savingMetadataId === selectedRow.id}
+                      canUpdate={canUpdate}
                     />
                   )}
                 </CardContent>
@@ -595,6 +604,7 @@ export function AdminCompanyAnalysisPage() {
                           onSaveMetadata={() => void saveMetadata(row.id)}
                           savingMemo={savingMemoId === row.id}
                           savingMetadata={savingMetadataId === row.id}
+                          canUpdate={canUpdate}
                           compact
                         />
                       )}
@@ -694,6 +704,7 @@ function CompanyAnalysisDetail({
   onSaveMetadata,
   savingMemo,
   savingMetadata,
+  canUpdate,
   compact = false,
 }: {
   row: AdminCompanyAnalysisRow;
@@ -705,6 +716,7 @@ function CompanyAnalysisDetail({
   onSaveMetadata: () => void;
   savingMemo: boolean;
   savingMetadata: boolean;
+  canUpdate: boolean;
   compact?: boolean;
 }) {
   return (
@@ -736,17 +748,18 @@ function CompanyAnalysisDetail({
         <MetaBlock label="갱신 권장" value={formatDateTime(row.refreshRecommendedAt)} />
         <MetaBlock label="공고 revision" value={formatPostingRevision(row)} />
         <MetaBlock label="확정일" value={row.confirmedAt ? formatDateTime(row.confirmedAt) : "미확정"} />
+        <MetaBlock label="생성 모델" value={formatAnalysisProvenanceSummary(row)} />
       </div>
 
       <TagBlock title="경쟁사" items={parseJsonStringArray(row.competitors)} emptyLabel="경쟁사 미정" />
 
-      <MetadataEditor
+      {canUpdate && <MetadataEditor
         key={row.id}
         metadata={metadata}
         onMetadataChange={onMetadataChange}
         onSaveMetadata={onSaveMetadata}
         saving={savingMetadata}
-      />
+      />}
 
       <div className="grid gap-3">
         <TextBlock title="최근 이슈" value={row.recentIssues} />
@@ -760,7 +773,7 @@ function CompanyAnalysisDetail({
 
       <TagBlock title="출처" items={parseJsonStringArray(row.sources)} emptyLabel="출처 없음" />
 
-      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      {canUpdate ? <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="text-xs font-semibold text-slate-500">운영 메모</div>
         <Textarea
           value={memo}
@@ -774,7 +787,7 @@ function CompanyAnalysisDetail({
             메모 저장
           </Button>
         </div>
-      </div>
+      </div> : <TextBlock title="운영 메모" value={row.adminMemo} />}
     </div>
   );
 }

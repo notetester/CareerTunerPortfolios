@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { getMyConsents } from "../auth/consentApi";
+import { getMyConsents, saveMyConsents } from "../auth/consentApi";
 import { useAuth } from "../auth/AuthContext";
 import { setTokens } from "../lib/tokenStore";
+import {
+  clearOnboardingResume,
+  onboardingReturnTo,
+  readPendingOnboardingConsents,
+} from "@/features/onboarding/onboardingSession";
 
 /**
  * 소셜 로그인 콜백 화면.
@@ -37,7 +42,19 @@ export function AuthCallbackPage() {
         await refreshMe();
 
         const consent = await getMyConsents();
-        navigate(consent.requiredConsentsMissing ? "/auth/social-consent" : "/dashboard", { replace: true });
+        const pending = readPendingOnboardingConsents();
+        if (consent.requiredConsentsMissing) {
+          navigate("/auth/social-consent", { replace: true });
+          return;
+        }
+        if (pending) {
+          await saveMyConsents(pending);
+          const returnTo = onboardingReturnTo();
+          clearOnboardingResume();
+          navigate(returnTo, { replace: true });
+          return;
+        }
+        navigate("/dashboard", { replace: true });
       } catch (err) {
         setError(err instanceof Error ? err.message : "소셜 로그인 후처리에 실패했습니다.");
       }

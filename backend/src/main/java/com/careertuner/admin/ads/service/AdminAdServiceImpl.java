@@ -16,6 +16,7 @@ import com.careertuner.ads.mapper.AdvertisementMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.common.web.NavigationLinkPolicy;
 
 import lombok.RequiredArgsConstructor;
 
@@ -55,7 +56,7 @@ public class AdminAdServiceImpl implements AdminAdService {
         Advertisement ad = Advertisement.builder()
                 .title(trimRequired(request.title(), "제목"))
                 .imageFileId(request.imageFileId())
-                .linkUrl(blankToNull(request.linkUrl()))
+                .linkUrl(NavigationLinkPolicy.optionalWebOrInternal(request.linkUrl(), "광고 링크"))
                 .placement(requirePlacement(request.placement()))
                 .targetPlatform(normalizePlatform(request.targetPlatform()))
                 .startAt(request.startAt())
@@ -77,7 +78,7 @@ public class AdminAdServiceImpl implements AdminAdService {
         Advertisement ad = require(id);
         ad.setTitle(trimRequired(request.title(), "제목"));
         ad.setImageFileId(request.imageFileId());
-        ad.setLinkUrl(blankToNull(request.linkUrl()));
+        ad.setLinkUrl(NavigationLinkPolicy.optionalWebOrInternal(request.linkUrl(), "광고 링크"));
         ad.setPlacement(requirePlacement(request.placement()));
         ad.setTargetPlatform(normalizePlatform(request.targetPlatform()));
         ad.setStartAt(request.startAt());
@@ -151,10 +152,6 @@ public class AdminAdServiceImpl implements AdminAdService {
             throw new BusinessException(ErrorCode.INVALID_INPUT, field + "은(는) 필수입니다.");
         }
         return value.trim();
-    }
-
-    private String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /** 필터 파라미터 정규화 — 화이트리스트 밖이면 null(무시). */

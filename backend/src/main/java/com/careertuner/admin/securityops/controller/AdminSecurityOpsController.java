@@ -1,5 +1,8 @@
 package com.careertuner.admin.securityops.controller;
 
+import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -34,6 +37,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/security")
+@RequireAdminPermission({"SECURITY_READ"})
 @RequiredArgsConstructor
 public class AdminSecurityOpsController {
 
@@ -46,6 +50,7 @@ public class AdminSecurityOpsController {
 
     /** 런타임 차단 캐시를 DB 와 수동 재동기화. */
     @PostMapping("/block-cache/sync")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<AdminSecurityOpsService.BlockCacheStatus> syncBlockCache(
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.syncBlockCache(authUser));
@@ -60,6 +65,7 @@ public class AdminSecurityOpsController {
 
     /** WAF 동기화 큐를 즉시 처리(수동 드레인). 처리 건수를 반환. */
     @PostMapping("/waf-sync/process")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<Integer> processWafSync(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.processWafSyncNow(authUser));
     }
@@ -75,6 +81,7 @@ public class AdminSecurityOpsController {
     }
 
     @PostMapping("/block-rules")
+    @RequireAdminPermission({"SECURITY_CREATE"})
     public ApiResponse<SecurityBlockRuleRow> createBlockRule(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody SecurityBlockRuleRequest request) {
@@ -82,6 +89,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/block-rules/{id}")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<SecurityBlockRuleRow> updateBlockRule(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -90,6 +98,7 @@ public class AdminSecurityOpsController {
     }
 
     @PostMapping("/block-rules/{id}/waf-sync")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<SecurityBlockRuleRow> queueWafSync(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -111,6 +120,7 @@ public class AdminSecurityOpsController {
             @AuthenticationPrincipal AuthUser authUser,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String providerType) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.providers(authUser, keyword, providerType));
     }
 
@@ -124,17 +134,21 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/providers/{providerCode}")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<SecurityProviderConfigRow> updateProvider(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable String providerCode,
             @Valid @RequestBody SecurityProviderConfigRequest request) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.updateProvider(authUser, providerCode, request));
     }
 
     @PostMapping("/providers/{providerCode}/health-check")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<SecurityProviderConfigRow> healthCheck(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable String providerCode) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.runProviderHealthCheck(authUser, providerCode));
     }
 
@@ -149,6 +163,7 @@ public class AdminSecurityOpsController {
     }
 
     @PostMapping("/reviews")
+    @RequireAdminPermission({"SECURITY_CREATE"})
     public ApiResponse<SecurityReviewRow> createReview(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody SecurityReviewRequest request) {
@@ -156,6 +171,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/reviews/{id}")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<SecurityReviewRow> updateReview(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -169,6 +185,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/appeal-policy")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<SecurityAppealPolicyRow> updateAppealPolicy(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody SecurityAppealPolicyRequest request) {
@@ -185,6 +202,7 @@ public class AdminSecurityOpsController {
     }
 
     @PatchMapping("/appeals/{id}")
+    @RequireAdminPermission({"SECURITY_UPDATE"})
     public ApiResponse<SecurityAppealRow> decideAppeal(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,

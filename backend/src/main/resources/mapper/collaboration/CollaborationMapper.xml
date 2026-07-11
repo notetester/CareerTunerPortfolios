@@ -666,6 +666,7 @@
         LEFT JOIN collaboration_conversation_ban b
           ON b.conversation_id = cm.conversation_id
          AND b.user_id = cm.user_id
+         AND b.deleted_at IS NULL
     </sql>
 
     <select id="findMemberDetails" resultType="com.careertuner.collaboration.domain.ConversationMemberDetailRow">
@@ -693,6 +694,7 @@
           FROM collaboration_conversation_ban
          WHERE conversation_id = #{conversationId}
            AND user_id = #{userId}
+           AND deleted_at IS NULL
     </select>
 
     <insert id="insertBan">
@@ -700,14 +702,17 @@
         VALUES (#{conversationId}, #{userId}, #{bannedBy}, #{reason})
         ON DUPLICATE KEY UPDATE
             banned_by = VALUES(banned_by),
-            reason = VALUES(reason)
+            reason = VALUES(reason),
+            deleted_at = NULL
     </insert>
 
-    <delete id="deleteBan">
-        DELETE FROM collaboration_conversation_ban
+    <update id="deleteBan">
+        UPDATE collaboration_conversation_ban
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE conversation_id = #{conversationId}
            AND user_id = #{userId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <select id="findBans" resultType="com.careertuner.collaboration.domain.ConversationBanRow">
         SELECT b.user_id,
@@ -717,8 +722,9 @@
                b.reason,
                b.created_at
           FROM collaboration_conversation_ban b
-          JOIN users u ON u.id = b.user_id
+         JOIN users u ON u.id = b.user_id
          WHERE b.conversation_id = #{conversationId}
+           AND b.deleted_at IS NULL
          ORDER BY b.created_at DESC, b.id DESC
     </select>
 
