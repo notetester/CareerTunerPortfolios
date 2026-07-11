@@ -599,8 +599,31 @@ export interface AnalysisProvenanceView {
   requestedProviderLabel: string | null;
   /** 고른 provider 로 실패해 다른 모델로 폴백했는지. */
   fallbackUsed: boolean;
+  /**
+   * 폴백 표시 라벨. 명시 선택 폴백이면 "폴백(요청 X)", AUTO(요청 provider 없음) 폴백이면 "자동 폴백".
+   * 폴백이 없었으면 null — AUTO 는 requested 가 NULL 이라 requestedProviderLabel 만으로는 폴백이 숨는다.
+   */
+  fallbackLabel: string | null;
+  /** 실제 시도 순서 라벨(예: ["Local LLM","Claude"]). attempt_path 미기록/파싱 불가면 null. */
+  attemptPathLabels: string[] | null;
   /** 실행 모드 라벨("초기 자동 분석"/"수동 재분석"). 없으면 null. */
   runModeLabel: string | null;
+}
+
+/** attempt_path JSON(["LOCAL","CLAUDE",...])을 라벨 배열로. 비정상 값은 조용히 null(표시 생략). */
+function parseAttemptPathLabels(attemptPath: string | null | undefined): string[] | null {
+  if (!attemptPath) return null;
+  try {
+    const parsed: unknown = JSON.parse(attemptPath);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    const labels = parsed
+      .filter((token): token is string => typeof token === "string")
+      .map((token) => getAnalysisProviderLabel(token))
+      .filter((label): label is string => label !== null);
+    return labels.length > 0 ? labels : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -616,12 +639,18 @@ export function parseAnalysisProvenance(
   }
   const requestedLabel = getAnalysisProviderLabel(source.requestedProvider);
   const fallbackUsed = source.fallbackUsed === true;
+  const shownRequestedLabel = fallbackUsed ? requestedLabel : null;
   return {
     actualProviderLabel: actualLabel,
     actualModel: source.actualModel ?? null,
     // 요청=실제면 중복이라 숨긴다. 폴백이 일어난 경우에만 "요청: X" 를 따로 보여준다.
-    requestedProviderLabel: fallbackUsed ? requestedLabel : null,
+    requestedProviderLabel: shownRequestedLabel,
     fallbackUsed,
+    // AUTO(요청 없음)의 폴백도 표시되도록 requested 유무로 라벨을 분기한다.
+    fallbackLabel: fallbackUsed
+      ? (shownRequestedLabel ? `폴백(요청 ${shownRequestedLabel})` : "자동 폴백")
+      : null,
+    attemptPathLabels: parseAttemptPathLabels(source.attemptPath),
     runModeLabel: getAnalysisRunModeLabel(source.runMode),
   };
 }
@@ -637,7 +666,7 @@ export function formatAnalysisProvenanceSummary(source: AnalysisProvenanceSource
   }
   const parts = [prov.actualProviderLabel];
   if (prov.actualModel) parts.push(prov.actualModel);
-  if (prov.fallbackUsed && prov.requestedProviderLabel) parts.push(`폴백(요청 ${prov.requestedProviderLabel})`);
+  if (prov.fallbackLabel) parts.push(prov.fallbackLabel); // AUTO 폴백("자동 폴백")도 포함
   if (prov.runModeLabel) parts.push(prov.runModeLabel);
   return parts.join(" · ");
 }

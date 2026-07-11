@@ -21,6 +21,8 @@ public interface AdminCorrectionMapper {
 
     AdminCorrectionDetail findCorrection(@Param("id") Long id);
 
+    AdminCorrectionDetail findCorrectionForUpdate(@Param("id") Long id);
+
     List<AdminCorrectionFailureRow> findAiFailures(@Param("limit") int limit);
 
     int updateAdminMemo(@Param("id") Long id, @Param("adminMemo") String adminMemo);

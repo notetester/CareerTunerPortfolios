@@ -1,5 +1,16 @@
 import { api } from "../lib/api";
-import type { TokenResponse } from "./AuthContext";
+import type { SocialProvider, TokenResponse } from "./AuthContext";
+
+export type OAuthProviderAvailability = Record<SocialProvider, boolean>;
+
+/** 현재 환경에서 실제 인증 흐름을 시작할 수 있는 소셜 로그인 제공자. */
+export function getOAuthProviderAvailability(): Promise<OAuthProviderAvailability> {
+  return api<OAuthProviderAvailability>(
+    "/auth/oauth/providers",
+    { method: "GET" },
+    { auth: false },
+  );
+}
 
 export function requestPasswordReset(email: string): Promise<void> {
   return api<void>(

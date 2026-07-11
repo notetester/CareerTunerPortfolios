@@ -32,6 +32,7 @@ import com.careertuner.auth.dto.MfaSetupStartResponse;
 import com.careertuner.auth.dto.MfaSetupVerifyRequest;
 import com.careertuner.auth.dto.MfaStatusResponse;
 import com.careertuner.auth.dto.OAuthCallbackResult;
+import com.careertuner.auth.dto.OAuthProviderAvailabilityResponse;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RefreshRequest;
@@ -233,6 +234,11 @@ public class AuthController {
     }
 
     // ── 소셜 로그인 ──
+
+    @GetMapping("/oauth/providers")
+    public ApiResponse<OAuthProviderAvailabilityResponse> oauthProviders() {
+        return ApiResponse.ok(authService.oauthProviders());
+    }
 
     @GetMapping("/oauth/{provider}")
     public ResponseEntity<Void> oauthRedirect(@PathVariable String provider, HttpServletRequest servletRequest) {

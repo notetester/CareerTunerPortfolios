@@ -1063,7 +1063,7 @@ class ApplicationCaseServiceImplTest {
         assertThat(response.ambiguousConditions()).isEqualTo("[{\"condition\":\"experience is not explicit\",\"assumption\":\"junior\"}]");
         verify(jobAnalysisMapper, never()).deleteJobAnalysesByCaseId(10L);
         verify(jobAnalysisMapper).insertJobAnalysis(any(JobAnalysis.class));
-        verify(statusService).markAnalyzing(1L, 10L, "DRAFT");
+        verify(statusService).markAnalyzingExclusive(1L, 10L, "DRAFT");
         InOrder successOrder = inOrder(statusService, usageLogService);
         successOrder.verify(statusService).markReadyAfterAnalysis(1L, 10L, "DRAFT");
         successOrder.verify(usageLogService).recordLocalSuccess(1L, 10L, "JOB_ANALYSIS", usage);
@@ -1116,7 +1116,7 @@ class ApplicationCaseServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("현재 상태에서는 분석을 다시 실행할 수 없습니다.");
 
-        verify(statusService, never()).markAnalyzing(1L, 10L, "APPLIED");
+        verify(statusService, never()).markAnalyzingExclusive(1L, 10L, "APPLIED");
         verify(bAnalysisGenerationService, never()).generateJobAnalysis(any(ApplicationCase.class), any());
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
@@ -1140,7 +1140,7 @@ class ApplicationCaseServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
 
-        verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
+        verify(statusService, never()).markAnalyzingExclusive(1L, 10L, "ANALYZING");
         verify(bAnalysisGenerationService, never()).generateJobAnalysis(any(ApplicationCase.class), any());
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("JOB_ANALYSIS"), any());
@@ -1200,7 +1200,7 @@ class ApplicationCaseServiceImplTest {
         assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L))
                 .isSameAs(failure);
 
-        verify(statusService).markAnalyzing(1L, 10L, "READY");
+        verify(statusService).markAnalyzingExclusive(1L, 10L, "READY");
         verify(statusService).restorePreviousStatus(1L, 10L, "READY");
         verify(usageLogService).recordFailure(1L, 10L, "JOB_ANALYSIS", "OpenAI down");
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class));
@@ -1231,7 +1231,7 @@ class ApplicationCaseServiceImplTest {
         assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L))
                 .isSameAs(failure);
 
-        verify(statusService).markAnalyzing(1L, 10L, "DRAFT");
+        verify(statusService).markAnalyzingExclusive(1L, 10L, "DRAFT");
         verify(statusService).markReadyAfterAnalysis(1L, 10L, "DRAFT");
         verify(statusService).restorePreviousStatus(1L, 10L, "DRAFT");
         verify(usageLogService).recordFailure(1L, 10L, "JOB_ANALYSIS", "usage log failed");
@@ -1331,7 +1331,7 @@ class ApplicationCaseServiceImplTest {
         assertThat(response.verifiedFacts()).isEqualTo("[{\"fact\":\"job posting mentions B2B platform\",\"source\":\"job posting\"}]");
         assertThat(response.aiInferences()).isEqualTo("[{\"inference\":\"platform operations may be discussed\",\"basis\":\"job posting mentions B2B platform\"}]");
         assertThat(response.sourceType()).isEqualTo("JOB_POSTING");
-        verify(statusService).markAnalyzing(1L, 10L, "DRAFT");
+        verify(statusService).markAnalyzingExclusive(1L, 10L, "DRAFT");
     }
 
     @Test
@@ -1351,7 +1351,7 @@ class ApplicationCaseServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("현재 상태에서는 분석을 다시 실행할 수 없습니다.");
 
-        verify(statusService, never()).markAnalyzing(1L, 10L, "CLOSED");
+        verify(statusService, never()).markAnalyzingExclusive(1L, 10L, "CLOSED");
         verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any(), any());
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
@@ -1375,7 +1375,7 @@ class ApplicationCaseServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessage("이미 분석이 진행 중입니다. 잠시 후 결과를 확인해 주세요.");
 
-        verify(statusService, never()).markAnalyzing(1L, 10L, "ANALYZING");
+        verify(statusService, never()).markAnalyzingExclusive(1L, 10L, "ANALYZING");
         verify(bAnalysisGenerationService, never()).generateCompanyAnalysis(any(ApplicationCase.class), any(), any());
         verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any(CompanyAnalysis.class));
         verify(usageLogService, never()).recordSuccess(eq(1L), eq(10L), eq("COMPANY_RESEARCH"), any());
@@ -1565,6 +1565,71 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
+    void strictJobAnalysisReadsLatestPostingOnlyAfterExclusiveGate() {
+        // 입력 스냅샷 직렬화 잠금: 배타 획득(markAnalyzingExclusive) → 최신 공고 조회 → 모델 호출 순서를
+        // 고정한다. 공고를 게이트 앞에서 읽으면 그 사이 끝난 재추출의 새 revision 을 놓치고 이전 revision 으로
+        // 분석하는 경합이 되살아난다(회귀 방지).
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService,
+                mock(AiUsageLogService.class), statusService, transactionTemplate(), analysisJsonValidator(),
+                mock(NotificationService.class));
+        ApplicationCase applicationCase = applicationCase("READY");
+        JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
+        Usage usage = new Usage("claude-haiku", 100, 50, 150);
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
+        when(bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, "Java Spring REST API", BAnalysisProvider.CLAUDE))
+                .thenReturn(new BAnalysisGenerationService.StrictJobResult(jobAnalysisPayload(usage), List.of(BAnalysisProvider.CLAUDE)));
+        when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
+
+        service.createJobAnalysisStrict(1L, 10L, BAnalysisProvider.CLAUDE);
+
+        InOrder order = inOrder(statusService, applicationCaseMapper, jobPostingMapper, bAnalysisGenerationService);
+        order.verify(statusService).markAnalyzingExclusive(1L, 10L, "READY");
+        // 게이트 뒤 지원 건 재조회(재추출이 갱신한 기업명·직무명 반영) → 최신 공고 조회 → 모델 호출.
+        order.verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
+        order.verify(jobPostingMapper).findLatestJobPostingByCaseId(10L);
+        order.verify(bAnalysisGenerationService)
+                .generateJobAnalysisStrict(applicationCase, "Java Spring REST API", BAnalysisProvider.CLAUDE);
+    }
+
+    @Test
+    void autoJobAnalysisReadsLatestPostingOnlyAfterExclusiveGate() {
+        // AutoPrep 등 비-strict 경로도 같은 배타 획득 + 획득 후 공고 조회를 쓴다(재추출과 동일 규칙).
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService,
+                mock(AiUsageLogService.class), statusService, transactionTemplate(), analysisJsonValidator(),
+                mock(NotificationService.class));
+        ApplicationCase applicationCase = applicationCase("READY");
+        JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
+        Usage usage = new Usage("gpt-test", 100, 50, 150);
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
+        when(bAnalysisGenerationService.generateJobAnalysis(applicationCase, "Java Spring REST API"))
+                .thenReturn(new GeneratedJobAnalysis(jobAnalysisPayload(usage), null, null));
+        when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
+
+        service.createJobAnalysis(1L, 10L);
+
+        InOrder order = inOrder(statusService, applicationCaseMapper, jobPostingMapper, bAnalysisGenerationService);
+        order.verify(statusService).markAnalyzingExclusive(1L, 10L, "READY");
+        // 게이트 뒤 지원 건 재조회 → 최신 공고 조회 → 모델 호출(4경로 공통 규칙).
+        order.verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
+        order.verify(jobPostingMapper).findLatestJobPostingByCaseId(10L);
+        order.verify(bAnalysisGenerationService).generateJobAnalysis(applicationCase, "Java Spring REST API");
+    }
+
+    @Test
     void createJobAnalysisStrictPreservesExistingOnFailure() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
@@ -1625,7 +1690,8 @@ class ApplicationCaseServiceImplTest {
     @Test
     void analysisStatusServiceThrowsWhenStartTransitionIsNotApplied() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(applicationCaseMapper);
+        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(
+                applicationCaseMapper, mock(ApplicationCaseExtractionMapper.class));
 
         when(applicationCaseMapper.markAnalysisStarted(10L, 1L, "READY")).thenReturn(0);
 
@@ -1635,9 +1701,44 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
+    void analysisStatusServiceExclusiveRejectsWhenReextractionIsActive() {
+        // 수동(strict) 분석 획득은 케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS 를 한 TX 로 묶는다.
+        // 재추출(QUEUED/RUNNING)이 진행 중이면 CONFLICT — ANALYZING 전이를 시도하지 않는다.
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(
+                applicationCaseMapper, extractionMapper);
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(1);
+
+        assertThatThrownBy(() -> statusService.markAnalyzingExclusive(1L, 10L, "READY"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("공고 재추출이 진행 중입니다");
+        verify(applicationCaseMapper).lockApplicationCaseById(10L); // 직렬화 지점(행 잠금) 후 검사
+        verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void analysisStatusServiceExclusiveMarksAnalyzingAfterLockWhenNoActiveExtraction() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(
+                applicationCaseMapper, extractionMapper);
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
+        when(applicationCaseMapper.markAnalysisStarted(10L, 1L, "READY")).thenReturn(1);
+
+        statusService.markAnalyzingExclusive(1L, 10L, "READY");
+
+        InOrder order = inOrder(applicationCaseMapper, extractionMapper);
+        order.verify(applicationCaseMapper).lockApplicationCaseById(10L);
+        order.verify(extractionMapper).countActiveExtractionsByApplicationCaseId(10L);
+        order.verify(applicationCaseMapper).markAnalysisStarted(10L, 1L, "READY");
+    }
+
+    @Test
     void analysisStatusServiceThrowsWhenReadyTransitionIsNotApplied() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(applicationCaseMapper);
+        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(
+                applicationCaseMapper, mock(ApplicationCaseExtractionMapper.class));
 
         when(applicationCaseMapper.markReadyAfterAnalysis(10L, 1L, "READY")).thenReturn(0);
 

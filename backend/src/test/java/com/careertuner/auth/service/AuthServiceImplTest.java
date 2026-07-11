@@ -260,6 +260,31 @@ class AuthServiceImplTest {
     }
 
     @Test
+    void oauthProviders_whenMockDisabled_exposesOnlyConfiguredProviders() {
+        when(socialOAuthService.isMockEnabled()).thenReturn(false);
+        when(socialOAuthService.isConfigured("GOOGLE")).thenReturn(true);
+        when(socialOAuthService.isConfigured("KAKAO")).thenReturn(false);
+        when(socialOAuthService.isConfigured("NAVER")).thenReturn(true);
+
+        var providers = service.oauthProviders();
+
+        assertThat(providers.google()).isTrue();
+        assertThat(providers.kakao()).isFalse();
+        assertThat(providers.naver()).isTrue();
+    }
+
+    @Test
+    void oauthProviders_whenSignedMockEnabled_exposesAllProviders() {
+        when(socialOAuthService.isMockEnabled()).thenReturn(true);
+
+        var providers = service.oauthProviders();
+
+        assertThat(providers.google()).isTrue();
+        assertThat(providers.kakao()).isTrue();
+        assertThat(providers.naver()).isTrue();
+    }
+
+    @Test
     void buildSocialLinkUrl_whenProviderIsNotConfigured_returnsMockCallbackUrl() {
         when(socialOAuthService.isSupported("KAKAO")).thenReturn(true);
         when(socialOAuthService.isConfigured("KAKAO")).thenReturn(false);

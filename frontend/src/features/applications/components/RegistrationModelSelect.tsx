@@ -52,7 +52,9 @@ export function RegistrationModelSelect({
           {options.map((option) => (
             <SelectItem key={option.provider} value={option.provider} disabled={!option.selectable}>
               {option.selectable
-                ? option.displayName
+                ? option.actualModel
+                  ? `${option.displayName} · ${option.actualModel}`
+                  : option.displayName
                 : `${option.displayName} — ${option.reason ?? "사용 불가"}`}
             </SelectItem>
           ))}

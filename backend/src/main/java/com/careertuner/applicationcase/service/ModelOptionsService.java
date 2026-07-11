@@ -75,7 +75,7 @@ public class ModelOptionsService {
                 claudeReady ? null : REASON_CLAUDE, anthropicClient.model(), null);
         ProviderOption openAi = new ProviderOption("OPENAI", "OpenAI", openAiReady,
                 openAiReady ? null : REASON_OPENAI, openAiProperties.getModel(), openAiAutoFallback);
-        ProviderOption self = new ProviderOption("SELF_OCR", "자체 OCR", selfReady,
+        ProviderOption self = new ProviderOption("SELF_OCR", "자체 OCR 워커(PaddleOCR)", selfReady,
                 selfReady ? null : selfOcrReason(worker), selfOcrModel(worker), null);
         // 우선순위 Claude → OpenAI → Self OCR 중 첫 selectable 을 기본값으로(모두 불가면 null).
         return new StageOptions(firstSelectable(List.of(claude, openAi, self)), List.of(claude, openAi, self));

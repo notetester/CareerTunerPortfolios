@@ -14,8 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.community.dto.AdminPostStatusRequest;
-import com.careertuner.admin.ops.dto.AdminActionLogCreate;
-import com.careertuner.admin.ops.mapper.AdminActionLogMapper;
+import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -24,8 +23,6 @@ import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.mapper.CommunityPostMapper;
 
 import lombok.RequiredArgsConstructor;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api/admin/community/posts")
@@ -36,8 +33,7 @@ public class AdminCommunityPostController {
     private static final Set<String> UPDATE_STATUSES = Set.of("PUBLISHED", "HIDDEN");
 
     private final CommunityPostMapper postMapper;
-    private final AdminActionLogMapper actionLogMapper;
-    private final ObjectMapper objectMapper;
+    private final AdminActionLogService actionLogService;
 
     @PatchMapping("/{postId}/status")
     @RequireAdminPermission({"CONTENT_UPDATE"})
@@ -79,18 +75,9 @@ public class AdminCommunityPostController {
 
     private void changeStatus(AuthUser authUser, CommunityPost post, String status, String reason) {
         postMapper.updateStatus(post.getId(), status);
-        actionLogMapper.insert(new AdminActionLogCreate(authUser.id(), post.getUserId(),
+        actionLogService.record(authUser, post.getUserId(),
                 "COMMUNITY_POST_" + status, "COMMUNITY_POST",
-                json(Map.of("postId", post.getId(), "status", post.getStatus())),
-                json(Map.of("postId", post.getId(), "status", status)),
-                reason, null, null));
-    }
-
-    private String json(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JacksonException e) {
-            return "{}";
-        }
+                Map.of("postId", post.getId(), "status", post.getStatus()),
+                Map.of("postId", post.getId(), "status", status), reason);
     }
 }

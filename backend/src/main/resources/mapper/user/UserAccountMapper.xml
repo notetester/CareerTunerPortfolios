@@ -9,12 +9,12 @@
         SELECT * FROM users WHERE id = #{id}
     </select>
 
-    <select id="findLinkedProviders" resultType="string">
-        SELECT provider FROM user_social WHERE user_id = #{userId} ORDER BY provider
+    <select id="findByIdForUpdate" resultType="com.careertuner.user.domain.User">
+        SELECT * FROM users WHERE id = #{id} FOR UPDATE
     </select>
 
-    <select id="countLinkedProviders" resultType="int">
-        SELECT COUNT(*) FROM user_social WHERE user_id = #{userId}
+    <select id="findLinkedProviders" resultType="string">
+        SELECT provider FROM user_social WHERE user_id = #{userId} ORDER BY provider
     </select>
 
     <select id="countByLoginId" resultType="int">

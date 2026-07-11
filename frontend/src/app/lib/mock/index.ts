@@ -176,6 +176,11 @@ const coreRoutes: MockRoute[] = [
   { method: "POST", pattern: /^\/auth\/register$/, handler: ok(demoTokenResponse) },
   { method: "GET", pattern: /^\/auth\/me$/, handler: () => getMockSession() },
   { method: "POST", pattern: /^\/auth\/logout$/, handler: () => { setMockSession(demoUser); return null; } },
+  {
+    method: "GET",
+    pattern: /^\/auth\/oauth\/providers$/,
+    handler: () => ({ google: true, kakao: true, naver: true }),
+  },
 
   {
     method: "GET",

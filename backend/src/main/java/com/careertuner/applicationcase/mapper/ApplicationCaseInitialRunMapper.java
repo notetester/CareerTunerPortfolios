@@ -19,6 +19,14 @@ public interface ApplicationCaseInitialRunMapper {
     int claimForRun(@Param("applicationCaseId") Long applicationCaseId,
                     @Param("executionToken") String executionToken);
 
+    /**
+     * PENDING → FAILED 조건부 단일 전이(원자적 종결). 재추출이 아직 시작 안 한 초기 실행 프로필을 RUNNING 을
+     * 거치지 않고 한 번에 닫는다 — claim+markFailed 2단계 사이의 크래시로 RUNNING 고착되는 창을 없앤다.
+     * PENDING 이 아니면(그 사이 파이프라인이 선점/완료) 0행 → 호출부가 경합으로 처리.
+     */
+    int closePendingAsFailed(@Param("applicationCaseId") Long applicationCaseId,
+                             @Param("failureReason") String failureReason);
+
     /** RUNNING → DONE. execution_token 으로 fencing(늦은 완료가 다른 실행을 덮지 않게). */
     int markDone(@Param("applicationCaseId") Long applicationCaseId,
                  @Param("executionToken") String executionToken);

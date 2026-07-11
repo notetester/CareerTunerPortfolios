@@ -32,7 +32,8 @@ class AdminPermissionDeclarationContractTest {
     private static final Set<String> READ_ONLY_POST_MAPPINGS = Set.of(
             "AdminStaffGradeController.java#previewImport");
     private static final Map<String, Set<String>> ACTION_SCOPED_MUTATIONS = Map.of(
-            "AdminReportController.java#takeAction", Set.of("CONTENT_UPDATE", "CONTENT_DELETE"));
+            "AdminReportController.java#takeAction", Set.of("CONTENT_UPDATE", "CONTENT_DELETE"),
+            "AdminModerationController.java#decideReviewQueue", Set.of("AI_UPDATE"));
 
     @Test
     void everyAdminControllerDeclaresPermissionOrExplicitRoleOnly() throws Exception {

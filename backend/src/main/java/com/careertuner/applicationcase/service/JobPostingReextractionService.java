@@ -7,9 +7,13 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
+import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.JobPostingExtractionProcessor.ExtractionResult;
 import com.careertuner.applicationcase.service.JobPostingExtractionProcessor.PostFailureAction;
 import com.careertuner.common.exception.BusinessException;
@@ -33,8 +37,9 @@ import lombok.RequiredArgsConstructor;
  *       기존 분석은 revision 비교로 stale 처리되고, 사용자가 모델을 골라 수동 재분석한다.</li>
  *   <li>실패 시 기존 공고·분석을 보존하고 <b>초기 실행 프로필을 건드리지 않는다</b>(reopen/abandon 없음).
  *       성공한 공고를 재추출하다 실패해도 새 FAILED 이력만 남고 기존 성공 revision·분석은 그대로다.</li>
- *   <li>트랜잭션 경계: (insert QUEUED + claim RUNNING) 은 <b>같은 짧은 TX</b>(중간 커밋 시 배경 워커가
- *       QUEUED 행을 선점해 자동 체인으로 처리할 수 있음) → OCR 은 트랜잭션 밖 → 성공/실패 마킹은 다시 짧은 TX.</li>
+ *   <li>트랜잭션 경계: (케이스 행 FOR UPDATE + 초기 실행 가드 + insert QUEUED + claim RUNNING) 은
+ *       <b>같은 짧은 TX</b> — 행 잠금이 수동 분석 획득({@code markAnalyzingExclusive})과의 직렬화 지점이고,
+ *       중간 커밋 시 배경 워커가 QUEUED 행을 선점할 수 있어 묶는다 → OCR 은 트랜잭션 밖 → 마킹은 다시 짧은 TX.</li>
  * </ul>
  * 저장/상태 전이/REVIEW_REQUIRED/알림 lifecycle 은 {@link JobPostingExtractionProcessor} 를 워커와 공유한다.
  */
@@ -49,9 +54,18 @@ public class JobPostingReextractionService {
     private static final Set<String> REEXTRACTABLE_STATUSES = Set.of(EXTRACTION_STATUS_SUCCEEDED, EXTRACTION_STATUS_FAILED);
     private static final Set<String> OCR_PROVIDERS = Set.of("CLAUDE", "OPENAI", "SELF_OCR");
     private static final Set<String> OCR_SOURCE_TYPES = Set.of("PDF", "IMAGE");
+    // 초기 자동 파이프라인이 실행 중임을 나타내는 케이스 상태(진입게이트가 DRAFT|READY→ANALYZING 으로 마킹).
+    private static final String CASE_STATUS_ANALYZING = "ANALYZING";
+    // 초기 실행 프로필 상태.
+    private static final String INITIAL_RUN_PENDING = "PENDING";
+    private static final String INITIAL_RUN_RUNNING = "RUNNING";
+    // application_case_initial_run.failure_reason 컬럼 길이(VARCHAR 255)와 맞춘다(초과 시 markFailed 가 throw).
+    private static final int FAILURE_REASON_MAX_LENGTH = 255;
 
     private final ApplicationCaseAccessService accessService;
+    private final ApplicationCaseMapper applicationCaseMapper;
     private final ApplicationCaseExtractionMapper extractionMapper;
+    private final ApplicationCaseInitialRunMapper initialRunMapper;
     private final JobPostingService jobPostingService;
     private final JobPostingExtractionProcessor extractionProcessor;
     private final TransactionTemplate transactionTemplate;
@@ -103,7 +117,12 @@ public class JobPostingReextractionService {
                 extractionMapper.findExtractionById(extraction.getId()));
     }
 
-    /** insert QUEUED 와 claim RUNNING 을 같은 짧은 TX 로 묶어, 커밋 시 이미 RUNNING(=워커 선점 불가)이 되게 한다. */
+    /**
+     * 재추출 획득 TX — 케이스 행 잠금 + 초기 실행 가드 + (insert QUEUED + claim RUNNING) 을 한 짧은 TX 로 묶는다.
+     * 케이스 행 {@code FOR UPDATE} 가 수동 분석 획득 TX({@code markAnalyzingExclusive})와의 직렬화 지점이라
+     * 스냅샷 검사 사이의 TOCTOU(분석 시작↔재추출 시작 동시 진입)가 없다. 가드가 던지면 프로필 종결까지 함께
+     * 롤백되고(부수효과 없음), 커밋 시엔 이미 RUNNING 이라 배경 워커가 선점하지 못한다.
+     */
     private ApplicationCaseExtraction insertAndClaim(Long userId,
                                                      Long applicationCaseId,
                                                      Long jobPostingId,
@@ -118,6 +137,12 @@ public class JobPostingReextractionService {
                 .status(EXTRACTION_STATUS_QUEUED)
                 .build();
         return transactionTemplate.execute(status -> {
+            // 잠금 하에 최신 상태로 재검사 — 초기 파이프라인 진행 중이면 거절, PENDING 프로필은 원자적으로 닫는다.
+            ApplicationCase locked = applicationCaseMapper.lockApplicationCaseById(applicationCaseId);
+            if (locked == null) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
+            }
+            guardInitialRunForReextract(locked, applicationCaseId);
             try {
                 extractionMapper.insertApplicationCaseExtraction(extraction);
             } catch (DuplicateKeyException ex) {
@@ -129,6 +154,54 @@ public class JobPostingReextractionService {
             }
             return extraction;
         });
+    }
+
+    /**
+     * 초기 자동 파이프라인·수동 분석과 재추출이 같은 공고 revision 을 두고 경합하지 않도록 막는다.
+     * 획득 TX 안(케이스 행 잠금 하)에서 호출된다 — {@code applicationCase} 는 방금 잠가 읽은 최신 행이라
+     * 스냅샷이 아니고, 수동 분석의 ANALYZING 전이는 같은 행 잠금에 직렬화되어 이 검사와 엇갈리지 않는다.
+     *
+     * <ul>
+     *   <li>케이스가 {@code ANALYZING}(초기 파이프라인 또는 수동 분석 진행 중)이거나 초기 실행 프로필이
+     *       {@code RUNNING} 이면 CONFLICT 로 거절한다(부수효과 없음 — TX 롤백). extraction 이 이미 SUCCEEDED 라
+     *       {@code countActive} 가 0인 상태에서도 분석은 돌 수 있어, 이 게이트가 그 창을 닫는다.</li>
+     *   <li>프로필이 {@code PENDING}(최초 OCR 이 REVIEW_REQUIRED 라 파이프라인이 아직 실행되지 않음) 이면
+     *       원자적으로 claim(PENDING→RUNNING) 한 뒤 FAILED 로 닫는다. 이렇게 하지 않으면 재추출이 PASS 여도
+     *       프로필이 PENDING 으로 남아 수동 분석 가드가 영구 409 가 된다. 재추출은 정책상 초기 자동 분석을
+     *       되살리지 않으므로(성공=공고 revision 만 갱신), 프로필을 FAILED 로 종결해 수동 분석 경로를 연다.</li>
+     *   <li>claim 에 지면(그 사이 파이프라인이 PENDING 을 선점해 RUNNING) 경합이므로 CONFLICT 로 거절한다.</li>
+     *   <li>프로필이 없거나 이미 DONE/FAILED 면 통과한다.</li>
+     * </ul>
+     */
+    private void guardInitialRunForReextract(ApplicationCase applicationCase, Long applicationCaseId) {
+        if (CASE_STATUS_ANALYZING.equals(applicationCase.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "초기 분석이 진행 중입니다. 완료된 후 다시 시도해 주세요.");
+        }
+        ApplicationCaseInitialRun profile = initialRunMapper.findByApplicationCaseId(applicationCaseId);
+        if (profile == null) {
+            return;
+        }
+        String state = profile.getState();
+        if (INITIAL_RUN_RUNNING.equals(state)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "초기 분석이 진행 중입니다. 완료된 후 다시 시도해 주세요.");
+        }
+        if (INITIAL_RUN_PENDING.equals(state)) {
+            // PENDING→FAILED 를 조건부 단일 UPDATE 로 원자적으로 닫는다 — claim(RUNNING) 후 markFailed 2단계
+            // 사이에 크래시가 나면 RUNNING 고착으로 reaper 전까지 수동 분석이 막히므로, 중간 RUNNING 을 아예 거치지
+            // 않는다. 0행이면 그 사이 초기 파이프라인이 PENDING 을 선점(RUNNING)/완료한 것이므로 경합으로 보고 거절.
+            int closed = initialRunMapper.closePendingAsFailed(applicationCaseId,
+                    truncate("사용자가 다른 OCR 모델로 재추출을 시작해 초기 자동 실행을 종료했습니다.", FAILURE_REASON_MAX_LENGTH));
+            if (closed != 1) {
+                throw new BusinessException(ErrorCode.CONFLICT, "초기 분석이 진행 중입니다. 완료된 후 다시 시도해 주세요.");
+            }
+        }
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     private static String validateOcrProvider(String ocrProvider) {

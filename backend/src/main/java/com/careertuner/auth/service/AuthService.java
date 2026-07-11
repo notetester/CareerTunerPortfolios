@@ -8,6 +8,7 @@ import com.careertuner.auth.dto.MeResponse;
 import com.careertuner.auth.dto.MfaLoginStatusResponse;
 import com.careertuner.auth.dto.MfaLoginVerifyRequest;
 import com.careertuner.auth.dto.OAuthCallbackResult;
+import com.careertuner.auth.dto.OAuthProviderAvailabilityResponse;
 import com.careertuner.auth.dto.PasswordResetConfirmRequest;
 import com.careertuner.auth.dto.PasswordResetRequest;
 import com.careertuner.auth.dto.RegisterRequest;
@@ -67,6 +68,9 @@ public interface AuthService {
     boolean isLoginIdTaken(String loginId);
 
     MeResponse me(Long userId);
+
+    /** 현재 환경에서 시작 가능한 소셜 OAuth 제공자를 반환한다. */
+    OAuthProviderAvailabilityResponse oauthProviders();
 
     /** 소셜 제공자 인가 URL(서명된 state 포함)을 만든다. */
     String buildAuthorizationUrl(String provider);

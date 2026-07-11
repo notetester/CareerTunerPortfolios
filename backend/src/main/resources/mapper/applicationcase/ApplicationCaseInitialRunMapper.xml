@@ -39,6 +39,15 @@
           AND state = 'PENDING'
     </update>
 
+    <update id="closePendingAsFailed">
+        UPDATE application_case_initial_run
+        SET state = 'FAILED',
+            finished_at = NOW(),
+            failure_reason = #{failureReason}
+        WHERE application_case_id = #{applicationCaseId}
+          AND state = 'PENDING'
+    </update>
+
     <update id="markDone">
         UPDATE application_case_initial_run
         SET state = 'DONE',

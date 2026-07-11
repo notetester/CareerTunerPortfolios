@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Minus, Plus, WalletCards } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import {
@@ -27,6 +27,7 @@ export function CreditAdjustDialog({ open, initialUserId, onOpenChange, onSubmit
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const submissionRef = useRef<{ fingerprint: string; requestId: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -35,6 +36,7 @@ export function CreditAdjustDialog({ open, initialUserId, onOpenChange, onSubmit
     setAmount("");
     setReason("");
     setError(null);
+    submissionRef.current = null;
   }, [open, initialUserId]);
 
   const close = (nextOpen: boolean) => {
@@ -52,11 +54,16 @@ export function CreditAdjustDialog({ open, initialUserId, onOpenChange, onSubmit
     setSubmitting(true);
     setError(null);
     try {
-      await onSubmit({
+      const adjustment = {
         userId: validation.userId,
         amount: mode === "grant" ? validation.amount : -validation.amount,
         reason: reason.trim(),
-      });
+      };
+      const fingerprint = JSON.stringify(adjustment);
+      if (submissionRef.current?.fingerprint !== fingerprint) {
+        submissionRef.current = { fingerprint, requestId: createRequestId() };
+      }
+      await onSubmit({ ...adjustment, requestId: submissionRef.current.requestId });
       onOpenChange(false);
     } catch (cause) {
       setError(errorMessage(cause, "크레딧을 조정하지 못했습니다."));
@@ -116,4 +123,11 @@ function validate(userIdText: string, amountText: string, reason: string): { use
 
 function errorMessage(reason: unknown, fallback: string) {
   return reason instanceof Error && reason.message ? reason.message : fallback;
+}
+
+function createRequestId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `admin-credit:${crypto.randomUUID()}`;
+  }
+  return `admin-credit:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
