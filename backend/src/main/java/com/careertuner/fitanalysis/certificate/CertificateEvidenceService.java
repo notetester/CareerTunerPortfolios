@@ -35,17 +35,33 @@ public class CertificateEvidenceService {
     private final UnifiedExamScheduleProvider unifiedSchedule;
     private final NationalProfExamScheduleBundle profScheduleBundle;
     private final PrivateCertRegistrationProvider registration;
+    // 레거시 getJMList 라이브 폴백 사용 여부 — 기본 false(정식 미사용 확정). 원서버 복구 시 env 로 재활성.
+    private final boolean legacyGetJmListEnabled;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public CertificateEvidenceService(NationalQualificationCatalogProvider catalog,
                                       NationalTechExamScheduleProvider schedule,
                                       UnifiedExamScheduleProvider unifiedSchedule,
                                       NationalProfExamScheduleBundle profScheduleBundle,
-                                      PrivateCertRegistrationProvider registration) {
+                                      PrivateCertRegistrationProvider registration,
+                                      @org.springframework.beans.factory.annotation.Value(
+                                          "${careertuner.certificate.data-go-kr.legacy-getjmlist-enabled:false}")
+                                      boolean legacyGetJmListEnabled) {
         this.catalog = catalog;
         this.schedule = schedule;
         this.unifiedSchedule = unifiedSchedule;
         this.profScheduleBundle = profScheduleBundle;
         this.registration = registration;
+        this.legacyGetJmListEnabled = legacyGetJmListEnabled;
+    }
+
+    /** 테스트/구성용 — 레거시 폴백 여부를 명시. */
+    CertificateEvidenceService(NationalQualificationCatalogProvider catalog,
+                               NationalTechExamScheduleProvider schedule,
+                               UnifiedExamScheduleProvider unifiedSchedule,
+                               NationalProfExamScheduleBundle profScheduleBundle,
+                               PrivateCertRegistrationProvider registration) {
+        this(catalog, schedule, unifiedSchedule, profScheduleBundle, registration, true);
     }
 
     /** 하나라도 조회 가능한 provider 가 있는지(키 설정). false 면 근거 수집을 아예 하지 않는다. */
@@ -89,16 +105,22 @@ public class CertificateEvidenceService {
     }
 
     /**
-     * 국가기술자격 일정 조회 — 카탈로그에 검증된 jmCd 가 있으면 <b>통합 일정 API(살아 있는 호스트) 우선</b>,
-     * 실패(UPSTREAM)하거나 jmCd 미매핑 종목이면 레거시 getJMList 로 폴백(구형 호스트 복구 시 동작).
-     * 두 경로 모두 확인 실패면 정직한 UPSTREAM_UNAVAILABLE 로 남는다(날짜 미생성).
+     * 국가기술자격 일정 조회 — 카탈로그에 검증된 jmCd 가 있으면 <b>통합 일정 API(살아 있는 호스트)</b>로 조회한다.
+     * 레거시 getJMList 라이브 폴백은 <b>정식 미사용 확정(2026-07-12)</b>이라 기본 비활성이며,
+     * {@code legacy-getjmlist-enabled=true}(원서버 복구 시 env) 일 때만 통합 API 실패/미매핑 종목에서 폴백한다.
+     * 폴백이 꺼져 있고 통합으로 확인 못 하면 정직한 UPSTREAM_UNAVAILABLE 로 남는다(날짜 미생성).
      */
     private CertificateScheduleEvidence technicalSchedule(String cert, NationalQualificationCatalogEntry entry) {
         if (entry.jmCd() != null && !entry.jmCd().isBlank()) {
             CertificateScheduleEvidence unified = unifiedSchedule.lookup(entry.jmCd(), cert);
-            if (unified.status() != ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE) {
+            if (unified.status() != ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE || !legacyGetJmListEnabled) {
                 return unified;
             }
+        }
+        if (!legacyGetJmListEnabled) {
+            // 레거시 미사용 확정 — 미매핑 종목/통합 실패는 죽은 원서버를 부르지 않고 정직하게 '확인 못 함'.
+            return new CertificateScheduleEvidence(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE,
+                    entry.jmCd(), cert, NATIONAL_SOURCE_NAME, NATIONAL_SOURCE_URL, List.of());
         }
         return schedule.lookup(cert);
     }

@@ -98,6 +98,40 @@ class CertificateEvidenceServiceTest {
     }
 
     @Test
+    void legacyDisabledSkipsGetJmListAndDegradesHonestly() {
+        // 정식 미사용 확정(기본): 통합 API 가 UPSTREAM 이어도 죽은 원서버(getJMList)를 부르지 않고 정직하게 UPSTREAM.
+        CertificateEvidenceService noLegacy =
+                new CertificateEvidenceService(catalog, schedule, unifiedSchedule, profBundle, registration, false);
+        lenient().when(catalog.enabled()).thenReturn(true);
+        when(catalog.lookup("정보처리기사")).thenReturn(cat(NationalQualificationCatalogStatus.FOUND, entry("T")));
+        when(unifiedSchedule.lookup("1320", "정보처리기사")).thenReturn(new CertificateScheduleEvidence(
+                ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE, "1320", "정보처리기사", "통합", "url", List.of()));
+
+        CertificateEvidenceResponse e = noLegacy.collect(List.of("정보처리기사")).get(0);
+
+        assertThat(e.scheduleStatus()).isEqualTo(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE.name());
+        assertThat(e.message()).contains("원활하지 않아").doesNotContain("일정이 없");
+        org.mockito.Mockito.verify(schedule, org.mockito.Mockito.never()).lookup(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void legacyDisabledNoJmCdDoesNotCallAnyLiveProvider() {
+        CertificateEvidenceService noLegacy =
+                new CertificateEvidenceService(catalog, schedule, unifiedSchedule, profBundle, registration, false);
+        lenient().when(catalog.enabled()).thenReturn(true);
+        NationalQualificationCatalogEntry noJmCd = new NationalQualificationCatalogEntry(
+                null, "컴퓨터시스템기사", "T", "국가기술자격", "기사", null, null);
+        when(catalog.lookup("컴퓨터시스템기사")).thenReturn(cat(NationalQualificationCatalogStatus.FOUND, noJmCd));
+
+        CertificateEvidenceResponse e = noLegacy.collect(List.of("컴퓨터시스템기사")).get(0);
+
+        assertThat(e.scheduleStatus()).isEqualTo(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE.name());
+        org.mockito.Mockito.verify(schedule, org.mockito.Mockito.never()).lookup(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verify(unifiedSchedule, org.mockito.Mockito.never())
+                .lookup(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void emptyCertNamesReturnsEmpty() {
         assertThat(service.collect(List.of())).isEmpty();
         assertThat(service.collect(null)).isEmpty();
