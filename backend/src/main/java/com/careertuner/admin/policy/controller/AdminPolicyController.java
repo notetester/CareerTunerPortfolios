@@ -22,11 +22,11 @@ import com.careertuner.common.web.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-/** 운영 정책 콘솔. 세부 권한: 운영 정책 관리(POLICY_MANAGE) 또는 대표 권한(POLICY_ADMIN). */
+/** 운영 정책 콘솔. 읽기와 변경 권한을 분리해 집행한다. */
 @RestController
 @RequestMapping("/api/admin/policies")
 @RequiredArgsConstructor
-@RequireAdminPermission({"POLICY_MANAGE", "POLICY_ADMIN"})
+@RequireAdminPermission({"POLICY_READ"})
 public class AdminPolicyController {
 
     private final AdminPolicyService service;
@@ -37,6 +37,7 @@ public class AdminPolicyController {
     }
 
     @PatchMapping("/{policyCode}")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<AdminSystemPolicyRow> update(@AuthenticationPrincipal AuthUser authUser,
                                                     @PathVariable String policyCode,
                                                     @Valid @RequestBody AdminPolicyUpdateRequest request) {
@@ -44,6 +45,7 @@ public class AdminPolicyController {
     }
 
     @PostMapping("/{policyCode}/run")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<AdminPolicyRunResult> run(@AuthenticationPrincipal AuthUser authUser,
                                                  @PathVariable String policyCode,
                                                  @RequestBody(required = false) AdminPolicyUpdateRequest request) {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { AlertTriangle, BookMarked, DatabaseZap, FileText, MessageSquare, Mic, RefreshCw, Search, Video } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -55,6 +56,7 @@ function pageList(current: number, total: number): (number | "...")[] {
 }
 
 export function AdminInterviewsPage() {
+  const { canCreate, canUpdate } = useAdminDomainAuthorization("AI");
   const [rows, setRows] = useState<AdminInterviewSessionRow[]>([]);
   const [detail, setDetail] = useState<AdminInterviewSessionDetail | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -308,6 +310,7 @@ export function AdminInterviewsPage() {
                 sessionId={detail.session.id}
                 initial={detail.session.adminMemo}
                 onSaved={() => void loadDetail(detail.session.id)}
+                canUpdate={canUpdate}
               />
                 </TabsContent>
 
@@ -462,7 +465,7 @@ export function AdminInterviewsPage() {
         </TabsContent>
 
         <TabsContent value="training" className="mt-0">
-          <TrainingPipelineCard />
+          <TrainingPipelineCard canCreate={canCreate} />
         </TabsContent>
       </Tabs>
     </AdminShell>
@@ -567,10 +570,12 @@ function MemoCard({
   sessionId,
   initial,
   onSaved,
+  canUpdate,
 }: {
   sessionId: number;
   initial: string | null;
   onSaved: () => void;
+  canUpdate: boolean;
 }) {
   const [memo, setMemo] = useState(initial ?? "");
   const [saving, setSaving] = useState(false);
@@ -582,6 +587,7 @@ function MemoCard({
   }, [initial, sessionId]);
 
   const save = async () => {
+    if (!canUpdate) return;
     setSaving(true);
     setNote(null);
     try {
@@ -601,19 +607,25 @@ function MemoCard({
         <CardTitle className="text-base">운영 메모</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        <textarea
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          placeholder="이 세션에 대한 운영 메모 (사용자에게 노출되지 않습니다)"
-          rows={3}
-          className="w-full resize-y rounded-lg border border-slate-200 bg-card p-2 text-sm focus:border-blue-300 focus:outline-none"
-        />
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={() => void save()} disabled={saving}>
-            {saving ? "저장 중..." : "메모 저장"}
-          </Button>
-          {note && <span className="text-xs text-slate-500">{note}</span>}
-        </div>
+        {canUpdate ? (
+          <>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              placeholder="이 세션에 대한 운영 메모 (사용자에게 노출되지 않습니다)"
+              rows={3}
+              className="w-full resize-y rounded-lg border border-slate-200 bg-card p-2 text-sm focus:border-blue-300 focus:outline-none"
+            />
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={() => void save()} disabled={saving}>
+                {saving ? "저장 중..." : "메모 저장"}
+              </Button>
+              {note && <span className="text-xs text-slate-500">{note}</span>}
+            </div>
+          </>
+        ) : (
+          <p className="whitespace-pre-wrap text-sm text-slate-600">{initial || "등록된 운영 메모가 없습니다."}</p>
+        )}
       </CardContent>
     </Card>
   );

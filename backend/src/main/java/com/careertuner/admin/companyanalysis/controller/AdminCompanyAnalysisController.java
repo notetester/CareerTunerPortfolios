@@ -29,7 +29,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/company-analysis")
-@RequireAdminPermission({"ANALYSIS_READ", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminCompanyAnalysisController {
 
@@ -98,7 +98,7 @@ public class AdminCompanyAnalysisController {
     }
 
     @PatchMapping("/{analysisId}/memo")
-    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<Void> updateMemo(@AuthenticationPrincipal AuthUser authUser,
                                         @PathVariable Long analysisId,
                                         @Valid @RequestBody AdminMemoRequest request) {
@@ -107,7 +107,7 @@ public class AdminCompanyAnalysisController {
     }
 
     @PatchMapping("/{analysisId}/metadata")
-    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<Void> updateMetadata(@AuthenticationPrincipal AuthUser authUser,
                                             @PathVariable Long analysisId,
                                             @Valid @RequestBody AdminCompanyAnalysisMetadataRequest request) {

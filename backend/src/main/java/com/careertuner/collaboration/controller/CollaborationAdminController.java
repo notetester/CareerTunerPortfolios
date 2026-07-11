@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 채팅방 오버사이트 — /api/admin/collaboration/**. AdminAccess 패턴 적용. */
 @RestController
 @RequestMapping("/api/admin/collaboration")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 @RequiredArgsConstructor
 @Validated
 public class CollaborationAdminController {
@@ -53,6 +53,7 @@ public class CollaborationAdminController {
 
     /** 운영자 강제 밴 해제(신고/분쟁 대응). */
     @DeleteMapping("/rooms/{conversationId}/bans/{targetUserId}")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminConversationDetailResponse> unban(
             @PathVariable Long conversationId,
             @PathVariable Long targetUserId,

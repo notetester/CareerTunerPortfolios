@@ -1,6 +1,5 @@
 package com.careertuner.admin.securityops.waf;
 
-import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -32,6 +31,7 @@ public class WafSyncHttpClient {
 
     private final SecurityProviderSecretResolver secretResolver;
     private final ObjectMapper objectMapper;
+    private final WafExternalEndpointValidator endpointValidator;
 
     public WafSyncResult call(WafProvider provider, WafSyncTarget target) {
         int attempts = (provider.getRetryCount() == null ? 0 : Math.max(0, provider.getRetryCount())) + 1;
@@ -57,7 +57,7 @@ public class WafSyncHttpClient {
     private WafSyncResult doCall(WafProvider provider, WafSyncTarget target) {
         try {
             String endpoint = resolveEndpoint(provider.getEndpointUrl(), target);
-            URI uri = validateExternalHttpEndpoint(provider, endpoint);
+            java.net.URI uri = endpointValidator.validate(endpoint);
 
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("providerCode", provider.getProviderCode());
@@ -122,18 +122,6 @@ public class WafSyncHttpClient {
                 .replace("{operation}", safe(target.operationType()))
                 .replace("{targetType}", safe(target.ruleType()))
                 .replace("{targetValue}", safe(target.ruleValue()));
-    }
-
-    private URI validateExternalHttpEndpoint(WafProvider provider, String endpoint) {
-        if (endpoint == null || endpoint.isBlank()) {
-            throw new IllegalArgumentException("WAF endpointUrl 이 비어 있습니다: " + safe(provider.getProviderCode()));
-        }
-        URI uri = URI.create(endpoint);
-        String scheme = uri.getScheme();
-        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
-            throw new IllegalArgumentException("지원하지 않는 WAF endpoint scheme: " + safe(scheme));
-        }
-        return uri;
     }
 
     private String resolveMethod(WafProvider provider, WafSyncTarget target) {

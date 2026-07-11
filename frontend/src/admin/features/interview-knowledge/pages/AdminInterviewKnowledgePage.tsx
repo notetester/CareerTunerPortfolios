@@ -13,6 +13,7 @@ import {
   addKnowledge, deleteKnowledge, listKnowledge, reindexKnowledge, updateKnowledge,
   type InterviewKnowledge, type KnowledgeKind,
 } from "../api";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 
 const KINDS: { value: KnowledgeKind; label: string }[] = [
   { value: "RUBRIC", label: "평가 기준(Rubric)" },
@@ -25,6 +26,7 @@ const kindLabel = (k: string) => KINDS.find((x) => x.value === k)?.label ?? k;
 const fmt = (v: string) => new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short" }).format(new Date(v));
 
 export function AdminInterviewKnowledgePage() {
+  const { canCreate, canUpdate, canDelete } = useAdminDomainAuthorization("AI");
   const [rows, setRows] = useState<InterviewKnowledge[]>([]);
   const [loading, setLoading] = useState(true);
   const [kind, setKind] = useState<KnowledgeKind>("RUBRIC");
@@ -63,6 +65,7 @@ export function AdminInterviewKnowledgePage() {
   };
 
   const startEdit = (r: InterviewKnowledge) => {
+    if (!canUpdate) return;
     setEditingId(r.id);
     setKind(r.kind);
     setTitle(r.title ?? "");
@@ -72,6 +75,7 @@ export function AdminInterviewKnowledgePage() {
   };
 
   const submit = async () => {
+    if ((editingId == null && !canCreate) || (editingId != null && !canUpdate)) return;
     if (content.trim().length < 5) {
       toast("내용을 5자 이상 입력해 주세요.", "err");
       return;
@@ -96,6 +100,7 @@ export function AdminInterviewKnowledgePage() {
   };
 
   const remove = async (r: InterviewKnowledge) => {
+    if (!canDelete) return;
     if (!window.confirm(`"${r.title || r.content.slice(0, 20)}" 문서를 삭제할까요?`)) return;
     try {
       await deleteKnowledge(r.id);
@@ -108,6 +113,7 @@ export function AdminInterviewKnowledgePage() {
   };
 
   const reindex = async () => {
+    if (!canUpdate) return;
     setReindexing(true);
     try {
       const { reindexed } = await reindexKnowledge();
@@ -132,9 +138,9 @@ export function AdminInterviewKnowledgePage() {
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
-          <Button onClick={() => void reindex()} disabled={reindexing}>
+          {canUpdate && <Button onClick={() => void reindex()} disabled={reindexing}>
             <DatabaseZap className={`size-4 ${reindexing ? "animate-pulse" : ""}`} /> 재색인
-          </Button>
+          </Button>}
         </div>
       }
     >
@@ -144,8 +150,8 @@ export function AdminInterviewKnowledgePage() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
-        <Card className="border-slate-200 bg-card">
+      <div className={`grid gap-5 ${(editingId != null ? canUpdate : canCreate) ? "lg:grid-cols-[380px_minmax(0,1fr)]" : ""}`}>
+        {(editingId != null ? canUpdate : canCreate) && <Card className="border-slate-200 bg-card">
           <CardHeader><CardTitle className="text-base">{editingId != null ? "지식 문서 수정" : "지식 문서 추가"}</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <Select value={kind} onValueChange={(v) => setKind(v as KnowledgeKind)}>
@@ -167,7 +173,7 @@ export function AdminInterviewKnowledgePage() {
               </Button>
             )}
           </CardContent>
-        </Card>
+        </Card>}
 
         <Card className="border-slate-200 bg-card">
           <CardHeader><CardTitle className="text-base">등록된 지식 ({rows.length})</CardTitle></CardHeader>
@@ -186,14 +192,14 @@ export function AdminInterviewKnowledgePage() {
                 <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-slate-600">{r.content}</p>
                 <div className="mt-1 flex items-center justify-between gap-2">
                   <div className="text-[11px] text-slate-400">{r.source ? `${r.source} · ` : ""}{fmt(r.createdAt)}</div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => startEdit(r)} title="수정">
+                  {(canUpdate || canDelete) && <div className="flex gap-1">
+                    {canUpdate && <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => startEdit(r)} title="수정">
                       <Pencil className="size-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => void remove(r)} title="삭제">
+                    </Button>}
+                    {canDelete && <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => void remove(r)} title="삭제">
                       <Trash2 className="size-3.5 text-red-500" />
-                    </Button>
-                  </div>
+                    </Button>}
+                  </div>}
                 </div>
               </div>
             ))}

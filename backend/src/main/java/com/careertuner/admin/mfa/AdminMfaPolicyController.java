@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/mfa-policy")
-@RequireAdminPermission({"POLICY_MANAGE", "POLICY_ADMIN"})
+@RequireAdminPermission({"POLICY_READ"})
 @RequiredArgsConstructor
 public class AdminMfaPolicyController {
     private final MfaService mfaService;
@@ -29,6 +29,7 @@ public class AdminMfaPolicyController {
     }
 
     @PutMapping
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<MfaPolicyResponse> updatePolicy(@AuthenticationPrincipal AuthUser authUser,
                                                        @RequestBody MfaPolicyUpdateRequest request) {
         return ApiResponse.ok(mfaService.updatePolicy(authUser, request));

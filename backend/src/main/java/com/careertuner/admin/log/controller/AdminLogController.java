@@ -18,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 /** 관리자 시스템 로그(현재는 AI 사용 로그). /api/admin/** = ADMIN 정책으로 보호. */
 @RestController
 @RequestMapping("/api/admin/logs")
-@RequireAdminPermission({"ADMIN_AUDIT_READ", "AUDIT_ADMIN"})
+@RequireAdminPermission({"AUDIT_READ"})
 @RequiredArgsConstructor
 public class AdminLogController {
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Bot, RotateCw, Trash2 } from "lucide-react";
 
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 import {
   deleteChatbotConversation,
   getChatbotConversations,
@@ -18,6 +19,7 @@ function fmt(v: string | null): string {
 }
 
 export function AdminChatbotGovernancePage() {
+  const { canUpdate, canDelete } = useAdminDomainAuthorization("AI");
   const [policy, setPolicy] = useState<ChatbotQuotaPolicy | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [dailyLimit, setDailyLimit] = useState(100);
@@ -59,6 +61,7 @@ export function AdminChatbotGovernancePage() {
   const policyDirty = !!policy && (enabled !== policy.enabled || dailyLimit !== policy.dailyLimit);
 
   const savePolicy = async () => {
+    if (!canUpdate) return;
     try {
       const p = await updateChatbotQuotaPolicy({ enabled, dailyLimit: Math.min(1000000, Math.max(1, dailyLimit || 1)) });
       setPolicy(p);
@@ -71,6 +74,7 @@ export function AdminChatbotGovernancePage() {
   };
 
   const removeConversation = async (id: number) => {
+    if (!canDelete) return;
     if (!window.confirm(`대화 세션 #${id} 를 삭제할까요? 되돌릴 수 없습니다.`)) return;
     try {
       await deleteChatbotConversation(id);
@@ -109,24 +113,28 @@ export function AdminChatbotGovernancePage() {
               {enabled ? "로그인 사용자 1인 하루 한도 집행" : "무제약 — 하루 사용량 제한 없음(현재 동작)"}
             </div>
           </div>
-          <button
-            type="button" role="switch" aria-checked={enabled}
-            onClick={() => setEnabled((v) => !v)}
-            className={`relative h-6 w-11 rounded-full transition-colors ${enabled ? "bg-emerald-500" : "bg-slate-300"}`}
-          >
-            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
-          </button>
+          {canUpdate && (
+            <button
+              type="button" role="switch" aria-checked={enabled}
+              onClick={() => setEnabled((v) => !v)}
+              className={`relative h-6 w-11 rounded-full transition-colors ${enabled ? "bg-emerald-500" : "bg-slate-300"}`}
+            >
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
+            </button>
+          )}
         </div>
-        <div className={`mt-4 ${enabled ? "" : "opacity-50"}`}>
+        {canUpdate && <div className={`mt-4 ${enabled ? "" : "opacity-50"}`}>
           <label className="flex flex-col gap-1">
             <span className="av-flabel">1인 하루 허용 질문 수</span>
             <input type="number" min={1} max={1000000} className="av-input" style={{ width: 160 }} disabled={!enabled}
                    value={dailyLimit} onChange={(e) => setDailyLimit(Number(e.target.value))} />
             <span className="av-hint">오늘 사용량이 이 수에 도달하면 다음 요청부터 차단</span>
           </label>
-        </div>
+        </div>}
         <div className="mt-5 flex items-center gap-2">
+          {canUpdate && (
           <button type="button" className="av-btn bg-slate-900 text-white" disabled={!policyDirty} onClick={() => void savePolicy()}>저장</button>
+          )}
           {policy && (
             <span className="text-xs text-slate-400">현재: {policy.enabled ? `ON · 하루 ${policy.dailyLimit}회` : "OFF(무제약)"}</span>
           )}
@@ -149,12 +157,12 @@ export function AdminChatbotGovernancePage() {
                 <th className="px-3 py-2">사용자</th>
                 <th className="px-3 py-2">메시지 수</th>
                 <th className="px-3 py-2">최근 활동</th>
-                <th className="px-3 py-2">동작</th>
+                {canDelete && <th className="px-3 py-2">동작</th>}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">대화 세션이 없습니다.</td></tr>
+                <tr><td colSpan={canDelete ? 5 : 4} className="px-3 py-8 text-center text-slate-400">대화 세션이 없습니다.</td></tr>
               )}
               {rows.map((r) => (
                 <tr key={r.conversationId} className="border-b border-slate-100">
@@ -162,11 +170,11 @@ export function AdminChatbotGovernancePage() {
                   <td className="px-3 py-2 font-mono text-xs">{r.userId ?? "익명"}</td>
                   <td className="px-3 py-2 text-xs">{r.messageCount ?? "-"}</td>
                   <td className="px-3 py-2 text-xs text-slate-500">{fmt(r.updatedAt)}</td>
-                  <td className="px-3 py-2">
+                  {canDelete && <td className="px-3 py-2">
                     <button type="button" className="av-btn text-xs text-rose-600" onClick={() => void removeConversation(r.conversationId)}>
                       <Trash2 size={13} /> 삭제
                     </button>
-                  </td>
+                  </td>}
                 </tr>
               ))}
             </tbody>

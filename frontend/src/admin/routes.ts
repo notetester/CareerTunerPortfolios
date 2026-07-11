@@ -1,8 +1,10 @@
 import { createElement, lazy, Suspense, type ComponentType } from "react";
+import { Navigate } from "react-router";
 
 import { PageFallback } from "../app/pages/pageFallback";
 import { AdminRouteBoundary } from "./auth/AdminRouteBoundary";
 import { adminRoutePolicy, type AdminRoutePath } from "./auth/adminAccess";
+import { useAdminAuthorization } from "./auth/useAdminAuthorization";
 
 function lazyAdminPage(loader: () => Promise<{ default: ComponentType }>): ComponentType {
   const LazyPage = lazy(loader);
@@ -23,7 +25,25 @@ function adminRoute(path: AdminRoutePath, Component: ComponentType) {
   return { path, Component: GuardedAdminRoute, handle: { adminAccess } };
 }
 
-const AdminDashboardPage = lazyAdminPage(() => import("./pages/AdminDashboard").then((module) => ({ default: module.AdminDashboardPage })));
+function AdminEntryRoute() {
+  const authorization = useAdminAuthorization();
+
+  if (authorization.status === "idle" || authorization.status === "loading") {
+    return createElement(PageFallback);
+  }
+
+  const destinations = [
+    { path: "/admin/dashboard", permissions: ["USER_READ", "AI_READ"] as const },
+    { path: "/admin/security", permissions: ["SECURITY_READ"] as const },
+    { path: "/admin/payments", permissions: ["BILLING_READ"] as const },
+    { path: "/admin/community", permissions: ["CONTENT_READ"] as const },
+    { path: "/admin/policies", permissions: ["POLICY_READ"] as const },
+    { path: "/admin/audit/security", permissions: ["AUDIT_READ"] as const },
+  ];
+  const destination = destinations.find((candidate) => authorization.can(...candidate.permissions));
+
+  return createElement(Navigate, { to: destination?.path ?? "/dashboard", replace: true });
+}
 const AdminHomePage = lazyAdminPage(() => import("./features/home/pages/AdminHomePage").then((module) => ({ default: module.AdminHomePage })));
 const AdminOpsDashboardPage = lazyAdminPage(() => import("./features/dashboard/pages/AdminOpsDashboardPage").then((module) => ({ default: module.AdminOpsDashboardPage })));
 const AdminAnalyticsPage = lazyAdminPage(() => import("./features/analytics/pages/AdminAnalyticsPage").then((module) => ({ default: module.AdminAnalyticsPage })));
@@ -40,7 +60,6 @@ const AdminSecurityOpsPage = lazyAdminPage(() => import("./features/security-ops
 const AdminLoginRiskPolicyPage = lazyAdminPage(() => import("./features/login-risk/pages/AdminLoginRiskPolicyPage").then((module) => ({ default: module.AdminLoginRiskPolicyPage })));
 const AdminMfaPolicyPage = lazyAdminPage(() => import("./features/mfa/pages/AdminMfaPolicyPage").then((module) => ({ default: module.AdminMfaPolicyPage })));
 const AdminSecurityAuditPage = lazyAdminPage(() => import("./features/users/pages/AdminUsersPage").then((module) => ({ default: module.AdminSecurityAuditPage })));
-const AdminEmailAuditPage = lazyAdminPage(() => import("./features/users/pages/AdminUsersPage").then((module) => ({ default: module.AdminEmailAuditPage })));
 const AdminActivityLogsPage = lazyAdminPage(() => import("./features/activity-logs/pages/AdminActivityLogsPage").then((module) => ({ default: module.AdminActivityLogsPage })));
 const AdminEmailAuditLogPage = lazyAdminPage(() => import("./features/email-audit/pages/AdminEmailAuditLogPage").then((module) => ({ default: module.AdminEmailAuditLogPage })));
 const AdminProfilesPage = lazyAdminPage(() => import("./features/profiles/pages/AdminProfilesPage").then((module) => ({ default: module.AdminProfilesPage })));
@@ -80,7 +99,7 @@ const AdminInterviewPromptsPage = lazyAdminPage(() => import("./features/prompts
 const AdminLogsPage = lazyAdminPage(() => import("./features/system-logs/pages/AdminLogsPage").then((module) => ({ default: module.AdminLogsPage })));
 
 export const adminRoutes = [
-  adminRoute("admin", AdminDashboardPage),
+  adminRoute("admin", AdminEntryRoute),
   adminRoute("admin/home", AdminHomePage),
   adminRoute("admin/dashboard", AdminOpsDashboardPage),
   // C 분석 통계 전용 화면. 백엔드/api/types는 완비됐으나 전용 페이지·라우트가 없어 연결한다.
@@ -101,7 +120,7 @@ export const adminRoutes = [
   adminRoute("admin/security/login-risk", AdminLoginRiskPolicyPage),
   adminRoute("admin/security/mfa-policy", AdminMfaPolicyPage),
   adminRoute("admin/audit/security", AdminSecurityAuditPage),
-  adminRoute("admin/audit/email", AdminEmailAuditPage),
+  adminRoute("admin/audit/email", AdminEmailAuditLogPage),
   adminRoute("admin/audit/activity", AdminActivityLogsPage),
   adminRoute("admin/audit/email-log", AdminEmailAuditLogPage),
   adminRoute("admin/profiles", AdminProfilesPage),

@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/guidelines")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 @RequiredArgsConstructor
 public class AdminGuidelineController {
 
@@ -49,6 +49,7 @@ public class AdminGuidelineController {
     }
 
     @PostMapping
+    @RequireAdminPermission({"CONTENT_CREATE"})
     public ApiResponse<AdminGuidelineResponse> createGuideline(
             @AuthenticationPrincipal AuthUser authUser,
             @RequestBody AdminGuidelineRequest request) {
@@ -56,6 +57,7 @@ public class AdminGuidelineController {
     }
 
     @PutMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminGuidelineResponse> updateGuideline(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -64,6 +66,7 @@ public class AdminGuidelineController {
     }
 
     @PostMapping("/{id}/publish")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminGuidelineResponse> publishGuideline(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
@@ -71,6 +74,7 @@ public class AdminGuidelineController {
     }
 
     @DeleteMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_DELETE"})
     public ApiResponse<Void> deleteGuideline(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

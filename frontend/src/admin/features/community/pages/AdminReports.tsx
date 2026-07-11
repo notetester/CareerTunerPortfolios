@@ -22,6 +22,7 @@ import * as adminReportApi from "../api/adminReportApi";
 import * as moderationApi from "../../moderation/api/moderationApi";
 import type { ModerationItem, ModerationDetail, ModerationStats } from "../../moderation/types/moderation";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
+import { useAdminAuthorization, useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import "./admin-reports.css";
 
 /* ── 유저 신고 관련 타입/상수 ── */
@@ -30,7 +31,7 @@ type ReportActionType = adminReportApi.AdminReportAction;
 
 const REPORT_ACTION_DIALOG: Record<ReportActionType, { variant: "warning" | "danger"; title: string; desc: string; label: string }> = {
   HIDDEN:    { variant: "warning", title: "이 콘텐츠를 숨길까요?", desc: "숨김 처리하면 사용자에게 더 이상 보이지 않습니다. 관리자는 여전히 확인할 수 있어요.", label: "숨김 처리" },
-  DELETED:   { variant: "danger",  title: "이 콘텐츠를 삭제할까요?", desc: "삭제하면 게시글(또는 댓글)과 관련 데이터가 영구 제거되며 되돌릴 수 없어요.", label: "삭제" },
+  DELETED:   { variant: "danger",  title: "이 콘텐츠를 삭제할까요?", desc: "삭제 상태로 전환되어 일반 사용자에게 보이지 않지만 감사·복구를 위해 데이터는 보존됩니다.", label: "삭제" },
   DISMISSED: { variant: "warning", title: "이 신고를 기각할까요?", desc: "기각하면 신고가 처리 완료로 전환됩니다. 콘텐츠는 그대로 유지돼요.", label: "기각" },
   BLOCK_AUTHOR: {
     variant: "danger", title: "작성자를 차단할까요?",
@@ -39,10 +40,18 @@ const REPORT_ACTION_DIALOG: Record<ReportActionType, { variant: "warning" | "dan
   },
   DELETE_AND_BLOCK: {
     variant: "danger", title: "콘텐츠 삭제 + 작성자 차단할까요?",
-    desc: "콘텐츠를 삭제하고 작성자 계정도 일정 기간 차단합니다. 두 조치가 한 번에 적용되며 삭제는 되돌릴 수 없어요.",
+    desc: "콘텐츠를 소프트 삭제하고 작성자 계정도 일정 기간 차단합니다. 두 조치가 한 번에 적용됩니다.",
     label: "삭제+차단",
   },
 };
+
+function isDeleteReportAction(action: ReportActionType): boolean {
+  return action === "DELETED" || action === "DELETE_AND_BLOCK";
+}
+
+function isAuthorBlockAction(action: ReportActionType): boolean {
+  return action === "BLOCK_AUTHOR" || action === "DELETE_AND_BLOCK";
+}
 
 const REPORT_LIST_COLUMNS: AdminListColumn<Report>[] = [
   { id: "id", label: "ID", getText: (row) => row.id, sortable: true },
@@ -102,9 +111,17 @@ function TabBadge({ count }: { count?: number }) {
 }
 
 export default function AdminReports() {
+  const authorization = useAdminAuthorization();
+  const canReadReports = authorization.can("CONTENT_READ");
+  const canReadModeration = authorization.can("AI_READ");
   const [mainTab, setMainTab] = useState<MainTab>("reports");
   const [toast, setToast] = useState<string | null>(null);
-  const pending = useAdminPendingCounts();
+  const pending = useAdminPendingCounts(canReadReports);
+
+  useEffect(() => {
+    if (mainTab === "reports" && !canReadReports && canReadModeration) setMainTab("moderation");
+    if (mainTab !== "reports" && !canReadModeration && canReadReports) setMainTab("reports");
+  }, [canReadModeration, canReadReports, mainTab]);
 
   useEffect(() => {
     if (!toast) return;
@@ -125,33 +142,33 @@ export default function AdminReports() {
       {/* 메인 탭 */}
       <div className="av-filters" style={{ marginBottom: "1rem" }}>
         <div className="av-seg">
-          <button className={mainTab === "reports" ? "on" : ""} onClick={() => setMainTab("reports")}>
+          {canReadReports && <button className={mainTab === "reports" ? "on" : ""} onClick={() => setMainTab("reports")}>
             <Flag style={{ width: 14, height: 14, marginRight: 4 }} /> 유저 신고
             <TabBadge count={pending?.reports?.count} />
-          </button>
-          <button className={mainTab === "moderation" ? "on" : ""} onClick={() => setMainTab("moderation")}>
+          </button>}
+          {canReadModeration && <button className={mainTab === "moderation" ? "on" : ""} onClick={() => setMainTab("moderation")}>
             <ShieldAlert style={{ width: 14, height: 14, marginRight: 4 }} /> 게시글 검열
             <TabBadge count={pending?.hiddenPosts?.count} />
-          </button>
-          <button className={mainTab === "comment-moderation" ? "on" : ""} onClick={() => setMainTab("comment-moderation")}>
+          </button>}
+          {canReadModeration && <button className={mainTab === "comment-moderation" ? "on" : ""} onClick={() => setMainTab("comment-moderation")}>
             <MessageCircle style={{ width: 14, height: 14, marginRight: 4 }} /> 댓글 검열
             <TabBadge count={pending?.hiddenComments?.count} />
-          </button>
-          <button className={mainTab === "settings" ? "on" : ""} onClick={() => setMainTab("settings")}>
+          </button>}
+          {canReadModeration && <button className={mainTab === "settings" ? "on" : ""} onClick={() => setMainTab("settings")}>
             <Settings2 style={{ width: 14, height: 14, marginRight: 4 }} /> AI 검열 설정
-          </button>
+          </button>}
         </div>
       </div>
 
-      {mainTab === "reports" ? (
+      {mainTab === "reports" && canReadReports ? (
         <ReportsPanel flash={flash} />
-      ) : mainTab === "moderation" ? (
+      ) : mainTab === "moderation" && canReadModeration ? (
         <ModerationPanel flash={flash} />
-      ) : mainTab === "comment-moderation" ? (
+      ) : mainTab === "comment-moderation" && canReadModeration ? (
         <CommentModerationPanel flash={flash} />
-      ) : (
+      ) : canReadModeration ? (
         <ModerationSettingsPanel flash={flash} />
-      )}
+      ) : null}
 
       {toast && <div className="rpt-toast">{toast}</div>}
     </AdminShell>
@@ -162,6 +179,10 @@ export default function AdminReports() {
    유저 신고 패널 (기존 AdminReports 로직)
    ══════════════════════════════════════════════════════════ */
 function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
+  const { canUpdate, canDelete } = useAdminDomainAuthorization("CONTENT");
+  const authorization = useAdminAuthorization();
+  const canReclassify = authorization.can("AI_CREATE");
+  const canUpdateUsers = authorization.can("USER_UPDATE");
   const [items, setItems] = useState<Report[]>([]);
   const [filter, setFilter] = useState<ReportFilterKey>("대기");
   const [dialog, setDialog] = useState<{ report: Report; action: ReportActionType } | null>(null);
@@ -177,7 +198,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   }, [flash]);
 
   const handleReclassify = async () => {
-    if (!detail || reclassifying) return;
+    if (!canReclassify || !detail || reclassifying) return;
     setReclassifying(true);
     try {
       const updated = await adminReportApi.reclassify(detail.id);
@@ -198,7 +219,9 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   };
 
   const handleAction = async () => {
-    if (!dialog) return;
+    if (!dialog
+      || (isDeleteReportAction(dialog.action) ? !canDelete : !canUpdate)
+      || (isAuthorBlockAction(dialog.action) && !canUpdateUsers)) return;
     try {
       const updated = await adminReportApi.takeAction(dialog.report.id, dialog.action);
       setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
@@ -212,7 +235,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   };
 
   const handleReactivate = async () => {
-    if (!reactivateTarget) return;
+    if (!canUpdate || !reactivateTarget) return;
     try {
       const updated = await adminReportApi.reactivate(reactivateTarget.id);
       setItems((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
@@ -239,7 +262,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
   const selectedPendingCount = list.selectedRows.filter((row) => row.status === "pending").length;
 
   const handleBulkAction = async () => {
-    if (!bulkDialog) return;
+    if (!bulkDialog || (isDeleteReportAction(bulkDialog) ? !canDelete : !canUpdate)) return;
     const targets = list.selectedRows.filter((row) => row.status === "pending");
     if (targets.length === 0) {
       flash("대기 상태의 신고만 일괄 처리할 수 있습니다.");
@@ -284,19 +307,19 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
           <AdminListToolbar
             state={list}
             fileName="admin_reports"
-            extraActions={(
+            extraActions={(canUpdate || canDelete) ? (
               <>
-                <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("HIDDEN")}>
+                {canUpdate && <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("HIDDEN")}>
                   <EyeOff /> 선택 숨김
-                </button>
-                <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("DELETED")}>
+                </button>}
+                {canDelete && <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("DELETED")}>
                   <Trash2 /> 선택 삭제
-                </button>
-                <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("DISMISSED")}>
+                </button>}
+                {canUpdate && <button type="button" disabled={selectedPendingCount === 0} onClick={() => setBulkDialog("DISMISSED")}>
                   <XIcon /> 선택 기각
-                </button>
+                </button>}
               </>
-            )}
+            ) : undefined}
           />
 
           <table className="av-table">
@@ -330,19 +353,19 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                   </td>
                   <td className="r av-muted num">{r.time}</td>
                   <td className="r">
-                    {r.status === "pending" ? (
+                    {r.status === "pending" && (canUpdate || canDelete) ? (
                       <div className="rv-actions" onClick={(e) => e.stopPropagation()}>
-                        <button className="av-btn" title="숨김" onClick={() => setDialog({ report: r, action: "HIDDEN" })}><EyeOff /></button>
-                        <button className="av-btn" title="삭제" onClick={() => setDialog({ report: r, action: "DELETED" })}><Trash2 /></button>
-                        <button className="av-btn" title="작성자 차단" onClick={() => setDialog({ report: r, action: "BLOCK_AUTHOR" })}><UserX /></button>
-                        <button className="av-btn" title="삭제+차단" onClick={() => setDialog({ report: r, action: "DELETE_AND_BLOCK" })}><ShieldX /></button>
-                        <button className="av-btn" title="기각" onClick={() => setDialog({ report: r, action: "DISMISSED" })}><XIcon /></button>
+                        {canUpdate && <button className="av-btn" title="숨김" onClick={() => setDialog({ report: r, action: "HIDDEN" })}><EyeOff /></button>}
+                        {canDelete && <button className="av-btn" title="삭제" onClick={() => setDialog({ report: r, action: "DELETED" })}><Trash2 /></button>}
+                        {canUpdate && canUpdateUsers && <button className="av-btn" title="작성자 차단" onClick={() => setDialog({ report: r, action: "BLOCK_AUTHOR" })}><UserX /></button>}
+                        {canDelete && canUpdateUsers && <button className="av-btn" title="삭제+차단" onClick={() => setDialog({ report: r, action: "DELETE_AND_BLOCK" })}><ShieldX /></button>}
+                        {canUpdate && <button className="av-btn" title="기각" onClick={() => setDialog({ report: r, action: "DISMISSED" })}><XIcon /></button>}
                       </div>
-                    ) : (
+                    ) : r.status !== "pending" && canUpdate ? (
                       <div className="rv-actions" onClick={(e) => e.stopPropagation()}>
                         <button className="av-btn" title="재활성화(대기 복원)" onClick={() => setReactivateTarget(r)}><RotateCcw /></button>
                       </div>
-                    )}
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -475,7 +498,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
                         )}
                       </div>
                     )}
-                    {detail.aiOpinion?.status !== "PENDING" && (
+                    {detail.aiOpinion?.status !== "PENDING" && canReclassify && (
                       <button
                         className="av-btn"
                         style={{ marginTop: "8px", fontSize: "12px" }}
@@ -491,25 +514,28 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
               )}
 
               {/* 액션 버튼 */}
-              {detail.status === "pending" ? (
+              {detail.status === "pending" && (canUpdate || canDelete) ? (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", padding: "0 16px 14px" }}>
-                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "HIDDEN" })}><EyeOff /> 숨김</button>
-                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETED" })}><Trash2 /> 삭제</button>
-                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "BLOCK_AUTHOR" })}><UserX /> 작성자 차단</button>
-                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETE_AND_BLOCK" })}><ShieldX /> 삭제+차단</button>
-                  <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DISMISSED" })}><XIcon /> 기각</button>
+                  {canUpdate && <button className="av-btn" onClick={() => setDialog({ report: detail, action: "HIDDEN" })}><EyeOff /> 숨김</button>}
+                  {canDelete && <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETED" })}><Trash2 /> 삭제</button>}
+                  {canUpdate && canUpdateUsers && <button className="av-btn" onClick={() => setDialog({ report: detail, action: "BLOCK_AUTHOR" })}><UserX /> 작성자 차단</button>}
+                  {canDelete && canUpdateUsers && <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DELETE_AND_BLOCK" })}><ShieldX /> 삭제+차단</button>}
+                  {canUpdate && <button className="av-btn" onClick={() => setDialog({ report: detail, action: "DISMISSED" })}><XIcon /> 기각</button>}
                 </div>
-              ) : (
+              ) : detail.status !== "pending" && canUpdate ? (
                 <div style={{ display: "flex", gap: "6px", padding: "0 16px 14px" }}>
                   <button className="av-btn" onClick={() => setReactivateTarget(detail)}><RotateCcw /> 재활성화</button>
                 </div>
-              )}
+              ) : null}
             </section>
           </aside>
         )}
       </div>
 
-      {dialog && (() => {
+      {dialog
+        && (isDeleteReportAction(dialog.action) ? canDelete : canUpdate)
+        && (!isAuthorBlockAction(dialog.action) || canUpdateUsers)
+        && (() => {
         const cfg = REPORT_ACTION_DIALOG[dialog.action];
         const icon = dialog.action === "DELETED" ? <Trash2 />
           : dialog.action === "HIDDEN" ? <EyeOff />
@@ -536,7 +562,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
         );
       })()}
 
-      {reactivateTarget && (
+      {reactivateTarget && canUpdate && (
         <ConfirmDialog
           variant="warning"
           icon={<RotateCcw />}
@@ -552,7 +578,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
           onCancel={() => setReactivateTarget(null)}
         />
       )}
-      {bulkDialog && (() => {
+      {bulkDialog && (isDeleteReportAction(bulkDialog) ? canDelete : canUpdate) && (() => {
         const cfg = REPORT_ACTION_DIALOG[bulkDialog];
         return (
           <ConfirmDialog
@@ -579,6 +605,7 @@ function ReportsPanel({ flash }: { flash: (msg: string) => void }) {
    AI 검열 패널
    ══════════════════════════════════════════════════════════ */
 function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
+  const { canUpdate, canDelete } = useAdminDomainAuthorization("CONTENT");
   const [items, setItems] = useState<ModerationItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -610,7 +637,7 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
   };
 
   const handleAction = async () => {
-    if (!dialog) return;
+    if (!dialog || (dialog.action === "restore" ? !canUpdate : !canDelete)) return;
     try {
       if (dialog.action === "restore") {
         await moderationApi.restorePost(dialog.postId);
@@ -825,14 +852,8 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
 
               {detail.status === "HIDDEN" && (
                 <div style={{ display: "flex", gap: "0.5rem", padding: "0 16px 16px" }}>
-                  <button className="av-btn" onClick={() => setDialog({ postId: detail.postId, title: detail.title, action: "restore" })}><RotateCcw /> 복원</button>
-                  <button className="av-btn" onClick={() => setDialog({ postId: detail.postId, title: detail.title, action: "delete" })}><Trash2 /> 삭제</button>
-                </div>
-              )}
-
-              {detail.status === "DELETED" && (
-                <div style={{ display: "flex", gap: "0.5rem", padding: "0 16px 16px" }}>
-                  <button className="av-btn" onClick={() => setDialog({ postId: detail.postId, title: detail.title, action: "restore" })}><RotateCcw /> 복원</button>
+                  {canUpdate && <button className="av-btn" onClick={() => setDialog({ postId: detail.postId, title: detail.title, action: "restore" })}><RotateCcw /> 복원</button>}
+                  {canDelete && <button className="av-btn" onClick={() => setDialog({ postId: detail.postId, title: detail.title, action: "delete" })}><Trash2 /> 삭제</button>}
                 </div>
               )}
             </section>
@@ -840,7 +861,7 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
         )}
       </div>
 
-      {dialog && (() => {
+      {dialog && (dialog.action === "restore" ? canUpdate : canDelete) && (() => {
         const isRestore = dialog.action === "restore";
         return (
           <ConfirmDialog
@@ -849,7 +870,7 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
             title={isRestore ? "이 게시글을 복원할까요?" : "이 게시글을 삭제할까요?"}
             description={isRestore
               ? "복원하면 게시글이 다시 공개됩니다. 작성자에게 복원 알림이 전송됩니다."
-              : "삭제하면 게시글이 영구적으로 비공개 처리됩니다. 작성자에게 삭제 알림이 전송됩니다."}
+              : "삭제 상태로 전환되어 일반 사용자에게 보이지 않으며 감사 데이터는 보존됩니다. 작성자에게 삭제 알림이 전송됩니다."}
             meta={[{ label: "게시글", value: dialog.title }]}
             confirmLabel={isRestore ? "복원" : "삭제"}
             cancelLabel="취소"
@@ -868,6 +889,7 @@ function ModerationPanel({ flash }: { flash: (msg: string) => void }) {
    - 복원은 HIDDEN 댓글만(자삭 DELETED는 복원 불가). 제목 자리는 본문 미리보기.
    ══════════════════════════════════════════════════════════ */
 function CommentModerationPanel({ flash }: { flash: (msg: string) => void }) {
+  const { canUpdate, canDelete } = useAdminDomainAuthorization("CONTENT");
   const [items, setItems] = useState<ModerationItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -899,7 +921,7 @@ function CommentModerationPanel({ flash }: { flash: (msg: string) => void }) {
   };
 
   const handleAction = async () => {
-    if (!dialog) return;
+    if (!dialog || (dialog.action === "restore" ? !canUpdate : !canDelete)) return;
     try {
       if (dialog.action === "restore") {
         await moderationApi.restoreComment(dialog.commentId);
@@ -1063,8 +1085,8 @@ function CommentModerationPanel({ flash }: { flash: (msg: string) => void }) {
 
               {detail.status === "HIDDEN" && (
                 <div style={{ display: "flex", gap: "0.5rem", padding: "0 16px 16px" }}>
-                  <button className="av-btn" onClick={() => setDialog({ commentId: detail.postId, title: detail.title, action: "restore" })}><RotateCcw /> 복원</button>
-                  <button className="av-btn" onClick={() => setDialog({ commentId: detail.postId, title: detail.title, action: "delete" })}><Trash2 /> 삭제</button>
+                  {canUpdate && <button className="av-btn" onClick={() => setDialog({ commentId: detail.postId, title: detail.title, action: "restore" })}><RotateCcw /> 복원</button>}
+                  {canDelete && <button className="av-btn" onClick={() => setDialog({ commentId: detail.postId, title: detail.title, action: "delete" })}><Trash2 /> 삭제</button>}
                 </div>
               )}
             </section>
@@ -1072,7 +1094,7 @@ function CommentModerationPanel({ flash }: { flash: (msg: string) => void }) {
         )}
       </div>
 
-      {dialog && (() => {
+      {dialog && (dialog.action === "restore" ? canUpdate : canDelete) && (() => {
         const isRestore = dialog.action === "restore";
         return (
           <ConfirmDialog
@@ -1081,7 +1103,7 @@ function CommentModerationPanel({ flash }: { flash: (msg: string) => void }) {
             title={isRestore ? "이 댓글을 복원할까요?" : "이 댓글을 삭제할까요?"}
             description={isRestore
               ? "복원하면 댓글이 다시 공개됩니다. 작성자에게 복원 알림이 전송됩니다."
-              : "삭제하면 댓글이 영구적으로 비공개 처리됩니다. 작성자에게 삭제 알림이 전송됩니다."}
+              : "삭제 상태로 전환되어 일반 사용자에게 보이지 않으며 감사 데이터는 보존됩니다. 작성자에게 삭제 알림이 전송됩니다."}
             meta={[{ label: "댓글", value: dialog.title }]}
             confirmLabel={isRestore ? "복원" : "삭제"}
             cancelLabel="취소"

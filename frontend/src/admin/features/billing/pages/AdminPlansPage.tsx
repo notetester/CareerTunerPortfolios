@@ -25,6 +25,7 @@ import {
   type BillingPolicyTargetType,
 } from "../api";
 import { RefundPolicySection } from "../components/RefundPolicySection";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 type SnapshotValue = string | number | boolean | null;
 type Snapshot = Record<string, SnapshotValue>;
@@ -170,6 +171,7 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 export function AdminPlansPage() {
+  const { canCreate, canUpdate } = useAdminDomainAuthorization("BILLING");
   const [data, setData] = useState<AdminPlans | null>(null);
   const [changes, setChanges] = useState<BillingPolicyChange[]>([]);
   const [loading, setLoading] = useState(true);
@@ -241,7 +243,7 @@ export function AdminPlansPage() {
   };
 
   const submit = async () => {
-    if (!selectedTarget || changedRows.length === 0) return;
+    if (!canCreate || !selectedTarget || changedRows.length === 0) return;
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -264,6 +266,7 @@ export function AdminPlansPage() {
   };
 
   const cancelChange = async (id: number) => {
+    if (!canUpdate) return;
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -303,10 +306,10 @@ export function AdminPlansPage() {
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="space-y-5">
             <CurrentPolicies data={data} loading={loading} />
-            <PolicyChangeList changes={changes} saving={saving} onCancel={(id) => void cancelChange(id)} />
+            <PolicyChangeList changes={changes} saving={saving} canCancel={canUpdate} onCancel={(id) => void cancelChange(id)} />
           </div>
 
-          <Card className="border-slate-200 bg-card">
+          {canCreate && <Card className="border-slate-200 bg-card">
             <CardHeader className="gap-2">
               <div className="flex items-center justify-between gap-3">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -363,7 +366,7 @@ export function AdminPlansPage() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
+          </Card>}
         </div>
       </div>
     </AdminShell>
@@ -565,10 +568,12 @@ function PolicyRow({
 function PolicyChangeList({
   changes,
   saving,
+  canCancel,
   onCancel,
 }: {
   changes: BillingPolicyChange[];
   saving: boolean;
+  canCancel: boolean;
   onCancel: (id: number) => void;
 }) {
   return (
@@ -591,7 +596,7 @@ function PolicyChangeList({
                   <div className="mt-1 text-xs text-slate-500">적용 시작: {formatDateTime(change.effectiveFrom)}</div>
                   <div className="text-xs text-slate-400">{applyModeText(change.applyMode)}</div>
                 </div>
-                {change.status === "SCHEDULED" && (
+                {canCancel && change.status === "SCHEDULED" && (
                   <Button variant="outline" size="icon" disabled={saving} onClick={() => onCancel(change.id)} title="예약 취소">
                     <X className="size-4" />
                   </Button>

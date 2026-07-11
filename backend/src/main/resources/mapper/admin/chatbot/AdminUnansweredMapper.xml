@@ -14,8 +14,9 @@
     <!-- best FAQ 표시용 요약. ids 비면 호출하지 않는다(서비스에서 가드). -->
     <select id="findFaqBriefByIds" resultType="com.careertuner.admin.chatbot.dto.FaqBrief">
         SELECT id, question, category
-          FROM faq
-         WHERE id IN
+         FROM faq
+         WHERE deleted_at IS NULL
+           AND id IN
         <foreach collection="ids" item="fid" open="(" separator="," close=")">
             #{fid}
         </foreach>
@@ -52,8 +53,9 @@
     <!-- 발생 대화의 메모리 JSON(있으면). 없거나 비면 null/'[]'. -->
     <select id="findConversationMessages" resultType="string">
         SELECT messages_json
-          FROM chatbot_conversation_memory
+         FROM chatbot_conversation_memory
          WHERE conversation_id = #{conversationId}
+           AND deleted_at IS NULL
     </select>
 
 </mapper>

@@ -19,7 +19,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/profiles")
-@RequireAdminPermission({"PROFILE_READ", "MEMBER_ADMIN"})
+@RequireAdminPermission({"USER_READ"})
 @RequiredArgsConstructor
 public class AdminProfileController {
 

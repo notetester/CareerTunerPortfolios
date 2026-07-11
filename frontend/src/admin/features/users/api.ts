@@ -7,10 +7,18 @@ import {
 } from "@/admin/components/grid";
 import type {
   AdminUserDetail,
+  AdminUserCreateRequest,
   AdminUserLoginHistoryRow,
   AdminUserRow,
   AdminUserStatus,
 } from "./types";
+
+export function createAdminUser(payload: AdminUserCreateRequest): Promise<AdminUserRow> {
+  return api<AdminUserRow>("/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
 
 /** 공통 그리드 계약 목록(서버 페이징/정렬/검색/CLIENT 전량 모드). */
 export async function getAdminUsersPage(params: AdminListParams): Promise<PageResult<AdminUserRow>> {
@@ -138,5 +146,19 @@ export function updateAdminUserStatus(
   return api<AdminUserRow>(`/admin/users/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+}
+
+export function softDeleteAdminUser(id: number, reason?: string): Promise<AdminUserRow> {
+  const search = new URLSearchParams();
+  if (reason?.trim()) search.set("reason", reason.trim());
+  const query = search.size > 0 ? `?${search.toString()}` : "";
+  return api<AdminUserRow>(`/admin/users/${id}${query}`, { method: "DELETE" });
+}
+
+export function bulkSoftDeleteAdminUsers(ids: number[], reason?: string): Promise<BulkActionResult> {
+  return api<BulkActionResult>("/admin/users/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids, params: { reason: reason?.trim() ?? "" } }),
   });
 }

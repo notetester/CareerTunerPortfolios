@@ -98,17 +98,20 @@
             SELECT COUNT(*)
             FROM admin_fit_analysis_memo memo_count_source
             WHERE memo_count_source.fit_analysis_id = fa.id
+              AND memo_count_source.deleted_at IS NULL
         ) AS memo_count,
         (
             SELECT MAX(latest_memo.updated_at)
             FROM admin_fit_analysis_memo latest_memo
             WHERE latest_memo.fit_analysis_id = fa.id
+              AND latest_memo.deleted_at IS NULL
         ) AS latest_memo_at,
         EXISTS (
             SELECT 1
             FROM admin_fit_analysis_memo reanalysis_memo
             WHERE reanalysis_memo.fit_analysis_id = fa.id
               AND reanalysis_memo.memo_type = 'REANALYSIS'
+              AND reanalysis_memo.deleted_at IS NULL
         ) AS reanalysis_requested,
         gr.gate_status,
         gr.needs_human_review AS gate_needs_human_review,
@@ -156,6 +159,7 @@
             AND EXISTS (
                 SELECT 1 FROM admin_fit_analysis_memo memo_filter
                 WHERE memo_filter.fit_analysis_id = fa.id
+                  AND memo_filter.deleted_at IS NULL
             )
         </if>
         <if test="c.reanalysisOnly">
@@ -163,6 +167,7 @@
                 SELECT 1 FROM admin_fit_analysis_memo reanalysis_filter
                 WHERE reanalysis_filter.fit_analysis_id = fa.id
                   AND reanalysis_filter.memo_type = 'REANALYSIS'
+                  AND reanalysis_filter.deleted_at IS NULL
             )
         </if>
     </sql>
@@ -241,6 +246,7 @@
         FROM admin_fit_analysis_memo memo
         INNER JOIN users ON users.id = memo.admin_user_id
         WHERE memo.fit_analysis_id = #{fitAnalysisId}
+          AND memo.deleted_at IS NULL
         ORDER BY memo.updated_at DESC, memo.id DESC
     </select>
 
@@ -259,6 +265,7 @@
         INNER JOIN users ON users.id = memo.admin_user_id
         WHERE memo.id = #{id}
           AND memo.fit_analysis_id = #{fitAnalysisId}
+          AND memo.deleted_at IS NULL
     </select>
 
     <insert id="insertMemo" useGeneratedKeys="true" keyProperty="id">
@@ -274,11 +281,14 @@
             content = #{content}
         WHERE id = #{id}
           AND fit_analysis_id = #{fitAnalysisId}
+          AND deleted_at IS NULL
     </update>
 
-    <delete id="deleteMemo">
-        DELETE FROM admin_fit_analysis_memo
-        WHERE id = #{id}
-          AND fit_analysis_id = #{fitAnalysisId}
-    </delete>
+    <update id="deleteMemo">
+        UPDATE admin_fit_analysis_memo
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE id = #{id}
+           AND fit_analysis_id = #{fitAnalysisId}
+           AND deleted_at IS NULL
+    </update>
 </mapper>

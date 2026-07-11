@@ -34,7 +34,7 @@ import {
 } from "./domains/f-area";
 
 import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
-import { canAccessMockApi } from "@/admin/auth/adminAccess";
+import { ADMIN_PERMISSION_CODES, canAccessMockApi } from "@/admin/auth/adminAccess";
 import { getOutageFallbackSnapshot } from "../outageFallback";
 
 import type { MockRoute } from "./registry";
@@ -77,7 +77,7 @@ const demoAdminUser = {
   email: "admin@careertuner.dev",
   name: "한관리",
   role: "ADMIN",
-  permissionGroups: ["MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN"],
+  permissions: ADMIN_PERMISSION_CODES.filter((code) => !code.startsWith("ADMIN_PERMISSION_")),
 };
 let mockSessionUser = demoUser;
 const MOCK_ROLE_KEY = "careertuner.mock.role";
@@ -105,8 +105,12 @@ function getMockSession() {
   return getOutageFallbackSnapshot().mode === "static-demo" ? mockSessionUser : demoUser;
 }
 
-export function canResolveMockRequest(rawPath: string): boolean {
-  return canAccessMockApi(rawPath, getMockSession().role);
+export function canResolveMockRequest(rawPath: string, method = "GET", body?: unknown): boolean {
+  const session = getMockSession();
+  const permissions = "permissions" in session && Array.isArray(session.permissions)
+    ? new Set<string>(session.permissions)
+    : new Set<string>();
+  return canAccessMockApi(rawPath, session.role, permissions, method, body);
 }
 
 // ── C: 적합도 분석 mock 세션 상태 ──
@@ -490,15 +494,7 @@ export async function resolveMock(
   rawPath: string,
   options: RequestInit,
 ): Promise<unknown | typeof MOCK_UNHANDLED | typeof MOCK_FORBIDDEN> {
-  if (!canResolveMockRequest(rawPath)) return MOCK_FORBIDDEN;
   const method = (options.method ?? "GET").toUpperCase();
-  const [path, queryString = ""] = rawPath.split("?");
-  const query = new URLSearchParams(queryString);
-  const route = routes.find((r) => r.method === method && r.pattern.test(path));
-  if (!route) return MOCK_UNHANDLED;
-
-  const match = route.pattern.exec(path);
-  const params = match ? match.slice(1) : [];
   let body: unknown = options.body;
   if (typeof options.body === "string") {
     try {
@@ -507,6 +503,14 @@ export async function resolveMock(
       body = options.body;
     }
   }
+  if (!canResolveMockRequest(rawPath, method, body)) return MOCK_FORBIDDEN;
+  const [path, queryString = ""] = rawPath.split("?");
+  const query = new URLSearchParams(queryString);
+  const route = routes.find((r) => r.method === method && r.pattern.test(path));
+  if (!route) return MOCK_UNHANDLED;
+
+  const match = route.pattern.exec(path);
+  const params = match ? match.slice(1) : [];
   await new Promise((resolve) => setTimeout(resolve, 220));
   return route.handler({ method, path, query, params, body });
 }

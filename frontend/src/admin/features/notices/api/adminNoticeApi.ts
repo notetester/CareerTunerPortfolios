@@ -40,6 +40,7 @@ export function createNotice(data: {
   status: string;
   isPinned: boolean;
   thumbnailUrl: string | null;
+  scheduledAt?: string | null;
 }): Promise<Notice> {
   return api<AdminNoticeResponse>("/admin/notices", {
     method: "POST",
@@ -56,6 +57,7 @@ export function updateNotice(
     status?: string;
     isPinned?: boolean;
     thumbnailUrl?: string | null;
+    scheduledAt?: string | null;
   },
 ): Promise<Notice> {
   return api<AdminNoticeResponse>(`/admin/notices/${id}`, {

@@ -15,6 +15,7 @@ import {
   saveAdminRefundPolicyDraft,
   type AdminRefundPolicy,
 } from "../api";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 interface RefundPolicyForm {
   title: string;
@@ -26,6 +27,7 @@ interface RefundPolicyForm {
 }
 
 export function RefundPolicySection() {
+  const { canUpdate } = useAdminDomainAuthorization("BILLING");
   const [policies, setPolicies] = useState<AdminRefundPolicy[]>([]);
   const [form, setForm] = useState<RefundPolicyForm>(emptyForm());
   const [loading, setLoading] = useState(true);
@@ -56,6 +58,7 @@ export function RefundPolicySection() {
   useEffect(() => { void load(); }, []);
 
   const saveDraft = async () => {
+    if (!canUpdate) return null;
     setSaving(true);
     setError(null);
     try {
@@ -74,6 +77,7 @@ export function RefundPolicySection() {
   };
 
   const publish = async () => {
+    if (!canUpdate) return;
     if (!window.confirm("환불 정책을 게시하고 전체 공지사항에 고정하시겠습니까?")) return;
     setSaving(true);
     setError(null);
@@ -117,19 +121,23 @@ export function RefundPolicySection() {
         <div className="grid gap-4 lg:grid-cols-2">
           <Field label="정책 제목">
             <input className={inputClass} value={form.title}
+              disabled={!canUpdate}
               onChange={(event) => setForm({ ...form, title: event.target.value })} />
           </Field>
           <Field label="시행 시각">
             <input className={inputClass} type="datetime-local" value={form.effectiveAt}
+              disabled={!canUpdate}
               onChange={(event) => setForm({ ...form, effectiveAt: event.target.value })} />
           </Field>
           <Field label="미사용 청약철회 기간">
             <input className={inputClass} type="number" min={7} max={365}
+              disabled={!canUpdate}
               value={form.rules.withdrawalDays}
               onChange={(event) => updateRules(setForm, form, { withdrawalDays: Number(event.target.value) })} />
           </Field>
           <Field label="사용 후 처리">
             <select className={inputClass} value={form.rules.usedPolicy}
+              disabled={!canUpdate}
               onChange={(event) => updateRules(setForm, form, {
                 usedPolicy: event.target.value as RefundPolicyRules["usedPolicy"],
               })}>
@@ -142,15 +150,18 @@ export function RefundPolicySection() {
 
         <Field label="변경 요약">
           <input className={inputClass} maxLength={500} value={form.summary}
+            disabled={!canUpdate}
             onChange={(event) => setForm({ ...form, summary: event.target.value })} />
         </Field>
         <Field label="사용자 고지 본문">
           <textarea className={`${inputClass} min-h-36 py-3`} value={form.content}
+            disabled={!canUpdate}
             onChange={(event) => setForm({ ...form, content: event.target.value })} />
         </Field>
 
         <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
           <input className="mt-1 size-4" type="checkbox" checked={form.adverse}
+            disabled={!canUpdate}
             onChange={(event) => setForm({ ...form, adverse: event.target.checked })} />
           <span>
             <strong className="block text-slate-800">사용자에게 불리한 변경</strong>
@@ -158,14 +169,16 @@ export function RefundPolicySection() {
           </span>
         </label>
 
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={() => void saveDraft()} disabled={saving || loading}>
-            <Save className="size-4" /> 초안 저장
-          </Button>
-          <Button onClick={() => void publish()} disabled={saving || loading}>
-            <Megaphone className="size-4" /> 게시하고 전체공지 고정
-          </Button>
-        </div>
+        {canUpdate && (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" onClick={() => void saveDraft()} disabled={saving || loading}>
+              <Save className="size-4" /> 초안 저장
+            </Button>
+            <Button onClick={() => void publish()} disabled={saving || loading}>
+              <Megaphone className="size-4" /> 게시하고 전체공지 고정
+            </Button>
+          </div>
+        )}
 
         {current?.noticeId && (
           <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">

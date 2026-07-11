@@ -243,11 +243,13 @@
                 SELECT COUNT(*)
                 FROM admin_career_run_memo memo_count_source
                 WHERE memo_count_source.career_analysis_run_id = run.id
+                  AND memo_count_source.deleted_at IS NULL
             ) AS memo_count,
             (
                 SELECT MAX(latest_memo.updated_at)
                 FROM admin_career_run_memo latest_memo
                 WHERE latest_memo.career_analysis_run_id = run.id
+                  AND latest_memo.deleted_at IS NULL
             ) AS latest_memo_at
         FROM career_analysis_run run
         INNER JOIN users ON users.id = run.user_id
@@ -331,6 +333,7 @@
         FROM admin_career_run_memo memo
         INNER JOIN users ON users.id = memo.admin_user_id
         WHERE memo.career_analysis_run_id = #{runId}
+          AND memo.deleted_at IS NULL
         ORDER BY memo.updated_at DESC, memo.id DESC
     </select>
 
@@ -349,6 +352,7 @@
         INNER JOIN users ON users.id = memo.admin_user_id
         WHERE memo.id = #{id}
           AND memo.career_analysis_run_id = #{runId}
+          AND memo.deleted_at IS NULL
     </select>
 
     <insert id="insertMemo" useGeneratedKeys="true" keyProperty="id">
@@ -364,11 +368,14 @@
             content = #{content}
         WHERE id = #{id}
           AND career_analysis_run_id = #{careerAnalysisRunId}
+          AND deleted_at IS NULL
     </update>
 
-    <delete id="deleteMemo">
-        DELETE FROM admin_career_run_memo
-        WHERE id = #{id}
-          AND career_analysis_run_id = #{runId}
-    </delete>
+    <update id="deleteMemo">
+        UPDATE admin_career_run_memo
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE id = #{id}
+           AND career_analysis_run_id = #{runId}
+           AND deleted_at IS NULL
+    </update>
 </mapper>

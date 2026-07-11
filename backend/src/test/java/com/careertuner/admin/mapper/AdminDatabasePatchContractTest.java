@@ -15,6 +15,20 @@ class AdminDatabasePatchContractTest {
             "src/main/resources/db/patches/20260711_admin_seed_role_reconciliation.sql");
     private static final Path ASSIGNMENT_PATCH = Path.of(
             "src/main/resources/db/patches/20260711_admin_active_assignment_unique.sql");
+    private static final Path CRUD_CATALOG_PATCH = Path.of(
+            "src/main/resources/db/patches/20260711_admin_permission_crud_catalog.sql");
+    private static final Path SOFT_DELETE_PATCH = Path.of(
+            "src/main/resources/db/patches/20260711_admin_soft_delete_columns.sql");
+    private static final Path ACCOUNT_GUARD_MAPPER = Path.of(
+            "src/main/resources/mapper/admin/security/AdminAccountGuardMapper.xml");
+    private static final Path CREATE_SUPERADMIN = Path.of(
+            "src/main/resources/db/maintenance/create_verified_developer_superadmin.sql");
+    private static final Path GRANT_SUPERADMIN = Path.of(
+            "src/main/resources/db/maintenance/grant_verified_developer_superadmin.sql");
+    private static final Path REVOKE_SUPERADMIN = Path.of(
+            "src/main/resources/db/maintenance/revoke_verified_developer_superadmin.sql");
+    private static final Path VERIFY_SUPERADMIN_QUORUM = Path.of(
+            "src/main/resources/db/maintenance/verify_superadmin_quorum.sql");
 
     @Test
     void developmentSeedHasOneExplicitSuperAdminAndGeneralUsersStayUsers() throws Exception {
@@ -41,7 +55,12 @@ class AdminDatabasePatchContractTest {
                 .contains("AND e.email = u.email")
                 .contains("CHECK (guard_ok = 1)")
                 .contains("@ct_seed_identity_match_count = 5")
-                .contains("@ct_nonseed_active_superadmin_count >= 1")
+                .contains("@ct_nonseed_active_superadmin_count >= 3")
+                .contains("privileged.email_verified = 1")
+                .contains("privileged.password_enabled = 1")
+                .contains("CHAR_LENGTH(privileged.password) = 60")
+                .contains("privileged.password REGEXP '^\\\\$2[aby]\\\\$1[0-4]\\\\$[./A-Za-z0-9]{53}$'")
+                .contains("privileged.password <> '$2a$10$Po9I2ItGfYMIYNBOB/FvuONHDtGqhRrLzFYu1B5TDzSbyjDvQfzja'")
                 .contains("MySQL은 한 statement 안에서 같은 TEMPORARY TABLE을 여러 번 열 수 없으므로")
                 .contains("AND seed.expected_id IS NULL")
                 .contains("INSERT INTO user_role_change_history")
@@ -69,5 +88,58 @@ class AdminDatabasePatchContractTest {
                 .contains("COALESCE(@ct_group_index_non_unique, 1) = 0")
                 .contains("ADD UNIQUE KEY uk_admin_user_perm_active (user_id, permission_code, active_assignment_key)")
                 .contains("ADD UNIQUE KEY uk_admin_user_group_active (user_id, group_code, active_assignment_key)");
+    }
+
+    @Test
+    void crudCatalogRerunPreservesMutableAuthorizationState() throws Exception {
+        String patch = Files.readString(CRUD_CATALOG_PATCH);
+
+        assertThat(patch)
+                .contains("@ct_catalog_initialized")
+                .contains("WHERE @ct_catalog_initialized = 0")
+                .contains("active = IF(@ct_catalog_initialized = 1, active, VALUES(active))")
+                .contains("deleted_at = IF(@ct_catalog_initialized = 1, deleted_at, NULL)")
+                .contains("exact_permission_total_count")
+                .contains("exact_permission_active_count")
+                .contains("canonical_stored_item_count")
+                .contains("canonical_active_item_count");
+    }
+
+    @Test
+    void softDeletePatchKeepsLegalFkCoveredAndVerifiesSemanticInvariants() throws Exception {
+        String schema = Files.readString(SCHEMA);
+        String patch = Files.readString(SOFT_DELETE_PATCH);
+        String addRestrict = "ADD CONSTRAINT fk_legal_clause_ver_restrict";
+        String dropLegacy = "DROP FOREIGN KEY fk_legal_clause_ver";
+
+        assertThat(schema)
+                .contains("CONSTRAINT `fk_legal_clause_ver_restrict`")
+                .doesNotContain("CONSTRAINT `fk_legal_clause_ver` FOREIGN");
+        assertThat(patch)
+                .contains(addRestrict)
+                .contains(dropLegacy)
+                .contains("@ct_admin_soft_delete_verification_ok")
+                .contains("CHECK (guard_ok = 1)")
+                .contains("@ct_legal_restrict_fk_valid = 1")
+                .contains("@ct_legal_draft_expression_valid = 1");
+        assertThat(patch.indexOf(addRestrict)).isLessThan(patch.indexOf(dropLegacy));
+    }
+
+    @Test
+    void safeSuperAdminSqlRequiresAParseableBcryptShape() throws Exception {
+        for (Path path : new Path[] {
+                ACCOUNT_GUARD_MAPPER,
+                ROLE_PATCH,
+                CREATE_SUPERADMIN,
+                GRANT_SUPERADMIN,
+                REVOKE_SUPERADMIN,
+                VERIFY_SUPERADMIN_QUORUM
+        }) {
+            assertThat(Files.readString(path))
+                    .as(path.toString())
+                    .contains("REGEXP '^\\\\$2[aby]\\\\$1[0-4]\\\\$[./A-Za-z0-9]{53}$'")
+                    .doesNotContain("password LIKE '$2%'")
+                    .doesNotContain("password NOT LIKE '$2%'");
+        }
     }
 }

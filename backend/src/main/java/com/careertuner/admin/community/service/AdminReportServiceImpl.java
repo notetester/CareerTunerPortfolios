@@ -14,7 +14,9 @@ import com.careertuner.admin.community.dto.AdminReportDetailResponse;
 import com.careertuner.admin.community.dto.AdminReportListResponse;
 import com.careertuner.admin.community.dto.AiOpinion;
 import com.careertuner.admin.community.mapper.AdminReportMapper;
-import com.careertuner.admin.user.dto.AdminUserRow;
+import com.careertuner.admin.common.security.AdminAccountMutationGuard;
+import com.careertuner.admin.common.security.AdminAccountState;
+import com.careertuner.admin.permission.service.EffectivePermissionService;
 import com.careertuner.admin.user.mapper.AdminUserMapper;
 import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.common.exception.BusinessException;
@@ -60,6 +62,8 @@ public class AdminReportServiceImpl implements AdminReportService {
     private final AuthMapper authMapper;
     private final NotificationService notificationService;
     private final ModerationSettingService settingService;
+    private final AdminAccountMutationGuard accountMutationGuard;
+    private final EffectivePermissionService effectivePermissionService;
 
     @Override
     public List<AdminReportListResponse> getReports(AuthUser authUser, String status) {
@@ -112,6 +116,11 @@ public class AdminReportServiceImpl implements AdminReportService {
     @Transactional
     public AdminReportDetailResponse takeAction(AuthUser authUser, Long id, AdminReportActionRequest request) {
         requireAdmin(authUser);
+        if (request == null || request.action() == null || request.action().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "신고 조치를 선택해 주세요.");
+        }
+        String action = request.action().trim().toUpperCase(java.util.Locale.ROOT);
+        requireActionPermissions(authUser, action);
         boolean isComment = id >= 1_000_000L;
         Long targetId = isComment ? id - 1_000_000L : id;
         Long adminId = authUser.id();
@@ -120,7 +129,6 @@ public class AdminReportServiceImpl implements AdminReportService {
         // 처리 결과 알림 대상(처리 직전 PENDING 신고자)을 상태 갱신 전에 확보한다.
         List<Long> reporterIds = reportMapper.findPendingReporterIds(targetId, type);
 
-        String action = request.action().toUpperCase();
         if (!isComment) {
             switch (action) {
                 case "HIDDEN" -> {
@@ -273,16 +281,17 @@ public class AdminReportServiceImpl implements AdminReportService {
         if (authorId.equals(authUser.id())) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "본인 계정은 차단할 수 없습니다.");
         }
-        AdminUserRow author = userMapper.findUser(authorId);
+        AdminAccountState author = accountMutationGuard.validateStatusChangeOrSkipDeleted(
+                authUser, authorId, BLOCKED);
         if (author == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "작성자 계정을 찾을 수 없습니다.");
         }
-        if ("ADMIN".equals(author.getRole()) || "SUPER_ADMIN".equals(author.getRole())) {
+        if ("ADMIN".equals(author.role()) || "SUPER_ADMIN".equals(author.role())) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "관리자 계정은 신고 콘솔에서 차단할 수 없습니다.");
         }
-        if (!ACTIVE.equals(author.getStatus())) {
+        if (!ACTIVE.equals(author.status())) {
             // 이미 차단/휴면/탈퇴 상태 — 재차단 대신 건너뛴다(수동 조치 보존, DELETE_AND_BLOCK 의 삭제는 계속 진행).
-            log.info("작성자 차단 생략(이미 비활성): authorId={}, status={}", authorId, author.getStatus());
+            log.info("작성자 차단 생략(이미 비활성): authorId={}, status={}", authorId, author.status());
             return;
         }
 
@@ -311,6 +320,26 @@ public class AdminReportServiceImpl implements AdminReportService {
         }
 
         log.warn("신고 처리 작성자 차단: authorId={}, adminId={}, blockedUntil={}", authorId, authUser.id(), blockedUntil);
+    }
+
+    private void requireActionPermissions(AuthUser authUser, String action) {
+        if ("SUPER_ADMIN".equals(authUser.role())) {
+            return;
+        }
+        String contentPermission = "DELETED".equals(action) || "DELETE_AND_BLOCK".equals(action)
+                ? "CONTENT_DELETE"
+                : "CONTENT_UPDATE";
+        requirePermission(authUser, contentPermission);
+        if ("BLOCK_AUTHOR".equals(action) || "DELETE_AND_BLOCK".equals(action)) {
+            requirePermission(authUser, "USER_UPDATE");
+        }
+    }
+
+    private void requirePermission(AuthUser authUser, String required) {
+        if (!effectivePermissionService.hasAny(authUser.id(), required)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "이 신고 조치를 수행할 세부 권한이 없습니다. (필요 권한: " + required + ")");
+        }
     }
 
     /** 신고자에게 처리 결과 알림. 기존 등록 타입(NOTICE 계열) 사용 — 새 타입 등록 금지 규칙 준수. */

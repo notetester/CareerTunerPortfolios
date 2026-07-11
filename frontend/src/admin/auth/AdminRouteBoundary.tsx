@@ -6,10 +6,8 @@ import { PageFallback } from "@/app/pages/pageFallback";
 import { useAdminPermissions } from "@/admin/hooks/useAdminPermissions";
 import {
   adminLoginRedirect,
-  permissionGroupsFromCodes,
   resolveAdminRouteAccess,
   type AdminRoutePolicy,
-  type PermissionGroupCode,
 } from "./adminAccess";
 
 export function AdminRouteBoundary({
@@ -24,18 +22,18 @@ export function AdminRouteBoundary({
   const needsPermissions =
     user?.role === "ADMIN"
     && !policy.superOnly
-    && Boolean(policy.permissionGroups && policy.permissionGroups.length > 0);
+    && Boolean(policy.permissionCodes && policy.permissionCodes.length > 0);
   const permissions = useAdminPermissions(user?.id ?? null, user?.role ?? null, needsPermissions);
-  const grantedGroups = permissions.status === "ready" && permissions.data
-    ? permissionGroupsFromCodes(permissions.data.permissions)
-    : new Set<PermissionGroupCode>();
+  const grantedPermissions = permissions.status === "ready" && permissions.data
+    ? new Set(permissions.data.permissions)
+    : new Set<string>();
   const decision = resolveAdminRouteAccess({
     authLoading,
     hasUser: Boolean(user),
     role: user?.role,
     policy,
     permissionStatus: permissions.status,
-    grantedGroups,
+    grantedPermissions,
   });
 
   if (decision === "loading") return <PageFallback />;

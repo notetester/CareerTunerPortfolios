@@ -18,7 +18,7 @@ const MIN_SAMPLES_FOR_FT = 10;
  * 누적 학습 샘플 통계, JSONL 내보내기, 평가 하니스(채점 일관성), 파인튜닝 잡 생성을 한곳에서 다룬다.
  * 자체 모델 LoRA 학습은 ml/interview-finetune 자산으로 별도 진행한다(로드맵 5장).
  */
-export function TrainingPipelineCard() {
+export function TrainingPipelineCard({ canCreate }: { canCreate: boolean }) {
   const [stats, setStats] = useState<TrainingStats | null>(null);
   const [evalResult, setEvalResult] = useState<EvalHarnessResult | null>(null);
   const [fineTune, setFineTune] = useState<FineTuneResult | null>(null);
@@ -51,6 +51,7 @@ export function TrainingPipelineCard() {
   };
 
   const handleEval = async () => {
+    if (!canCreate) return;
     setBusy("eval");
     setError(null);
     try {
@@ -63,6 +64,7 @@ export function TrainingPipelineCard() {
   };
 
   const handleFineTune = async () => {
+    if (!canCreate) return;
     if (!window.confirm("OpenAI 파인튜닝 잡을 생성합니다(비용 발생). 진행할까요?")) return;
     setBusy("ft");
     setError(null);
@@ -110,20 +112,24 @@ export function TrainingPipelineCard() {
             {busy === "export" ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
             JSONL 내보내기
           </Button>
-          <Button size="sm" variant="outline" className="gap-1.5" disabled={busy !== null} onClick={handleEval}>
-            {busy === "eval" ? <Loader2 className="size-3.5 animate-spin" /> : <FlaskConical className="size-3.5" />}
-            평가 하니스
-          </Button>
-          <Button
-            size="sm"
-            className="gap-1.5 bg-indigo-600 text-white hover:bg-indigo-700"
-            disabled={busy !== null || !canFineTune}
-            onClick={handleFineTune}
-            title={canFineTune ? undefined : `샘플 ${MIN_SAMPLES_FOR_FT}건 이상 필요`}
-          >
-            {busy === "ft" ? <Loader2 className="size-3.5 animate-spin" /> : <Cpu className="size-3.5" />}
-            파인튜닝 시작
-          </Button>
+          {canCreate && (
+            <>
+              <Button size="sm" variant="outline" className="gap-1.5" disabled={busy !== null} onClick={handleEval}>
+                {busy === "eval" ? <Loader2 className="size-3.5 animate-spin" /> : <FlaskConical className="size-3.5" />}
+                평가 하니스
+              </Button>
+              <Button
+                size="sm"
+                className="gap-1.5 bg-indigo-600 text-white hover:bg-indigo-700"
+                disabled={busy !== null || !canFineTune}
+                onClick={handleFineTune}
+                title={canFineTune ? undefined : `샘플 ${MIN_SAMPLES_FOR_FT}건 이상 필요`}
+              >
+                {busy === "ft" ? <Loader2 className="size-3.5 animate-spin" /> : <Cpu className="size-3.5" />}
+                파인튜닝 시작
+              </Button>
+            </>
+          )}
         </div>
 
         {/* 평가 하니스 결과 */}

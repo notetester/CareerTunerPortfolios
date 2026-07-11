@@ -28,7 +28,7 @@ cd backend
 # http://localhost:8080/api/health
 ```
 
-**프런트엔드** (Node 20+)
+**프런트엔드** (Node 22+)
 ```bash
 cd frontend
 npm install
@@ -43,7 +43,9 @@ mysql -u <user> -p <database> < backend/src/main/resources/db/data.sql
 ```
 
 `data.sql`에는 공통 비밀번호를 사용하는 개발용 `SUPER_ADMIN`이 포함된다. 운영 DB에는 적용하지 말고,
-운영 관리자는 별도 one-time bootstrap 절차와 운영 비밀값으로 생성·승격한다.
+공유·운영 관리자는 A~F 전용 계정을 강한 개별 비밀번호로 생성하거나, 이메일 인증을 마친 기존 개인 계정을
+[`backend/src/main/resources/db/maintenance`](backend/src/main/resources/db/maintenance/README.md)의 멱등 절차로 승격한다.
+알려진 seed와 공용 비밀번호 계정은 제외하며 안전한 ACTIVE `SUPER_ADMIN`을 최소 3명 유지한다.
 
 ## 데모 / 릴리즈
 

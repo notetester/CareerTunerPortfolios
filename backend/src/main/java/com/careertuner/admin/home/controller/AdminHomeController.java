@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.common.AdminAccess;
-import com.careertuner.admin.permission.annotation.AdminRoleOnly;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.home.dto.AdminHomeSummaryResponse;
 import com.careertuner.admin.home.service.AdminHomeService;
 import com.careertuner.common.security.AuthUser;
@@ -16,7 +16,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/home")
-@AdminRoleOnly
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminHomeController {
 
