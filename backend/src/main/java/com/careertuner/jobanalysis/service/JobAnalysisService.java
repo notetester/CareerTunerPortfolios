@@ -46,14 +46,15 @@ public class JobAnalysisService {
     private final NotificationService notificationService;
 
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
-        ensureAnalysisRunnable(applicationCase.getStatus());
-        String previousStatus = applicationCase.getStatus();
-        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) 뒤에 최신 공고를 읽는다 — 게이트 앞
-        // 스냅샷이면 그 사이 재추출이 끝나 이전 revision 으로 분석할 수 있다(입력 스냅샷 직렬화).
-        // AutoPrep 등 비-strict 호출도 이 경로라 같은 상호 배제를 받는다. 획득 후 조회 실패는 catch 가 복원한다.
+        String previousStatus = accessService.requireOwned(userId, applicationCaseId).getStatus();
+        ensureAnalysisRunnable(previousStatus);
+        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) 뒤에 분석 입력 전체(지원 건 메타데이터 +
+        // 최신 공고)를 다시 읽는다 — 게이트 앞 스냅샷이면 그 사이 끝난 재추출이 갱신한 기업명·직무명·revision 을
+        // 놓친다(입력 스냅샷 직렬화). AutoPrep 등 비-strict 호출도 이 경로라 같은 상호 배제를 받는다.
+        // 획득 후 조회 실패는 catch 가 상태를 복원한다. previousStatus 는 CAS 비교값이라 pre-read 로 충분하다.
         statusService.markAnalyzingExclusive(userId, applicationCaseId, previousStatus);
         try {
+            ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
             JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
             String sourceText = accessService.sourceText(jobPosting);
             GeneratedJobAnalysis generated = bAnalysisGenerationService.generateJobAnalysis(applicationCase, sourceText);
@@ -114,13 +115,14 @@ public class JobAnalysisService {
      * (두 경로 모두 배타 획득 + 획득 후 공고 조회를 공유한다).
      */
     public JobAnalysisResponse createJobAnalysisStrict(Long userId, Long applicationCaseId, BAnalysisProvider provider) {
-        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
-        ensureAnalysisRunnable(applicationCase.getStatus());
-        String previousStatus = applicationCase.getStatus();
-        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) — strict 재추출과 직렬화. 최신 공고는
-        // 반드시 획득 <b>뒤에</b> 읽는다(게이트 앞 스냅샷이면 그 사이 끝난 재추출의 새 revision 을 놓친다).
+        String previousStatus = accessService.requireOwned(userId, applicationCaseId).getStatus();
+        ensureAnalysisRunnable(previousStatus);
+        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) — strict 재추출과 직렬화. 분석 입력
+        // 전체(지원 건 메타데이터 + 최신 공고)는 반드시 획득 <b>뒤에</b> 읽는다(게이트 앞 스냅샷이면 그 사이
+        // 끝난 재추출이 갱신한 기업명·직무명·revision 을 놓친다).
         statusService.markAnalyzingExclusive(userId, applicationCaseId, previousStatus);
         try {
+            ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
             JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
             String sourceText = accessService.sourceText(jobPosting);
             StrictJobResult strict = bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, sourceText, provider);

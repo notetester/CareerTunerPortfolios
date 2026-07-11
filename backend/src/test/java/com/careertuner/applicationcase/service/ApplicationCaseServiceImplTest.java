@@ -1589,8 +1589,10 @@ class ApplicationCaseServiceImplTest {
 
         service.createJobAnalysisStrict(1L, 10L, BAnalysisProvider.CLAUDE);
 
-        InOrder order = inOrder(statusService, jobPostingMapper, bAnalysisGenerationService);
+        InOrder order = inOrder(statusService, applicationCaseMapper, jobPostingMapper, bAnalysisGenerationService);
         order.verify(statusService).markAnalyzingExclusive(1L, 10L, "READY");
+        // 게이트 뒤 지원 건 재조회(재추출이 갱신한 기업명·직무명 반영) → 최신 공고 조회 → 모델 호출.
+        order.verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
         order.verify(jobPostingMapper).findLatestJobPostingByCaseId(10L);
         order.verify(bAnalysisGenerationService)
                 .generateJobAnalysisStrict(applicationCase, "Java Spring REST API", BAnalysisProvider.CLAUDE);
@@ -1619,8 +1621,10 @@ class ApplicationCaseServiceImplTest {
 
         service.createJobAnalysis(1L, 10L);
 
-        InOrder order = inOrder(statusService, jobPostingMapper, bAnalysisGenerationService);
+        InOrder order = inOrder(statusService, applicationCaseMapper, jobPostingMapper, bAnalysisGenerationService);
         order.verify(statusService).markAnalyzingExclusive(1L, 10L, "READY");
+        // 게이트 뒤 지원 건 재조회 → 최신 공고 조회 → 모델 호출(4경로 공통 규칙).
+        order.verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
         order.verify(jobPostingMapper).findLatestJobPostingByCaseId(10L);
         order.verify(bAnalysisGenerationService).generateJobAnalysis(applicationCase, "Java Spring REST API");
     }

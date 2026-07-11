@@ -128,11 +128,38 @@ class CompanyAnalysisServiceStrictTest {
 
         service().createCompanyAnalysisStrict(1L, 10L, BAnalysisProvider.OPENAI);
 
-        InOrder order = inOrder(statusService, jobPostingMapper, generationService);
+        InOrder order = inOrder(statusService, applicationCaseMapper, jobPostingMapper, generationService);
         order.verify(statusService).markAnalyzingExclusive(1L, 10L, "READY");
+        // 게이트 뒤 지원 건 재조회(재추출이 갱신한 기업명으로 웹 검색·프롬프트 구성) → 공고 조회 → 모델 호출.
+        order.verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
         order.verify(jobPostingMapper).findLatestJobPostingByCaseId(10L);
         order.verify(generationService)
                 .generateCompanyAnalysisStrict(eq(applicationCase), anyString(), any(), eq(BAnalysisProvider.OPENAI));
+    }
+
+    @Test
+    void autoCompanyAnalysisReadsCaseAndPostingOnlyAfterExclusiveGate() {
+        // 비-strict(자동) 기업분석도 같은 규칙 — 배타 획득 → 지원 건 재조회 → 최신 공고 조회 → 모델 호출.
+        // 게이트 앞 스냅샷이면 재추출이 갱신한 기업명을 놓쳐 웹 검색이 이전 기업명으로 나갈 수 있다(회귀 잠금).
+        webProps.setEnabled(false);
+        ApplicationCase applicationCase = applicationCase("READY");
+        stubOwnedCaseWithPosting(applicationCase);
+        CompanyAnalysisPayload payload = companyPayload(new Usage("openai-gpt", 100, 50, 150));
+        when(generationService.generateCompanyAnalysis(eq(applicationCase), anyString(), any()))
+                .thenReturn(new BAnalysisGenerationService.GeneratedCompanyAnalysis(payload, null, null));
+        when(canonicalizer.canonicalizeForStorage(any(), anyLong(), anyInt(), anyString(), any(), any(), any()))
+                .thenReturn(new CanonicalCompanyAnalysis(payload, List.of()));
+        when(canonicalizer.withoutUnknownMarkers(any())).thenReturn(null);
+        when(canonicalizer.extractUnknowns(any())).thenReturn(null);
+        when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(new CompanyAnalysis());
+
+        service().createCompanyAnalysis(1L, 10L);
+
+        InOrder order = inOrder(statusService, applicationCaseMapper, jobPostingMapper, generationService);
+        order.verify(statusService).markAnalyzingExclusive(1L, 10L, "READY");
+        order.verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
+        order.verify(jobPostingMapper).findLatestJobPostingByCaseId(10L);
+        order.verify(generationService).generateCompanyAnalysis(eq(applicationCase), anyString(), any());
     }
 
     @Test

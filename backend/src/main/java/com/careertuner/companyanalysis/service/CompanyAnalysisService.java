@@ -78,14 +78,14 @@ public class CompanyAnalysisService {
     private final ObjectMapper objectMapper;
 
     public CompanyAnalysisResponse createCompanyAnalysis(Long userId, Long applicationCaseId) {
-        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
-        ensureAnalysisRunnable(applicationCase.getStatus());
-        String previousStatus = applicationCase.getStatus();
-        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) 뒤에 최신 공고를 읽는다 — 게이트 앞
-        // 스냅샷이면 그 사이 재추출이 끝나 이전 revision 으로 분석할 수 있다(입력 스냅샷 직렬화).
-        // 비-strict 호출도 이 경로라 같은 상호 배제를 받는다. 획득 후 조회 실패는 catch 가 복원한다.
+        String previousStatus = accessService.requireOwned(userId, applicationCaseId).getStatus();
+        ensureAnalysisRunnable(previousStatus);
+        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) 뒤에 분석 입력 전체(지원 건 메타데이터 +
+        // 최신 공고)를 다시 읽는다 — 게이트 앞 스냅샷이면 그 사이 끝난 재추출이 갱신한 기업명·직무명을 놓쳐
+        // 특히 웹 검색이 이전 기업명으로 나갈 수 있다. 비-strict 호출도 이 경로라 같은 상호 배제를 받는다.
         statusService.markAnalyzingExclusive(userId, applicationCaseId, previousStatus);
         try {
+            ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
             JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
             String sourceText = accessService.sourceText(jobPosting);
             // flag ON 이면 회사 식별 → (캐시 or 검색) → WEB evidence 를 한 번만 모은다. flag OFF 면 빈 목록.
@@ -162,13 +162,14 @@ public class CompanyAnalysisService {
      * 와 구조는 같지만 생성 경로·provenance 만 다르다(두 경로 모두 배타 획득 + 획득 후 공고 조회를 공유한다).
      */
     public CompanyAnalysisResponse createCompanyAnalysisStrict(Long userId, Long applicationCaseId, BAnalysisProvider provider) {
-        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
-        ensureAnalysisRunnable(applicationCase.getStatus());
-        String previousStatus = applicationCase.getStatus();
-        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) — strict 재추출과 직렬화. 최신 공고는
-        // 반드시 획득 <b>뒤에</b> 읽는다(게이트 앞 스냅샷이면 그 사이 끝난 재추출의 새 revision 을 놓친다).
+        String previousStatus = accessService.requireOwned(userId, applicationCaseId).getStatus();
+        ensureAnalysisRunnable(previousStatus);
+        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) — strict 재추출과 직렬화. 분석 입력
+        // 전체(지원 건 메타데이터 + 최신 공고)는 반드시 획득 <b>뒤에</b> 읽는다(게이트 앞 스냅샷이면 그 사이
+        // 끝난 재추출이 갱신한 기업명·직무명을 놓쳐 특히 웹 검색이 이전 기업명으로 나갈 수 있다).
         statusService.markAnalyzingExclusive(userId, applicationCaseId, previousStatus);
         try {
+            ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
             JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
             String sourceText = accessService.sourceText(jobPosting);
             List<CompanyWebEvidence> webEvidence = collectWebEvidence(applicationCase);
