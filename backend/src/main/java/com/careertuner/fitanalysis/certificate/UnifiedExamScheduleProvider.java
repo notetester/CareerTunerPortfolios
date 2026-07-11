@@ -7,6 +7,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Year;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,6 +44,8 @@ public class UnifiedExamScheduleProvider {
     private static final String SOURCE_URL = "https://www.q-net.or.kr/";
     private static final int NUM_OF_ROWS = 50; // API 상한(초과 시 930)
     private static final int MAX_PAGES = 3;    // 상설검정 최대 41회차 관측 — 150 이면 충분, 무한 루프 방지
+    /** 시행년도는 한국 기준 — UTC 서버가 연초(KST 00:00~08:59)에 전년도로 오조회하는 경계 버그 방지. */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
     private final String serviceKey;
     private final String baseUrl;
@@ -91,7 +94,7 @@ public class UnifiedExamScheduleProvider {
                 // serviceKey 는 재인코딩하지 않음(디코딩 raw 키 전제). jmCd 는 4자리 숫자라 인코딩 불요.
                 String url = baseUrl + "/qualExamSchd/getQualExamSchdList"
                         + "?serviceKey=" + serviceKey + "&numOfRows=" + NUM_OF_ROWS + "&pageNo=" + page
-                        + "&dataFormat=json&implYy=" + Year.now().getValue() + "&jmCd=" + jmCd.trim();
+                        + "&dataFormat=json&qualgbCd=T&implYy=" + Year.now(KST).getValue() + "&jmCd=" + jmCd.trim();
                 HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().build();
                 HttpResponse<String> response = httpClient.send(request,
                         HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
@@ -176,8 +179,10 @@ public class UnifiedExamScheduleProvider {
     }
 
     private static boolean hasAnyDate(ScheduleRound r) {
-        return notBlank(r.docRegStart()) || notBlank(r.docExam()) || notBlank(r.docPass())
-                || notBlank(r.pracExamStart()) || notBlank(r.pracPass());
+        // 모든 날짜 필드 검사 — 상류가 종료일만 채우는 비정상 응답도 '날짜 있음'으로 보존(방어적).
+        return notBlank(r.docRegStart()) || notBlank(r.docRegEnd()) || notBlank(r.docExam())
+                || notBlank(r.docPass()) || notBlank(r.pracExamStart()) || notBlank(r.pracExamEnd())
+                || notBlank(r.pracPass());
     }
 
     private static boolean notBlank(String s) {

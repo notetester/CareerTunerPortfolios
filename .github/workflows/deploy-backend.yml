@@ -254,11 +254,12 @@ jobs:
           CT_CORRECTION_BASE_URL: ${{ env.CORRECTION_AI_BASE_URL }}
           CT_CORRECTION_MODEL: ${{ env.CORRECTION_AI_MODEL }}
           CT_CORRECTION_PREFLIGHT_REQUIRED: ${{ env.CORRECTION_AI_PREFLIGHT_REQUIRED }}
+          CT_CERT_DATA_GO_KR_KEY: ${{ secrets.CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: CT_CORRECTION_PROVIDER,CT_CORRECTION_BASE_URL,CT_CORRECTION_MODEL,CT_CORRECTION_PREFLIGHT_REQUIRED
+          envs: CT_CORRECTION_PROVIDER,CT_CORRECTION_BASE_URL,CT_CORRECTION_MODEL,CT_CORRECTION_PREFLIGHT_REQUIRED,CT_CERT_DATA_GO_KR_KEY
           script: |
             set -eu
             cd ~/careertuner
@@ -293,6 +294,12 @@ jobs:
             upsert_env CAREERTUNER_CORRECTION_AI_SELF_BASE_URL "$CT_CORRECTION_BASE_URL"
             upsert_env CAREERTUNER_CORRECTION_AI_SELF_MODEL "$CT_CORRECTION_MODEL"
             upsert_env CAREERTUNER_CORRECTION_AI_SELF_TEMPERATURE "0.0"
+            # C 자격증 근거 라이브 조회 키(공공데이터포털, 디코딩 raw — repo secret). 미설정이면 기존 값 유지
+            # (빈 값 덮어쓰기 금지 — 키 없어도 앱은 안전 degrade). compose prod 가 .env 전체를 컨테이너에 주입한다.
+            if [ -n "${CT_CERT_DATA_GO_KR_KEY:-}" ]; then
+              upsert_env CAREERTUNER_CERT_DATA_GO_KR_SERVICE_KEY "$CT_CERT_DATA_GO_KR_KEY"
+              echo "C cert data.go.kr service key updated"
+            fi
             echo "EC2 env backup: $backup"
             echo "E correction env updated"
 
