@@ -14,6 +14,7 @@ import { getInterviewModeLabel, getScoreColor } from "@/features/interview/types
 import { getAdminInterviewSessionDetail, updateAdminMemo } from "../../interviews/api";
 import { parseReport } from "../../interviews/report";
 import type { AdminInterviewSessionDetail, AdminInterviewSessionRow } from "../../interviews/types";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 function formatDateTime(value: string | null): string {
   if (!value) return "-";
@@ -31,6 +32,7 @@ export function ReportDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { canUpdate } = useAdminDomainAuthorization("AI");
   const [detail, setDetail] = useState<AdminInterviewSessionDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +157,7 @@ export function ReportDetailDialog({
             sessionId={row.id}
             initial={detail.session.adminMemo}
             onSaved={() => void getAdminInterviewSessionDetail(row.id).then(setDetail).catch(() => undefined)}
+            canUpdate={canUpdate}
           />
         )}
       </DialogContent>
@@ -167,10 +170,12 @@ function MemoSection({
   sessionId,
   initial,
   onSaved,
+  canUpdate,
 }: {
   sessionId: number;
   initial: string | null;
   onSaved: () => void;
+  canUpdate: boolean;
 }) {
   const [memo, setMemo] = useState(initial ?? "");
   const [saving, setSaving] = useState(false);
@@ -182,6 +187,7 @@ function MemoSection({
   }, [initial, sessionId]);
 
   const save = async () => {
+    if (!canUpdate) return;
     setSaving(true);
     setNote(null);
     try {
@@ -198,19 +204,25 @@ function MemoSection({
   return (
     <section className="space-y-2 border-t border-slate-200 pt-3">
       <h3 className="text-sm font-bold text-slate-900">운영 메모</h3>
-      <textarea
-        value={memo}
-        onChange={(e) => setMemo(e.target.value)}
-        placeholder="이 세션에 대한 운영 메모 (사용자에게 노출되지 않습니다)"
-        rows={3}
-        className="w-full resize-y rounded-lg border border-slate-200 bg-card p-2 text-sm focus:border-blue-300 focus:outline-none"
-      />
-      <div className="flex items-center gap-2">
-        <Button size="sm" onClick={() => void save()} disabled={saving}>
-          {saving ? "저장 중..." : "메모 저장"}
-        </Button>
-        {note && <span className="text-xs text-slate-500">{note}</span>}
-      </div>
+      {canUpdate ? (
+        <>
+          <textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="이 세션에 대한 운영 메모 (사용자에게 노출되지 않습니다)"
+            rows={3}
+            className="w-full resize-y rounded-lg border border-slate-200 bg-card p-2 text-sm focus:border-blue-300 focus:outline-none"
+          />
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => void save()} disabled={saving}>
+              {saving ? "저장 중..." : "메모 저장"}
+            </Button>
+            {note && <span className="text-xs text-slate-500">{note}</span>}
+          </div>
+        </>
+      ) : (
+        <p className="whitespace-pre-wrap text-sm text-slate-600">{initial || "등록된 운영 메모가 없습니다."}</p>
+      )}
     </section>
   );
 }

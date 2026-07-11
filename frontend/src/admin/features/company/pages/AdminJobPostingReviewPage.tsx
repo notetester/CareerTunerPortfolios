@@ -28,6 +28,7 @@ import {
   type JobPostingReviewDetail,
   type JobPostingReviewRow,
 } from "../api";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return "-";
@@ -71,6 +72,7 @@ const REVIEW_QUEUE_COLUMNS: AdminListColumn<JobPostingReviewRow>[] = [
 
 /** 채용공고 검토 큐 — 신규 등록 검토와 게시 중 수정(diff) 검토를 함께 처리한다. */
 export function AdminJobPostingReviewPage() {
+  const { canUpdate } = useAdminDomainAuthorization("CONTENT");
   const [queue, setQueue] = useState<JobPostingReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +131,7 @@ export function AdminJobPostingReviewPage() {
   };
 
   const approve = async () => {
-    if (selectedId == null || !detail) return;
+    if (!canUpdate || selectedId == null || !detail) return;
     const isRevision = detail.pendingRevision != null;
     if (!window.confirm(isRevision ? "변경 사항을 승인해 게시 내용에 반영할까요?" : "이 공고를 승인해 게시할까요?")) return;
     setProcessing(true);
@@ -147,7 +149,7 @@ export function AdminJobPostingReviewPage() {
   };
 
   const reject = async () => {
-    if (selectedId == null) return;
+    if (!canUpdate || selectedId == null) return;
     if (!rejectReason.trim()) {
       setError("반려 사유를 입력해 주세요.");
       return;
@@ -330,7 +332,7 @@ export function AdminJobPostingReviewPage() {
                   </Card>
                 )}
 
-                {rejectOpen ? (
+                {canUpdate && (rejectOpen ? (
                   <div className="rounded-lg border border-red-200 bg-red-50/50 p-4">
                     <p className="text-sm font-medium text-slate-800">반려 사유 (기업에 알림으로 전달)</p>
                     <Textarea
@@ -357,7 +359,7 @@ export function AdminJobPostingReviewPage() {
                       {detail.pendingRevision ? "변경 승인" : "승인·게시"}
                     </Button>
                   </div>
-                )}
+                ))}
               </div>
             )}
           </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Gift, RotateCw } from "lucide-react";
 
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import {
   createCoupon,
   createLevelPolicy,
@@ -27,6 +28,7 @@ function fmt(value: string | null): string {
 }
 
 export function AdminRewardsPage() {
+  const { canCreate, canUpdate, canDelete } = useAdminDomainAuthorization("BILLING");
   const [msg, setMsg] = useState<string | null>(null);
   const flash = (m: string) => {
     setMsg(m);
@@ -43,16 +45,16 @@ export function AdminRewardsPage() {
       actions={null}
     >
       {msg && <div className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{msg}</div>}
-      <RulesSection flash={flash} />
-      <LevelsSection flash={flash} />
-      <CouponsSection flash={flash} />
+      <RulesSection flash={flash} canUpdate={canUpdate} />
+      <LevelsSection flash={flash} canCreate={canCreate} canUpdate={canUpdate} canDelete={canDelete} />
+      <CouponsSection flash={flash} canCreate={canCreate} canUpdate={canUpdate} />
       <HistorySection />
     </AdminShell>
   );
 }
 
 /* ── 적립 규칙 ── */
-function RulesSection({ flash }: { flash: (m: string) => void }) {
+function RulesSection({ flash, canUpdate }: { flash: (m: string) => void; canUpdate: boolean }) {
   const [rules, setRules] = useState<RewardRule[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -67,12 +69,14 @@ function RulesSection({ flash }: { flash: (m: string) => void }) {
   useEffect(() => { void load(); }, [load]);
 
   const toggle = async (r: RewardRule) => {
+    if (!canUpdate) return;
     await toggleRewardRule(r.id, !r.enabled);
     flash(`'${r.name}' ${!r.enabled ? "적립 ON" : "적립 OFF"}`);
     await load();
   };
 
   const saveValues = async (r: RewardRule, point: number, credit: number, cap: number | null) => {
+    if (!canUpdate) return;
     await updateRewardRule(r.id, {
       name: r.name, pointAmount: point, creditAmount: credit, dailyCap: cap,
       enabled: r.enabled, description: r.description, sortOrder: r.sortOrder,
@@ -102,7 +106,7 @@ function RulesSection({ flash }: { flash: (m: string) => void }) {
             </tr>
           </thead>
           <tbody>
-            {rules.map((r) => <RuleRow key={r.id} row={r} onToggle={toggle} onSave={saveValues} />)}
+            {rules.map((r) => <RuleRow key={r.id} row={r} canUpdate={canUpdate} onToggle={toggle} onSave={saveValues} />)}
             {rules.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">규칙이 없습니다.</td></tr>}
           </tbody>
         </table>
@@ -112,9 +116,10 @@ function RulesSection({ flash }: { flash: (m: string) => void }) {
 }
 
 function RuleRow({
-  row, onToggle, onSave,
+  row, canUpdate, onToggle, onSave,
 }: {
   row: RewardRule;
+  canUpdate: boolean;
   onToggle: (r: RewardRule) => Promise<void>;
   onSave: (r: RewardRule, point: number, credit: number, cap: number | null) => Promise<void>;
 }) {
@@ -129,21 +134,25 @@ function RuleRow({
         <div className="font-mono text-xs font-semibold text-slate-800">{row.eventCode}</div>
         <div className="text-xs text-slate-400">{row.name}</div>
       </td>
-      <td className="px-3 py-2"><input className="av-input w-20" value={point} onChange={(e) => setPoint(e.target.value)} /></td>
-      <td className="px-3 py-2"><input className="av-input w-20" value={credit} onChange={(e) => setCredit(e.target.value)} /></td>
-      <td className="px-3 py-2"><input className="av-input w-20" placeholder="무제한" value={cap} onChange={(e) => setCap(e.target.value)} /></td>
+      <td className="px-3 py-2"><input className="av-input w-20" readOnly={!canUpdate} value={point} onChange={(e) => setPoint(e.target.value)} /></td>
+      <td className="px-3 py-2"><input className="av-input w-20" readOnly={!canUpdate} value={credit} onChange={(e) => setCredit(e.target.value)} /></td>
+      <td className="px-3 py-2"><input className="av-input w-20" readOnly={!canUpdate} placeholder="무제한" value={cap} onChange={(e) => setCap(e.target.value)} /></td>
       <td className="px-3 py-2">
-        <button type="button"
-          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${row.enabled ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}
-          onClick={() => void onToggle(row)}>
-          {row.enabled ? "적립 ON" : "적립 OFF"}
-        </button>
+        {canUpdate ? (
+          <button type="button"
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${row.enabled ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}
+            onClick={() => void onToggle(row)}>
+            {row.enabled ? "적립 ON" : "적립 OFF"}
+          </button>
+        ) : <span className="text-xs text-slate-500">{row.enabled ? "적립 ON" : "적립 OFF"}</span>}
       </td>
       <td className="px-3 py-2">
-        <button type="button" className="av-btn text-xs" disabled={!dirty}
-          onClick={() => void onSave(row, Number(point) || 0, Number(credit) || 0, cap.trim() === "" ? null : Number(cap))}>
-          저장
-        </button>
+        {canUpdate && (
+          <button type="button" className="av-btn text-xs" disabled={!dirty}
+            onClick={() => void onSave(row, Number(point) || 0, Number(credit) || 0, cap.trim() === "" ? null : Number(cap))}>
+            저장
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -152,7 +161,14 @@ function RuleRow({
 /* ── 레벨 정책 ── */
 const EMPTY_LEVEL = { level: "", levelName: "", minPoint: "", levelupCredit: "", levelupCouponCode: "", benefitNote: "" };
 
-function LevelsSection({ flash }: { flash: (m: string) => void }) {
+function LevelsSection({
+  flash, canCreate, canUpdate, canDelete,
+}: {
+  flash: (m: string) => void;
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
+}) {
   const [levels, setLevels] = useState<LevelPolicy[]>([]);
   const [draft, setDraft] = useState({ ...EMPTY_LEVEL });
 
@@ -160,6 +176,7 @@ function LevelsSection({ flash }: { flash: (m: string) => void }) {
   useEffect(() => { void load(); }, [load]);
 
   const create = async () => {
+    if (!canCreate) return;
     if (!draft.level || !draft.levelName.trim()) { flash("레벨 번호와 이름을 입력하세요."); return; }
     await createLevelPolicy({
       level: Number(draft.level), levelName: draft.levelName, minPoint: Number(draft.minPoint) || 0,
@@ -173,11 +190,13 @@ function LevelsSection({ flash }: { flash: (m: string) => void }) {
   };
 
   const toggleActive = async (l: LevelPolicy) => {
+    if (!canUpdate) return;
     await updateLevelPolicy(l.id, { ...l, levelupCouponCode: l.levelupCouponCode, benefitNote: l.benefitNote, active: !l.active });
     await load();
   };
 
   const remove = async (l: LevelPolicy) => {
+    if (!canDelete) return;
     await deleteLevelPolicy(l.id);
     flash(`레벨 ${l.level} 삭제됨`);
     await load();
@@ -208,12 +227,13 @@ function LevelsSection({ flash }: { flash: (m: string) => void }) {
                 <td className="px-3 py-2">{l.levelupCredit}</td>
                 <td className="px-3 py-2 font-mono text-xs">{l.levelupCouponCode ?? "-"}</td>
                 <td className="px-3 py-2">
-                  <button type="button"
+                  {canUpdate ? <button type="button"
                     className={`rounded-full px-2 py-0.5 text-xs font-semibold ${l.active ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}
                     onClick={() => void toggleActive(l)}>{l.active ? "활성" : "비활성"}</button>
+                    : <span className="text-xs text-slate-500">{l.active ? "활성" : "비활성"}</span>}
                 </td>
                 <td className="px-3 py-2">
-                  <button type="button" className="av-btn text-xs text-rose-600" onClick={() => void remove(l)}>삭제</button>
+                  {canDelete && <button type="button" className="av-btn text-xs text-rose-600" onClick={() => void remove(l)}>삭제</button>}
                 </td>
               </tr>
             ))}
@@ -221,14 +241,14 @@ function LevelsSection({ flash }: { flash: (m: string) => void }) {
           </tbody>
         </table>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      {canCreate && <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <input className="av-input" placeholder="레벨(숫자)" value={draft.level} onChange={(e) => setDraft({ ...draft, level: e.target.value })} />
         <input className="av-input" placeholder="이름" value={draft.levelName} onChange={(e) => setDraft({ ...draft, levelName: e.target.value })} />
         <input className="av-input" placeholder="최소 포인트" value={draft.minPoint} onChange={(e) => setDraft({ ...draft, minPoint: e.target.value })} />
         <input className="av-input" placeholder="레벨업 크레딧" value={draft.levelupCredit} onChange={(e) => setDraft({ ...draft, levelupCredit: e.target.value })} />
         <input className="av-input" placeholder="쿠폰 코드(선택)" value={draft.levelupCouponCode} onChange={(e) => setDraft({ ...draft, levelupCouponCode: e.target.value })} />
         <button type="button" className="av-btn bg-slate-900 text-white" onClick={() => void create()}>레벨 추가</button>
-      </div>
+      </div>}
     </section>
   );
 }
@@ -236,7 +256,13 @@ function LevelsSection({ flash }: { flash: (m: string) => void }) {
 /* ── 쿠폰 ── */
 const EMPTY_COUPON = { code: "", name: "", discountType: "CREDIT", discountValue: "", minPurchase: "" };
 
-function CouponsSection({ flash }: { flash: (m: string) => void }) {
+function CouponsSection({
+  flash, canCreate, canUpdate,
+}: {
+  flash: (m: string) => void;
+  canCreate: boolean;
+  canUpdate: boolean;
+}) {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [draft, setDraft] = useState({ ...EMPTY_COUPON });
 
@@ -244,6 +270,7 @@ function CouponsSection({ flash }: { flash: (m: string) => void }) {
   useEffect(() => { void load(); }, [load]);
 
   const create = async () => {
+    if (!canCreate) return;
     if (!draft.code.trim() || !draft.name.trim()) { flash("쿠폰 코드와 이름을 입력하세요."); return; }
     await createCoupon({
       code: draft.code, name: draft.name, discountType: draft.discountType,
@@ -256,6 +283,7 @@ function CouponsSection({ flash }: { flash: (m: string) => void }) {
   };
 
   const issue = async (c: Coupon) => {
+    if (!canCreate) return;
     const raw = window.prompt(`'${c.code}' 쿠폰을 발급할 사용자 ID`);
     if (!raw) return;
     const userId = Number(raw);
@@ -298,14 +326,14 @@ function CouponsSection({ flash }: { flash: (m: string) => void }) {
                     {c.enabled ? "활성" : "비활성"}
                   </span>
                 </td>
-                <td className="px-3 py-2"><button type="button" className="av-btn text-xs" onClick={() => void issue(c)}>발급</button></td>
+                <td className="px-3 py-2">{canCreate && <button type="button" className="av-btn text-xs" onClick={() => void issue(c)}>발급</button>}</td>
               </tr>
             ))}
             {coupons.length === 0 && <tr><td colSpan={7} className="px-3 py-6 text-center text-slate-400">쿠폰이 없습니다.</td></tr>}
           </tbody>
         </table>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      {canCreate && <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <input className="av-input" placeholder="코드" value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} />
         <input className="av-input" placeholder="이름" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
         <select className="av-input" value={draft.discountType} onChange={(e) => setDraft({ ...draft, discountType: e.target.value })}>
@@ -316,7 +344,7 @@ function CouponsSection({ flash }: { flash: (m: string) => void }) {
         <input className="av-input" placeholder="값" value={draft.discountValue} onChange={(e) => setDraft({ ...draft, discountValue: e.target.value })} />
         <input className="av-input" placeholder="최소결제(원)" value={draft.minPurchase} onChange={(e) => setDraft({ ...draft, minPurchase: e.target.value })} />
         <button type="button" className="av-btn bg-slate-900 text-white" onClick={() => void create()}>쿠폰 생성</button>
-      </div>
+      </div>}
     </section>
   );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   CircleHelp, Plus, Search, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
-  Trash2, Eye, EyeOff, ArrowLeft, Check, CornerDownRight, RefreshCw,
+  Trash2, Eye, EyeOff, ArrowLeft, CornerDownRight, RefreshCw,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
 import {
@@ -16,6 +16,7 @@ import * as adminFaqApi from "../api/adminFaqApi";
 import { ConfirmDialog } from "@/app/components/ui/confirm-dialog";
 import FaqAnswerEditor from "../components/FaqAnswerEditor";
 import { sanitizePostHtml } from "@/app/lib/postContent";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 import "./admin-faq.css";
 import "./faq-compose.css";
 
@@ -41,6 +42,7 @@ const COMPOSE_TO_DB: Record<string, FaqCategory> = {
 };
 
 function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: () => void }) {
+  const { canCreate } = useAdminDomainAuthorization("CONTENT");
   const [cat, setCat] = useState<string>("결제·크레딧");
   const [q, setQ] = useState("");
   const [a, setA] = useState("");        // 답변 HTML (TipTap 출력)
@@ -58,7 +60,7 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit || saving) return;
+    if (!canCreate || !canSubmit || saving) return;
     setSaving(true);
     try {
       await adminFaqApi.createFaq({
@@ -88,7 +90,7 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
             <div className="av-flabel">카테고리</div>
             <div className="fc-cat">
               {COMPOSE_CATS.map((c) => (
-                <button key={c} className={`fc-pill${cat === c ? " on" : ""}`} onClick={() => setCat(c)}>{c}</button>
+                <button type="button" key={c} className={`fc-pill${cat === c ? " on" : ""}`} onClick={() => setCat(c)}>{c}</button>
               ))}
             </div>
           </div>
@@ -120,10 +122,12 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
           <section className="av-panel">
             <div className="av-mod__h"><span className="av-mod__t">노출 설정</span></div>
             <div style={{ padding: "12px 14px 14px" }}>
-              <div className={`av-switchrow${visible ? " on" : ""}`} onClick={() => setVisible(!visible)}>
+              <button type="button" className={`av-switchrow${visible ? " on" : ""}`}
+                style={{ width: "100%", background: "transparent", color: "inherit", textAlign: "left" }}
+                role="switch" aria-checked={visible} onClick={() => setVisible(!visible)}>
                 <span className="av-switch" />
                 <span><span className="t">고객센터에 노출</span><span className="s" style={{ display: "block" }}>끄면 저장만 되고 사용자에게 보이지 않아요</span></span>
-              </div>
+              </button>
             </div>
           </section>
           <section className="av-panel">
@@ -138,14 +142,13 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
 
       <div className="av-composefoot">
         <div className="av-composefoot__in">
-          <span className="av-composefoot__draft num"><Check /> 임시저장됨 · 방금</span>
           <div className="av-composefoot__r">
-            <button className="av-btn"><Eye /> 미리보기</button>
-            <button className="av-btn">임시저장</button>
-            <button className="av-btn av-btn--ink" disabled={!canSubmit || saving}
-              style={!canSubmit ? { opacity: 0.45, cursor: "default" } : undefined} onClick={handleSubmit}>
-              등록
-            </button>
+            {canCreate && (
+              <button className="av-btn av-btn--ink" disabled={!canSubmit || saving}
+                style={!canSubmit ? { opacity: 0.45, cursor: "default" } : undefined} onClick={handleSubmit}>
+                등록
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -156,6 +159,7 @@ function FaqComposeView({ onBack, onCreated }: { onBack: () => void; onCreated: 
 
 /* ═══ 메인 (목록 + 작성 토글) ═══ */
 export default function AdminFaq() {
+  const { canCreate, canUpdate, canDelete } = useAdminDomainAuthorization("CONTENT");
   const [view, setView] = useState<"list" | "compose">("list");
   const [items, setItems] = useState<Faq[]>([]);
   const [catFilter, setCatFilter] = useState("전체");
@@ -165,7 +169,7 @@ export default function AdminFaq() {
   const [embedding, setEmbedding] = useState(false);
 
   const handleEmbedAll = async () => {
-    if (embedding) return;
+    if (!canUpdate || embedding) return;
     setEmbedding(true);
     try {
       const { embeddedCount } = await adminFaqApi.embedAllFaqs(true);
@@ -191,6 +195,10 @@ export default function AdminFaq() {
 
   const handleConfirm = async () => {
     if (!dialog) return;
+    if ((dialog.type === "delete" && !canDelete) || (dialog.type === "toggle" && !canUpdate)) {
+      setDialog(null);
+      return;
+    }
     try {
       if (dialog.type === "delete") {
         await adminFaqApi.deleteFaq(dialog.faq.id);
@@ -220,6 +228,7 @@ export default function AdminFaq() {
   // 그리드 정렬/검색/페이징이 걸리면 visible 순서와 items 순서가 어긋나므로, map index 가 아니라
   // 실제 items 내 위치를 찾아 스왑한다(reorderable 게이트로 이미 전체·무검색일 때만 노출).
   const move = async (faq: Faq, dir: -1 | 1) => {
+    if (!canUpdate) return;
     const index = items.findIndex((f) => f.id === faq.id);
     if (index < 0) return;
     const target = index + dir;
@@ -251,7 +260,7 @@ export default function AdminFaq() {
     getRowId: (row) => row.id,
   });
 
-  if (view === "compose") {
+  if (view === "compose" && canCreate) {
     return <FaqComposeView onBack={() => setView("list")} onCreated={() => { setView("list"); loadItems(); }} />;
   }
 
@@ -268,10 +277,14 @@ export default function AdminFaq() {
       desc="고객센터 자주 묻는 질문 관리"
       actions={
         <>
-          <button className="av-btn" onClick={handleEmbedAll} disabled={embedding}>
-            <RefreshCw className={embedding ? "spin" : ""} /> {embedding ? "임베딩 중…" : "챗봇 임베딩 갱신"}
-          </button>
-          <button className="av-btn av-btn--ink" onClick={() => setView("compose")}><Plus /> 새 FAQ</button>
+          {canUpdate && (
+            <button className="av-btn" onClick={handleEmbedAll} disabled={embedding}>
+              <RefreshCw className={embedding ? "spin" : ""} /> {embedding ? "임베딩 중…" : "챗봇 임베딩 갱신"}
+            </button>
+          )}
+          {canCreate && (
+            <button className="av-btn av-btn--ink" onClick={() => setView("compose")}><Plus /> 새 FAQ</button>
+          )}
         </>
       }
     >
@@ -317,7 +330,7 @@ export default function AdminFaq() {
                 <td className="r av-muted num">–</td>
                 <td className="r">
                   <div className="faq-actions">
-                    {canReorder && (
+                    {canUpdate && canReorder && (
                       <>
                         <button className="av-btn" title="위로" disabled={items[0]?.id === f.id} onClick={() => move(f, -1)}>
                           <ChevronUp />
@@ -327,13 +340,17 @@ export default function AdminFaq() {
                         </button>
                       </>
                     )}
-                    <button className="av-btn" title={f.on ? "비노출" : "노출"}
-                      onClick={() => setDialog({ type: "toggle", faq: f })}>
-                      {f.on ? <EyeOff /> : <Eye />}
-                    </button>
-                    <button className="av-btn" title="삭제" onClick={() => setDialog({ type: "delete", faq: f })}>
-                      <Trash2 />
-                    </button>
+                    {canUpdate && (
+                      <button className="av-btn" title={f.on ? "비노출" : "노출"}
+                        onClick={() => setDialog({ type: "toggle", faq: f })}>
+                        {f.on ? <EyeOff /> : <Eye />}
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button className="av-btn" title="삭제" onClick={() => setDialog({ type: "delete", faq: f })}>
+                        <Trash2 />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

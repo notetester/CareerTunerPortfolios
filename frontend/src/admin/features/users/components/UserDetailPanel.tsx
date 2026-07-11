@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
+import { CheckCircle2, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +15,8 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import { getAdminUserLoginHistory, updateAdminUserStatus } from "../api";
+import { useAdminAuthorization } from "@/admin/auth/useAdminAuthorization";
+import { getAdminUserLoginHistory, softDeleteAdminUser, updateAdminUserStatus } from "../api";
 import type { AdminUserDetail, AdminUserLoginHistoryRow, AdminUserRow, AdminUserStatus } from "../types";
 import {
   EmptyText,
@@ -41,12 +42,18 @@ interface UserDetailPanelProps {
 }
 
 export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
+  const authorization = useAdminAuthorization();
+  const canManageUserStatus = authorization.can("USER_UPDATE");
+  const canSoftDeleteUser = authorization.can("USER_DELETE");
+  const statusOptions = STATUS_OPTIONS.filter((option) => option.value !== "DELETED");
   const [nextStatus, setNextStatus] = useState<AdminUserStatus>(detail.user.status);
   const [reason, setReason] = useState(detail.user.blockedReason ?? "");
   const [memo, setMemo] = useState("");
   const [blockedUntil, setBlockedUntil] = useState(toLocalInputValue(detail.user.blockedUntil));
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -55,6 +62,7 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
     setReason(detail.user.blockedReason ?? "");
     setMemo("");
     setBlockedUntil(toLocalInputValue(detail.user.blockedUntil));
+    setDeleteReason("");
     setError(null);
     setSuccess(null);
   }, [detail.user.id, detail.user.status, detail.user.blockedReason, detail.user.blockedUntil]);
@@ -62,6 +70,10 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
   const handleRequestStatusUpdate = () => {
     setError(null);
     setSuccess(null);
+    if (!canManageUserStatus) {
+      setError("회원 상태를 변경할 권한이 없습니다.");
+      return;
+    }
     if (nextStatus === detail.user.status && !memo.trim()) {
       setError("상태가 바뀌지 않았습니다. 상태를 변경하거나 관리자 메모를 입력해 주세요.");
       return;
@@ -78,6 +90,11 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
   };
 
   const handleUpdateStatus = async () => {
+    if (!canManageUserStatus) {
+      setConfirmOpen(false);
+      setError("회원 상태를 변경할 권한이 없습니다.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -93,6 +110,27 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
       await onUpdated(updated);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "회원 상태를 변경하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSoftDelete = async () => {
+    if (!canSoftDeleteUser || detail.user.status === "DELETED") {
+      setDeleteConfirmOpen(false);
+      setError("회원을 소프트 삭제할 권한이 없습니다.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updated = await softDeleteAdminUser(detail.user.id, deleteReason);
+      setSuccess(`${updated.email} 회원을 소프트 삭제했습니다.`);
+      setDeleteConfirmOpen(false);
+      await onUpdated(updated);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "회원을 소프트 삭제하지 못했습니다.");
     } finally {
       setSaving(false);
     }
@@ -131,7 +169,8 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
             <Info label="상태 변경자" value={detail.user.statusChangedBy ? `#${detail.user.statusChangedBy}` : "-"} />
           </div>
 
-          <div className="rounded-lg border border-slate-200 p-4">
+          {canManageUserStatus && detail.user.status !== "DELETED" && (
+            <div className="rounded-lg border border-slate-200 p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
               <ShieldAlert className="size-4 text-red-600" />
               상태 변경
@@ -142,7 +181,7 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
                 onChange={(event) => setNextStatus(event.target.value as AdminUserStatus)}
                 className="h-10 rounded-md border border-slate-200 px-3 text-sm"
               >
-                {STATUS_OPTIONS.map((option) => (
+                {statusOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -161,7 +200,34 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
               {saving && <RefreshCw className="size-4 animate-spin" />}
               상태 저장
             </Button>
-          </div>
+            </div>
+          )}
+
+          {canSoftDeleteUser && detail.user.status !== "DELETED" && (
+            <div className="rounded-lg border border-red-200 bg-red-50/60 p-4 dark:border-red-900/60 dark:bg-red-950/20">
+              <div className="mb-2 flex items-center gap-2 text-sm font-bold text-red-700 dark:text-red-300">
+                <Trash2 className="size-4" />
+                회원 소프트 삭제
+              </div>
+              <p className="text-xs leading-5 text-red-700/80 dark:text-red-300/80">
+                계정 행은 감사 목적으로 유지하고 로그인 세션을 폐기합니다. 일반 상태 변경과 별도 권한으로 처리됩니다.
+              </p>
+              <Input
+                className="mt-3"
+                value={deleteReason}
+                onChange={(event) => setDeleteReason(event.target.value)}
+                placeholder="삭제 사유"
+              />
+              <Button
+                variant="destructive"
+                className="mt-3"
+                disabled={saving}
+                onClick={() => setDeleteConfirmOpen(true)}
+              >
+                <Trash2 className="size-4" /> 회원 삭제 처리
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -261,7 +327,7 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
         </HistoryCard>
       </div>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+      <AlertDialog open={canManageUserStatus && confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>회원 상태를 변경할까요?</AlertDialogTitle>
@@ -282,6 +348,32 @@ export function UserDetailPanel({ detail, onUpdated }: UserDetailPanelProps) {
             >
               {saving && <RefreshCw className="size-4 animate-spin" />}
               변경 확정
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={canSoftDeleteUser && deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>이 회원을 소프트 삭제할까요?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {detail.user.email} 계정은 DELETED 상태로 전환되고 모든 로그인 세션이 폐기됩니다.
+              데이터 행과 감사 이력은 보존됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700"
+              disabled={saving}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleSoftDelete();
+              }}
+            >
+              {saving && <RefreshCw className="size-4 animate-spin" />}
+              소프트 삭제 확정
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

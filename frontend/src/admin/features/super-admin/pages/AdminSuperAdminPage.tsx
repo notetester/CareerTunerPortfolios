@@ -35,6 +35,12 @@ import type {
   AdminPermissionGroupRow,
   AdminPermissionPolicyRow,
 } from "../types";
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_CODES,
+  ADMIN_PERMISSION_DOMAINS,
+  adminPermissionCode,
+} from "../../../auth/adminAccess";
 
 const ROLE_LABELS: Record<string, string> = {
   USER: "일반 사용자",
@@ -42,55 +48,14 @@ const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: "슈퍼 관리자",
 };
 
+const ADMIN_ASSIGNABLE_PERMISSION_CODES = ADMIN_PERMISSION_CODES.filter(
+  (code) => !code.startsWith("ADMIN_PERMISSION_"),
+);
+
 const ROLE_PERMISSION_CODES: Record<string, string[]> = {
   USER: [],
-  ADMIN: [
-    "MEMBER_ADMIN",
-    "AI_ADMIN",
-    "BILLING_ADMIN",
-    "CONTENT_ADMIN",
-    "AUDIT_ADMIN",
-    "USER_READ",
-    "PROFILE_READ",
-    "CONSENT_READ",
-    "AI_USAGE_READ",
-    "SECURITY_LOG_READ",
-    "USER_STATUS_WRITE",
-    "BLOCK_MANAGE",
-    "EMAIL_AUDIT_READ",
-    "ADMIN_AUDIT_READ",
-    "BILLING_READ",
-    "BILLING_WRITE",
-    "CONTENT_MANAGE",
-    "AI_OPERATION_MANAGE",
-    "ANALYSIS_READ",
-    "INTERVIEW_READ",
-  ],
-  SUPER_ADMIN: [
-    "USER_READ",
-    "PROFILE_READ",
-    "CONSENT_READ",
-    "AI_USAGE_READ",
-    "SECURITY_LOG_READ",
-    "USER_STATUS_WRITE",
-    "BLOCK_MANAGE",
-    "EMAIL_AUDIT_READ",
-    "ADMIN_AUDIT_READ",
-    "BILLING_READ",
-    "BILLING_WRITE",
-    "CONTENT_MANAGE",
-    "AI_OPERATION_MANAGE",
-    "ANALYSIS_READ",
-    "INTERVIEW_READ",
-    "MEMBER_ADMIN",
-    "AI_ADMIN",
-    "BILLING_ADMIN",
-    "CONTENT_ADMIN",
-    "AUDIT_ADMIN",
-    "POLICY_ADMIN",
-    "POLICY_MANAGE",
-    "ADMIN_PERMISSION_MANAGE",
-  ],
+  ADMIN: [...ADMIN_ASSIGNABLE_PERMISSION_CODES],
+  SUPER_ADMIN: [...ADMIN_PERMISSION_CODES],
 };
 
 const ROLE_GROUP_CODES: Record<string, string[]> = {
@@ -196,7 +161,6 @@ export function AdminSuperAdminPage() {
   const [auditSortBy, setAuditSortBy] = useState("createdAt");
   const [auditSortDir, setAuditSortDir] = useState<SortDir>("DESC");
   const [role, setRole] = useState("ADMIN");
-  const [permissionCode, setPermissionCode] = useState("");
   const [groupCode, setGroupCode] = useState("");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
@@ -207,12 +171,20 @@ export function AdminSuperAdminPage() {
   const selectedRef = useRef<number | null>(null);
 
   const selected = useMemo(() => admins.find((item) => item.id === selectedId) ?? detail, [admins, detail, selectedId]);
-  const selectedRole = role || selected?.role || "USER";
-  const allowedPermissionCodes = ROLE_PERMISSION_CODES[selectedRole] ?? [];
-  const allowedGroupCodes = ROLE_GROUP_CODES[selectedRole] ?? [];
-  const visiblePermissions = permissions.filter((item) => item.active && allowedPermissionCodes.includes(item.permissionCode));
+  const persistedRole = detail?.id === selectedId ? detail.role : (selected?.role ?? "USER");
+  const roleDirty = role !== persistedRole;
+  const allowedPermissionCodes = ROLE_PERMISSION_CODES[persistedRole] ?? [];
+  const allowedGroupCodes = ROLE_GROUP_CODES[persistedRole] ?? [];
   const visibleGroups = groups.filter((item) => item.active && allowedGroupCodes.includes(item.groupCode));
   const selectedGroup = visibleGroups.find((item) => item.groupCode === groupCode) ?? null;
+  const permissionCatalog = useMemo(
+    () => new Map(permissions.filter((item) => item.active).map((item) => [item.permissionCode, item])),
+    [permissions],
+  );
+  const grantedPermissionCodes = useMemo(
+    () => new Set(detail?.permissions?.map((item) => item.permissionCode) ?? []),
+    [detail?.permissions],
+  );
   const adminSort = useMemo<SuperSortParams>(() => ({ sortBy: adminSortBy, sortDir: adminSortDir }), [adminSortBy, adminSortDir]);
   const userSort = useMemo<SuperSortParams>(() => ({ sortBy: userSortBy, sortDir: userSortDir }), [userSortBy, userSortDir]);
   const auditSort = useMemo<SuperSortParams>(() => ({ sortBy: auditSortBy, sortDir: auditSortDir }), [auditSortBy, auditSortDir]);
@@ -222,7 +194,6 @@ export function AdminSuperAdminPage() {
     setSelectedId(user.id);
     setDetail(user);
     setRole(user.role);
-    setPermissionCode("");
     setGroupCode("");
     setReason("");
   };
@@ -293,9 +264,8 @@ export function AdminSuperAdminPage() {
   }, [auditSortBy, auditSortDir]);
 
   useEffect(() => {
-    if (!allowedPermissionCodes.includes(permissionCode)) setPermissionCode("");
     if (!allowedGroupCodes.includes(groupCode)) setGroupCode("");
-  }, [selectedRole, permissionCode, groupCode, allowedPermissionCodes, allowedGroupCodes]);
+  }, [persistedRole, groupCode, allowedGroupCodes]);
 
   const runMutation = async (work: (targetId: number) => Promise<AdminAccountRow>, doneMessage: string) => {
     const targetId = selected?.id ?? selectedId;
@@ -316,6 +286,19 @@ export function AdminSuperAdminPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const togglePermission = (code: string) => {
+    if (roleDirty || persistedRole === "USER" || saving || !allowedPermissionCodes.includes(code) || !permissionCatalog.has(code)) return;
+    const granted = grantedPermissionCodes.has(code);
+    void runMutation(
+      (targetId) => granted
+        ? revokeSuperPermission(targetId, code, reason)
+        : grantSuperPermission(targetId, code, reason),
+      granted
+        ? `변경이 완료됐습니다. ${code} 권한을 회수했습니다.`
+        : `변경이 완료됐습니다. ${code} 권한을 부여했습니다.`,
+    );
   };
 
   return (
@@ -431,7 +414,7 @@ export function AdminSuperAdminPage() {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-3 text-base">
                   <span>{selected.name} 권한 설정</span>
-                  <Badge className={roleBadgeClass(selectedRole)}>{ROLE_LABELS[selectedRole] ?? selectedRole}</Badge>
+                  <Badge className={roleBadgeClass(persistedRole)}>{ROLE_LABELS[persistedRole] ?? persistedRole}</Badge>
                 </CardTitle>
                 <p className="text-sm text-slate-500">{selected.email} / 최근 로그인 {formatDateTime(selected.lastLoginAt)}</p>
               </CardHeader>
@@ -445,46 +428,83 @@ export function AdminSuperAdminPage() {
                   <Input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="변경 사유(선택)" />
                   <Button
                     className="bg-blue-600 text-white hover:bg-blue-700"
-                    disabled={saving}
+                    disabled={saving || !roleDirty}
                     onClick={() => void runMutation((targetId) => updateSuperAdminRole(targetId, role, reason), "변경이 완료됐습니다. 역할이 저장되었습니다.")}
                   >
                     역할 저장
                   </Button>
                 </div>
 
-                {selectedRole === "USER" && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {roleDirty && (
+                  <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                    역할 변경을 먼저 저장해야 권한과 권한 그룹을 편집할 수 있습니다. 현재 편집 기준은 저장된 {ROLE_LABELS[persistedRole] ?? persistedRole} 역할입니다.
+                  </div>
+                )}
+
+                {persistedRole === "USER" && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                     USER 역할은 관리자 메뉴 접근 권한이 없는 일반 사용자입니다. 메뉴별 권한과 권한 그룹은 ADMIN 이상에서만 부여할 수 있습니다.
                   </div>
                 )}
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="space-y-2">
-                    <div className="text-sm font-bold text-slate-900">메뉴별 권한</div>
-                    <select
-                      value={permissionCode}
-                      onChange={(event) => setPermissionCode(event.target.value)}
-                      disabled={selectedRole === "USER"}
-                      className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm disabled:bg-slate-100"
-                    >
-                      <option value="">권한 선택</option>
-                      {visiblePermissions.map((item) => <option key={item.permissionCode} value={item.permissionCode}>{item.displayName}</option>)}
-                    </select>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        disabled={!permissionCode || saving}
-                        onClick={() => void runMutation((targetId) => grantSuperPermission(targetId, permissionCode, reason), "변경이 완료됐습니다. 메뉴별 권한을 부여했습니다.")}
-                      >
-                        부여
-                      </Button>
-                      <Button
-                        variant="outline"
-                        disabled={!permissionCode || saving}
-                        onClick={() => void runMutation((targetId) => revokeSuperPermission(targetId, permissionCode, reason), "변경이 완료됐습니다. 메뉴별 권한을 회수했습니다.")}
-                      >
-                        회수
-                      </Button>
+                    <div className="text-sm font-bold text-slate-900">도메인·동작 권한</div>
+                    <p className="text-xs text-slate-500">파란색은 직접 부여된 권한입니다. 셀을 눌러 해당 권한을 부여하거나 회수합니다.</p>
+                    <div className="overflow-x-auto rounded-lg border border-slate-200">
+                      <table className="w-full min-w-[430px] text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                            <th className="px-2 py-2 text-left">영역</th>
+                            {ADMIN_PERMISSION_ACTIONS.map(({ code: action, label }) => (
+                              <th key={action} className="px-2 py-2 text-center">{label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ADMIN_PERMISSION_DOMAINS.map(({ code: domain, label }) => (
+                            <tr key={domain} className="border-b border-slate-100 last:border-0">
+                              <th className="px-2 py-2 text-left font-semibold text-slate-700">{label}</th>
+                              {ADMIN_PERMISSION_ACTIONS.map(({ code: action }) => {
+                                const code = adminPermissionCode(domain, action);
+                                const granted = grantedPermissionCodes.has(code);
+                                const assignable = allowedPermissionCodes.includes(code) && permissionCatalog.has(code);
+                                return (
+                                  <td key={code} className="px-1 py-1 text-center">
+                                    <button
+                                      type="button"
+                                      className={`w-full rounded px-1 py-1.5 font-semibold ${
+                                        granted ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                                      } disabled:cursor-not-allowed disabled:opacity-40`}
+                                      disabled={!assignable || saving || roleDirty || persistedRole === "USER"}
+                                      title={roleDirty ? "역할 변경을 먼저 저장해 주세요." : (permissionCatalog.get(code)?.displayName ?? code)}
+                                      onClick={() => togglePermission(code)}
+                                    >
+                                      {granted ? "부여됨" : "미부여"}
+                                    </button>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                          <tr>
+                            <th className="px-2 py-2 text-left font-semibold text-slate-700">감사</th>
+                            <td className="px-1 py-1 text-center" colSpan={4}>
+                              <button
+                                type="button"
+                                className={`w-full rounded px-2 py-1.5 font-semibold ${
+                                  grantedPermissionCodes.has("AUDIT_READ") ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                                } disabled:cursor-not-allowed disabled:opacity-40`}
+                                disabled={!allowedPermissionCodes.includes("AUDIT_READ") || !permissionCatalog.has("AUDIT_READ") || saving || roleDirty || persistedRole === "USER"}
+                                title={roleDirty ? "역할 변경을 먼저 저장해 주세요." : (permissionCatalog.get("AUDIT_READ")?.displayName ?? "AUDIT_READ")}
+                                onClick={() => togglePermission("AUDIT_READ")}
+                              >
+                                AUDIT_READ · {grantedPermissionCodes.has("AUDIT_READ") ? "부여됨" : "미부여"}
+                              </button>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {detail?.permissions?.map((item) => <Badge key={item.id} className="bg-blue-100 text-blue-700">{item.displayName}</Badge>)}
@@ -496,7 +516,7 @@ export function AdminSuperAdminPage() {
                     <select
                       value={groupCode}
                       onChange={(event) => setGroupCode(event.target.value)}
-                      disabled={selectedRole === "USER"}
+                      disabled={roleDirty || persistedRole === "USER"}
                       className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm disabled:bg-slate-100"
                     >
                       <option value="">그룹 선택</option>
@@ -515,15 +535,21 @@ export function AdminSuperAdminPage() {
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
-                        disabled={!groupCode || saving}
-                        onClick={() => void runMutation((targetId) => assignSuperGroup(targetId, groupCode, reason), "변경이 완료됐습니다. 권한 그룹을 부여했습니다.")}
+                        disabled={!groupCode || saving || roleDirty || persistedRole === "USER"}
+                        onClick={() => {
+                          if (roleDirty || persistedRole === "USER") return;
+                          void runMutation((targetId) => assignSuperGroup(targetId, groupCode, reason), "변경이 완료됐습니다. 권한 그룹을 부여했습니다.");
+                        }}
                       >
                         부여
                       </Button>
                       <Button
                         variant="outline"
-                        disabled={!groupCode || saving}
-                        onClick={() => void runMutation((targetId) => revokeSuperGroup(targetId, groupCode, reason), "변경이 완료됐습니다. 권한 그룹을 회수했습니다.")}
+                        disabled={!groupCode || saving || roleDirty || persistedRole === "USER"}
+                        onClick={() => {
+                          if (roleDirty || persistedRole === "USER") return;
+                          void runMutation((targetId) => revokeSuperGroup(targetId, groupCode, reason), "변경이 완료됐습니다. 권한 그룹을 회수했습니다.");
+                        }}
                       >
                         회수
                       </Button>

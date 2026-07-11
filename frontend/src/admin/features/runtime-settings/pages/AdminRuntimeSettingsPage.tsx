@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, RotateCw, SlidersHorizontal, Upload } from "lucide-react";
 
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import {
   getRuntimeSettings,
   getRuntimeSettingHistory,
@@ -46,6 +47,7 @@ const EMPTY = {
 };
 
 export function AdminRuntimeSettingsPage() {
+  const policyAuthorization = useAdminDomainAuthorization("POLICY");
   const [rows, setRows] = useState<RuntimeSetting[]>([]);
   const [keyword, setKeyword] = useState("");
   const [group, setGroup] = useState("");
@@ -76,6 +78,10 @@ export function AdminRuntimeSettingsPage() {
   };
 
   const saveValue = async (row: RuntimeSetting, value: string) => {
+    if (!policyAuthorization.canUpdate) {
+      flash("런타임 설정을 수정할 권한이 없습니다.");
+      return;
+    }
     if (!reason.trim()) {
       flash("변경 사유를 입력해 주세요.");
       return;
@@ -87,6 +93,10 @@ export function AdminRuntimeSettingsPage() {
   };
 
   const toggleActive = async (row: RuntimeSetting) => {
+    if (!policyAuthorization.canUpdate) {
+      flash("런타임 설정을 수정할 권한이 없습니다.");
+      return;
+    }
     if (!reason.trim()) {
       flash("변경 사유를 입력해 주세요.");
       return;
@@ -97,6 +107,10 @@ export function AdminRuntimeSettingsPage() {
   };
 
   const createNew = async () => {
+    if (!policyAuthorization.canCreate) {
+      flash("런타임 설정을 추가할 권한이 없습니다.");
+      return;
+    }
     if (!draft.settingKey.trim()) {
       flash("설정 키를 입력해 주세요.");
       return;
@@ -132,7 +146,11 @@ export function AdminRuntimeSettingsPage() {
     >
       {msg && <div className="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{msg}</div>}
 
-      <SettingsBackupSection flash={flash} onImported={() => void load()} />
+      <SettingsBackupSection
+        canImport={policyAuthorization.canUpdate}
+        flash={flash}
+        onImported={() => void load()}
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
@@ -157,7 +175,7 @@ export function AdminRuntimeSettingsPage() {
         </label>
       </div>
 
-      <div className="mb-4">
+      {(policyAuthorization.canUpdate || policyAuthorization.canCreate) && <div className="mb-4">
         <label className="mb-1 block text-xs font-semibold text-slate-600">
           변경 사유 <span className="text-rose-500">*</span>
         </label>
@@ -167,7 +185,7 @@ export function AdminRuntimeSettingsPage() {
           value={reason}
           onChange={(e) => setReason(e.target.value)}
         />
-      </div>
+      </div>}
 
       <div className="max-h-[60vh] overflow-auto rounded-xl border border-slate-200 bg-card">
         <table className="w-full min-w-[900px] text-sm">
@@ -187,14 +205,21 @@ export function AdminRuntimeSettingsPage() {
               <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">설정이 없습니다.</td></tr>
             )}
             {rows.map((r) => (
-              <SettingRow key={r.id} row={r} onSaveValue={saveValue} onToggle={toggleActive} onHistory={showHistory} />
+              <SettingRow
+                key={r.id}
+                row={r}
+                canUpdate={policyAuthorization.canUpdate}
+                onSaveValue={saveValue}
+                onToggle={toggleActive}
+                onHistory={showHistory}
+              />
             ))}
           </tbody>
         </table>
       </div>
 
       {/* 신규 설정 */}
-      <section className="mt-5 rounded-xl border border-slate-200 bg-card p-4">
+      {policyAuthorization.canCreate && <section className="mt-5 rounded-xl border border-slate-200 bg-card p-4">
         <h3 className="text-sm font-semibold text-slate-800">신규 설정 추가</h3>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <input className="av-input" placeholder="설정 키(예: community.report.blur-threshold)" value={draft.settingKey}
@@ -214,7 +239,7 @@ export function AdminRuntimeSettingsPage() {
         <div className="mt-3">
           <button type="button" className="av-btn bg-slate-900 text-white" onClick={() => void createNew()}>추가</button>
         </div>
-      </section>
+      </section>}
 
       {/* 변경 이력 */}
       {historyKey && (
@@ -261,7 +286,15 @@ const SECTION_LABELS: Record<string, string> = {
   moderation: "콘텐츠 중재 정책",
 };
 
-function SettingsBackupSection({ flash, onImported }: { flash: (m: string) => void; onImported: () => void }) {
+function SettingsBackupSection({
+  canImport,
+  flash,
+  onImported,
+}: {
+  canImport: boolean;
+  flash: (m: string) => void;
+  onImported: () => void;
+}) {
   const [sections, setSections] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -340,10 +373,14 @@ function SettingsBackupSection({ flash, onImported }: { flash: (m: string) => vo
         <button type="button" className="av-btn" disabled={busy || selected.size === 0} onClick={() => void doExport()}>
           <Download size={14} /> 내보내기
         </button>
-        <button type="button" className="av-btn" disabled={busy} onClick={() => fileRef.current?.click()}>
-          <Upload size={14} /> 가져오기(JSON)
-        </button>
-        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onFile} />
+        {canImport && (
+          <>
+            <button type="button" className="av-btn" disabled={busy} onClick={() => fileRef.current?.click()}>
+              <Upload size={14} /> 가져오기(JSON)
+            </button>
+            <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onFile} />
+          </>
+        )}
       </div>
 
       {result && (
@@ -366,9 +403,10 @@ function SettingsBackupSection({ flash, onImported }: { flash: (m: string) => vo
 }
 
 function SettingRow({
-  row, onSaveValue, onToggle, onHistory,
+  row, canUpdate, onSaveValue, onToggle, onHistory,
 }: {
   row: RuntimeSetting;
+  canUpdate: boolean;
   onSaveValue: (row: RuntimeSetting, value: string) => Promise<void>;
   onToggle: (row: RuntimeSetting) => Promise<void>;
   onHistory: (key: string) => Promise<void>;
@@ -442,7 +480,7 @@ function SettingRow({
       <td className="px-3 py-2">
         {row.secret ? (
           <span className="text-xs text-slate-400">••••••(비밀)</span>
-        ) : row.editable ? (
+        ) : row.editable && canUpdate ? (
           renderEditor()
         ) : (
           <span className="font-mono text-xs">{row.settingValue ?? row.fallbackValue ?? "-"}</span>
@@ -451,7 +489,8 @@ function SettingRow({
       <td className="px-3 py-2 text-xs">{row.valueType}</td>
       <td className="px-3 py-2">
         <button type="button"
-                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${row.active ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}
+                disabled={!canUpdate}
+                className={`rounded-full px-2 py-0.5 text-xs font-semibold disabled:cursor-default ${row.active ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-500"}`}
                 onClick={() => void onToggle(row)}>
           {row.active ? "활성" : "비활성"}
         </button>
@@ -459,7 +498,7 @@ function SettingRow({
       <td className="px-3 py-2 text-xs text-slate-500">{fmt(row.updatedAt)}</td>
       <td className="px-3 py-2">
         <div className="flex gap-1">
-          {row.editable && !row.secret && (
+          {canUpdate && row.editable && !row.secret && (
             <button type="button" className="av-btn text-xs" disabled={!canSave} onClick={() => void onSaveValue(row, value)}>저장</button>
           )}
           <button type="button" className="av-btn text-xs" onClick={() => void onHistory(row.settingKey)}>이력</button>

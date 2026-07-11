@@ -6,6 +6,7 @@ import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 import { getAdminPolicies, runAdminPolicy, updateAdminPolicy } from "../api";
 import type { AdminSystemPolicyRow } from "../types";
 
@@ -17,6 +18,7 @@ function formatDateTime(value: string | null): string {
 }
 
 export function AdminPoliciesPage() {
+  const policyAuthorization = useAdminDomainAuthorization("POLICY");
   const [rows, setRows] = useState<AdminSystemPolicyRow[]>([]);
   const [editing, setEditing] = useState<Record<string, { configJson: string; scheduleType: string; active: boolean; reason: string }>>({});
   const [loading, setLoading] = useState(false);
@@ -51,6 +53,10 @@ export function AdminPoliciesPage() {
   };
 
   const save = async (code: string) => {
+    if (!policyAuthorization.canUpdate) {
+      setError("운영 정책을 수정할 권한이 없습니다.");
+      return;
+    }
     const item = editing[code];
     if (!item) return;
     setMessage(null);
@@ -66,6 +72,10 @@ export function AdminPoliciesPage() {
   };
 
   const run = async (code: string) => {
+    if (!policyAuthorization.canUpdate) {
+      setError("운영 정책을 실행할 권한이 없습니다.");
+      return;
+    }
     setMessage(null);
     setError(null);
     try {
@@ -83,7 +93,7 @@ export function AdminPoliciesPage() {
       breadcrumb="운영 정책"
       title="운영 정책 관리"
       icon={SlidersHorizontal}
-      desc="휴면 계정, 로그인 잠금, 이메일 토큰 정리, AI 사용 이력 보관 정책을 super 관리자가 관리합니다."
+      desc="휴면 계정, 로그인 잠금, 이메일 토큰 정리, AI 사용 이력 보관 정책을 권한 범위에 따라 조회·관리합니다."
       actions={<Button variant="outline" onClick={() => void load()} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />새로고침</Button>}
     >
       <div className="space-y-4">
@@ -102,24 +112,27 @@ export function AdminPoliciesPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid gap-3 md:grid-cols-3">
-                  <Input value={edit?.scheduleType ?? ""} onChange={(event) => updateEdit(row.policyCode, { scheduleType: event.target.value })} placeholder="실행 주기" />
-                  <select value={String(edit?.active ?? false)} onChange={(event) => updateEdit(row.policyCode, { active: event.target.value === "true" })} className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+                  <Input disabled={!policyAuthorization.canUpdate} value={edit?.scheduleType ?? ""} onChange={(event) => updateEdit(row.policyCode, { scheduleType: event.target.value })} placeholder="실행 주기" />
+                  <select disabled={!policyAuthorization.canUpdate} value={String(edit?.active ?? false)} onChange={(event) => updateEdit(row.policyCode, { active: event.target.value === "true" })} className="h-10 rounded-md border border-slate-200 px-3 text-sm disabled:cursor-not-allowed disabled:bg-slate-100">
                     <option value="true">사용</option>
                     <option value="false">중지</option>
                   </select>
-                  <Input value={edit?.reason ?? ""} onChange={(event) => updateEdit(row.policyCode, { reason: event.target.value })} placeholder="변경/실행 사유" />
+                  <Input disabled={!policyAuthorization.canUpdate} value={edit?.reason ?? ""} onChange={(event) => updateEdit(row.policyCode, { reason: event.target.value })} placeholder="변경/실행 사유" />
                 </div>
                 <Textarea
                   value={edit?.configJson ?? ""}
+                  disabled={!policyAuthorization.canUpdate}
                   onChange={(event) => updateEdit(row.policyCode, { configJson: event.target.value })}
                   className="min-h-28 font-mono text-xs"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
                   <span>마지막 실행: {formatDateTime(row.lastRunAt)} / {row.lastRunStatus ?? "-"}</span>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => void run(row.policyCode)}><Play className="size-4" />수동 실행 요청</Button>
-                    <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void save(row.policyCode)}>저장</Button>
-                  </div>
+                  {policyAuthorization.canUpdate && (
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => void run(row.policyCode)}><Play className="size-4" />수동 실행 요청</Button>
+                      <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => void save(row.policyCode)}>저장</Button>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
