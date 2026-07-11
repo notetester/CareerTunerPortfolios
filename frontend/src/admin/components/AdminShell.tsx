@@ -48,15 +48,12 @@ import { ThemeToggle } from "@/app/components/layout/ThemeToggle";
 import { NotificationBell } from "@/features/notification/components/NotificationBell";
 import { useAdminPendingCounts, topSeverity, sumCounts, type PendingSeverity } from "@/admin/hooks/useAdminPendingCounts";
 import { useAdminPermissions } from "@/admin/hooks/useAdminPermissions";
+import {
+  isAdminRole,
+  permissionGroupsFromCodes,
+  type PermissionGroupCode,
+} from "@/admin/auth/adminAccess";
 import "./admin-shell.css";
-
-type PermissionGroupCode =
-  | "MEMBER_ADMIN"
-  | "AI_ADMIN"
-  | "BILLING_ADMIN"
-  | "CONTENT_ADMIN"
-  | "AUDIT_ADMIN"
-  | "POLICY_ADMIN";
 
 interface NavItem {
   key: string;
@@ -73,38 +70,6 @@ interface NavGroup {
   label: string;
   items: NavItem[];
 }
-
-const DEFAULT_GROUPS_BY_ROLE: Record<string, PermissionGroupCode[]> = {
-  USER: [],
-  ADMIN: ["MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN"],
-  SUPER_ADMIN: ["MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN", "POLICY_ADMIN"],
-};
-
-const PERMISSION_CODE_TO_GROUPS: Record<string, PermissionGroupCode[]> = {
-  MEMBER_ADMIN: ["MEMBER_ADMIN"],
-  USER_READ: ["MEMBER_ADMIN"],
-  USER_STATUS_WRITE: ["MEMBER_ADMIN"],
-  BLOCK_MANAGE: ["MEMBER_ADMIN"],
-  PROFILE_READ: ["MEMBER_ADMIN"],
-  CONSENT_READ: ["MEMBER_ADMIN"],
-  AI_ADMIN: ["AI_ADMIN"],
-  AI_USAGE_READ: ["AI_ADMIN"],
-  AI_OPERATION_MANAGE: ["AI_ADMIN"],
-  ANALYSIS_READ: ["AI_ADMIN"],
-  INTERVIEW_READ: ["AI_ADMIN"],
-  BILLING_ADMIN: ["BILLING_ADMIN"],
-  BILLING_READ: ["BILLING_ADMIN"],
-  BILLING_WRITE: ["BILLING_ADMIN"],
-  CONTENT_ADMIN: ["CONTENT_ADMIN"],
-  CONTENT_MANAGE: ["CONTENT_ADMIN"],
-  AUDIT_ADMIN: ["AUDIT_ADMIN"],
-  SECURITY_LOG_READ: ["AUDIT_ADMIN"],
-  EMAIL_AUDIT_READ: ["AUDIT_ADMIN"],
-  ADMIN_AUDIT_READ: ["AUDIT_ADMIN"],
-  POLICY_ADMIN: ["POLICY_ADMIN"],
-  POLICY_MANAGE: ["POLICY_ADMIN"],
-  ADMIN_PERMISSION_MANAGE: ["POLICY_ADMIN"],
-};
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -229,17 +194,18 @@ export default function AdminShell({
 }: AdminShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const pending = useAdminPendingCounts();
   const { user, logout } = useAuth();
+  const role = user?.role ?? null;
+  const canUseAdmin = isAdminRole(role);
+  const pending = useAdminPendingCounts(canUseAdmin);
+  const mePermissions = useAdminPermissions(user?.id ?? null, role, role === "ADMIN");
+  const grantedGroups = mePermissions.status === "ready" && mePermissions.data
+    ? permissionGroupsFromCodes(mePermissions.data.permissions)
+    : new Set<PermissionGroupCode>();
   const handleLogout = async () => {
     await logout();
     navigate("/");
   };
-  const role = user?.role;
-  const canUseAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
-  // 실효 권한(me/permissions) 기반 메뉴 노출 — 로딩/실패 시에는 종전 role 기본 노출로 폴백.
-  const mePermissions = useAdminPermissions(canUseAdmin);
-  const grantedGroups = getGrantedGroups(user, mePermissions?.permissions ?? null);
   const canUseCurrentPage = canUseAdmin && canAccessNavKey(active, role, grantedGroups);
   const visibleGroups = canUseAdmin
     ? NAV_GROUPS.map((group) => ({
@@ -247,6 +213,20 @@ export default function AdminShell({
         items: group.items.filter((item) => canAccessNavItem(item, role, grantedGroups)),
       })).filter((group) => group.items.length > 0)
     : [];
+  const displayName = user?.name?.trim() || user?.email?.trim() || "관리자";
+  const displayInitial = displayName.charAt(0).toUpperCase();
+  const displayRole = role === "SUPER_ADMIN" ? "최고 관리자" : "관리자";
+
+  // 라우트 boundary가 최종 진입을 막지만, 셸이 다른 곳에서 직접 사용돼도 관리자 chrome/API를 열지 않는다.
+  if (!canUseAdmin) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
+        <section role="alert" className="max-w-lg rounded-xl border border-slate-200 bg-card p-6 text-center text-sm text-muted-foreground dark:border-slate-800">
+          관리자 권한이 필요합니다.
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div className="adm">
@@ -306,8 +286,8 @@ export default function AdminShell({
             <ThemeToggle />
             <NotificationBell />
             <div className="adm__profile">
-              <div className="adm__avatar">A</div>
-              <span className="adm__profile-name">관리자</span>
+              <div className="adm__avatar">{displayInitial}</div>
+              <span className="adm__profile-name">{displayName} · {displayRole}</span>
             </div>
             <button type="button" onClick={handleLogout} className="adm__topbar-link">
               <LogOut className="size-4" /> 로그아웃
@@ -327,14 +307,14 @@ export default function AdminShell({
                 </h1>
                 <p className="adm__desc">{desc}</p>
               </div>
-              {actions && <div className="adm__actions">{actions}</div>}
+              {canUseCurrentPage && actions && <div className="adm__actions">{actions}</div>}
             </div>
           </div>
 
           {canUseCurrentPage ? (
             children
           ) : (
-            <section className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
+            <section className="rounded-lg border border-slate-200 bg-card p-6 text-sm text-slate-600 shadow-sm">
               {canUseAdmin
                 ? "현재 계정에 이 관리자 메뉴를 볼 수 있는 세부 권한이 없습니다."
                 : "관리자 권한이 필요합니다. 관리자 계정으로 로그인한 뒤 다시 접근해 주세요."}
@@ -346,58 +326,15 @@ export default function AdminShell({
   );
 }
 
-function getGrantedGroups(user: unknown, fetchedPermissions: string[] | null): Set<PermissionGroupCode> {
-  if (!isRecord(user)) return new Set();
-  const role = typeof user.role === "string" ? user.role : "USER";
-
-  // 1순위: GET /api/admin/me/permissions 로 조회한 실효 권한(로딩 완료 시).
-  //   SUPER_ADMIN 은 canAccessNavItem 에서 전체 통과라 여기 결과와 무관하다.
-  //   ADMIN 인데 실효 권한이 비어 있으면 권한 필요한 메뉴는 모두 숨긴다(빈 Set).
-  if (fetchedPermissions !== null) {
-    return new Set(
-      fetchedPermissions
-        .flatMap((code) => PERMISSION_CODE_TO_GROUPS[code] ?? [])
-        .filter(isPermissionGroupCode),
-    );
-  }
-
-  // 2순위: 로그인 응답에 실려 온 명시 권한(있다면).
-  const explicitGroups = [
-    ...readStringArray(user.permissionGroups),
-    ...readStringArray(user.groupCodes),
-    ...readStringArray(user.groups),
-    ...readStringArray(user.permissions).flatMap((code) => PERMISSION_CODE_TO_GROUPS[code] ?? []),
-  ].filter(isPermissionGroupCode);
-
-  if (explicitGroups.length > 0) {
-    return new Set(explicitGroups);
-  }
-
-  // 3순위(로딩 중/조회 실패 폴백): role 기본 노출 — 서버 인터셉터가 최종 방어선.
-  return new Set(DEFAULT_GROUPS_BY_ROLE[role] ?? []);
-}
-
-function canAccessNavKey(key: string, role: string | undefined, grantedGroups: Set<PermissionGroupCode>): boolean {
+function canAccessNavKey(key: string, role: string | null | undefined, grantedGroups: Set<PermissionGroupCode>): boolean {
   const item = NAV_GROUPS.flatMap((group) => group.items).find((candidate) => candidate.key === key);
-  return item ? canAccessNavItem(item, role, grantedGroups) : role === "ADMIN" || role === "SUPER_ADMIN";
+  return item ? canAccessNavItem(item, role, grantedGroups) : false;
 }
 
-function canAccessNavItem(item: NavItem, role: string | undefined, grantedGroups: Set<PermissionGroupCode>): boolean {
+function canAccessNavItem(item: NavItem, role: string | null | undefined, grantedGroups: Set<PermissionGroupCode>): boolean {
   if (role === "SUPER_ADMIN") return true;
   if (role !== "ADMIN") return false;
   if (item.superOnly) return false;
   if (!item.permissionGroups || item.permissionGroups.length === 0) return true;
   return item.permissionGroups.some((group) => grantedGroups.has(group));
-}
-
-function isPermissionGroupCode(value: string): value is PermissionGroupCode {
-  return ["MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN", "POLICY_ADMIN"].includes(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
-}
-
-function readStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }

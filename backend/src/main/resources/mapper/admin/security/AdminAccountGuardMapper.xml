@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.admin.common.security.AdminAccountGuardMapper">
+
+    <select id="lockActiveSuperAdminIds" resultType="long">
+        SELECT id
+        FROM users
+        WHERE role = 'SUPER_ADMIN'
+          AND status = 'ACTIVE'
+        ORDER BY id
+        FOR UPDATE
+    </select>
+
+    <select id="findAccountForUpdate"
+            resultType="com.careertuner.admin.common.security.AdminAccountState">
+        SELECT id, role, status
+        FROM users
+        WHERE id = #{userId}
+        FOR UPDATE
+    </select>
+</mapper>

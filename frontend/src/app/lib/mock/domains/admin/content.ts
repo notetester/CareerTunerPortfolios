@@ -13,6 +13,8 @@ import type {
   ModerationDetail,
   ModerationPage,
   ModerationStats,
+  ModerationReviewAction,
+  ModerationReviewQueuePage,
 } from "@/admin/features/moderation/types/moderation";
 import type {
   ModerationSettingData,
@@ -237,7 +239,7 @@ const moderationDetails: ModerationDetail[] = [
     title: "프론트엔드 포트폴리오 피드백 부탁드려요",
     authorName: "김데모",
     category: "질문답변",
-    status: "VISIBLE",
+    status: "PUBLISHED",
     toxic: false,
     aiCategory: null,
     confidence: 0.08,
@@ -252,13 +254,13 @@ const moderationDetails: ModerationDetail[] = [
     title: "토스 합격 후기 (개인정보 일부 포함)",
     authorName: "익명_5510",
     category: "합격후기",
-    status: "PENDING",
+    status: "PUBLISHED",
     toxic: true,
     aiCategory: "개인정보",
     confidence: 0.64,
     attemptCount: 1,
     createdAt: iso(0),
-    moderatedAt: null,
+    moderatedAt: iso(0),
     content: "최종 합격 메일 캡처랑 인사담당자 연락처 같이 올립니다. 참고하세요.",
     model: "moderation-v2",
   },
@@ -270,8 +272,8 @@ function moderationItem(d: ModerationDetail): ModerationItem {
 }
 
 const moderationSettings: ModerationSettingData = {
-  strictness: "MEDIUM",
-  hideThreshold: 0.7,
+  strictness: "NORMAL",
+  hideThreshold: 0.8,
   sanctionThreshold: 3,
   blockDays: 7,
   reportBlurThreshold: 3,
@@ -283,6 +285,8 @@ const moderationSettings: ModerationSettingData = {
   inquiryRateMax: 5,
   updatedAt: iso(4),
 };
+
+const moderationReviewActions = new Map<number, ModerationReviewAction>();
 
 // ──────────────────────────────────────────────────────────────
 // 공지사항 (notices)
@@ -571,10 +575,22 @@ interface TicketReplyBody {
 interface ModerationSettingBody {
   strictness?: string;
   hideThreshold?: number;
+  sanctionThreshold?: number;
+  blockDays?: number;
+  reportBlurThreshold?: number;
+  postRateWindowSeconds?: number;
+  postRateMax?: number;
+  commentRateWindowSeconds?: number;
+  commentRateMax?: number;
+  inquiryRateWindowSeconds?: number;
+  inquiryRateMax?: number;
 }
 interface ModerationTestBody {
   title?: string;
   content?: string;
+}
+interface ModerationReviewDecisionBody {
+  action?: ModerationReviewAction;
 }
 
 export const adminContentRoutes: MockRoute[] = [
@@ -749,6 +765,15 @@ export const adminContentRoutes: MockRoute[] = [
       const req = (body ?? {}) as ModerationSettingBody;
       if (req.strictness) moderationSettings.strictness = req.strictness;
       if (req.hideThreshold !== undefined) moderationSettings.hideThreshold = req.hideThreshold;
+      if (req.sanctionThreshold !== undefined) moderationSettings.sanctionThreshold = req.sanctionThreshold;
+      if (req.blockDays !== undefined) moderationSettings.blockDays = req.blockDays;
+      if (req.reportBlurThreshold !== undefined) moderationSettings.reportBlurThreshold = req.reportBlurThreshold;
+      if (req.postRateWindowSeconds !== undefined) moderationSettings.postRateWindowSeconds = req.postRateWindowSeconds;
+      if (req.postRateMax !== undefined) moderationSettings.postRateMax = req.postRateMax;
+      if (req.commentRateWindowSeconds !== undefined) moderationSettings.commentRateWindowSeconds = req.commentRateWindowSeconds;
+      if (req.commentRateMax !== undefined) moderationSettings.commentRateMax = req.commentRateMax;
+      if (req.inquiryRateWindowSeconds !== undefined) moderationSettings.inquiryRateWindowSeconds = req.inquiryRateWindowSeconds;
+      if (req.inquiryRateMax !== undefined) moderationSettings.inquiryRateMax = req.inquiryRateMax;
       moderationSettings.updatedAt = iso(0);
       return { ...moderationSettings };
     },
@@ -767,6 +792,58 @@ export const adminContentRoutes: MockRoute[] = [
         confidence: toxic ? 0.88 : 0.07,
         elapsedMs: 430,
       };
+    },
+  },
+  {
+    method: "GET",
+    pattern: /^\/admin\/ai\/moderation\/review-queue$/,
+    handler: ({ query }: MockContext): ModerationReviewQueuePage => {
+      const page = Math.max(1, Number(query.get("page") ?? 1) || 1);
+      const size = Math.max(1, Number(query.get("size") ?? 5) || 5);
+      const all = moderationDetails
+        .filter((item) => item.status === "PUBLISHED"
+          && item.toxic
+          && item.confidence < moderationSettings.hideThreshold
+          && !moderationReviewActions.has(item.postId))
+        .map((item) => ({
+          postId: item.postId,
+          title: item.title,
+          contentPreview: item.content.replace(/<[^>]+>/g, "").slice(0, 240),
+          authorName: item.authorName,
+          category: item.category,
+          aiCategory: item.aiCategory,
+          confidence: item.confidence,
+          createdAt: item.createdAt,
+          moderatedAt: item.moderatedAt ?? iso(0),
+        }));
+      const offset = (page - 1) * size;
+      return {
+        items: all.slice(offset, offset + size),
+        total: all.length,
+        page,
+        size,
+        hasNext: offset + size < all.length,
+      };
+    },
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/admin\/ai\/moderation\/review-queue\/(\d+)$/,
+    handler: ({ params, body }: MockContext) => {
+      const postId = Number(params[0]);
+      const action = (body as ModerationReviewDecisionBody | undefined)?.action;
+      if (action !== "HIDE" && action !== "KEEP") throw new Error("action은 HIDE 또는 KEEP이어야 합니다.");
+      const existing = moderationReviewActions.get(postId);
+      if (existing === action) return null;
+      if (existing) throw new Error("이미 다른 검토 결정이 완료됐습니다.");
+      const target = moderationDetails.find((item) => item.postId === postId);
+      if (!target || target.status !== "PUBLISHED" || !target.toxic
+        || target.confidence >= moderationSettings.hideThreshold) {
+        throw new Error("더 이상 검토 대기 조건을 만족하지 않는 게시글입니다.");
+      }
+      moderationReviewActions.set(postId, action);
+      if (action === "HIDE") target.status = "HIDDEN";
+      return null;
     },
   },
   {
@@ -804,7 +881,7 @@ export const adminContentRoutes: MockRoute[] = [
       const id = Number(params[0]);
       const target = moderationDetails.find((m) => m.postId === id);
       if (target) {
-        target.status = "VISIBLE";
+        target.status = "PUBLISHED";
         target.moderatedAt = iso(0);
       }
       return null;

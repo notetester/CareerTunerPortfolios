@@ -99,7 +99,7 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
 
   // 공유 — 백엔드 없이 클라이언트에서 처리. Web Share 지원 시 시스템 시트, 아니면 링크 복사.
   const handleShare = async () => {
-    const url = `${window.location.origin}/community/posts/${postId}`;
+    const url = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, "")}/community/posts/${postId}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: d?.title ?? "커뮤니티 글", url });

@@ -5,6 +5,8 @@
 //  - GET  /notifications/unread-count   -> number
 //  - PATCH /notifications/:id/read      -> void(null)
 //  - POST /notifications/read-all       -> void(null)
+//  - DELETE /notifications/:id          -> void(null)
+//  - DELETE /notifications              -> void(null)
 //  - GET  /notifications/preferences    -> NotificationPreference
 //  - PUT  /notifications/preferences    -> NotificationPreference(echo)
 // 데모 사용자 김데모의 활동(적합도 분석·모의면접·커뮤니티·공지)과 일관된 알림을 제공한다.
@@ -60,7 +62,7 @@ const demoNotifications: BackendNotification[] = [
     targetId: 5001,
     title: "모의면접 리포트가 준비됐어요",
     message: "카카오 직무면접 세션 분석이 끝났어요. 답변별 피드백과 총평을 확인하세요.",
-    link: "/interview/sessions/5001/report",
+    link: "/interview",
     read: false,
     createdAt: iso(0),
   },
@@ -83,7 +85,7 @@ const demoNotifications: BackendNotification[] = [
     targetId: 77,
     title: "새 채팅이 도착했어요",
     message: "스터디 채팅방에 새 메시지가 올라왔습니다.",
-    link: "/collaboration",
+    link: "/messenger",
     read: false,
     createdAt: iso(2),
     actor: { id: 84, name: "스터디장", avatarUrl: undefined },
@@ -104,7 +106,7 @@ const demoNotifications: BackendNotification[] = [
     type: "NOTICE",
     title: "[공지] 6월 정기 점검 안내",
     message: "6월 22일 02:00~04:00 서비스 점검이 예정되어 있어요. 이용에 참고해 주세요.",
-    link: "/notice",
+    link: "/support/notices",
     read: true,
     createdAt: iso(5),
   },
@@ -183,6 +185,27 @@ export const notificationRoutes: MockRoute[] = [
       demoNotifications.forEach((n) => {
         n.read = true;
       });
+      return null;
+    },
+  },
+
+  // 개별 삭제 -> void
+  {
+    method: "DELETE",
+    pattern: /^\/notifications\/(\d+)$/,
+    handler: ({ params }) => {
+      const index = demoNotifications.findIndex((notification) => notification.id === Number(params[0]));
+      if (index >= 0) demoNotifications.splice(index, 1);
+      return null;
+    },
+  },
+
+  // 전체 삭제 -> void
+  {
+    method: "DELETE",
+    pattern: /^\/notifications$/,
+    handler: () => {
+      demoNotifications.splice(0, demoNotifications.length);
       return null;
     },
   },

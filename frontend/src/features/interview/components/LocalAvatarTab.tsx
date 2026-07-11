@@ -479,7 +479,7 @@ export function LocalAvatarTab({
           {(status === "connecting" || status === "live" || status === "analyzing") && (
             <div
               ref={videoBoxRef}
-              className="relative overflow-hidden rounded-xl border border-slate-200 bg-white"
+              className="relative overflow-hidden rounded-xl border border-slate-200 bg-card"
             >
               <img
                 src={interviewerPlaceholder}

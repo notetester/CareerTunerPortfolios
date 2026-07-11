@@ -50,6 +50,7 @@ const applicationCaseRow: AdminApplicationCaseRow = {
 
 const applicationCaseDetail: AdminApplicationCaseDetail = {
   applicationCase: applicationCaseRow,
+  statusHistory: [],
   jobPostings: [],
   jobAnalyses: [
     {

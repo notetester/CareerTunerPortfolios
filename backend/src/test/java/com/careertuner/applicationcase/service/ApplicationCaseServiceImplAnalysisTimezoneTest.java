@@ -13,6 +13,7 @@ import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.AnalysisResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseResponse;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.companyanalysis.service.CompanyAnalysisService;
 import com.careertuner.jobanalysis.domain.JobAnalysis;
@@ -50,7 +51,9 @@ class ApplicationCaseServiceImplAnalysisTimezoneTest {
                 jobAnalysisMapper,
                 mock(OpenAiResponsesClient.class),
                 mock(NotificationMapper.class),
-                mock(ApplicationCaseAutoPipelineService.class));
+                mock(ApplicationCaseAutoPipelineService.class),
+                mock(ApplicationCaseInitialRunMapper.class),
+                mock(JobPostingReextractionService.class));
 
         AnalysisResponse response = service.getAnalysis(1L, 10L);
 
@@ -80,7 +83,9 @@ class ApplicationCaseServiceImplAnalysisTimezoneTest {
                 mock(JobAnalysisMapper.class),
                 mock(OpenAiResponsesClient.class),
                 mock(NotificationMapper.class),
-                mock(ApplicationCaseAutoPipelineService.class));
+                mock(ApplicationCaseAutoPipelineService.class),
+                mock(ApplicationCaseInitialRunMapper.class),
+                mock(JobPostingReextractionService.class));
 
         ApplicationCaseResponse response = service.get(1L, 10L);
 
@@ -111,7 +116,9 @@ class ApplicationCaseServiceImplAnalysisTimezoneTest {
                 mock(JobAnalysisMapper.class),
                 mock(OpenAiResponsesClient.class),
                 mock(NotificationMapper.class),
-                mock(ApplicationCaseAutoPipelineService.class));
+                mock(ApplicationCaseAutoPipelineService.class),
+                mock(ApplicationCaseInitialRunMapper.class),
+                mock(JobPostingReextractionService.class));
 
         java.util.List<AiUsageFailureResponse> failures = service.getAiUsageFailures(1L, 10L, 20);
 

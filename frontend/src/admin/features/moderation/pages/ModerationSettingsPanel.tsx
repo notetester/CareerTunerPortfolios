@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import {
-  PlugZap, ScanText, Inbox, ChevronRight, CheckCircle2, AlertCircle,
+  PlugZap, ScanText, Inbox, ChevronRight, CheckCircle2, AlertCircle, EyeOff, RefreshCw,
 } from "lucide-react";
 import * as moderationApi from "../api/moderationApi";
 import type { ModerationSettingData, ModerationTestResult } from "../api/moderationApi";
+import type { ModerationReviewAction, ModerationReviewQueueItem } from "../types/moderation";
 import "./moderation-settings.css";
 
 /* ── 프리셋 정의 ── */
@@ -124,6 +125,20 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
   const [pending, setPending] = useState<typeof PRESETS[number] | null>(null);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
 
+  /* 임계 미만 toxic 결과 수동 검토 큐 */
+  const [queue, setQueue] = useState<ModerationReviewQueueItem[]>([]);
+  const [queuePage, setQueuePage] = useState(1);
+  const [queueTotal, setQueueTotal] = useState(0);
+  const [queueHasNext, setQueueHasNext] = useState(false);
+  const [queueLoading, setQueueLoading] = useState(true);
+  const [queueError, setQueueError] = useState("");
+  const [queueReloadKey, setQueueReloadKey] = useState(0);
+  const [queueActionId, setQueueActionId] = useState<number | null>(null);
+  const [reviewPending, setReviewPending] = useState<{
+    item: ModerationReviewQueueItem;
+    action: ModerationReviewAction;
+  } | null>(null);
+
   /* 테스트 상태 */
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -155,6 +170,23 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
 
+  const loadReviewQueue = useCallback(async () => {
+    setQueueLoading(true);
+    setQueueError("");
+    try {
+      const result = await moderationApi.getModerationReviewQueue(queuePage, 5);
+      setQueue(result.items);
+      setQueueTotal(result.total);
+      setQueueHasNext(result.hasNext);
+    } catch (error) {
+      setQueueError(error instanceof Error ? error.message : "검토 대기 목록을 불러오지 못했습니다.");
+    } finally {
+      setQueueLoading(false);
+    }
+  }, [queuePage]);
+
+  useEffect(() => { void loadReviewQueue(); }, [loadReviewQueue, queueReloadKey]);
+
   /* 토스트 자동 소멸 */
   useEffect(() => {
     if (!toast) return;
@@ -176,6 +208,8 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
       setTh(updated.hideThreshold);
       setCustom(false);
       setChangedAt(updated.updatedAt);
+      setQueuePage(1);
+      setQueueReloadKey((key) => key + 1);
       setToast({ ok: true, msg: `'${p.name}' 모드 적용됨 \u2014 임계값 ${p.th.toFixed(2)}` });
     } catch {
       setToast({ ok: false, msg: "저장 실패 \u2014 검열 서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요." });
@@ -190,6 +224,8 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
     try {
       const updated = await moderationApi.updateModerationSettings({ hideThreshold: v });
       setChangedAt(updated.updatedAt);
+      setQueuePage(1);
+      setQueueReloadKey((key) => key + 1);
     } catch {
       setToast({ ok: false, msg: "임계값 저장 실패" });
     }
@@ -241,7 +277,33 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
     }
   };
 
-  const fmtDate = (iso: string) => {
+  const applyReviewDecision = async () => {
+    if (!reviewPending || queueActionId !== null) return;
+    const { item, action } = reviewPending;
+    setQueueActionId(item.postId);
+    try {
+      await moderationApi.decideModerationReview(item.postId, action);
+      setReviewPending(null);
+      setToast({
+        ok: true,
+        msg: action === "HIDE" ? "게시글을 숨김 처리했습니다." : "게시 유지 결정을 저장했습니다.",
+      });
+      if (queue.length === 1 && queuePage > 1) {
+        setQueuePage((page) => page - 1);
+      } else {
+        setQueueReloadKey((key) => key + 1);
+      }
+    } catch (error) {
+      setToast({
+        ok: false,
+        msg: error instanceof Error ? error.message : "검토 결정을 저장하지 못했습니다.",
+      });
+    } finally {
+      setQueueActionId(null);
+    }
+  };
+
+  const fmtDate = (iso: string | null | undefined) => {
     if (!iso) return "-";
     const d = new Date(iso);
     return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -420,16 +482,16 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
             </div>
           </div>
 
-          {/* 문의 rate-limit (정책값) */}
+          {/* 문의 rate-limit */}
           <div>
             <div className="av-flabel" style={{ marginBottom: 8, fontWeight: 600 }}>
-              문의 작성 제한 <span className="md-v2">정책값 · 집행 예정</span>
+              문의 작성 제한 <span className="md-v2">즉시 집행</span>
             </div>
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-end" }}>
               <NumBox label="윈도 (초)" value={inquiryWin} min={1} max={86400}
-                hint="문의 도메인이 이 정책을 참조해 집행" onCommit={(v) => applyRate({ inquiryRateWindowSeconds: v }, "문의 제한 정책이 저장됐어요.")} />
+                hint="이 시간 창 안의 문의 작성 수를 셈" onCommit={(v) => applyRate({ inquiryRateWindowSeconds: v }, "문의 제한 정책이 저장됐어요.")} />
               <NumBox label="허용 건수 (0=비활성)" value={inquiryMax} min={0} max={100000}
-                hint="현재는 정책 저장까지 — 집행 배선은 문의 담당" onCommit={(v) => applyRate({ inquiryRateMax: v }, "문의 제한 정책이 저장됐어요.")} />
+                hint="윈도 내 이 수 이상이면 429로 차단" onCommit={(v) => applyRate({ inquiryRateMax: v }, "문의 제한 정책이 저장됐어요.")} />
             </div>
           </div>
         </section>
@@ -510,17 +572,114 @@ export default function ModerationSettingsPanel({ flash }: { flash: (msg: string
         </section>
       </div>
 
-      {/* 검토 대기 목록 placeholder */}
+      {/* 임계 미만 toxic 결과 수동 검토 큐 */}
       <section className="av-panel md-sec" aria-label="검토 대기 목록">
         <div className="av-mod__h">
-          <span className="av-mod__t">검토 대기 목록 <span className="md-v2">v2 예정</span></span>
-          <span className="av-mod__s">toxic 판정이지만 임계값 미달로 게시 중인 글</span>
+          <div>
+            <span className="av-mod__t">검토 대기 목록</span>
+            <span className="md-queue__count">{queueTotal.toLocaleString()}건</span>
+            <div className="av-mod__s">toxic 판정이지만 임계값 {th.toFixed(2)} 미만으로 게시 중인 글</div>
+          </div>
+          <button
+            className="av-btn md-queue__refresh"
+            onClick={() => setQueueReloadKey((key) => key + 1)}
+            disabled={queueLoading}
+            aria-label="검토 대기 목록 새로고침"
+          >
+            <RefreshCw className={queueLoading ? "md-queue__spin" : ""} />
+            새로고침
+          </button>
         </div>
-        <div className="md-queue__empty">
-          <Inbox size={18} />
-          <p>여기에 확신도가 임계값에 못 미친 글이 모여요.<br />운영자가 직접 숨김/유지를 결정하는 화면으로 준비 중입니다.</p>
-        </div>
+        {queueLoading ? (
+          <div className="md-queue__loading" role="status">검토 대기 목록을 불러오는 중입니다.</div>
+        ) : queueError ? (
+          <div className="md-queue__error" role="alert">
+            <AlertCircle />
+            <span>{queueError}</span>
+            <button className="av-btn" onClick={() => setQueueReloadKey((key) => key + 1)}>다시 시도</button>
+          </div>
+        ) : queue.length === 0 ? (
+          <div className="md-queue__empty">
+            <Inbox size={18} />
+            <p>현재 직접 검토할 경계 판정 게시글이 없습니다.</p>
+          </div>
+        ) : (
+          <>
+            <div className="md-queue__list">
+              {queue.map((item) => (
+                <article className="md-queue__item" key={item.postId}>
+                  <div className="md-queue__item-head">
+                    <div className="md-queue__title-wrap">
+                      <h3>{item.title}</h3>
+                      <div className="md-queue__meta">
+                        <span>{item.category}</span>
+                        <span>{item.authorName}</span>
+                        <span>검열 {fmtDate(item.moderatedAt)}</span>
+                      </div>
+                    </div>
+                    <div className="md-queue__score">
+                      <span>{item.aiCategory ?? "분류 없음"}</span>
+                      <b className="num">{item.confidence.toFixed(2)}</b>
+                    </div>
+                  </div>
+                  <p className="md-queue__preview">{item.contentPreview || "본문 미리보기가 없습니다."}</p>
+                  <div className="md-queue__actions">
+                    <span className="av-hint">결정 후 목록에서 빠지며 같은 검열 결과에는 다시 나타나지 않습니다.</span>
+                    <button
+                      className="av-btn"
+                      disabled={queueActionId !== null}
+                      onClick={() => setReviewPending({ item, action: "KEEP" })}
+                    >
+                      <CheckCircle2 /> 게시 유지
+                    </button>
+                    <button
+                      className="av-btn md-queue__hide"
+                      disabled={queueActionId !== null}
+                      onClick={() => setReviewPending({ item, action: "HIDE" })}
+                    >
+                      <EyeOff /> 숨김
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="md-queue__pager" aria-label="검토 대기 목록 페이지">
+              <button className="av-btn" disabled={queuePage <= 1} onClick={() => setQueuePage((page) => page - 1)}>이전</button>
+              <span className="num">{queuePage} / {Math.max(1, Math.ceil(queueTotal / 5))}</span>
+              <button className="av-btn" disabled={!queueHasNext} onClick={() => setQueuePage((page) => page + 1)}>다음</button>
+            </div>
+          </>
+        )}
       </section>
+
+      {/* 수동 검토 결정 확인 */}
+      {reviewPending && (
+        <div className="md-dim" onClick={(e) => {
+          if (e.target === e.currentTarget && queueActionId === null) setReviewPending(null);
+        }}>
+          <div className="md-dlg" role="dialog" aria-modal="true" aria-labelledby="review-decision-title">
+            <div className="md-dlg__t" id="review-decision-title">
+              {reviewPending.action === "HIDE" ? "이 게시글을 숨길까요?" : "게시 유지로 결정할까요?"}
+            </div>
+            <div className="md-dlg__s">
+              <b>{reviewPending.item.title}</b><br />
+              {reviewPending.action === "HIDE"
+                ? "게시글은 HIDDEN 상태로 전환되고 작성자에게 숨김 알림이 한 번 전송됩니다. 이후 기존 검열 목록에서 복원 또는 삭제할 수 있습니다."
+                : "게시 상태는 그대로 유지됩니다. 이 검열 결과의 수동 결정은 저장되며 검토 대기 목록에 다시 나타나지 않습니다."}
+            </div>
+            <div className="md-dlg__r">
+              <button className="av-btn" disabled={queueActionId !== null} onClick={() => setReviewPending(null)}>취소</button>
+              <button
+                className={`av-btn ${reviewPending.action === "HIDE" ? "md-queue__hide" : "av-btn--ink"}`}
+                disabled={queueActionId !== null}
+                onClick={() => void applyReviewDecision()}
+              >
+                {queueActionId !== null ? "저장 중…" : reviewPending.action === "HIDE" ? "숨김 결정" : "게시 유지 결정"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 확인 다이얼로그 */}
       {pending && (

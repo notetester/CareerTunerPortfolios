@@ -110,7 +110,7 @@ desktop/
 
 ## 백엔드 연결
 
-기본은 팀 공용 원격 백엔드. 설정 화면에서 서버 주소를 바꿀 수 있고 QSettings 에 영속화된다
+기본은 공개 AWS 통합 백엔드(`https://careertuner.kro.kr`). 설정 화면에서 로컬·Tailscale 주소로 바꿀 수 있고 QSettings 에 영속화된다
 (로컬 시연: `http://localhost:8080`). 로그인 후 JWT 는 `Authorization: Bearer` 자동 첨부,
 자동 로그인 켜면 refresh 토큰으로 재시작 시 재로그인 없이 진입한다.
 

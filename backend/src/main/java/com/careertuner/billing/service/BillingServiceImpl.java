@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.billing.domain.BenefitTransaction;
@@ -270,7 +271,9 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     }
 
     @Override
-    @Transactional
+    // AiChargeService가 사용권 부족을 잡아 크레딧 폴백을 이어가므로, 부족 실패는 외부 정산 트랜잭션을
+    // rollback-only로 오염시키지 않고 이 savepoint까지만 되돌린다.
+    @Transactional(propagation = Propagation.NESTED)
     public BenefitConsumeResult consumeByFeature(Long userId,
                                                  String featureType,
                                                  String refType,
@@ -286,16 +289,22 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         }
 
         BenefitPeriod period = currentBenefitPeriod(userId);
+        // 월초 최초 사용권 초기화와 동시 차감을 사용자 단위로 직렬화한다. 잔액별 unique insert가
+        // 서로 다른 순서로 교차하면서 deadlock 나는 것을 막고 아래 참조 멱등 검사까지 한 임계구역으로 묶는다.
+        if (billingMapper.lockUserForBilling(userId) == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없습니다.");
+        }
         ensureBalances(userId, period);
 
         String benefitCode = featurePolicy.getBenefitCode();
-        if (billingMapper.existsConsumeTransaction(benefitCode, refType, refId)) {
-            UserBenefitBalance current = billingMapper.findBenefitBalance(userId, benefitCode, period.start());
-            int remaining = current == null ? 0 : current.getRemainingQuantity();
+        // 같은 사용권 잔액 행을 잠근 뒤 멱등 이력을 확인한다. 동시 재시도가 둘 다 차감한 뒤 한쪽만
+        // unique key에서 실패하는 창을 없애고, 두 번째 요청은 ALREADY_CONSUMED로 정상 리플레이한다.
+        UserBenefitBalance balance = billingMapper.findBenefitBalanceForUpdate(userId, benefitCode, period.start());
+        if (billingMapper.findConsumeTransactionIdForUpdate(benefitCode, refType, refId) != null) {
+            int remaining = balance == null ? 0 : balance.getRemainingQuantity();
             return BenefitConsumeResult.skipped(benefitCode, remaining, "ALREADY_CONSUMED");
         }
 
-        UserBenefitBalance balance = billingMapper.findBenefitBalance(userId, benefitCode, period.start());
         if (balance == null || balance.getRemainingQuantity() <= 0) {
             throw new BusinessException(ErrorCode.INSUFFICIENT_CREDIT, "사용 가능한 사용권이 부족합니다.");
         }

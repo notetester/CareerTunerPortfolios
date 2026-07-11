@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   Sparkles, MessageCircle, Mic, MicOff, ArrowUp, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
@@ -406,7 +406,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   // 앵커(우하단↔중앙)가 달라 CSS 크기 보간은 깨지므로 즉시 전환(부드러운 shared-element 은 2차).
   const panelClass = floating
     ? "ct-float-in fixed z-50 flex flex-col bg-card overflow-hidden"
-    : "fixed right-5 bottom-5 z-50 w-[360px] h-[560px] flex flex-col bg-card border border-border rounded-2xl overflow-hidden";
+    : "fixed right-5 bottom-5 z-50 w-[min(360px,calc(100vw-2.5rem))] h-[min(560px,calc(100dvh-2.5rem))] flex flex-col bg-card border border-border rounded-2xl overflow-hidden";
   const panelStyle: React.CSSProperties = floating
     ? {
         left: "50%", top: "50%", transform: "translate(-50%,-50%)",
@@ -1418,11 +1418,11 @@ function NotFoundView() {
           <Headset size={16} />
           상담사 연결하기
         </button>
-        <a href="/support/contact"
+        <Link to="/support/contact"
           className="flex items-center justify-center gap-1.5 w-full h-10 rounded-lg border border-border bg-card text-foreground text-[13px] font-semibold hover:bg-secondary transition-colors">
           <PenLine size={15} />
           1:1 문의 남기기
-        </a>
+        </Link>
         <div className="text-[11px] text-muted-foreground text-center">
           상담 가능 시간 평일 09:00–18:00 · 보통 5분 내 응답
         </div>
@@ -1446,11 +1446,11 @@ function DisconnectedView({ onRetry }: { onRetry: () => void }) {
         </div>
       </div>
       <div className="px-3 py-2.5 border-t border-border flex flex-col gap-2.5">
-        <a href="/support/contact"
+        <Link to="/support/contact"
           className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-primary text-white text-[13.5px] font-bold hover:brightness-110 transition-colors">
           <PenLine size={16} />
           1:1 문의 남기기
-        </a>
+        </Link>
         <button onClick={onRetry}
           className="flex items-center justify-center gap-1.5 w-full h-9 rounded-lg bg-transparent text-muted-foreground text-[12.5px] font-semibold hover:bg-secondary transition-colors">
           <RotateCw size={14} />

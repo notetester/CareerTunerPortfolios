@@ -21,10 +21,71 @@ import type {
   UserProfile,
   ProfileAiResponse,
   ProfileCompleteness,
+  ProfilePortfolioFile,
 } from "@/app/profile/profileApi";
 import type { ConsentStatus, ConsentView } from "@/app/auth/consentApi";
 
 const USER_ID = 9001;
+let portfolioFileSeq = 7900;
+const portfolioContents = new Map<number, Blob>();
+const demoPortfolioFiles: ProfilePortfolioFile[] = [
+  {
+    id: 7899,
+    kind: "PORTFOLIO",
+    refType: "USER_PROFILE_PORTFOLIO",
+    refId: 5001,
+    originalName: "kimdemo-portfolio.pdf",
+    contentType: "application/pdf",
+    sizeBytes: 482_100,
+    contentUrl: "/api/file/7899/content",
+    createdAt: iso(3),
+  },
+];
+portfolioContents.set(
+  7899,
+  new Blob(["CareerTuner demo portfolio\nReact and TypeScript project evidence"], {
+    type: "application/pdf",
+  }),
+);
+
+function uploadMockPortfolio(body: unknown): ProfilePortfolioFile {
+  const form = body instanceof FormData ? body : null;
+  const file = form?.get("file");
+  const id = ++portfolioFileSeq;
+  const uploaded: ProfilePortfolioFile = {
+    id,
+    kind: "PORTFOLIO",
+    refType: "USER_PROFILE_PORTFOLIO",
+    refId: demoProfile.id ?? 5001,
+    originalName: file instanceof File ? file.name : `portfolio-${id}.pdf`,
+    contentType: file instanceof File ? file.type : "application/pdf",
+    sizeBytes: file instanceof File ? file.size : 0,
+    contentUrl: `/api/file/${id}/content`,
+    createdAt: new Date().toISOString(),
+  };
+  demoPortfolioFiles.unshift(uploaded);
+  portfolioContents.set(
+    id,
+    file instanceof File
+      ? file.slice(0, file.size, file.type || "application/octet-stream")
+      : new Blob([`Demo portfolio ${id}`], { type: "application/pdf" }),
+  );
+  return uploaded;
+}
+
+function deleteMockPortfolio(rawId: string | undefined): null {
+  const id = Number(rawId);
+  const index = demoPortfolioFiles.findIndex((file) => file.id === id);
+  if (index >= 0) demoPortfolioFiles.splice(index, 1);
+  portfolioContents.delete(id);
+  return null;
+}
+
+function mockPortfolioContent(rawId: string | undefined): Blob {
+  const content = portfolioContents.get(Number(rawId));
+  if (!content) throw new Error("포트폴리오 파일을 찾을 수 없습니다.");
+  return content;
+}
 
 // ── 김데모 프로필(프론트엔드 개발자). education/career/projects 는 백엔드 JSON 배열, skills 류는 문자열 배열. ──
 const demoProfile: UserProfile = {
@@ -199,18 +260,21 @@ const demoCompleteness: ProfileCompleteness = {
   status: "SUCCESS",
 };
 
-// ── 동의(약관/개인정보/AI데이터/마케팅) 상태. AI_DATA 는 토글 가능. ──
+// ── 동의(약관/개인정보/AI데이터/이력서분석/마케팅) 상태와 변경 이력. ──
 const consentHistory: ConsentView[] = [
-  { id: 7001, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "TERMS", agreed: true, agreedAt: iso(30), revokedAt: null, source: "SIGNUP", createdAt: iso(30) },
-  { id: 7002, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "PRIVACY", agreed: true, agreedAt: iso(30), revokedAt: null, source: "SIGNUP", createdAt: iso(30) },
-  { id: 7003, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "AI_DATA", agreed: true, agreedAt: iso(30), revokedAt: null, source: "SIGNUP", createdAt: iso(30) },
-  { id: 7004, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "MARKETING", agreed: false, agreedAt: null, revokedAt: iso(10), source: "SETTINGS", createdAt: iso(30) },
+  { id: 7001, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "TERMS", consentVersion: "v2026.07", agreed: true, agreedAt: iso(30), revokedAt: null, source: "SIGNUP", createdAt: iso(30) },
+  { id: 7002, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "PRIVACY", consentVersion: "v2026.07", agreed: true, agreedAt: iso(30), revokedAt: null, source: "SIGNUP", createdAt: iso(30) },
+  { id: 7003, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "AI_DATA", consentVersion: "v2026.07", agreed: true, agreedAt: iso(30), revokedAt: null, source: "SIGNUP", createdAt: iso(30) },
+  { id: 7004, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "RESUME_ANALYSIS", consentVersion: "v2026.07", agreed: true, agreedAt: iso(30), revokedAt: null, source: "SIGNUP", createdAt: iso(30) },
+  { id: 7005, userId: USER_ID, userEmail: "demo@careertuner.dev", consentType: "MARKETING", consentVersion: "v2026.07", agreed: false, agreedAt: null, revokedAt: iso(10), source: "SETTINGS", createdAt: iso(10) },
 ];
+let consentHistorySeq = 7005;
 
 const consentStatus: ConsentStatus = {
   termsAgreed: true,
   privacyAgreed: true,
   aiDataAgreed: true,
+  resumeAnalysisAgreed: true,
   marketingAgreed: false,
   requiredConsentsMissing: false,
   history: consentHistory,
@@ -225,23 +289,48 @@ function applyConsents(body: unknown): ConsentStatus {
     termsAgreed?: boolean;
     privacyAgreed?: boolean;
     aiDataAgreed?: boolean;
+    resumeAnalysisAgreed?: boolean;
     marketingAgreed?: boolean;
   };
-  if (typeof request.termsAgreed === "boolean") consentStatus.termsAgreed = request.termsAgreed;
-  if (typeof request.privacyAgreed === "boolean") consentStatus.privacyAgreed = request.privacyAgreed;
-  if (typeof request.aiDataAgreed === "boolean") consentStatus.aiDataAgreed = request.aiDataAgreed;
-  if (typeof request.marketingAgreed === "boolean") consentStatus.marketingAgreed = request.marketingAgreed;
+  recordMockConsent("TERMS", "termsAgreed", request.termsAgreed);
+  recordMockConsent("PRIVACY", "privacyAgreed", request.privacyAgreed);
+  recordMockConsent("AI_DATA", "aiDataAgreed", request.aiDataAgreed);
+  recordMockConsent("RESUME_ANALYSIS", "resumeAnalysisAgreed", request.resumeAnalysisAgreed);
+  recordMockConsent("MARKETING", "marketingAgreed", request.marketingAgreed);
   recomputeRequiredMissing();
   return consentStatus;
 }
 
-function revokeAiConsent(): ConsentStatus {
-  consentStatus.aiDataAgreed = false;
-  const aiRow = consentStatus.history.find((row) => row.consentType === "AI_DATA");
-  if (aiRow) {
-    aiRow.agreed = false;
-    aiRow.revokedAt = new Date().toISOString();
-  }
+type ConsentStatusKey = "termsAgreed" | "privacyAgreed" | "aiDataAgreed" | "resumeAnalysisAgreed" | "marketingAgreed";
+
+function recordMockConsent(consentType: string, key: ConsentStatusKey, agreed: boolean | undefined, source = "SETTINGS"): void {
+  if (typeof agreed !== "boolean" || consentStatus[key] === agreed) return;
+  consentStatus[key] = agreed;
+  const now = new Date().toISOString();
+  consentStatus.history.unshift({
+    id: ++consentHistorySeq,
+    userId: USER_ID,
+    userEmail: "demo@careertuner.dev",
+    consentType,
+    consentVersion: "v2026.07",
+    agreed,
+    agreedAt: agreed ? now : null,
+    revokedAt: agreed ? null : now,
+    source,
+    createdAt: now,
+  });
+}
+
+function revokeMockConsent(consentType: string): ConsentStatus {
+  const keys: Record<string, ConsentStatusKey> = {
+    terms: "termsAgreed",
+    privacy: "privacyAgreed",
+    "ai-data": "aiDataAgreed",
+    "resume-analysis": "resumeAnalysisAgreed",
+    marketing: "marketingAgreed",
+  };
+  const key = keys[consentType];
+  if (key) recordMockConsent(consentType.replace(/-/g, "_").toUpperCase(), key, false, "REVOKE");
   recomputeRequiredMissing();
   return consentStatus;
 }
@@ -252,6 +341,11 @@ export const profileRoutes: MockRoute[] = [
   // 프로필 조회/저장
   { method: "GET", pattern: /^\/profile$/, handler: () => demoProfile },
   { method: "PUT", pattern: /^\/profile$/, handler: ({ body }) => applyProfileUpdate(body) },
+  { method: "GET", pattern: /^\/profile\/portfolio-files$/, handler: () => demoPortfolioFiles },
+  { method: "POST", pattern: /^\/profile\/portfolio-files\/upload$/, handler: ({ body }) => uploadMockPortfolio(body) },
+  { method: "POST", pattern: /^\/profile\/portfolio-files\/link$/, handler: () => demoPortfolioFiles },
+  { method: "DELETE", pattern: /^\/profile\/portfolio-files\/(\d+)$/, handler: ({ params }) => deleteMockPortfolio(params[0]) },
+  { method: "GET", pattern: /^\/file\/(\d+)\/content$/, handler: ({ params }) => mockPortfolioContent(params[0]) },
 
   // 프로필 AI 도구
   { method: "POST", pattern: /^\/profile\/ai\/summary$/, handler: () => demoAiSummary },
@@ -261,5 +355,6 @@ export const profileRoutes: MockRoute[] = [
   // 동의(설정 > AI 데이터/개인정보 탭)
   { method: "GET", pattern: /^\/consents\/me$/, handler: () => consentStatus },
   { method: "POST", pattern: /^\/consents\/me$/, handler: ({ body }) => applyConsents(body) },
-  { method: "POST", pattern: /^\/consents\/ai\/revoke$/, handler: () => revokeAiConsent() },
+  { method: "POST", pattern: /^\/consents\/ai\/revoke$/, handler: () => revokeMockConsent("ai-data") },
+  { method: "POST", pattern: /^\/consents\/([^/]+)\/revoke$/, handler: ({ params }) => revokeMockConsent(params[0] ?? "") },
 ];

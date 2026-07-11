@@ -119,6 +119,8 @@ public class RefundRequestService {
         if (payment == null || !"PAID".equalsIgnoreCase(payment.getStatus())) {
             throw new BusinessException(ErrorCode.CONFLICT, "결제 상태가 변경되어 환불 승인할 수 없습니다.");
         }
+        // AI 사용권/크레딧 정산과 같은 사용자→잔액 잠금 순서를 맞춰 동시 환불-사용 데드락을 피한다.
+        mapper.lockUserForRefund(payment.getUserId());
         if ("CREDIT".equalsIgnoreCase(payment.getProductType())) {
             reclaimPurchasedCredits(payment);
         } else if (PRODUCT_SUBSCRIPTION.equalsIgnoreCase(payment.getProductType())) {

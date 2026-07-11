@@ -63,7 +63,7 @@ export function DeviceHandoffCard({
 
   return (
     <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-6 text-center">
-      <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-white text-indigo-500 shadow-sm">
+      <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-white text-[#6366f1] shadow-sm">
         <Icon className="size-6" />
       </div>
       <p className="mt-3 text-sm font-bold text-slate-800">{copy.title}</p>

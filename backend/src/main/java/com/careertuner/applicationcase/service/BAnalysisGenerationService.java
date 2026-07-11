@@ -214,27 +214,100 @@ public class BAnalysisGenerationService {
                 properties.getLocalLlm().getModel());
     }
 
+    // ── strict 수동 재분석: 고른 provider 하나만. 교차 폴백·self-rules 안전망 없음, 실패는 그대로 throw. ──
+    // 자동 체인(위 generateJobAnalysis/generateCompanyAnalysis)은 무수정 — strict 는 별도 경로다.
+
+    /**
+     * strict 공고분석 — 고른 provider 1개만 시도한다. LOCAL 은 {@code maxRetries} 만큼 동일 provider 재시도,
+     * hosted(CLAUDE/OPENAI)는 단일 호출(통신 재시도는 각 client 내부). 교차 폴백·self-rules 없음 —
+     * 실패하면 마지막 예외를 그대로 던져 호출부가 기존 분석을 보존하게 한다. {@code attempts} 는 실제 시도
+     * 순서(strict 라 전부 같은 provider; LOCAL 재시도 시 복수).
+     */
+    public StrictJobResult generateJobAnalysisStrict(ApplicationCase applicationCase, String postingText,
+                                                     BAnalysisProvider provider) {
+        if (!providerAvailable(provider)) {
+            throw new IllegalStateException(provider.label() + " 모델을 사용할 수 없습니다.");
+        }
+        Classification classification = sentenceClassifier.classify(postingText);
+        List<BAnalysisProvider> attempts = new ArrayList<>();
+        int maxAttempts = provider == BAnalysisProvider.LOCAL ? 1 + properties.getLocalLlm().getMaxRetries() : 1;
+        RuntimeException lastError = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            attempts.add(provider);
+            try {
+                JobAnalysisPayload payload = attemptJob(provider, applicationCase, postingText, classification);
+                log.info("Strict job analysis ({}) succeeded (attempt {}/{})", provider, attempt, maxAttempts);
+                return new StrictJobResult(payload, List.copyOf(attempts));
+            } catch (RuntimeException ex) {
+                lastError = ex;
+                log.warn("Strict job analysis ({}) attempt {}/{} failed: {}", provider, attempt, maxAttempts, safeMessage(ex));
+            }
+        }
+        throw lastError != null ? lastError : new IllegalStateException("Strict job analysis failed for " + provider);
+    }
+
+    /** 단일 job provider 1회 시도(strict 전용) — 자동 체인의 per-provider 로직과 동일하되 폴백 없이 하나만. */
+    private JobAnalysisPayload attemptJob(BAnalysisProvider provider, ApplicationCase applicationCase,
+                                          String postingText, Classification classification) {
+        return switch (provider) {
+            case LOCAL -> {
+                String content = localLlmClient.chat(JobAnalysisPromptCatalog.SYSTEM_PROMPT,
+                        jobPrompt(applicationCase, postingText, classification), jobAnalysisSchema());
+                JobAnalysisPayload payload = parseLocalJobPayload(content, postingText,
+                        properties.getLocalLlm().getModel(), classification);
+                validateGrounding(payload, postingText);
+                yield payload;
+            }
+            case CLAUDE -> {
+                String content = anthropicClient.chat(JobAnalysisPromptCatalog.SYSTEM_PROMPT,
+                        jobPrompt(applicationCase, postingText, classification), jobAnalysisSchema());
+                JobAnalysisPayload payload = parseLocalJobPayload(content, postingText,
+                        anthropicClient.model(), classification);
+                validateGrounding(payload, postingText);
+                yield payload;
+            }
+            case OPENAI -> withDedupedEvidence(openAiResponsesClient.analyzeJobPosting(applicationCase, postingText));
+        };
+    }
+
+    /**
+     * strict 기업분석 — 고른 provider 1개만. LOCAL 재시도·hosted 단일. 교차 폴백·self-rules 없음, 실패는 throw.
+     * 웹 근거는 비-모델 보조 입력이라 있으면 쓰고 없으면 공고-only(그건 strict 실패가 아니다 — 모델 provider 만 strict).
+     */
+    public StrictCompanyResult generateCompanyAnalysisStrict(ApplicationCase applicationCase, String postingText,
+                                                             List<CompanyWebEvidence> webEvidence,
+                                                             BAnalysisProvider provider) {
+        if (!providerAvailable(provider)) {
+            throw new IllegalStateException(provider.label() + " 모델을 사용할 수 없습니다.");
+        }
+        Classification classification = sentenceClassifier.classify(postingText);
+        List<CompanyWebEvidence> usableWeb = usableWebEvidence(webEvidence);
+        boolean includeWeb = !usableWeb.isEmpty();
+        List<BAnalysisProvider> attempts = new ArrayList<>();
+        int maxAttempts = provider == BAnalysisProvider.LOCAL ? 1 + properties.getLocalLlm().getMaxRetries() : 1;
+        RuntimeException lastError = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            attempts.add(provider);
+            try {
+                CompanyAnalysisPayload payload = attemptCompany(provider, applicationCase, postingText,
+                        classification, usableWeb, includeWeb);
+                log.info("Strict company analysis ({}) succeeded (attempt {}/{})", provider, attempt, maxAttempts);
+                return new StrictCompanyResult(payload, List.copyOf(attempts));
+            } catch (RuntimeException ex) {
+                lastError = ex;
+                log.warn("Strict company analysis ({}) attempt {}/{} failed: {}", provider, attempt, maxAttempts, safeMessage(ex));
+            }
+        }
+        throw lastError != null ? lastError : new IllegalStateException("Strict company analysis failed for " + provider);
+    }
+
     /** 웹 근거 없는 기존 진입점(auto pipeline 등). 빈 목록으로 overload 에 위임해 현행 동작을 유지한다. */
     public GeneratedCompanyAnalysis generateCompanyAnalysis(ApplicationCase applicationCase, String postingText) {
         return generateCompanyAnalysis(applicationCase, postingText, List.of());
     }
 
-    /** 기업분석 provider. 우선순위는 {@code careertuner.b-analysis.company.provider} 로 결정한다. */
-    private enum CompanyProvider {
-        LOCAL("Local LLM"),
-        CLAUDE("Claude"),
-        OPENAI("OpenAI");
-
-        private final String label;
-
-        CompanyProvider(String label) {
-            this.label = label;
-        }
-
-        String label() {
-            return label;
-        }
-    }
+    // 기업분석 provider 는 공유 타입 {@link BAnalysisProvider} 를 쓴다(job strict·등록 검증과 값 분기 방지).
+    // 우선순위는 {@code careertuner.b-analysis.company.provider} 로 결정한다.
 
     /**
      * 회사 분석 폴백 체인(공고+WEB 2소스 · 235 §1·§3). 1순위 provider 는
@@ -253,8 +326,8 @@ public class BAnalysisGenerationService {
         boolean includeWeb = !usableWeb.isEmpty();
         String lastError = null;
 
-        for (CompanyProvider provider : companyProviderOrder()) {
-            if (!companyProviderAvailable(provider)) {
+        for (BAnalysisProvider provider : companyProviderOrder()) {
+            if (!providerAvailable(provider)) {
                 continue;
             }
             try {
@@ -290,21 +363,34 @@ public class BAnalysisGenerationService {
      * 기업분석 provider 시도 순서를 config 로 정한다. 어떤 값이든 세 provider 를 모두 포함하되 순서만 바꾸며,
      * 미설정/비활성 provider 는 상위 루프에서 건너뛴다. 기본(auto)은 현행과 동일(R1 → Claude → OpenAI).
      */
-    private List<CompanyProvider> companyProviderOrder() {
+    private List<BAnalysisProvider> companyProviderOrder() {
         String raw = properties.getCompany().getProvider();
         String provider = raw == null ? "auto" : raw.trim().toLowerCase(Locale.ROOT);
         return switch (provider) {
-            case "openai" -> List.of(CompanyProvider.OPENAI, CompanyProvider.CLAUDE, CompanyProvider.LOCAL);
-            case "claude", "anthropic" -> List.of(CompanyProvider.CLAUDE, CompanyProvider.OPENAI, CompanyProvider.LOCAL);
-            default -> List.of(CompanyProvider.LOCAL, CompanyProvider.CLAUDE, CompanyProvider.OPENAI);
+            case "openai" -> List.of(BAnalysisProvider.OPENAI, BAnalysisProvider.CLAUDE, BAnalysisProvider.LOCAL);
+            case "claude", "anthropic" -> List.of(BAnalysisProvider.CLAUDE, BAnalysisProvider.OPENAI, BAnalysisProvider.LOCAL);
+            default -> List.of(BAnalysisProvider.LOCAL, BAnalysisProvider.CLAUDE, BAnalysisProvider.OPENAI);
         };
     }
 
-    private boolean companyProviderAvailable(CompanyProvider provider) {
+    /** provider 사용 가능 여부(job·company 공용) — LOCAL=Ollama 활성, CLAUDE/OPENAI=키 설정. */
+    private boolean providerAvailable(BAnalysisProvider provider) {
         return switch (provider) {
             case LOCAL -> properties.getLocalLlm().isEnabled();
             case CLAUDE -> anthropicClient.configured();
             case OPENAI -> openAiResponsesClient.configured();
+        };
+    }
+
+    /** 단일 기업분석 provider 1회 시도(공통) — 자동 체인·strict 재분석이 함께 쓴다. */
+    private CompanyAnalysisPayload attemptCompany(BAnalysisProvider provider, ApplicationCase applicationCase,
+                                                  String postingText, Classification classification,
+                                                  List<CompanyWebEvidence> usableWeb, boolean includeWeb) {
+        return switch (provider) {
+            case LOCAL -> attemptLocalCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
+            case CLAUDE -> attemptClaudeCompany(applicationCase, postingText, classification, usableWeb, includeWeb);
+            case OPENAI -> openAiResponsesClient.analyzeCompany(applicationCase, postingText,
+                    properties.getCompany().getOpenAiModel(), webEvidenceBlock(usableWeb));
         };
     }
 
@@ -1699,5 +1785,13 @@ public class BAnalysisGenerationService {
         public boolean fellBack() {
             return fallbackReason != null;
         }
+    }
+
+    /** strict 공고 재분석 결과 — payload + 실제 시도 provider 순서(전부 같은 provider; LOCAL 재시도 시 복수). */
+    public record StrictJobResult(JobAnalysisPayload payload, List<BAnalysisProvider> attempts) {
+    }
+
+    /** strict 기업 재분석 결과 — payload + 실제 시도 provider 순서. */
+    public record StrictCompanyResult(CompanyAnalysisPayload payload, List<BAnalysisProvider> attempts) {
     }
 }

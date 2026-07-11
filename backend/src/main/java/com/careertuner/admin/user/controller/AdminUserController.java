@@ -27,6 +27,7 @@ import com.careertuner.admin.user.dto.AdminUserLoginHistoryRow;
 import com.careertuner.admin.user.dto.AdminUserRow;
 import com.careertuner.admin.user.dto.AdminUserStatusUpdateRequest;
 import com.careertuner.admin.user.service.AdminUserService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -37,6 +38,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/users")
+@RequireAdminPermission({"USER_READ", "MEMBER_ADMIN"})
 @RequiredArgsConstructor
 public class AdminUserController {
 
@@ -90,6 +92,7 @@ public class AdminUserController {
 
     /** 일괄 작업 — 현재는 status(상태 일괄 변경)만 지원. */
     @PostMapping("/bulk/{action}")
+    @RequireAdminPermission({"USER_STATUS_WRITE", "BLOCK_MANAGE", "MEMBER_ADMIN"})
     public ApiResponse<BulkActionResult> bulk(@AuthenticationPrincipal AuthUser authUser,
                                               @PathVariable String action,
                                               @RequestBody BulkRequest request) {
@@ -114,6 +117,7 @@ public class AdminUserController {
     }
 
     @PatchMapping("/{id}/status")
+    @RequireAdminPermission({"USER_STATUS_WRITE", "BLOCK_MANAGE", "MEMBER_ADMIN"})
     public ApiResponse<AdminUserRow> updateStatus(@AuthenticationPrincipal AuthUser authUser,
                                                   @PathVariable Long id,
                                                   @Valid @RequestBody AdminUserStatusUpdateRequest request) {

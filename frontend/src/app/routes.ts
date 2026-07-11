@@ -20,6 +20,7 @@ import { ServiceInfoPage } from "./pages/ServiceInfo";
 import { SupportPage } from "./pages/Support";
 import { CompanyPage } from "./pages/Company";
 import { LegalPage } from "./pages/Legal";
+import { NotFoundPage } from "./pages/NotFound";
 import { LoginPage } from "./pages/Login";
 import { AuthCallbackPage } from "./pages/AuthCallback";
 import { SocialConsentPage } from "./pages/SocialConsent";
@@ -43,10 +44,18 @@ import { JobDetailPage } from "@/features/jobboard/pages/JobDetailPage";
 import { MobileSessionsPage } from "@/features/interview/pages/MobileSessionsPage";
 import { MobileSessionThreadPage } from "@/features/interview/pages/MobileSessionThreadPage";
 import { MicRemotePage } from "@/features/interview/pages/MicRemotePage";
+import { withConsentGate } from "./auth/ConsentGate";
 
 const basename = import.meta.env.BASE_URL === "/"
   ? "/"
   : import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const ConsentAIInterviewPage = withConsentGate(AIInterviewPage, ["AI_DATA"]);
+const ConsentMobileSessionsPage = withConsentGate(MobileSessionsPage, ["AI_DATA"]);
+const ConsentMobileSessionThreadPage = withConsentGate(MobileSessionThreadPage, ["AI_DATA"]);
+const ConsentMicRemotePage = withConsentGate(MicRemotePage, ["AI_DATA"]);
+const ConsentCorrectionPage = withConsentGate(CorrectionPage, ["AI_DATA"]);
+const ConsentAnalysisPage = withConsentGate(AnalysisPage, ["AI_DATA"]);
 
 export const router = createBrowserRouter([
   {
@@ -62,15 +71,15 @@ export const router = createBrowserRouter([
       { path: "applications/:id/:section/:mode", Component: ApplicationDetailPage },
       { path: "applications/:id/:section", Component: ApplicationDetailPage },
       { path: "applications/:id", Component: ApplicationDetailPage },
-      { path: "interview", Component: AIInterviewPage },
+      { path: "interview", Component: ConsentAIInterviewPage },
       // 모바일 세션 스레드(Claude 앱 문법) — 하단 탭 "세션" + 디스패치 딥링크 진입 (interview 소유, D)
-      { path: "m/sessions", Component: MobileSessionsPage },
+      { path: "m/sessions", Component: ConsentMobileSessionsPage },
       { path: "m/mfa-approvals", Component: MfaApprovalsPage },
-      { path: "m/session/:id", Component: MobileSessionThreadPage },
+      { path: "m/session/:id", Component: ConsentMobileSessionThreadPage },
       // 폰 마이크 핸드오프 송신 페이지 — 데스크탑 음성면접의 원격 마이크 (interview 소유, D)
-      { path: "mic-remote", Component: MicRemotePage },
-      { path: "correction", Component: CorrectionPage },
-      { path: "analysis", Component: AnalysisPage },
+      { path: "mic-remote", Component: ConsentMicRemotePage },
+      { path: "correction", Component: ConsentCorrectionPage },
+      { path: "analysis", Component: ConsentAnalysisPage },
       { path: "planner", Component: PlannerPage },
       { path: "messenger", Component: MessengerPage },
       { path: "community", Component: CommunityPage },
@@ -109,7 +118,9 @@ export const router = createBrowserRouter([
       { path: "company/social", Component: CompanyPage },
       { path: "legal/terms", Component: LegalPage },
       { path: "legal/privacy", Component: LegalPage },
+      { path: "legal/marketing", Component: LegalPage },
       { path: "legal/ai-data-consent", Component: LegalPage },
+      { path: "legal/resume-analysis-consent", Component: LegalPage },
       { path: "legal/copyright", Component: LegalPage },
       { path: "login", Component: LoginPage },
       { path: "auth/callback", Component: AuthCallbackPage },
@@ -123,6 +134,8 @@ export const router = createBrowserRouter([
       { path: "auth/mfa", Component: MfaLoginPage },
       { path: "notifications", Component: NotificationPage },
       ...adminRoutes,
+      // catch-all 404 — 죽은 링크가 라우터 기본 오류 화면 대신 스타일된 안내로 떨어진다.
+      { path: "*", Component: NotFoundPage },
     ],
   },
 ], { basename });

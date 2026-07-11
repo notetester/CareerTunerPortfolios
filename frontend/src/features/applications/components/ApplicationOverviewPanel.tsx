@@ -38,13 +38,14 @@ import {
 import { formatKoreaDate } from "../utils/dateFormat";
 import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
 import { ApplicationStatusBadge } from "./ApplicationStatusBadge";
+import { OcrRetryButton } from "./OcrRetryButton";
 
 interface ApplicationOverviewPanelProps {
   applicationCase: ApplicationCase;
   extraction?: ApplicationCaseExtraction | null;
   retryingExtraction?: boolean;
   onUpdate(request: UpdateApplicationCaseRequest): Promise<void>;
-  onRetryExtraction?(): Promise<ApplicationCaseExtraction | null>;
+  onRetryExtraction?(ocrProvider: string): Promise<ApplicationCaseExtraction | null>;
   onDelete?(): Promise<void>;
 }
 
@@ -345,17 +346,12 @@ export function ApplicationOverviewPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <ApplicationExtractionBadge extraction={extraction} />
                 {extraction.status === "FAILED" && onRetryExtraction && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
+                  <OcrRetryButton
+                    sourceType={extraction.sourceType}
+                    retrying={retryingExtraction}
+                    onRetry={(provider) => void onRetryExtraction(provider)}
                     className="h-7 border-red-200 px-2 text-xs text-red-700 hover:bg-red-50 hover:text-red-800"
-                    disabled={retryingExtraction}
-                    onClick={() => void onRetryExtraction()}
-                  >
-                    {retryingExtraction ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                    다시 추출
-                  </Button>
+                  />
                 )}
               </div>
               {extraction.status === "FAILED" && extraction.errorMessage && (

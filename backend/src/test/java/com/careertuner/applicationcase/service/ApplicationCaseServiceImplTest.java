@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
@@ -32,6 +33,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.dto.AiUsageFailureResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseFromJobPostingResponse;
 import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
@@ -42,6 +44,7 @@ import com.careertuner.applicationcase.dto.ConfirmJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.ReviewJobPostingExtractionRequest;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
@@ -591,7 +594,8 @@ class ApplicationCaseServiceImplTest {
         when(jobPostingService.saveUploadedJobPostingReferenceForNewCase(1L, 10L, file, "PDF"))
                 .thenReturn(postingResponse);
 
-        ApplicationCaseFromJobPostingResponse response = service.createFromJobPostingUpload(1L, file, "PDF", true);
+        ApplicationCaseFromJobPostingResponse response =
+                service.createFromJobPostingUpload(1L, file, "PDF", true, null, null, null);
 
         ArgumentCaptor<ApplicationCase> caseCaptor = ArgumentCaptor.forClass(ApplicationCase.class);
         ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
@@ -604,10 +608,56 @@ class ApplicationCaseServiceImplTest {
         assertThat(caseCaptor.getValue().isFavorite()).isTrue();
         assertThat(extractionCaptor.getValue().getSourceType()).isEqualTo("PDF");
         assertThat(extractionCaptor.getValue().getStatus()).isEqualTo("QUEUED");
+        // OCR provider 미선택 → 추출 큐에 NULL(기본 자동 체인).
+        assertThat(extractionCaptor.getValue().getOcrRequestedProvider()).isNull();
         assertThat(response.jobPosting()).isSameAs(postingResponse);
         assertThat(response.metadata().companyName()).isEqualTo("\uAE30\uC5C5\uBA85 \uD655\uC778 \uD544\uC694");
         assertThat(response.metadata().deadlineDate()).isNull();
         assertThat(response.extractionJob().id()).isEqualTo(30L);
+    }
+
+    @Test
+    void createFromJobPostingUploadCreatesProfileWithSelectedProviders() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper,
+                mock(JobPostingReextractionService.class));
+        MultipartFile file = mock(MultipartFile.class);
+
+        doAnswer(invocation -> {
+            ((ApplicationCase) invocation.getArgument(0)).setId(12L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ((ApplicationCaseExtraction) invocation.getArgument(0)).setId(32L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(12L, 1L)).thenReturn(
+                ApplicationCase.builder().id(12L).userId(1L).sourceType("PDF").status("DRAFT").build());
+        when(jobPostingService.saveUploadedJobPostingReferenceForNewCase(1L, 12L, file, "PDF")).thenReturn(
+                new JobPostingResponse(22L, 12L, 1, null, "local:p.pdf", null, "PDF", LocalDateTime.now()));
+
+        // 업로드(PDF) 등록도 분석 모델 선택값을 보존해야 한다(기본 체인으로 조용히 바뀌면 안 됨).
+        service.createFromJobPostingUpload(1L, file, "PDF", true, "claude", "openai", "self_ocr");
+
+        ArgumentCaptor<ApplicationCaseInitialRun> captor = ArgumentCaptor.forClass(ApplicationCaseInitialRun.class);
+        verify(initialRunMapper).insertPending(captor.capture());
+        assertThat(captor.getValue().getApplicationCaseId()).isEqualTo(12L);
+        assertThat(captor.getValue().getJobAnalysisProvider()).isEqualTo("CLAUDE");
+        assertThat(captor.getValue().getCompanyAnalysisProvider()).isEqualTo("OPENAI");
+        // OCR 선택값도 추출 큐에 정규화되어 스냅샷된다(self_ocr → SELF_OCR).
+        ArgumentCaptor<ApplicationCaseExtraction> extractionCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
+        verify(extractionMapper).insertApplicationCaseExtraction(extractionCaptor.capture());
+        assertThat(extractionCaptor.getValue().getOcrRequestedProvider()).isEqualTo("SELF_OCR");
     }
 
     @Test
@@ -1333,6 +1383,238 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
+    void createJobAnalysisRejectedWhileInitialRunInProgress() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+        // 초기 자동 파이프라인이 아직 RUNNING → 사용자의 수동 재분석은 CONFLICT 로 막는다.
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("RUNNING"));
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+
+        verify(jobAnalysisService, never()).createJobAnalysis(anyLong(), anyLong());
+    }
+
+    @Test
+    void createCompanyAnalysisRejectedWhileInitialRunPending() {
+        CompanyAnalysisService companyAnalysisService = mock(CompanyAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                mock(JobAnalysisService.class), companyAnalysisService, initialRunMapper);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("PENDING"));
+
+        assertThatThrownBy(() -> service.createCompanyAnalysis(1L, 10L))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+
+        verify(companyAnalysisService, never()).createCompanyAnalysis(anyLong(), anyLong());
+    }
+
+    @Test
+    void manualAnalysisProceedsWhenInitialRunFinishedOrAbsent() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        CompanyAnalysisService companyAnalysisService = mock(CompanyAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, companyAnalysisService, initialRunMapper);
+        // 프로필이 DONE 이면(또는 아예 없으면) 기존 재분석 경로를 그대로 통과시킨다.
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("DONE"));
+        when(initialRunMapper.findByApplicationCaseId(11L)).thenReturn(null);
+
+        service.createJobAnalysis(1L, 10L);
+        service.createCompanyAnalysis(1L, 11L);
+
+        verify(jobAnalysisService).createJobAnalysis(1L, 10L);
+        verify(companyAnalysisService).createCompanyAnalysis(1L, 11L);
+    }
+
+    // ── strict 수동 재분석: 컨트롤러 → provider 필수 overload. 누락·무효 400(부수효과·guard 전), 초기실행 409,
+    //    strict overload 위임, 무인자 자동 메서드 미호출. ──
+
+    @Test
+    void strictJobAnalysisRejectsMissingProviderBeforeGuardAndDelegate() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(initialRunMapper, never()).findByApplicationCaseId(anyLong()); // provider 검증이 guard 보다 먼저
+        verify(jobAnalysisService, never()).createJobAnalysisStrict(anyLong(), anyLong(), any());
+        verify(jobAnalysisService, never()).createJobAnalysis(anyLong(), anyLong()); // 무인자 자동 경로 미도달
+    }
+
+    @Test
+    void strictJobAnalysisRejectsInvalidProvider() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L, "GEMINI"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(jobAnalysisService, never()).createJobAnalysisStrict(anyLong(), anyLong(), any());
+        verify(jobAnalysisService, never()).createJobAnalysis(anyLong(), anyLong());
+    }
+
+    @Test
+    void strictJobAnalysisRejectedWhileInitialRunInProgress() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("RUNNING"));
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L, "CLAUDE"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+
+        verify(jobAnalysisService, never()).createJobAnalysisStrict(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void strictJobAnalysisRejectedWhileInitialRunPending() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("PENDING"));
+
+        assertThatThrownBy(() -> service.createJobAnalysis(1L, 10L, "CLAUDE"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.CONFLICT));
+
+        verify(jobAnalysisService, never()).createJobAnalysisStrict(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void strictJobAnalysisDelegatesToStrictOverloadNotAutoMethod() {
+        JobAnalysisService jobAnalysisService = mock(JobAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                jobAnalysisService, mock(CompanyAnalysisService.class), initialRunMapper);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(initialRun("DONE"));
+
+        service.createJobAnalysis(1L, 10L, "claude"); // 대소문자 무시 정규화
+
+        verify(jobAnalysisService).createJobAnalysisStrict(1L, 10L, BAnalysisProvider.CLAUDE);
+        verify(jobAnalysisService, never()).createJobAnalysis(anyLong(), anyLong());
+    }
+
+    @Test
+    void strictCompanyAnalysisRejectsMissingProviderAndDelegatesWhenValid() {
+        CompanyAnalysisService companyAnalysisService = mock(CompanyAnalysisService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseServiceImpl service = serviceWithGuardCollaborators(
+                mock(JobAnalysisService.class), companyAnalysisService, initialRunMapper);
+
+        assertThatThrownBy(() -> service.createCompanyAnalysis(1L, 10L, "  "))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        verify(companyAnalysisService, never()).createCompanyAnalysisStrict(anyLong(), anyLong(), any());
+        verify(companyAnalysisService, never()).createCompanyAnalysis(anyLong(), anyLong());
+
+        when(initialRunMapper.findByApplicationCaseId(11L)).thenReturn(null);
+        service.createCompanyAnalysis(1L, 11L, "OPENAI");
+        verify(companyAnalysisService).createCompanyAnalysisStrict(1L, 11L, BAnalysisProvider.OPENAI);
+        verify(companyAnalysisService, never()).createCompanyAnalysis(anyLong(), anyLong());
+    }
+
+    // ── JobAnalysisService strict: 성공 시 6 provenance 저장, 실패 시 insert 없음·이전 상태 복원(기존 이력 보존). ──
+
+    @Test
+    void createJobAnalysisStrictStoresProvenanceOnSuccess() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
+
+        ApplicationCase applicationCase = applicationCase("READY");
+        JobPosting posting = jobPosting(30L, 2, "Java Spring REST API");
+        Usage usage = new Usage("claude-haiku", 100, 50, 150);
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(posting);
+        when(bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, "Java Spring REST API", BAnalysisProvider.CLAUDE))
+                .thenReturn(new BAnalysisGenerationService.StrictJobResult(jobAnalysisPayload(usage), List.of(BAnalysisProvider.CLAUDE)));
+        when(jobAnalysisMapper.findLatestJobAnalysisByCaseId(10L)).thenReturn(jobAnalysis());
+
+        service.createJobAnalysisStrict(1L, 10L, BAnalysisProvider.CLAUDE);
+
+        ArgumentCaptor<JobAnalysis> captor = ArgumentCaptor.forClass(JobAnalysis.class);
+        verify(jobAnalysisMapper).insertJobAnalysis(captor.capture());
+        JobAnalysis saved = captor.getValue();
+        assertThat(saved.getRequestedProvider()).isEqualTo("CLAUDE");
+        assertThat(saved.getActualProvider()).isEqualTo("CLAUDE");
+        assertThat(saved.getActualModel()).isEqualTo("claude-haiku");
+        assertThat(saved.getFallbackUsed()).isFalse();
+        assertThat(saved.getAttemptPath()).isEqualTo("[\"CLAUDE\"]");
+        assertThat(saved.getRunMode()).isEqualTo("MANUAL");
+        verify(statusService).markReadyAfterAnalysis(1L, 10L, "READY");
+    }
+
+    @Test
+    void createJobAnalysisStrictPreservesExistingOnFailure() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        JobAnalysisMapper jobAnalysisMapper = mock(JobAnalysisMapper.class);
+        BAnalysisGenerationService bAnalysisGenerationService = mock(BAnalysisGenerationService.class);
+        AiUsageLogService usageLogService = mock(AiUsageLogService.class);
+        ApplicationCaseAnalysisStatusService statusService = mock(ApplicationCaseAnalysisStatusService.class);
+        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        JobAnalysisService service = new JobAnalysisService(accessService, jobAnalysisMapper, bAnalysisGenerationService, usageLogService, statusService, transactionTemplate(), analysisJsonValidator(), mock(NotificationService.class));
+
+        ApplicationCase applicationCase = applicationCase("READY");
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(applicationCase);
+        when(jobPostingMapper.findLatestJobPostingByCaseId(10L)).thenReturn(jobPosting(30L, 2, "Java Spring REST API"));
+        when(bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, "Java Spring REST API", BAnalysisProvider.CLAUDE))
+                .thenThrow(new IllegalStateException("Claude 재분석 실패"));
+
+        assertThatThrownBy(() -> service.createJobAnalysisStrict(1L, 10L, BAnalysisProvider.CLAUDE))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any(JobAnalysis.class)); // 기존 이력 보존
+        verify(statusService).restorePreviousStatus(1L, 10L, "READY");
+    }
+
+    private static ApplicationCaseServiceImpl serviceWithGuardCollaborators(
+            JobAnalysisService jobAnalysisService,
+            CompanyAnalysisService companyAnalysisService,
+            ApplicationCaseInitialRunMapper initialRunMapper) {
+        return new ApplicationCaseServiceImpl(
+                mock(ApplicationCaseMapper.class),
+                mock(ApplicationCaseExtractionMapper.class),
+                mock(ApplicationCaseAccessService.class),
+                mock(JobPostingService.class),
+                jobAnalysisService,
+                companyAnalysisService,
+                mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class),
+                mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class),
+                initialRunMapper,
+                mock(JobPostingReextractionService.class));
+    }
+
+    private static ApplicationCaseInitialRun initialRun(String state) {
+        return ApplicationCaseInitialRun.builder()
+                .applicationCaseId(10L)
+                .state(state)
+                .build();
+    }
+
+    @Test
     void analysisStatusStartMapperRequiresSameRunnablePreviousStatus() throws Exception {
         String mapperXml = Files.readString(Path.of("src/main/resources/mapper/applicationcase/ApplicationCaseMapper.xml"));
 
@@ -1774,208 +2056,34 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
-    void retryJobPostingExtractionRequiresOwnedCaseAndQueuesFailedExtractionPosting() {
+    void retryJobPostingExtractionDelegatesToStrictReextraction() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
+        JobPostingReextractionService reextractionService = mock(JobPostingReextractionService.class);
         ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-        ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "PDF", "FAILED");
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper,
+                mock(ApplicationCaseExtractionMapper.class),
+                accessService,
+                mock(JobPostingService.class),
+                mock(JobAnalysisService.class),
+                mock(CompanyAnalysisService.class),
+                mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class),
+                mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class),
+                mock(ApplicationCaseInitialRunMapper.class),
+                reextractionService);
+        ApplicationCaseExtractionResponse expected =
+                ApplicationCaseExtractionResponse.from(extraction(41L, 10L, 20L, 1L, "PDF", "QUEUED"));
+        when(reextractionService.reextract(1L, 10L, "CLAUDE")).thenReturn(expected);
 
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
-        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
-                20L,
-                10L,
-                1,
-                null,
-                "local:application-postings/10/posting.pdf",
-                null,
-                "PDF",
-                null));
-        doAnswer(invocation -> {
-            ApplicationCaseExtraction retry = invocation.getArgument(0);
-            retry.setId(41L);
-            return null;
-        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        ApplicationCaseExtractionResponse response = service.retryJobPostingExtraction(1L, 10L, "CLAUDE");
 
-        ApplicationCaseExtractionResponse response = service.retryJobPostingExtraction(1L, 10L);
-
-        ArgumentCaptor<ApplicationCaseExtraction> retryCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
-        verify(applicationCaseMapper).findApplicationCaseByIdAndUserId(10L, 1L);
-        verify(extractionMapper).countActiveExtractionsByApplicationCaseId(10L);
-        verify(extractionMapper).findLatestExtractionByApplicationCaseId(10L);
-        verify(jobPostingService).getJobPostingByIdForCase(1L, 10L, 20L);
-        verify(extractionMapper).insertApplicationCaseExtraction(retryCaptor.capture());
-        assertThat(retryCaptor.getValue().getApplicationCaseId()).isEqualTo(10L);
-        assertThat(retryCaptor.getValue().getJobPostingId()).isEqualTo(20L);
-        assertThat(retryCaptor.getValue().getUserId()).isEqualTo(1L);
-        assertThat(retryCaptor.getValue().getSourceType()).isEqualTo("PDF");
-        assertThat(retryCaptor.getValue().getStatus()).isEqualTo("QUEUED");
-        assertThat(response.id()).isEqualTo(41L);
-        assertThat(response.status()).isEqualTo("QUEUED");
-    }
-
-    @Test
-    void retryJobPostingExtractionBlocksWhenAnyActiveExtractionExistsForCase() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(1);
-
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class);
-
-        verify(extractionMapper, never()).findLatestExtractionByApplicationCaseId(10L);
-        verify(jobPostingService, never()).getJobPosting(any(), any());
-        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
-    }
-
-    @Test
-    void retryJobPostingExtractionUsesFailedPdfPostingWhenLatestPostingIsText() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-        ApplicationCaseExtraction failed = extraction(50L, 10L, 20L, 1L, "PDF", "FAILED");
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
-        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
-                20L,
-                10L,
-                1,
-                null,
-                "local:application-postings/10/posting.pdf",
-                null,
-                "PDF",
-                null));
-        when(jobPostingService.getJobPosting(1L, 10L)).thenReturn(new JobPostingResponse(
-                99L,
-                10L,
-                2,
-                "manual corrected text",
-                null,
-                null,
-                "TEXT",
-                null));
-        doAnswer(invocation -> {
-            ApplicationCaseExtraction retry = invocation.getArgument(0);
-            retry.setId(51L);
-            return null;
-        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
-
-        ApplicationCaseExtractionResponse response = service.retryJobPostingExtraction(1L, 10L);
-
-        ArgumentCaptor<ApplicationCaseExtraction> retryCaptor = ArgumentCaptor.forClass(ApplicationCaseExtraction.class);
-        verify(jobPostingService).getJobPostingByIdForCase(1L, 10L, 20L);
-        verify(jobPostingService, never()).getJobPosting(1L, 10L);
-        verify(extractionMapper).insertApplicationCaseExtraction(retryCaptor.capture());
-        assertThat(retryCaptor.getValue().getJobPostingId()).isEqualTo(20L);
-        assertThat(retryCaptor.getValue().getSourceType()).isEqualTo("PDF");
-        assertThat(response.id()).isEqualTo(51L);
-    }
-
-    @Test
-    void retryJobPostingExtractionReportsConflictWhenGuardedInsertLosesRace() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-        ApplicationCaseExtraction failed = extraction(40L, 10L, 20L, 1L, "URL", "FAILED");
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L)).thenReturn(failed);
-        when(jobPostingService.getJobPostingByIdForCase(1L, 10L, 20L)).thenReturn(new JobPostingResponse(
-                20L,
-                10L,
-                1,
-                null,
-                "https://example.com/jobs/backend",
-                null,
-                "URL",
-                null));
-        doThrow(new DuplicateKeyException("uk_case_extraction_active"))
-                .when(extractionMapper)
-                .insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
-
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class)
-                .satisfies(throwable -> assertThat(((BusinessException) throwable).getErrorCode())
-                        .isEqualTo(ErrorCode.CONFLICT));
-    }
-
-    @Test
-    void retryJobPostingExtractionRejectsWhenLatestExtractionIsNotFailed() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-
-        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(ApplicationCase.builder()
-                .id(10L)
-                .userId(1L)
-                .build());
-        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
-        when(extractionMapper.findLatestExtractionByApplicationCaseId(10L))
-                .thenReturn(extraction(40L, 10L, 20L, 1L, "URL", "SUCCEEDED"));
-
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class);
-
-        verify(jobPostingService, never()).getJobPosting(any(), any());
-        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
-    }
-
-    @Test
-    void retryJobPostingExtractionStopsBeforeRetryLookupWhenCaseIsNotOwned() {
-        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
-        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
-        JobPostingService jobPostingService = mock(JobPostingService.class);
-        ApplicationCaseAccessService accessService = new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
-        ApplicationCaseServiceImpl service = applicationCaseService(applicationCaseMapper, extractionMapper, accessService,
-                jobPostingService, mock(OpenAiResponsesClient.class));
-
-        assertThatThrownBy(() -> service.retryJobPostingExtraction(1L, 10L))
-                .isInstanceOf(BusinessException.class);
-
-        verify(extractionMapper, never()).countActiveExtractionsByApplicationCaseId(any());
-        verify(extractionMapper, never()).findLatestExtractionByApplicationCaseId(any());
-        verify(jobPostingService, never()).getJobPosting(any(), any());
-        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        // 수동 재추출은 전용 strict 서비스에 위임된다. 진입검증·짧은 TX·strict OCR·상태 전이는
+        // JobPostingReextractionServiceTest 가 검증한다(초기 실행 프로필 reopen 은 폐지 — 여기서도 미주입).
+        assertThat(response).isSameAs(expected);
+        verify(reextractionService).reextract(1L, 10L, "CLAUDE");
     }
 
     private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
@@ -2030,6 +2138,143 @@ class ApplicationCaseServiceImplTest {
                 mock(ApplicationCaseAutoPipelineService.class));
     }
 
+    @Test
+    void createFromJobPostingCreatesPendingInitialRunProfileWithNormalizedProviders() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        NotificationMapper notificationMapper = mock(NotificationMapper.class);
+        ApplicationCaseAutoPipelineService autoPipelineService = mock(ApplicationCaseAutoPipelineService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), notificationMapper, autoPipelineService, initialRunMapper,
+                mock(JobPostingReextractionService.class));
+
+        doAnswer(invocation -> {
+            ((ApplicationCase) invocation.getArgument(0)).setId(10L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ((ApplicationCaseExtraction) invocation.getArgument(0)).setId(30L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(10L, 1L)).thenReturn(
+                ApplicationCase.builder().id(10L).userId(1L).sourceType("TEXT").status("DRAFT").build());
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(10L), any(JobPostingRequest.class)))
+                .thenReturn(new JobPostingResponse(20L, 10L, 1, "Acme backend role", null, null, "TEXT",
+                        LocalDateTime.now()));
+
+        // 선택값을 대/소문자 섞어 전달 → 정규화(대문자) + 알려진 값만 유지되는지 검증.
+        service.createFromJobPosting(1L, new CreateApplicationCaseFromJobPostingRequest(
+                "Acme backend role", null, null, "TEXT", true, "local", "OpenAI"));
+
+        ArgumentCaptor<ApplicationCaseInitialRun> captor = ArgumentCaptor.forClass(ApplicationCaseInitialRun.class);
+        verify(initialRunMapper).insertPending(captor.capture());
+        assertThat(captor.getValue().getApplicationCaseId()).isEqualTo(10L);
+        assertThat(captor.getValue().getJobAnalysisProvider()).isEqualTo("LOCAL");
+        assertThat(captor.getValue().getCompanyAnalysisProvider()).isEqualTo("OPENAI");
+    }
+
+    @Test
+    void createFromJobPostingRejectsUnknownProviderSelection() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper,
+                mock(JobPostingReextractionService.class));
+
+        doAnswer(invocation -> {
+            ((ApplicationCase) invocation.getArgument(0)).setId(11L);
+            return null;
+        }).when(applicationCaseMapper).insertApplicationCase(any(ApplicationCase.class));
+        doAnswer(invocation -> {
+            ((ApplicationCaseExtraction) invocation.getArgument(0)).setId(31L);
+            return null;
+        }).when(extractionMapper).insertApplicationCaseExtraction(any(ApplicationCaseExtraction.class));
+        when(applicationCaseMapper.findApplicationCaseByIdAndUserId(11L, 1L)).thenReturn(
+                ApplicationCase.builder().id(11L).userId(1L).sourceType("TEXT").status("DRAFT").build());
+        when(jobPostingService.saveJobPostingForExtractionQueue(eq(1L), eq(11L), any(JobPostingRequest.class)))
+                .thenReturn(new JobPostingResponse(21L, 11L, 1, "role", null, null, "TEXT", LocalDateTime.now()));
+
+        // 비어있지 않은 알 수 없는 provider = 유효하지 않은 명시 선택 → 조용히 null 로 바꾸지 않고 400 으로 거절.
+        assertThatThrownBy(() -> service.createFromJobPosting(1L, new CreateApplicationCaseFromJobPostingRequest(
+                "role", null, null, "TEXT", false, "gpt-9", null)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        // 잘못된 provider는 케이스·공고·추출 큐·프로필 이전에 거절 → 아무 부수효과 없음.
+        verify(applicationCaseMapper, never()).insertApplicationCase(any());
+        verify(jobPostingService, never()).saveJobPostingForExtractionQueue(any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        verify(initialRunMapper, never()).insertPending(any());
+    }
+
+    @Test
+    void createFromJobPostingUploadRejectsUnknownProviderBeforeStoringFile() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper,
+                mock(JobPostingReextractionService.class));
+        MultipartFile file = mock(MultipartFile.class);
+
+        assertThatThrownBy(() -> service.createFromJobPostingUpload(1L, file, "PDF", true, "gpt-9", null, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        // 파일 저장(saveUploadedJobPostingReferenceForNewCase) 이전에 거절 → orphan 파일·행 없음.
+        verify(applicationCaseMapper, never()).insertApplicationCase(any());
+        verify(jobPostingService, never()).saveUploadedJobPostingReferenceForNewCase(any(), any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        verify(initialRunMapper, never()).insertPending(any());
+    }
+
+    @Test
+    void createFromJobPostingUploadRejectsUnknownOcrProviderBeforeStoringFile() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        JobPostingMapper jobPostingMapper = mock(JobPostingMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        JobPostingService jobPostingService = mock(JobPostingService.class);
+        ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
+        ApplicationCaseAccessService accessService =
+                new ApplicationCaseAccessService(applicationCaseMapper, jobPostingMapper);
+        ApplicationCaseServiceImpl service = new ApplicationCaseServiceImpl(
+                applicationCaseMapper, extractionMapper, accessService, jobPostingService,
+                mock(JobAnalysisService.class), mock(CompanyAnalysisService.class), mock(JobAnalysisMapper.class),
+                mock(OpenAiResponsesClient.class), mock(NotificationMapper.class),
+                mock(ApplicationCaseAutoPipelineService.class), initialRunMapper,
+                mock(JobPostingReextractionService.class));
+        MultipartFile file = mock(MultipartFile.class);
+
+        // LOCAL 은 OCR 대상이 아니므로 OCR provider 로는 거절돼야 한다(분석 provider 집합과 다름).
+        assertThatThrownBy(() -> service.createFromJobPostingUpload(1L, file, "PDF", true, null, null, "local"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        verify(applicationCaseMapper, never()).insertApplicationCase(any());
+        verify(jobPostingService, never()).saveUploadedJobPostingReferenceForNewCase(any(), any(), any(), any());
+        verify(extractionMapper, never()).insertApplicationCaseExtraction(any());
+        verify(initialRunMapper, never()).insertPending(any());
+    }
+
     private static ApplicationCaseServiceImpl applicationCaseService(ApplicationCaseMapper applicationCaseMapper,
                                                                      ApplicationCaseExtractionMapper extractionMapper,
                                                                      ApplicationCaseAccessService accessService,
@@ -2047,7 +2292,9 @@ class ApplicationCaseServiceImplTest {
                 mock(JobAnalysisMapper.class),
                 openAiClient,
                 notificationMapper,
-                autoPipelineService);
+                autoPipelineService,
+                mock(ApplicationCaseInitialRunMapper.class),
+                mock(JobPostingReextractionService.class));
     }
 
     private static ApplicationCaseExtraction extraction(Long id,

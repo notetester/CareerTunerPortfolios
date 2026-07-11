@@ -13,6 +13,8 @@ import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.auth.service.EmailService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.common.web.FrontendReturnTarget;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.domain.UserResumeDetail;
 import com.careertuner.user.dto.AccountInfoResponse;
@@ -38,6 +40,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     private final ObjectMapper objectMapper;
     private final AuthMapper authMapper;
     private final EmailService emailService;
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver;
 
     @Override
     @Transactional(readOnly = true)
@@ -89,6 +92,12 @@ public class UserAccountServiceImpl implements UserAccountService {
     @Override
     @Transactional
     public void requestEmailRegistration(Long userId, String email) {
+        requestEmailRegistration(userId, email, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    @Transactional
+    public void requestEmailRegistration(Long userId, String email, FrontendReturnTarget returnTarget) {
         User user = requireUser(userId);
         String normalized = normalizeEmail(email);
         if (mapper.countByEmailExcludingUser(normalized, userId) > 0) {
@@ -104,10 +113,11 @@ public class UserAccountServiceImpl implements UserAccountService {
                 .email(normalized)
                 .token(UUID.randomUUID().toString())
                 .purpose(purpose)
+                .frontendClient(returnTarget.client())
                 .expiredAt(LocalDateTime.now().plusHours(24))
                 .build();
         authMapper.insertEmailVerification(verification);
-        emailService.sendVerificationEmail(normalized, verification.getToken());
+        emailService.sendVerificationEmail(normalized, verification.getToken(), returnTarget);
     }
 
     @Override

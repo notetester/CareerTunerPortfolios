@@ -57,13 +57,13 @@ JOB_POSTING_AI_WORKER_BASE_URL=http://job-posting-worker:8091
 For production scanned PDF/image handling, build the worker with the local OCR engine:
 
 ```powershell
-docker build --build-arg PYTHON_VERSION=3.13 --build-arg INSTALL_OCR=true -t careertuner-job-posting-worker:ocr ml\job-posting-worker
+docker build --build-arg PYTHON_VERSION=3.12 --build-arg INSTALL_OCR=true -t careertuner-job-posting-worker:ocr ml\job-posting-worker
 ```
 
 The worker uses existing OCR text first, then local PaddleOCR when `paddleocr`, `paddlepaddle`, and PDF support through `PyMuPDF` are installed. If the OCR engine is missing and no existing OCR text is available, OCR-candidate files fail closed with `ocr_not_executed`; OpenAI is not called automatically.
-The default non-OCR worker image uses the current Python runtime line. OCR-capable images currently pin `PYTHON_VERSION=3.13` because `paddlepaddle` does not publish Python 3.14 wheels yet.
+The default non-OCR Dockerfile build and CI unit-test runtime use the current Python runtime line. OCR-capable images support Python 3.12 and 3.13 because `paddlepaddle` does not publish Python 3.14 wheels yet. Docker Compose and production deploys pin `PYTHON_VERSION=3.12` to avoid the Python 3.13 native installation crashes observed on the WSL2 self-hosted runner.
 
-`JOB_POSTING_AI_CACHE_DIR` must point to a writable path. PaddleOCR stores downloaded models under this path; using a persistent volume avoids re-downloading models on every worker restart.
+The HTTP health endpoint starts before OCR model warm-up, so the worker remains observable while models initialize in the background. `JOB_POSTING_AI_CACHE_DIR` must point to a writable path. PaddleOCR and PaddleX store downloaded models under this path; Docker Compose mounts the persistent `job_posting_ai_cache` volume there to avoid re-downloading models on every worker restart.
 
 Worker endpoint:
 

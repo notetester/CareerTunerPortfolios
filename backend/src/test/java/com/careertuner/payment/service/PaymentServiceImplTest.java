@@ -67,6 +67,8 @@ class PaymentServiceImplTest {
         assertThat(response.orderName()).isEqualTo("Credit 1000");
         assertThat(response.amount()).isEqualTo(10000);
         assertThat(response.creditAmount()).isEqualTo(1000);
+        assertThat(response.successUrl()).isEqualTo("http://localhost:5173/billing/success");
+        assertThat(response.failUrl()).isEqualTo("http://localhost:5173/billing/fail");
 
         ArgumentCaptor<Payment> captor = ArgumentCaptor.forClass(Payment.class);
         verify(paymentMapper).insertPayment(captor.capture());
@@ -170,6 +172,7 @@ class PaymentServiceImplTest {
     @Test
     void confirmRejectsAlreadyPaidPayment() {
         Payment payment = payment("order-4", 1L, "CREDIT", "CREDIT_1000", null, 10000, 1000, "PAID");
+        payment.setPaymentKey("previous-pay-key");
         when(paymentMapper.findByOrderId("order-4")).thenReturn(payment);
 
         assertThatThrownBy(() -> service.confirm(1L, new TossPaymentConfirmRequest("pay-key", "order-4", 10000)))
@@ -178,6 +181,26 @@ class PaymentServiceImplTest {
                 .isEqualTo(ErrorCode.CONFLICT);
 
         verify(tossPaymentClient, never()).confirm(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void confirmReplaysSameAlreadyPaidRequestWithoutCallingTossOrGrantingAgain() {
+        Payment payment = payment("order-5", 1L, "CREDIT", "CREDIT_1000", null, 10000, 1000, "PAID");
+        payment.setPaymentKey("pay-key");
+        when(paymentMapper.findByOrderId("order-5")).thenReturn(payment);
+        when(paymentMapper.findUserCredit(1L)).thenReturn(1500);
+
+        TossPaymentConfirmResponse response = service.confirm(
+                1L,
+                new TossPaymentConfirmRequest("pay-key", "order-5", 10000));
+
+        assertThat(response.status()).isEqualTo("PAID");
+        assertThat(response.paymentKey()).isEqualTo("pay-key");
+        assertThat(response.balance()).isEqualTo(1500);
+        verify(tossPaymentClient, never()).confirm(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(paymentMapper, never()).markPaidIfReady(any(), any());
+        verify(billingService, never()).grantCreditsAfterPayment(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(rewardService, never()).grant(any(), any(), any(), any());
     }
 
     private static TossPaymentProperties tossProperties() {

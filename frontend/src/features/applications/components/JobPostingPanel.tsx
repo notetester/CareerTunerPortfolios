@@ -15,6 +15,7 @@ import {
   validateJobPostingFile,
 } from "../utils/jobPostingUpload";
 import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
+import { OcrRetryButton } from "./OcrRetryButton";
 
 interface JobPostingPanelProps {
   jobPosting: JobPosting | null;
@@ -31,7 +32,7 @@ interface JobPostingPanelProps {
   confirmExtractionError?: string | null;
   onSave(request: JobPostingRequest): Promise<JobPosting | null>;
   onUpload(sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">, file: File): Promise<JobPosting | null>;
-  onRetryExtraction?(): Promise<ApplicationCaseExtraction | null>;
+  onRetryExtraction?(ocrProvider: string): Promise<ApplicationCaseExtraction | null>;
   onReviewExtraction?(extractedText: string): Promise<ApplicationCaseExtraction | null>;
 }
 
@@ -239,17 +240,12 @@ export function JobPostingPanel({
               </Button>
             )}
             {extraction?.status === "FAILED" && onRetryExtraction && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
+              <OcrRetryButton
+                sourceType={extraction.sourceType}
+                retrying={retryingExtraction}
+                onRetry={(provider) => void onRetryExtraction(provider)}
                 className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-                disabled={retryingExtraction}
-                onClick={() => void onRetryExtraction()}
-              >
-                <RefreshCw className={`size-4 ${retryingExtraction ? "animate-spin" : ""}`} />
-                다시 추출
-              </Button>
+              />
             )}
             {extractionReviewRequired && onReviewExtraction && (
               <Button

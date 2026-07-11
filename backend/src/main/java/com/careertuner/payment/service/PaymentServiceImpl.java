@@ -152,6 +152,10 @@ public class PaymentServiceImpl implements PaymentService {
     public TossPaymentConfirmResponse confirm(Long userId, TossPaymentConfirmRequest request) {
         Payment payment = requireOwnedPayment(request.orderId(), userId);
         normalizePaymentProductType(payment);
+        TossPaymentConfirmResponse replayed = replayConfirmedPayment(payment, request);
+        if (replayed != null) {
+            return replayed;
+        }
         validateConfirmRequest(payment, request);
 
         ConfirmedPayment confirmed = tossPaymentClient.confirm(request.paymentKey(), request.orderId(), request.amount());
@@ -186,6 +190,26 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return confirmedResponse(payment, request.paymentKey(), balance);
+    }
+
+    /**
+     * 결제 성공 페이지 재진입이나 네트워크 재시도로 동일 confirm 요청이 반복되면
+     * Toss 승인과 크레딧/구독 지급을 다시 실행하지 않고 저장된 결과를 그대로 돌려준다.
+     * 이미 결제된 주문에 다른 paymentKey 또는 금액을 붙인 요청은 멱등 재시도가 아니므로 거부한다.
+     */
+    private TossPaymentConfirmResponse replayConfirmedPayment(
+            Payment payment,
+            TossPaymentConfirmRequest request) {
+        if (!STATUS_PAID.equals(payment.getStatus())) {
+            return null;
+        }
+        if (payment.getAmount() != request.amount()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "Payment amount does not match.");
+        }
+        if (isBlank(payment.getPaymentKey()) || !payment.getPaymentKey().equals(request.paymentKey())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "Payment was already confirmed with another payment key.");
+        }
+        return confirmedResponse(payment, payment.getPaymentKey(), requireUserCredit(payment.getUserId()));
     }
 
     @Override

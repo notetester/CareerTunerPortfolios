@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import {
   AlertCircle,
   ArchiveRestore,
@@ -36,6 +36,7 @@ import {
   getApplicationSourceLabel,
 } from "../types/applicationCase";
 import { ApplicationExtractionBadge } from "../components/ApplicationExtractionBadge";
+import { OcrRetryButton } from "../components/OcrRetryButton";
 import { useApplicationCaseExtractions } from "../hooks/useApplicationCaseExtractions";
 import type { ApplicationCaseExtraction } from "../types/applicationCase";
 import { formatKoreaDate } from "../utils/dateFormat";
@@ -100,6 +101,7 @@ function ApplicationCard({
   busy,
   retryingExtraction,
   mode,
+  detailSection = "overview",
   onToggleFavorite,
   onRestore,
   onHideFromTrash,
@@ -110,10 +112,12 @@ function ApplicationCard({
   busy: boolean;
   retryingExtraction: boolean;
   mode: ListMode;
+  /** 헤더 메뉴 의도(?tab=fit|strategy|learning) — 카드 클릭 시 이동할 상세 섹션. */
+  detailSection?: string;
   onToggleFavorite(applicationCase: ApplicationCase): void;
   onRestore(applicationCase: ApplicationCase): void;
   onHideFromTrash(applicationCase: ApplicationCase): void;
-  onRetryExtraction(applicationCase: ApplicationCase): void;
+  onRetryExtraction(applicationCase: ApplicationCase, ocrProvider: string): void;
 }) {
   const isTrash = mode === "trash";
   const title = (
@@ -130,7 +134,7 @@ function ApplicationCard({
           {isTrash ? (
             <div className="min-w-0 flex-1">{title}</div>
           ) : (
-            <Link to={`/applications/${applicationCase.id}/overview`} className="min-w-0 flex-1">
+            <Link to={`/applications/${applicationCase.id}/${detailSection}`} className="min-w-0 flex-1">
               {title}
             </Link>
           )}
@@ -190,17 +194,13 @@ function ApplicationCard({
         </div>
 
         {!isTrash && extraction?.status === "FAILED" && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
+          <OcrRetryButton
+            sourceType={extraction.sourceType}
+            retrying={retryingExtraction}
+            disabled={busy}
+            onRetry={(provider) => onRetryExtraction(applicationCase, provider)}
             className="w-fit border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-            disabled={busy || retryingExtraction}
-            onClick={() => onRetryExtraction(applicationCase)}
-          >
-            {retryingExtraction ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            다시 추출
-          </Button>
+          />
         )}
 
         <div className="mt-auto flex items-end justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
@@ -221,7 +221,7 @@ function ApplicationCard({
             )}
           </div>
           {!isTrash && (
-            <Link className="font-semibold text-blue-600 hover:text-blue-700" to={`/applications/${applicationCase.id}/overview`}>
+            <Link className="font-semibold text-blue-600 hover:text-blue-700" to={`/applications/${applicationCase.id}/${detailSection}`}>
               상세 보기
             </Link>
           )}
@@ -233,6 +233,11 @@ function ApplicationCard({
 
 export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
   const navigate = useNavigate();
+  // 헤더 하위메뉴(내 스펙과 비교·지원 전략·학습/자격증 추천)의 ?tab= 의도를 카드 클릭 목적지로 연결한다.
+  // 세 항목 모두 상세의 '적합도' 탭(비교/전략/학습 패널이 그 안에 있음)으로 딥링크.
+  const [searchParams] = useSearchParams();
+  const tabIntent = searchParams.get("tab");
+  const detailSection = tabIntent === "fit" || tabIntent === "strategy" || tabIntent === "learning" ? "fit" : "overview";
   const { loading: authLoading, isAuthenticated } = useAuth();
   const isTrash = mode === "trash";
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -571,10 +576,11 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
                 busy={busyId === applicationCase.id || retryingExtractionId === applicationCase.id}
                 retryingExtraction={retryingExtractionId === applicationCase.id}
                 mode={mode}
+                detailSection={detailSection}
                 onToggleFavorite={(item) => void handleToggleFavorite(item)}
                 onRestore={(item) => void handleRestore(item)}
                 onHideFromTrash={(item) => void handleHideFromTrash(item)}
-                onRetryExtraction={(item) => void retryExtraction(item.id)}
+                onRetryExtraction={(item, provider) => void retryExtraction(item.id, provider)}
               />
             ))}
           </div>

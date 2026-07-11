@@ -1,8 +1,9 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type PluginOption, type UserConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { sites } from './sites/vite-plugin'
 
 const publicBase = process.env.VITE_PUBLIC_BASE ?? '/'
 
@@ -18,13 +19,41 @@ function figmaAssetResolver() {
   }
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(async ({ mode }) => {
   // 환경 모드(.env.localhost/.env.tailscale/.env.aws/.env.domain)의 dev 프록시 대상.
   // 미지정 시 기존과 동일하게 로컬 백엔드(:8080). 상세: ../docs/ENVIRONMENTS.md
   const env = loadEnv(mode, __dirname, '')
   const proxyTarget = env.VITE_PROXY_TARGET || 'http://localhost:8080'
+  const sitesPlugins: PluginOption[] = []
 
-  return {
+  if (mode === 'sites') {
+    process.env.WRANGLER_WRITE_LOGS ??= 'false'
+    process.env.WRANGLER_LOG_PATH ??= '.wrangler/logs'
+    process.env.MINIFLARE_REGISTRY_PATH ??= '.wrangler/registry'
+
+    const { cloudflare } = await import('@cloudflare/vite-plugin')
+    sitesPlugins.push(
+      sites(),
+      cloudflare({
+        config: {
+          name: 'server',
+          main: './worker/index.ts',
+          compatibility_date: '2026-05-22',
+          compatibility_flags: ['nodejs_compat'],
+          assets: {
+            binding: 'ASSETS',
+            // 기본 auto-trailing-slash는 /applications/123 같은 SPA 딥링크를 /로 307 정규화한다.
+            // URL 표기는 React Router가 소유하므로 자산 계층의 HTML 경로 정규화를 끈다.
+            html_handling: 'none',
+            not_found_handling: 'single-page-application',
+            run_worker_first: ['/api', '/api/*', '/__backup/*'],
+          },
+        },
+      }),
+    )
+  }
+
+  const config: UserConfig = {
   base: publicBase,
   plugins: [
     figmaAssetResolver(),
@@ -60,13 +89,14 @@ export default defineConfig(({ mode }) => {
         navigateFallback: 'index.html',
         // /api 와 별도 정적 지식맵은 SPA 폴백/캐시 대상에서 제외한다.
         // Pages의 /Obsidian/* 요청을 index.html로 돌리면 React Router 404가 노출된다.
-        navigateFallbackDenylist: [/^\/api/, /\/Obsidian(?:\/|$)/],
+        navigateFallbackDenylist: [/^\/api/, /^\/__backup\//, /\/Obsidian(?:\/|$)/],
         cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Web Push 핸들러(push/notificationclick)를 생성 SW 에 합친다. public/push-sw.js 참고.
         importScripts: ['push-sw.js'],
       },
     }),
+    ...sitesPlugins,
   ],
   resolve: {
     alias: {
@@ -124,4 +154,6 @@ export default defineConfig(({ mode }) => {
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
   }
+
+  return config
 })

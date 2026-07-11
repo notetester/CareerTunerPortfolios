@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.admin.chatbot.dto.ThresholdPreviewResponse;
 import com.careertuner.admin.chatbot.service.AdminChatbotThresholdService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -19,6 +20,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot/threshold")
+@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminChatbotThresholdController {
 

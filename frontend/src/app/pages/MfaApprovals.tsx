@@ -83,7 +83,7 @@ export function MfaApprovalsPage() {
               {sortedItems.map((item) => (
                 <div
                   key={item.challengeToken}
-                  className={`rounded-xl border bg-white p-4 shadow-sm ${
+                  className={`rounded-xl border bg-card p-4 shadow-sm ${
                     item.challengeToken === targetToken ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200"
                   }`}
                 >

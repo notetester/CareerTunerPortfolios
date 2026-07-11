@@ -1,5 +1,7 @@
 package com.careertuner.admin.ops.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/action-logs")
+@RequireAdminPermission({"ADMIN_AUDIT_READ", "AUDIT_ADMIN", "POLICY_ADMIN"})
 @RequiredArgsConstructor
 public class AdminActionLogController {
 

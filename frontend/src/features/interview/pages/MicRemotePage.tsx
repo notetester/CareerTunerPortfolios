@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
 import { Loader2, Mic, MicOff, PhoneOff, Smartphone, Video } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
@@ -165,12 +165,12 @@ export function MicRemotePage() {
               기억해 뒀습니다. 로그인 후 이 화면으로 돌아오면 자동으로 채워져요.
             </p>
           )}
-          <a
-            href={`/login?returnTo=${encodeURIComponent(returnTo)}`}
+          <Link
+            to={`/login?returnTo=${encodeURIComponent(returnTo)}`}
             className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
           >
             로그인하러 가기
-          </a>
+          </Link>
         </div>
       </div>
     );

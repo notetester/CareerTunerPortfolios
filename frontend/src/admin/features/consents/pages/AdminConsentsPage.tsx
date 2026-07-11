@@ -8,7 +8,7 @@ import { Input } from "@/app/components/ui/input";
 import { getAdminConsents } from "../api";
 import type { AdminConsentView } from "../types";
 
-const consentTypes = ["", "TERMS", "PRIVACY", "AI_DATA", "MARKETING"];
+const consentTypes = ["", "TERMS", "PRIVACY", "AI_DATA", "RESUME_ANALYSIS", "MARKETING"];
 const consentStatuses = [
   { value: "", label: "전체 상태" },
   { value: "AGREED", label: "동의" },
@@ -49,7 +49,7 @@ export function AdminConsentsPage() {
       breadcrumb="동의 관리"
       title="동의 이력 관리"
       icon={ClipboardCheck}
-      desc="서비스 약관, 개인정보, AI 데이터, 마케팅 동의와 철회 이력을 조회합니다."
+      desc="서비스 약관, 개인정보, AI 데이터, 이력서 분석, 마케팅 동의와 철회 이력을 문서 버전별로 조회합니다."
       actions={(
         <Button variant="outline" onClick={() => void load()} disabled={loading}>
           <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
@@ -105,6 +105,7 @@ export function AdminConsentsPage() {
                   <th className="px-4 py-3">ID</th>
                   <th className="px-4 py-3">사용자</th>
                   <th className="px-4 py-3">동의 유형</th>
+                  <th className="px-4 py-3">문서 버전</th>
                   <th className="px-4 py-3">상태</th>
                   <th className="px-4 py-3">출처</th>
                   <th className="px-4 py-3">동의일</th>
@@ -121,6 +122,7 @@ export function AdminConsentsPage() {
                       <div className="text-xs text-slate-500">{row.userEmail || "-"}</div>
                     </td>
                     <td className="px-4 py-3">{row.consentType}</td>
+                    <td className="px-4 py-3">{row.consentVersion || "-"}</td>
                     <td className="px-4 py-3">
                       <Badge className={row.agreed && !row.revokedAt ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-700"}>
                         {row.agreed && !row.revokedAt ? "동의" : "미동의/철회"}
@@ -134,7 +136,7 @@ export function AdminConsentsPage() {
                 ))}
                 {!loading && rows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">동의 이력이 없습니다.</td>
+                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">동의 이력이 없습니다.</td>
                   </tr>
                 )}
               </tbody>

@@ -13,6 +13,7 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.consent.dto.ConsentRequest;
 import com.careertuner.consent.dto.ConsentStatusResponse;
 import com.careertuner.consent.dto.ConsentView;
+import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.consent.mapper.ConsentMapper;
 
 import lombok.RequiredArgsConstructor;
@@ -33,28 +34,42 @@ public class ConsentServiceImpl implements ConsentService {
     @Transactional
     public ConsentStatusResponse save(AuthUser authUser, ConsentRequest request, String source) {
         Long userId = requireUser(authUser);
-        if (!request.termsAgreed() || !request.privacyAgreed()) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "필수 약관과 개인정보 처리방침 동의가 필요합니다.");
+        if (request == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "동의 설정을 입력해 주세요.");
         }
-        insert(userId, "TERMS", request.termsAgreed(), source);
-        insert(userId, "PRIVACY", request.privacyAgreed(), source);
-        insert(userId, "AI_DATA", request.aiDataAgreed(), source);
-        insert(userId, "MARKETING", request.marketingAgreed(), source);
+        recordIfChanged(userId, ConsentType.TERMS, request.termsAgreed(), source);
+        recordIfChanged(userId, ConsentType.PRIVACY, request.privacyAgreed(), source);
+        recordIfChanged(userId, ConsentType.AI_DATA, request.aiDataAgreed(), source);
+        recordIfChanged(userId, ConsentType.RESUME_ANALYSIS, request.resumeAnalysisAgreed(), source);
+        recordIfChanged(userId, ConsentType.MARKETING, request.marketingAgreed(), source);
         return build(userId);
     }
 
     @Override
     @Transactional
     public ConsentStatusResponse revokeAi(AuthUser authUser) {
+        return revoke(authUser, ConsentType.AI_DATA);
+    }
+
+    @Override
+    @Transactional
+    public ConsentStatusResponse revoke(AuthUser authUser, ConsentType consentType) {
         Long userId = requireUser(authUser);
-        insert(userId, "AI_DATA", false, "REVOKE");
+        if (consentType == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "동의 유형을 입력해 주세요.");
+        }
+        recordIfChanged(userId, consentType, false, "REVOKE");
         return build(userId);
     }
 
     @Override
     public boolean hasCurrentConsent(Long userId, String consentType) {
-        ConsentView latest = mapper.findLatest(userId, consentType);
-        return latest != null && latest.isAgreed() && latest.getRevokedAt() == null;
+        ConsentType type = ConsentType.from(consentType);
+        ConsentView latest = mapper.findLatest(userId, type.name());
+        return latest != null
+                && latest.isAgreed()
+                && latest.getRevokedAt() == null
+                && type.currentVersion().equals(latest.getConsentVersion());
     }
 
     @Override
@@ -67,17 +82,30 @@ public class ConsentServiceImpl implements ConsentService {
 
     private ConsentStatusResponse build(Long userId) {
         List<ConsentView> history = mapper.findByUserId(userId);
-        boolean terms = hasCurrentConsent(userId, "TERMS");
-        boolean privacy = hasCurrentConsent(userId, "PRIVACY");
-        boolean aiData = hasCurrentConsent(userId, "AI_DATA");
-        boolean marketing = hasCurrentConsent(userId, "MARKETING");
-        return new ConsentStatusResponse(terms, privacy, aiData, marketing, !terms || !privacy, history);
+        boolean terms = hasCurrentConsent(userId, ConsentType.TERMS);
+        boolean privacy = hasCurrentConsent(userId, ConsentType.PRIVACY);
+        boolean aiData = hasCurrentConsent(userId, ConsentType.AI_DATA);
+        boolean resumeAnalysis = hasCurrentConsent(userId, ConsentType.RESUME_ANALYSIS);
+        boolean marketing = hasCurrentConsent(userId, ConsentType.MARKETING);
+        return new ConsentStatusResponse(
+                terms, privacy, aiData, resumeAnalysis, marketing, !terms || !privacy, history);
     }
 
-    private void insert(Long userId, String type, boolean agreed, String source) {
+    private void recordIfChanged(Long userId, ConsentType type, boolean agreed, String source) {
+        ConsentView latest = mapper.findLatest(userId, type.name());
+        boolean current = latest != null && latest.isAgreed() && latest.getRevokedAt() == null;
+        boolean currentVersion = latest != null && type.currentVersion().equals(latest.getConsentVersion());
+        if (latest != null && current == agreed && (!agreed || currentVersion)) {
+            return;
+        }
+        insert(userId, type, agreed, source);
+    }
+
+    private void insert(Long userId, ConsentType type, boolean agreed, String source) {
         mapper.insert(UserConsent.builder()
                 .userId(userId)
-                .consentType(type)
+                .consentType(type.name())
+                .consentVersion(type.currentVersion())
                 .agreed(agreed)
                 .agreedAt(agreed ? LocalDateTime.now() : null)
                 .revokedAt(agreed ? null : LocalDateTime.now())

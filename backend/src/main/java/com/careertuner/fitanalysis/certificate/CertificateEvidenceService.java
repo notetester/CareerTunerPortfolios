@@ -94,9 +94,11 @@ public class CertificateEvidenceService {
     }
 
     private CertificateEvidenceResponse professional(String cert) {
+        // 국가전문자격 시행일정 API(InquiryTestDatesNationalProfessionalQualificationSVC)가 존재하나 계열코드(seriesCd)
+        // 매핑표 미확보 + Q-Net 장애로 아직 연동하지 않았다 — 자동 확인 대상이 아니라는 표현 대신 '현재 미연동'으로 솔직하게.
         return new CertificateEvidenceResponse(cert, CertificateKind.NATIONAL_PROFESSIONAL.name(),
                 ScheduleEvidenceStatus.NOT_APPLICABLE.name(), null,
-                "국가전문자격은 종목별 시험일정 API 대상이 아니라, 시행기관 공식 페이지에서 일정을 확인해야 합니다.",
+                "국가전문자격 시험일정은 아직 자동 확인이 연동되지 않아, 시행기관 공식 페이지에서 일정을 확인해야 합니다.",
                 NATIONAL_SOURCE_NAME, NATIONAL_SOURCE_URL, List.of());
     }
 

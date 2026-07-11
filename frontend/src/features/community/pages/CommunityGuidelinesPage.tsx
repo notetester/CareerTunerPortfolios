@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router";
 import {
   ArrowLeft, Send, MessageCircle, RotateCcw, Check, X,
   UserX, Flame, FileX2, MegaphoneOff, ShieldAlert,
@@ -40,6 +41,7 @@ interface Props {
 }
 
 export function CommunityGuidelinesPage({ onBack }: Props) {
+  const navigate = useNavigate();
   const [data, setData] = useState<GuidelineData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -224,7 +226,7 @@ export function CommunityGuidelinesPage({ onBack }: Props) {
       <footer className="gl-foot">
         <p>이 가이드라인은 커뮤니티의 의견을 반영해 다듬어져요. 개정 시 시행 7일 전에 공지사항으로 안내합니다.</p>
         <div className="right">
-          <button className="gl-btn" onClick={() => window.location.href = "/support/contact"}>
+          <button className="gl-btn" onClick={() => navigate("/support/contact")}>
             <Mail />문의하기
           </button>
           <button className="gl-btn gl-btn--ink" onClick={onBack}>

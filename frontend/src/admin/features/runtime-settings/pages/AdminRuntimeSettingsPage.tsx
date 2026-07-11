@@ -169,9 +169,9 @@ export function AdminRuntimeSettingsPage() {
         />
       </div>
 
-      <div className="max-h-[60vh] overflow-auto rounded-xl border border-slate-200 bg-white">
+      <div className="max-h-[60vh] overflow-auto rounded-xl border border-slate-200 bg-card">
         <table className="w-full min-w-[900px] text-sm">
-          <thead className="sticky top-0 z-10 bg-white">
+          <thead className="sticky top-0 z-10 bg-card">
             <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
               <th className="px-3 py-2">키 / 이름</th>
               <th className="px-3 py-2">그룹</th>
@@ -194,7 +194,7 @@ export function AdminRuntimeSettingsPage() {
       </div>
 
       {/* 신규 설정 */}
-      <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+      <section className="mt-5 rounded-xl border border-slate-200 bg-card p-4">
         <h3 className="text-sm font-semibold text-slate-800">신규 설정 추가</h3>
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <input className="av-input" placeholder="설정 키(예: community.report.blur-threshold)" value={draft.settingKey}
@@ -218,7 +218,7 @@ export function AdminRuntimeSettingsPage() {
 
       {/* 변경 이력 */}
       {historyKey && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+        <section className="mt-5 rounded-xl border border-slate-200 bg-card p-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">변경 이력 — <span className="font-mono">{historyKey}</span></h3>
             <button type="button" className="av-btn text-xs" onClick={() => setHistoryKey(null)}>닫기</button>
@@ -322,7 +322,7 @@ function SettingsBackupSection({ flash, onImported }: { flash: (m: string) => vo
   };
 
   return (
-    <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+    <section className="mb-4 rounded-xl border border-slate-200 bg-card p-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-slate-800">설정 백업 / 복원</h3>

@@ -78,7 +78,7 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
   return (
     <div className="space-y-6">
       {/* 런타임 캐시 */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-card p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <DatabaseZap className="h-5 w-5 text-slate-500" />
@@ -108,7 +108,7 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
       </section>
 
       {/* 정책 피드 업로드 */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-card p-4">
         <div className="flex items-center gap-2">
           <Upload className="h-5 w-5 text-slate-500" />
           <h3 className="text-sm font-semibold text-slate-800">정책기관 피드 업로드 (CSV / JSON)</h3>
@@ -147,7 +147,7 @@ export function BlockEnginePanel({ flash }: { flash: (message: string) => void }
       </section>
 
       {/* IP 정책 배치 */}
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
+      <section className="rounded-xl border border-slate-200 bg-card p-4">
         <h3 className="text-sm font-semibold text-slate-800">IP 정책 배치</h3>
         <p className="mt-1 text-xs text-slate-500">
           배치를 끄면 하위 규칙이 캐시에서 제외되어 즉시 미적용됩니다. 켤 때는 하위 규칙을 함께 활성화(cascade)합니다.

@@ -5,8 +5,16 @@
  * - 키/플러그인 미설정: 브라우저/OS 권한 요청까지는 동작하고, 구독 생성은 건너뛴다(무해).
  */
 import { api } from "@/app/lib/api";
+import type { PluginListenerHandle } from "@capacitor/core";
+import {
+  PushNotifications,
+  type ActionPerformed,
+  type Channel,
+  type PushNotificationsPlugin,
+} from "@capacitor/push-notifications";
 import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
-import { isNativeApp, nativePlugin, platformName } from "./capacitor";
+import { safeInternalAppPath } from "@/features/notification/lib/navigationLink";
+import { isNativeApp, platformName } from "./capacitor";
 import { toAppPath } from "./deepLink";
 
 // 개발용 기본 VAPID 공개키(비밀 아님) — 백엔드 careertuner.push.vapid.public-key 기본값과 반드시 동일.
@@ -45,42 +53,57 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 }
 
 async function registerNative(): Promise<PushRegisterResult> {
-  interface CapPush {
-    requestPermissions: () => Promise<{ receive: string }>;
-    register: () => Promise<void>;
-    addListener: (event: string, cb: (data: { value?: string }) => void) => void;
-  }
-  const plugin = nativePlugin<CapPush>("PushNotifications");
-  if (!plugin) return "permission-only";
+  const plugin = PushNotifications;
   const perm = await plugin.requestPermissions();
   if (perm.receive !== "granted") return "denied";
   return await new Promise<PushRegisterResult>((resolve) => {
-    plugin.addListener("registration", (data) => {
-      const token = data.value;
-      if (!token) { resolve("permission-only"); return; }
-      // disablePush 에서 서버 등록을 지울 수 있게 토큰을 보관한다.
-      try { localStorage.setItem(FCM_TOKEN_KEY, token); } catch { /* no-op */ }
-      void api<void>("/notifications/push", {
-        method: "POST",
-        body: JSON.stringify({ kind: "FCM", token }),
-      }).then(() => resolve("subscribed")).catch(() => resolve("permission-only"));
-    });
-    void plugin.register();
+    // FCM 미설정(google-services 부재) 기기에서는 registration 이벤트가 영원히 오지 않아 호출부 버튼이
+    // 영구 busy 로 잠긴다 — registrationError 와 타임아웃으로 반드시 결착시킨다.
+    let settled = false;
+    let registrationHandled = false;
+    const listenerHandles: PluginListenerHandle[] = [];
+    const removeListeners = async () => {
+      const handles = listenerHandles.splice(0);
+      await Promise.allSettled(handles.map((handle) => handle.remove()));
+    };
+    const settle = (result: PushRegisterResult) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      void removeListeners().finally(() => resolve(result));
+    };
+    const timer = window.setTimeout(() => settle("permission-only"), 15_000);
+    const listenAndRegister = async () => {
+      try {
+        const errorHandle = await plugin.addListener("registrationError", () => {
+          if (settled || registrationHandled) return;
+          settle("permission-only");
+        });
+        listenerHandles.push(errorHandle);
+        if (settled) { await removeListeners(); return; }
+
+        const registrationHandle = await plugin.addListener("registration", (data) => {
+          if (settled || registrationHandled) return;
+          registrationHandled = true;
+          const token = data.value;
+          if (!token) { settle("permission-only"); return; }
+          // disablePush 에서 서버 등록을 지울 수 있게 토큰을 보관한다.
+          try { localStorage.setItem(FCM_TOKEN_KEY, token); } catch { /* no-op */ }
+          void api<void>("/notifications/push", {
+            method: "POST",
+            body: JSON.stringify({ kind: "FCM", token }),
+          }).then(() => settle("subscribed")).catch(() => settle("permission-only"));
+        });
+        listenerHandles.push(registrationHandle);
+        if (settled) { await removeListeners(); return; }
+
+        await plugin.register();
+      } catch {
+        settle("permission-only");
+      }
+    };
+    void listenAndRegister();
   });
-}
-
-interface CapPushChannel {
-  id: string;
-  name: string;
-  description?: string;
-  importance?: number;
-  sound?: string;
-  vibration?: boolean;
-}
-
-interface CapPushInit {
-  addListener: (event: string, cb: (data: unknown) => void) => void;
-  createChannel?: (channel: CapPushChannel) => Promise<void>;
 }
 
 /**
@@ -88,9 +111,9 @@ interface CapPushInit {
  * FCM 메시지가 androidChannelId 로 채널을 골라 수신자의 소리/진동 설정을 반영한다.
  * 채널 속성은 최초 생성 시 고정되므로(안드로이드 정책) 설정 조합별로 채널을 나눈다.
  */
-function createAndroidChannels(plugin: CapPushInit): void {
-  if (platformName() !== "android" || !plugin.createChannel) return;
-  const channels: CapPushChannel[] = [
+function createAndroidChannels(plugin: PushNotificationsPlugin): void {
+  if (platformName() !== "android") return;
+  const channels: Channel[] = [
     { id: "ct_alerts", name: "알림", description: "소리와 진동이 있는 기본 알림", importance: 4, vibration: true },
     { id: "ct_alerts_sound", name: "알림(소리만)", description: "소리만 울리는 알림", importance: 4, vibration: false },
     { id: "ct_alerts_vibrate", name: "알림(진동만)", description: "진동만 울리는 알림", importance: 4, sound: "", vibration: true },
@@ -115,31 +138,30 @@ export function initNativePush(navigate: (path: string) => void): void {
   if (nativePushInitialized || !isNativeApp()) return;
   nativePushInitialized = true;
 
-  const plugin = nativePlugin<CapPushInit>("PushNotifications");
-  if (!plugin) return;
+  const plugin = PushNotifications;
 
   createAndroidChannels(plugin);
 
   // 푸시 알림 탭(백그라운드/종료 상태 포함) → data.url 경로로 이동.
   try {
-    plugin.addListener("pushNotificationActionPerformed", (event) => {
-      const data = (event as { notification?: { data?: Record<string, unknown> } })?.notification?.data;
+    void plugin.addListener("pushNotificationActionPerformed", (event: ActionPerformed) => {
+      const data = event.notification.data as Record<string, unknown> | undefined;
       const url = data?.url;
       if (typeof url !== "string" || !url) return;
-      const path = url.startsWith("/") ? url : toAppPath(url);
+      const path = safeInternalAppPath(url.startsWith("/") ? url : toAppPath(url));
       if (path) navigate(path);
-    });
+    }).catch(() => {});
   } catch {
     /* 푸시 탭 이동은 보조라 실패해도 무시 */
   }
 
   // 포그라운드 수신 — 알림 스토어 폴링을 즉시 트리거해 뱃지/토스트를 갱신한다.
   try {
-    plugin.addListener("pushNotificationReceived", () => {
+    void plugin.addListener("pushNotificationReceived", () => {
       void useNotificationStore.getState().pollNotifications().catch(() => {
         /* no-op */
       });
-    });
+    }).catch(() => {});
   } catch {
     /* no-op */
   }
@@ -162,7 +184,13 @@ export async function enablePush(): Promise<PushRegisterResult> {
     return "permission-only";
   }
   try {
-    const reg = await navigator.serviceWorker.ready;
+    // 서비스워커가 등록되지 않은 환경(dev 서버 등)에서는 .ready 가 영원히 resolve 되지 않아
+    // 알림 토글이 잠긴다 — 5초 타임아웃으로 결착시킨다.
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 5_000)),
+    ]);
+    if (!reg) return "permission-only";
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),

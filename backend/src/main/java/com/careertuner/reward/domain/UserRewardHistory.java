@@ -16,6 +16,7 @@ public class UserRewardHistory {
     private Long id;
     private Long userId;
     private String eventCode;
+    private String idempotencyKey;
     private int pointDelta;
     private int creditDelta;
     private Integer levelBefore;

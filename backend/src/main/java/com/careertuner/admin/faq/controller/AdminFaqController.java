@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.admin.faq.dto.AdminFaqRequest;
 import com.careertuner.admin.faq.dto.AdminFaqResponse;
 import com.careertuner.admin.faq.service.AdminFaqService;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/faq")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
 @RequiredArgsConstructor
 public class AdminFaqController {
 

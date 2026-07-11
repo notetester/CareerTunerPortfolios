@@ -29,7 +29,7 @@ export function ProfileDetailPage() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-white p-1">
+          <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="account">
               <IdCard className="mr-1.5 size-4" />
               계정

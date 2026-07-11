@@ -48,7 +48,7 @@ export function useJobAnalysis(applicationCaseId: number | null, enabled = true)
     }
   }, [applicationCaseId, enabled]);
 
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (provider: string) => {
     const requestSeq = ++requestSeqRef.current;
     if (!applicationCaseId || !enabled) return null;
 
@@ -56,7 +56,7 @@ export function useJobAnalysis(applicationCaseId: number | null, enabled = true)
     setError(null);
     setReviewError(null);
     try {
-      const analysis = await createJobAnalysis(applicationCaseId);
+      const analysis = await createJobAnalysis(applicationCaseId, provider);
       const analysisHistory = await getJobAnalysisHistory(applicationCaseId);
       if (requestSeq !== requestSeqRef.current) return null;
       setJobAnalysis(analysis);

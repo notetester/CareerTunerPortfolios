@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
 import com.careertuner.interview.dto.GenerateFollowUpsRequest;
 import com.careertuner.interview.dto.GenerateQuestionsRequest;
@@ -42,6 +44,7 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/interview")
 @RequiredArgsConstructor
 @Validated
+@RequiresConsent(ConsentType.AI_DATA)
 public class InterviewController {
 
     private final InterviewService interviewService;

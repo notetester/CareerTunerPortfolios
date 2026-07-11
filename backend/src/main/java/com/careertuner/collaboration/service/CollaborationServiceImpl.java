@@ -993,7 +993,7 @@ public class CollaborationServiceImpl implements CollaborationService {
                 .targetId(targetId)
                 .title(title)
                 .message(message)
-                .link("/collaboration")
+                .link("/messenger")  // 프론트 라우트는 /messenger (구 /collaboration 은 미존재 — 알림 클릭 404 방지)
                 .build());
     }
 

@@ -143,6 +143,22 @@
             (#{applicationCaseId}, #{changedByUserId}, #{previousStatus}, #{newStatus}, #{memo})
     </insert>
 
+    <!-- 상태 변경 타임라인(관리자 상세) — 기록만 되고 아무도 읽지 않던 이력을 노출한다. -->
+    <select id="findStatusHistoryByCaseId" resultType="com.careertuner.applicationcase.domain.ApplicationCaseStatusHistory">
+        SELECT
+            h.id,
+            h.application_case_id AS applicationCaseId,
+            h.previous_status     AS previousStatus,
+            h.new_status          AS newStatus,
+            h.memo,
+            h.created_at          AS createdAt,
+            u.name                AS changedByName
+        FROM application_case_status_history h
+        LEFT JOIN users u ON u.id = h.changed_by_user_id
+        WHERE h.application_case_id = #{applicationCaseId}
+        ORDER BY h.created_at DESC, h.id DESC
+    </select>
+
     <select id="findLatestFitAnalysisByCaseId" resultType="com.careertuner.applicationcase.domain.FitAnalysis">
         SELECT *
         FROM fit_analysis

@@ -18,6 +18,7 @@ import com.careertuner.auth.domain.UserSocial;
 import com.careertuner.auth.dto.LoginRequest;
 import com.careertuner.auth.dto.LoginRequestContext;
 import com.careertuner.auth.dto.LoginResponse;
+import com.careertuner.auth.dto.EmailVerificationResult;
 import com.careertuner.auth.dto.MeResponse;
 import com.careertuner.auth.dto.MfaLoginStatusResponse;
 import com.careertuner.auth.dto.MfaLoginVerifyRequest;
@@ -34,6 +35,9 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.JwtTokenProvider;
 import com.careertuner.common.security.JwtTokenProvider.OauthState;
+import com.careertuner.common.web.FrontendReturnTarget;
+import com.careertuner.common.web.FrontendReturnUrlResolver;
+import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.reward.service.RewardService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.mapper.UserMapper;
@@ -59,6 +63,7 @@ public class AuthServiceImpl implements AuthService {
     private final SocialOAuthService socialOAuthService;
     private final MfaService mfaService;
     private final CareerTunerProperties props;
+    private final FrontendReturnUrlResolver frontendReturnUrlResolver;
     private final com.careertuner.activitylog.service.SecurityHistoryService securityHistoryService;
     /**
      * 로그인 실패 자동 잠금 정책(관리자 편집). OFF 면 무제약, ON 이면 정책값으로 잠근다.
@@ -80,6 +85,13 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public TokenResponse register(RegisterRequest request, LoginRequestContext context) {
+        return register(request, context, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    @Transactional
+    public TokenResponse register(RegisterRequest request, LoginRequestContext context,
+                                  FrontendReturnTarget returnTarget) {
         String email = normalizeOptionalEmail(request.email());
         if (email != null && userMapper.countByEmail(email) > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 사용 중인 이메일입니다.");
@@ -107,7 +119,7 @@ public class AuthServiceImpl implements AuthService {
         recordSignupConsents(user.getId(), request);
 
         if (email != null) {
-            issueEmailVerification(user);
+            issueEmailVerification(user, returnTarget);
         }
         // 회원가입 직후 자동 로그인 정책이므로 로그인 성공과 동일하게 접속 정보를 남긴다.
         userMapper.touchLastLoginAndResetFailures(user.getId());
@@ -255,10 +267,16 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public boolean verifyEmail(String token) {
+        return verifyEmailResult(token).success();
+    }
+
+    @Override
+    @Transactional
+    public EmailVerificationResult verifyEmailResult(String token) {
         EmailVerification ev = authMapper.findEmailVerificationByToken(token);
         if (ev == null || ev.isUsed()
                 || ev.getExpiredAt().isBefore(LocalDateTime.now())) {
-            return false;
+            return emailVerificationResult(false, ev);
         }
 
         if ("VERIFY".equals(ev.getPurpose())) {
@@ -267,40 +285,52 @@ public class AuthServiceImpl implements AuthService {
                 userMapper.markEmailVerified(ev.getUserId());
             }
             securityHistoryService.record("EMAIL_VERIFY", "COMPLETE", ev.getUserId(), true, null, null);
-            return true;
+            return emailVerificationResult(true, ev);
         }
 
         if ("EMAIL_CHANGE".equals(ev.getPurpose())) {
             User user = ev.getUserId() != null ? userMapper.findById(ev.getUserId()) : null;
             if (user == null || STATUS_DELETED.equals(user.getStatus())) {
-                return false;
+                return emailVerificationResult(false, ev);
             }
             String email = normalizeEmail(ev.getEmail());
             if (userMapper.countByEmailExcludingId(email, user.getId()) > 0) {
-                return false;
+                return emailVerificationResult(false, ev);
             }
             authMapper.markEmailVerificationUsed(ev.getId());
             userMapper.updateEmailAndMarkVerified(user.getId(), email);
             securityHistoryService.record("EMAIL_CHANGE", "COMPLETE", user.getId(), true, email, null);
-            return true;
+            return emailVerificationResult(true, ev);
         }
 
-        return false;
+        return emailVerificationResult(false, ev);
     }
 
     @Override
     @Transactional
     public void resendVerification(String email) {
+        resendVerification(email, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    @Transactional
+    public void resendVerification(String email, FrontendReturnTarget returnTarget) {
         User user = userMapper.findByEmail(normalizeEmail(email));
         if (user == null || user.isEmailVerified()) {
             return;
         }
-        issueEmailVerification(user);
+        issueEmailVerification(user, returnTarget);
     }
 
     @Override
     @Transactional
     public void requestFindId(String email, LoginRequestContext context) {
+        requestFindId(email, context, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    @Transactional
+    public void requestFindId(String email, LoginRequestContext context, FrontendReturnTarget returnTarget) {
         String normalizedEmail = normalizeEmail(email);
         User user = userMapper.findByEmail(normalizedEmail);
         recordSecurityEvent(user != null ? user.getId() : null, null, "FIND_ID", "REQUEST",
@@ -328,8 +358,9 @@ public class AuthServiceImpl implements AuthService {
         }
 
         authMapper.expireUnusedEmailVerifications(user.getEmail(), "FIND_ID");
-        EmailVerification verification = issueEmailVerification(user, "FIND_ID", LocalDateTime.now().plusMinutes(30));
-        emailService.sendFindIdEmail(user.getEmail(), verification.getToken());
+        EmailVerification verification = issueEmailVerification(
+                user, "FIND_ID", LocalDateTime.now().plusMinutes(30), returnTarget.client());
+        emailService.sendFindIdEmail(user.getEmail(), verification.getToken(), returnTarget);
         recordSecurityEvent(user.getId(), null, "FIND_ID", "ISSUE", normalizedEmail, user.getEmail(),
                 true, null, null, context);
     }
@@ -364,6 +395,13 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void requestPasswordReset(PasswordResetRequest request, LoginRequestContext context) {
+        requestPasswordReset(request, context, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    @Transactional
+    public void requestPasswordReset(PasswordResetRequest request, LoginRequestContext context,
+                                     FrontendReturnTarget returnTarget) {
         String identifier = normalizeLoginIdentifier(request.loginIdentifier());
         if (identifier == null || identifier.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "아이디 또는 이메일을 입력해 주세요.");
@@ -394,8 +432,8 @@ public class AuthServiceImpl implements AuthService {
         }
         recordLoginHistory(user.getId(), "PASSWORD_RESET", "LOCAL", method, identifier, true, null, context);
         authMapper.expireUnusedEmailVerifications(user.getEmail(), "RESET_PW");
-        EmailVerification verification = issueEmailVerification(user, "RESET_PW", 1);
-        emailService.sendPasswordResetEmail(user.getEmail(), verification.getToken());
+        EmailVerification verification = issueEmailVerification(user, "RESET_PW", 1, returnTarget.client());
+        emailService.sendPasswordResetEmail(user.getEmail(), verification.getToken(), returnTarget);
         recordSecurityEvent(user.getId(), null, "FIND_PASSWORD", "ISSUE", identifier, user.getEmail(),
                 true, null, null, context);
         securityHistoryService.record("RESET_PASSWORD", "REQUEST", user.getId(), true, identifier, null);
@@ -423,6 +461,13 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void requestDormantRelease(PasswordResetRequest request, LoginRequestContext context) {
+        requestDormantRelease(request, context, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    @Transactional
+    public void requestDormantRelease(PasswordResetRequest request, LoginRequestContext context,
+                                      FrontendReturnTarget returnTarget) {
         String email = normalizeEmail(request.loginIdentifier());
         if (email == null || email.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "이메일을 입력해 주세요.");
@@ -433,8 +478,9 @@ public class AuthServiceImpl implements AuthService {
         if (user == null || !STATUS_DORMANT.equals(user.getStatus())) {
             return;
         }
-        EmailVerification verification = issueEmailVerification(user, "DORMANT_RELEASE", 1);
-        emailService.sendDormantReleaseEmail(user.getEmail(), verification.getToken());
+        EmailVerification verification = issueEmailVerification(
+                user, "DORMANT_RELEASE", 1, returnTarget.client());
+        emailService.sendDormantReleaseEmail(user.getEmail(), verification.getToken(), returnTarget);
     }
 
     @Override
@@ -481,8 +527,13 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public String buildAuthorizationUrl(String provider) {
+        return buildAuthorizationUrl(provider, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    public String buildAuthorizationUrl(String provider, FrontendReturnTarget returnTarget) {
         String normalized = normalizeProvider(provider);
-        String state = jwtTokenProvider.createOauthState(normalized);
+        String state = jwtTokenProvider.createOauthState(normalized, returnTarget.client());
         if (!socialOAuthService.isConfigured(normalized)) {
             return buildMockAuthorizationUrl(normalized, state);
         }
@@ -491,11 +542,16 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public String buildSocialLinkUrl(Long userId, String provider) {
+        return buildSocialLinkUrl(userId, provider, frontendReturnUrlResolver.primary());
+    }
+
+    @Override
+    public String buildSocialLinkUrl(Long userId, String provider, FrontendReturnTarget returnTarget) {
         String normalized = normalizeProvider(provider);
         if (userMapper.findById(userId) == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "회원 정보를 찾을 수 없습니다.");
         }
-        String state = jwtTokenProvider.createOauthLinkState(normalized, userId);
+        String state = jwtTokenProvider.createOauthLinkState(normalized, userId, returnTarget.client());
         if (!socialOAuthService.isConfigured(normalized)) {
             return buildMockAuthorizationUrl(normalized, state);
         }
@@ -517,7 +573,7 @@ public class AuthServiceImpl implements AuthService {
                 throw new BusinessException(ErrorCode.UNAUTHORIZED, "잘못된 OAuth 연동 state입니다.");
             }
             linkSocial(oauthState.userId(), info, context);
-            return OAuthCallbackResult.linked(info.provider());
+            return OAuthCallbackResult.linked(info.provider(), oauthState.frontendClient());
         }
 
         User user = findOrCreateSocialUser(info);
@@ -527,7 +583,7 @@ public class AuthServiceImpl implements AuthService {
         userMapper.touchLastLoginAndResetFailures(user.getId());
         String identifier = info.email() != null ? info.email() : info.providerUserId();
         recordLoginHistory(user.getId(), "LOGIN", info.provider(), "OAUTH", identifier, true, null, context);
-        return OAuthCallbackResult.login(issueTokens(user, context));
+        return OAuthCallbackResult.login(issueTokens(user, context), oauthState.frontendClient());
     }
 
     @Override
@@ -547,7 +603,7 @@ public class AuthServiceImpl implements AuthService {
             }
             SocialUserInfo info = socialOAuthService.mockUserInfo(normalized, oauthState.userId());
             linkSocial(oauthState.userId(), info, context);
-            return OAuthCallbackResult.linked(info.provider());
+            return OAuthCallbackResult.linked(info.provider(), oauthState.frontendClient());
         }
 
         SocialUserInfo info = socialOAuthService.mockUserInfo(normalized, null);
@@ -559,7 +615,18 @@ public class AuthServiceImpl implements AuthService {
                 true, null, context);
         recordSecurityEvent(user.getId(), null, "SOCIAL_LOGIN", "MOCK_COMPLETE",
                 info.providerUserId(), user.getEmail(), true, null, info.provider(), context);
-        return OAuthCallbackResult.login(issueTokens(user, context));
+        return OAuthCallbackResult.login(issueTokens(user, context), oauthState.frontendClient());
+    }
+
+    @Override
+    public String resolveOAuthFrontendClient(String provider, String state) {
+        try {
+            String normalized = normalizeProvider(provider);
+            OauthState oauthState = jwtTokenProvider.parseOauthState(state, normalized);
+            return oauthState != null ? oauthState.frontendClient() : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private String buildMockAuthorizationUrl(String provider, String state) {
@@ -653,28 +720,39 @@ public class AuthServiceImpl implements AuthService {
                 info.providerUserId(), user.getEmail(), true, null, info.provider(), context);
     }
 
-    private void issueEmailVerification(User user) {
+    private void issueEmailVerification(User user, FrontendReturnTarget returnTarget) {
         if (user.getEmail() == null || user.getEmail().isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "이메일이 등록되지 않은 계정입니다.");
         }
-        EmailVerification verification = issueEmailVerification(user, "VERIFY", 24);
-        emailService.sendVerificationEmail(user.getEmail(), verification.getToken());
+        EmailVerification verification = issueEmailVerification(
+                user, "VERIFY", 24, returnTarget.client());
+        emailService.sendVerificationEmail(user.getEmail(), verification.getToken(), returnTarget);
     }
 
-    private EmailVerification issueEmailVerification(User user, String purpose, int validHours) {
-        return issueEmailVerification(user, purpose, LocalDateTime.now().plusHours(validHours));
+    private EmailVerification issueEmailVerification(User user, String purpose, int validHours,
+                                                      String frontendClient) {
+        return issueEmailVerification(user, purpose, LocalDateTime.now().plusHours(validHours), frontendClient);
     }
 
-    private EmailVerification issueEmailVerification(User user, String purpose, LocalDateTime expiredAt) {
+    private EmailVerification issueEmailVerification(User user, String purpose, LocalDateTime expiredAt,
+                                                      String frontendClient) {
         EmailVerification verification = EmailVerification.builder()
                 .userId(user.getId())
                 .email(user.getEmail())
                 .token(UUID.randomUUID().toString())
                 .purpose(purpose)
+                .frontendClient(frontendClient)
                 .expiredAt(expiredAt)
                 .build();
         authMapper.insertEmailVerification(verification);
         return verification;
+    }
+
+    private EmailVerificationResult emailVerificationResult(boolean success, EmailVerification verification) {
+        String frontendClient = verification != null
+                ? verification.getFrontendClient()
+                : FrontendReturnUrlResolver.PRIMARY_CLIENT;
+        return new EmailVerificationResult(success, frontendClient);
     }
 
     private TokenResponse issueTokens(User user, LoginRequestContext context) {
@@ -809,16 +887,18 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void recordSignupConsents(Long userId, RegisterRequest request) {
-        insertConsent(userId, "TERMS", true, "REGISTER");
-        insertConsent(userId, "PRIVACY", true, "REGISTER");
-        insertConsent(userId, "AI_DATA", Boolean.TRUE.equals(request.aiDataAgreed()), "REGISTER");
-        insertConsent(userId, "MARKETING", Boolean.TRUE.equals(request.marketingAgreed()), "REGISTER");
+        insertConsent(userId, ConsentType.TERMS, true, "REGISTER");
+        insertConsent(userId, ConsentType.PRIVACY, true, "REGISTER");
+        insertConsent(userId, ConsentType.AI_DATA, Boolean.TRUE.equals(request.aiDataAgreed()), "REGISTER");
+        insertConsent(userId, ConsentType.RESUME_ANALYSIS, Boolean.TRUE.equals(request.resumeAnalysisAgreed()), "REGISTER");
+        insertConsent(userId, ConsentType.MARKETING, Boolean.TRUE.equals(request.marketingAgreed()), "REGISTER");
     }
 
-    private void insertConsent(Long userId, String consentType, boolean agreed, String source) {
+    private void insertConsent(Long userId, ConsentType consentType, boolean agreed, String source) {
         authMapper.insertUserConsent(UserConsent.builder()
                 .userId(userId)
-                .consentType(consentType)
+                .consentType(consentType.name())
+                .consentVersion(consentType.currentVersion())
                 .agreed(agreed)
                 .agreedAt(agreed ? LocalDateTime.now() : null)
                 .revokedAt(agreed ? null : LocalDateTime.now())

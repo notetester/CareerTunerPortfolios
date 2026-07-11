@@ -234,7 +234,7 @@ export function AdminCompanyApplicationsPage() {
       {/* 반려 모달 — 사유 필수 */}
       {rejectTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
             <h2 className="text-base font-semibold text-slate-900">신청 반려 — {rejectTarget.companyName}</h2>
             <p className="mt-1 text-sm text-slate-500">반려 사유는 신청자에게 알림으로 전달됩니다.</p>
             <Textarea

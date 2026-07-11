@@ -26,9 +26,11 @@ npm run dev      # http://localhost:5173
 | `npm run dev` | 개발 서버 (HMR) — 로컬 백엔드(:8080) 프록시 |
 | `npm run dev:mock` | **백엔드 없이** mock 데모 모드로 개발 서버 실행 |
 | `npm run dev:tailscale` / `dev:aws` | 환경 모드로 개발 서버 실행 (`.env.<모드>` 로드) |
+| `npm run dev:sites` | Codex Sites Worker와 AWS API 프록시를 포함한 개발 서버 실행 |
 | `npm run build` | 프로덕션 빌드 (`dist/`) — API 는 상대경로 `/api` |
 | `npm run build:mock` | mock 데모 모드 프로덕션 빌드 (웹 데모/APK 용) |
 | `npm run build:tailscale` / `build:aws` / `build:domain` | 환경 모드 빌드 — `VITE_API_BASE_URL` 이 빌드에 박힌다 |
+| `npm run build:sites` | Codex Sites 배포 산출물(`dist/client`, `dist/server`) 생성 |
 | `npm run app:tailscale` | tailscale 모드 빌드 + `cap sync android` (실백엔드 APK 준비) |
 | `npm run preview` | 빌드 결과 미리보기 |
 | `npm run typecheck` | 타입 검사 (`tsc --noEmit`) |
@@ -50,6 +52,32 @@ npm run dev      # http://localhost:5173
 API 베이스는 `src/app/lib/apiBase.ts` 의 `apiBase()` 가 단일 소스다 —
 **런타임 오버라이드(네이티브 앱/dev 전용) → `VITE_API_BASE_URL` → 상대경로 `/api`** 순.
 네이티브 앱은 설정 → 계정 설정 → "서버 주소" 카드에서 재빌드 없이 백엔드 환경을 전환할 수 있다.
+
+### Codex Sites 백업 프런트
+
+`sites` 모드는 AWS 웹 프런트 장애 시 사용할 보조 SPA다. 브라우저는 같은 출처의 `/api`를 호출하고
+`worker/index.ts`가 요청을 고정된 AWS 운영 주소로 전달한다. Worker는 요청자를 `sites` named client로
+고정하고 브라우저가 보낸 frontend origin 식별값은 전달하지 않는다. `/__backup/health`는 AWS의 실제
+health 응답이 `UP`인지 확인하며 결과를 캐시하지 않는다.
+
+AWS 연결이 정상일 때는 실제 API와 데이터를 그대로 사용한다. 실제 API 요청이 네트워크 오류 또는
+502/503/504를 받은 뒤 전체 health도 실패한 경우에만 `outage-demo`로 전환해 기존 mock 데이터를 표시한다.
+장애 확인 전에는 선제 전환하지 않으며, 전환 뒤에만 복구 상태를 polling한다. 조회 요청은 확인된 장애에서
+같은 요청을 mock으로 대체하지만, 저장 요청은 운영 서버의 처리 여부가 불확실하므로 첫 요청을 실패 처리한다.
+사용자가 장애 체험 모드에서 다시 시도한 변경만 mock에 반영한다. 복구되면 페이지를 다시 불러 실제 데이터
+모드로 돌아간다. 상단 배너는 장애 데모의 입력·변경사항이 저장되지 않음을 항상 알린다. AutoPrep 스트림도
+첫 장애 요청은 실패 처리하고, 다음 재시도부터 저장되지 않는 6단계 시연 시퀀스를 사용한다.
+
+Sites 주소에서는 AWS 연결 여부와 관계없이 결제·환불 실행 UI를 비활성화하고, Worker와 백엔드의
+`@SitesFinancialMutation` 정책이 해당 요청을 403으로 차단한다. 소셜 로그인은 AWS가 정상일 때만 사용할 수
+있고 `outage-demo` 중에는 차단한다.
+
+이 구성은 **프런트엔드 배포 백업**이며 Spring Boot, MySQL, OCR/AI 작업자를 복제하지 않는다.
+AWS API나 DB가 중단되면 실제 조회·저장·AI 처리는 할 수 없고 화면 체험만 유지된다. 완전한 장애 전환에는
+별도 백엔드/DB 복제와 데이터 동기화가 추가로 필요하다.
+
+Sites 주소는 운영 도메인과 별개이며 자동 DNS 전환을 제공하지 않는다. 기본 배포는 소유자 전용이므로
+팀·사용자에게 비상 링크를 공개할 때는 접근 범위를 별도로 승인하고 변경한다.
 
 ## 구조
 

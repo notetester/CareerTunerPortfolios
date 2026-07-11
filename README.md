@@ -36,11 +36,14 @@ npm run dev
 # http://localhost:5173  (/api 요청은 8080으로 프록시)
 ```
 
-**데이터베이스** — MySQL 8에 스키마 적용
+**데이터베이스** — MySQL 8 개발/demo DB에 스키마 적용
 ```bash
 mysql -u <user> -p <database> < backend/src/main/resources/db/schema.sql
 mysql -u <user> -p <database> < backend/src/main/resources/db/data.sql
 ```
+
+`data.sql`에는 공통 비밀번호를 사용하는 개발용 `SUPER_ADMIN`이 포함된다. 운영 DB에는 적용하지 말고,
+운영 관리자는 별도 one-time bootstrap 절차와 운영 비밀값으로 생성·승격한다.
 
 ## 데모 / 릴리즈
 
@@ -98,5 +101,5 @@ Spring Boot 4.1.0 · Java 21 · MyBatis · MySQL 8 · Spring Security · springd
 사용자 기능을 완료할 때 관련 관리자 화면과 관리자 API도 같은 릴리스의 완료 기준에 포함한다.
 공통 라우팅, 공통 컴포넌트, 공통 API, DB 구조, 인증/권한, AI 프롬프트 공통 엔진, 공통 로그 구조는 팀장 Owner 영역이므로 수정 전 팀 합의를 거친다.
 기능별 프롬프트와 기능별 운영 로그는 각 담당자의 하위 폴더에 둔다.
-고객센터/공지사항/FAQ/사용 가이드/문의하기는 `support`, 이용약관/개인정보처리방침/AI 데이터 이용 동의/저작권 정책은 `legal`,
+고객센터/공지사항/FAQ/사용 가이드/문의하기는 `support`, 이용약관/개인정보처리방침/AI 데이터 이용 동의/이력서 분석 동의/마케팅 동의/저작권 정책은 `legal`,
 기능 소개/서비스 소개는 `service`, 팀/채용/블로그/보도자료/공식 채널은 `company` 기능군으로 분리했다.

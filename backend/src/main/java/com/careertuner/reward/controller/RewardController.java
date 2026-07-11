@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.common.web.SitesFinancialMutation;
 import com.careertuner.reward.dto.CouponItem;
 import com.careertuner.reward.dto.CouponRedeemRequest;
 import com.careertuner.reward.dto.CouponRedeemResult;
@@ -43,6 +44,7 @@ public class RewardController {
     }
 
     /** 보유 CREDIT 쿠폰 즉시 사용(크레딧 적립). */
+    @SitesFinancialMutation
     @PostMapping("/coupons/redeem")
     public ApiResponse<CouponRedeemResult> redeem(@AuthenticationPrincipal AuthUser authUser,
                                                   @Valid @RequestBody CouponRedeemRequest request) {

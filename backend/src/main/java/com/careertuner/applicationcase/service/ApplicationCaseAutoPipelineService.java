@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -15,7 +16,9 @@ import org.springframework.stereotype.Service;
 
 import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.domain.ApplicationCase;
+import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.support.BDisplayTime;
+import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedCompanyAnalysis;
 import com.careertuner.applicationcase.service.BAnalysisGenerationService.GeneratedJobAnalysis;
@@ -71,6 +74,7 @@ public class ApplicationCaseAutoPipelineService {
             "Security", "OAuth", "JWT", "Agile", "Scrum");
 
     private final ApplicationCaseMapper applicationCaseMapper;
+    private final ApplicationCaseInitialRunMapper initialRunMapper;
     private final JobAnalysisMapper jobAnalysisMapper;
     private final CompanyAnalysisMapper companyAnalysisMapper;
     private final FitAnalysisMapper fitAnalysisMapper;
@@ -101,7 +105,13 @@ public class ApplicationCaseAutoPipelineService {
                                        Long jobPostingId,
                                        Integer jobPostingRevision,
                                        String postingText) {
-        if (!autoPipelineEnabled() || isBlank(postingText)) {
+        boolean pipelineEnabled = autoPipelineEnabled();
+        if (!pipelineEnabled || isBlank(postingText)) {
+            // 초기 실행이 여기서 끝나는데 프로필을 PENDING 으로 남기면 수동 분석 가드(CONFLICT)가 영구 차단된다
+            // (가드는 PENDING/RUNNING 차단, reaper 는 RUNNING 만 회수). FAILED 로 닫아 수동 분석 경로를 연다.
+            abandonInitialRunIfPending(applicationCaseId, pipelineEnabled
+                    ? "공고 원문이 비어 있어 초기 실행을 건너뛰었습니다."
+                    : "자동 파이프라인이 비활성화되어 초기 실행을 건너뛰었습니다.");
             return;
         }
 
@@ -110,11 +120,31 @@ public class ApplicationCaseAutoPipelineService {
                 userId);
         if (applicationCase == null) {
             recordFailure(userId, applicationCaseId, FEATURE_PIPELINE, "Application case not found.");
+            abandonInitialRunIfPending(applicationCaseId, "지원 건을 찾을 수 없어 초기 실행을 종료했습니다.");
             return;
         }
 
+        // 초기 실행 프로필 claim(PENDING→RUNNING) — 등록 경로가 만든 프로필이 있으면 반드시 획득해야
+        // 초기 파이프라인이 1회만 돈다(추출 확정이 두 번 불려도 두 번째는 claim 실패로 진입하지 않는다).
+        // 프로필이 없는 케이스(레거시·수동 create)는 토큰 없이 진행하되 아래 ANALYZING 진입게이트로만 가드한다.
+        String executionToken = null;
+        if (initialRunMapper.findByApplicationCaseId(applicationCaseId) != null) {
+            executionToken = UUID.randomUUID().toString();
+            if (initialRunMapper.claimForRun(applicationCaseId, executionToken) != 1) {
+                // 이미 다른 실행이 claim 했거나 완료/실패된 프로필 → 초기 파이프라인 재진입 금지.
+                return;
+            }
+        }
+
+        // ANALYZING 진입게이트 — 마킹(DRAFT|READY→ANALYZING CAS)에 성공해야만 파이프라인을 실행한다.
+        // 이미 ANALYZING/완료 등 실행 불가 상태면 중복 실행을 막기 위해 중단하고, claim 한 프로필은 FAILED 로 되돌린다.
         String previousStatus = applicationCase.getStatus();
-        boolean statusStarted = markAnalyzingIfRunnable(userId, applicationCaseId, previousStatus);
+        if (!markAnalyzingIfRunnable(userId, applicationCaseId, previousStatus)) {
+            markInitialRunFailed(applicationCaseId, executionToken,
+                    "지원 건 상태가 분석을 시작할 수 없습니다: " + previousStatus);
+            return;
+        }
+
         try {
             GeneratedJobAnalysis generatedJob = bAnalysisGenerationService.generateJobAnalysis(applicationCase, postingText);
             JobAnalysis jobAnalysis = createJobAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedJob);
@@ -126,17 +156,43 @@ public class ApplicationCaseAutoPipelineService {
             createCompanyAnalysis(applicationCase, jobPostingId, jobPostingRevision, generatedCompany, postingText, companyWebEvidence);
             createFitAnalysis(userId, applicationCaseId);
             createInterviewPrep(applicationCase, jobAnalysis);
-            if (statusStarted) {
-                applicationCaseMapper.markReadyAfterAnalysis(applicationCaseId, userId, previousStatus);
-                // 지원 건 분석 완료 리워드(규칙 on 일 때만). 예외를 흡수해 파이프라인 상태에 영향 없게 한다.
-                grantRewardSafely(userId, "APPLICATION_CASE_READY", "APPLICATION_CASE", applicationCaseId);
-            }
+            applicationCaseMapper.markReadyAfterAnalysis(applicationCaseId, userId, previousStatus);
+            markInitialRunDone(applicationCaseId, executionToken);
+            // 지원 건 분석 완료 리워드(규칙 on 일 때만). 예외를 흡수해 파이프라인 상태에 영향 없게 한다.
+            grantRewardSafely(userId, "APPLICATION_CASE_READY", "APPLICATION_CASE", applicationCaseId);
         } catch (RuntimeException ex) {
-            if (statusStarted) {
-                applicationCaseMapper.restoreAnalysisStatus(applicationCaseId, userId, previousStatus);
-            }
+            applicationCaseMapper.restoreAnalysisStatus(applicationCaseId, userId, previousStatus);
+            markInitialRunFailed(applicationCaseId, executionToken, safeMessage(ex));
             recordFailure(userId, applicationCaseId, FEATURE_PIPELINE, safeMessage(ex));
             log.warn("Self AI application-case pipeline failed. applicationCaseId={}", applicationCaseId, ex);
+        }
+    }
+
+    /**
+     * 초기 파이프라인이 실행되지 않은 채 끝나는 경로(비활성·원문 없음·케이스 없음·추출 실패 종결)에서
+     * PENDING 프로필을 FAILED 로 닫는다. PENDING 으로 남기면 수동 분석 가드가 CONFLICT 로 영구 차단되기 때문.
+     * claim(PENDING→RUNNING) 후 같은 토큰으로 markFailed — 프로필이 없거나 PENDING 이 아니면 claim 0행이라 무해.
+     * strict 재추출(retry)은 초기 실행 프로필을 되살리지 않는다(정책: 재추출 성공은 공고 revision 만 갱신,
+     * 자동 재분석 없음). 실패로 닫힌 프로필은 FAILED 로 남고 사용자가 모델을 골라 수동 분석한다.
+     */
+    public void abandonInitialRunIfPending(Long applicationCaseId, String reason) {
+        String executionToken = UUID.randomUUID().toString();
+        if (initialRunMapper.claimForRun(applicationCaseId, executionToken) == 1) {
+            initialRunMapper.markFailed(applicationCaseId, executionToken, truncate(reason, 1000));
+        }
+    }
+
+    /** 프로필을 claim 한 실행만(executionToken != null) 자신의 토큰으로 DONE 처리한다. */
+    private void markInitialRunDone(Long applicationCaseId, String executionToken) {
+        if (executionToken != null) {
+            initialRunMapper.markDone(applicationCaseId, executionToken);
+        }
+    }
+
+    /** 프로필을 claim 한 실행만(executionToken != null) 자신의 토큰으로 FAILED 처리한다(fencing). */
+    private void markInitialRunFailed(Long applicationCaseId, String executionToken, String reason) {
+        if (executionToken != null) {
+            initialRunMapper.markFailed(applicationCaseId, executionToken, truncate(reason, 1000));
         }
     }
 

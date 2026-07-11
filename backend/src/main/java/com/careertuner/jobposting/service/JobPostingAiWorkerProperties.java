@@ -26,4 +26,8 @@ public class JobPostingAiWorkerProperties {
     public String extractJobPostingUrl() {
         return baseUrl.replaceAll("/+$", "") + "/extract/job-posting";
     }
+
+    public String capabilitiesUrl() {
+        return baseUrl.replaceAll("/+$", "") + "/capabilities";
+    }
 }

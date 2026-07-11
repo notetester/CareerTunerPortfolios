@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.admin.chatbot.dto.AdminChatbotConversationRow;
 import com.careertuner.admin.chatbot.mapper.AdminChatbotConversationMapper;
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.ai.intake.IntakeAskService;
 import com.careertuner.common.security.AuthUser;
@@ -26,6 +27,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot/conversations")
+@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN", "AI_OPERATION_MANAGE", "AI_ADMIN"})
 @RequiredArgsConstructor
 public class AdminChatbotConversationController {
 

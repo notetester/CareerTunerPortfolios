@@ -1,5 +1,7 @@
 package com.careertuner.community.moderation.controller;
 
+import com.careertuner.admin.permission.annotation.RequireAdminPermission;
+
 import java.util.Map;
 
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,6 +26,7 @@ import com.careertuner.community.moderation.service.AdminTaggingService.BatchSta
 @RestController
 @RequestMapping("/api/admin/ai/tagging")
 @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
 public class AdminTaggingController {
 
     private final AdminTaggingService taggingService;

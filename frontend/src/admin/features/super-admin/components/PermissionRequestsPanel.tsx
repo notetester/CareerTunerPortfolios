@@ -49,7 +49,7 @@ export function PermissionRequestsPanel({ onChanged }: { onChanged?: () => void 
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
+    <section className="rounded-xl border border-slate-200 bg-card p-4">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-800">권한 요청 / 승인</h3>
         <div className="flex items-center gap-2">

@@ -119,7 +119,7 @@ export function AdminActivityLogsPage() {
         <span className="ml-auto text-sm text-slate-500">총 {total.toLocaleString()}건</span>
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-card">
         {tab === "activity" ? (
           <table className="w-full min-w-[900px] text-sm">
             <thead>

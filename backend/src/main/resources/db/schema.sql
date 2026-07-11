@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS email_verification (
     email       VARCHAR(255) NOT NULL,
     token       VARCHAR(255) NOT NULL,                           -- UUID
     purpose     VARCHAR(20)  NOT NULL DEFAULT 'VERIFY',          -- VERIFY/EMAIL_CHANGE/RESET_PW/FIND_ID/DORMANT_RELEASE
+    frontend_client VARCHAR(32) NOT NULL DEFAULT 'primary',      -- 결과를 돌려보낼 named frontend client
     expired_at  DATETIME     NOT NULL,
     used        TINYINT(1)   NOT NULL DEFAULT 0,
     used_at     DATETIME     NULL,
@@ -159,7 +160,8 @@ CREATE TABLE IF NOT EXISTS user_status_history (
 CREATE TABLE IF NOT EXISTS user_consent (
     id           BIGINT      NOT NULL AUTO_INCREMENT,
     user_id      BIGINT      NOT NULL COMMENT '동의 주체 회원 ID',
-    consent_type VARCHAR(40) NOT NULL COMMENT '동의 유형. TERMS/PRIVACY/AI_DATA/MARKETING',
+    consent_type VARCHAR(40) NOT NULL COMMENT '동의 유형. TERMS/PRIVACY/AI_DATA/RESUME_ANALYSIS/MARKETING',
+    consent_version VARCHAR(40) NOT NULL COMMENT '동의 시점의 법적 문서 버전',
     agreed       TINYINT(1)  NOT NULL COMMENT '동의 여부',
     agreed_at    DATETIME    NULL COMMENT '동의한 시각',
     revoked_at   DATETIME    NULL COMMENT '철회한 시각',
@@ -239,6 +241,7 @@ CREATE TABLE IF NOT EXISTS application_case_extraction (
     job_posting_id      BIGINT NULL,
     user_id             BIGINT NOT NULL,
     source_type         VARCHAR(20) NOT NULL,
+    ocr_requested_provider VARCHAR(20) NULL,                 -- 선택 OCR provider 스냅샷 (CLAUDE/OPENAI/SELF_OCR)
     status              VARCHAR(20) NOT NULL DEFAULT 'QUEUED',
     active_status_marker TINYINT GENERATED ALWAYS AS (
         CASE WHEN status IN ('QUEUED', 'RUNNING') THEN 1 ELSE NULL END
@@ -285,6 +288,12 @@ CREATE TABLE IF NOT EXISTS job_analysis (
     ambiguous_conditions JSON NULL,
     confirmed_at        DATETIME NULL,
     admin_memo          VARCHAR(2000) NULL,
+    requested_provider  VARCHAR(20) NULL,                    -- 선택 provider (LOCAL/CLAUDE/OPENAI)
+    actual_provider     VARCHAR(20) NULL,                    -- 실제 성공 provider
+    actual_model        VARCHAR(80) NULL,                    -- 실제 모델 ID
+    fallback_used       TINYINT(1) NULL,                     -- 폴백 여부(NULL=legacy/unknown)
+    attempt_path        JSON NULL,                           -- 시도한 provider 순서·결과
+    run_mode            VARCHAR(20) NULL,                    -- INITIAL/MANUAL (legacy=NULL)
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_job_analysis_case (application_case_id),
@@ -311,12 +320,39 @@ CREATE TABLE IF NOT EXISTS company_analysis (
     refresh_recommended_at DATETIME NULL,
     confirmed_at        DATETIME NULL,
     admin_memo          VARCHAR(2000) NULL,
+    requested_provider  VARCHAR(20) NULL,                    -- 선택 provider (OPENAI/CLAUDE/LOCAL)
+    actual_provider     VARCHAR(20) NULL,                    -- 실제 성공 provider
+    actual_model        VARCHAR(80) NULL,                    -- 실제 모델 ID
+    fallback_used       TINYINT(1) NULL,                     -- 폴백 여부(NULL=legacy/unknown)
+    attempt_path        JSON NULL,                           -- 시도한 provider 순서·결과
+    run_mode            VARCHAR(20) NULL,                    -- INITIAL/MANUAL (legacy=NULL)
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_company_analysis_case (application_case_id),
     KEY idx_company_analysis_posting (job_posting_id),
     CONSTRAINT fk_company_analysis_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE,
     CONSTRAINT fk_company_analysis_posting FOREIGN KEY (job_posting_id) REFERENCES job_posting (id) ON DELETE SET NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 지원 건별 초기 실행 프로필(모델 선택·재실행 Phase 1). 초기 자동 파이프라인의 "중복 진입 방지 + 늦은 완료
+-- fencing"을 제공한다(외부 모델 호출 포함이라 엄밀한 exactly-once 는 아니다). worker 추출성공/최초확정 경로가
+-- state 를 PENDING→RUNNING 으로 조건부 claim 하고, execution_token 으로 stale-reaper 의 늦은 갱신을 fencing 한다.
+-- OCR 선택값은 실행 주체(추출 워커)가 달라 application_case_extraction.ocr_requested_provider 에 스냅샷한다.
+CREATE TABLE IF NOT EXISTS application_case_initial_run (
+    application_case_id       BIGINT NOT NULL,
+    state                     VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING/RUNNING/DONE/FAILED
+    job_analysis_provider     VARCHAR(20) NULL,                       -- LOCAL/CLAUDE/OPENAI (미선택=NULL → 현행 체인)
+    company_analysis_provider VARCHAR(20) NULL,                       -- OPENAI/CLAUDE/LOCAL
+    execution_token           CHAR(36) NULL,                          -- RUNNING claim 시 UUID 발급(fencing 토큰)
+    started_at                DATETIME NULL,
+    finished_at               DATETIME NULL,
+    failure_reason            VARCHAR(255) NULL,
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (application_case_id),
+    KEY idx_initial_run_stale (state, started_at),
+    CONSTRAINT chk_initial_run_state CHECK (state IN ('PENDING', 'RUNNING', 'DONE', 'FAILED')),
+    CONSTRAINT fk_initial_run_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- 기업분석 웹검색 결과 캐시(235 §4·§6). 같은 회사 재검색 방지(비용↓)와 신선도 판정 근거.
@@ -466,6 +502,8 @@ CREATE TABLE IF NOT EXISTS dashboard_todo (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- C 고도화 정규화 테이블은 운영 DB 점진 적용을 위해 patches/20260612_c_strategy_tables.sql 과 동일하게 관리한다.
+-- ⚠ 감사 기록 테이블: 생성 시점의 점수 변화·diff 를 기록한다. 사용자 히스토리 API 는 fit_analysis 행에서
+--    실시간 계산하므로 현재 읽기 소비자는 없다(의도된 append-only 감사 로그 — 회색지대 QA 에서 처분 확정).
 CREATE TABLE IF NOT EXISTS fit_analysis_history (
     id BIGINT NOT NULL AUTO_INCREMENT, fit_analysis_id BIGINT NOT NULL, application_case_id BIGINT NOT NULL,
     previous_score INT NULL, new_score INT NULL, diff_summary JSON NULL,
@@ -660,6 +698,7 @@ CREATE TABLE IF NOT EXISTS interview_question (
     interview_session_id BIGINT NOT NULL,
     parent_question_id   BIGINT NULL,                       -- 꼬리 질문이면 원 질문 id, 일반 질문이면 NULL
     question             MEDIUMTEXT NOT NULL,
+    model_answer         MEDIUMTEXT NULL,                   -- 모범답안(답안지), 채점 기준 (patch 20260612_d 동기화)
     question_type        VARCHAR(30) NULL,                  -- EXPECTED/TECH/PERSONALITY/SITUATION/FOLLOW_UP
     sort_order           INT NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
@@ -739,7 +778,7 @@ CREATE TABLE IF NOT EXISTS file_asset (
     id            BIGINT NOT NULL AUTO_INCREMENT,
     owner_user_id BIGINT NOT NULL,
     kind          VARCHAR(20) NOT NULL,                       -- AUDIO/VIDEO/RESUME/PORTFOLIO/POSTING/ATTACHMENT
-    ref_type      VARCHAR(30) NULL,                           -- 연결 대상 종류 (예: INTERVIEW_ANSWER)
+    ref_type      VARCHAR(30) NULL,                           -- 연결 대상 종류 (예: INTERVIEW_ANSWER/USER_PROFILE_PORTFOLIO)
     ref_id        BIGINT NULL,                                -- 연결 대상 id
     original_name VARCHAR(255) NULL,
     content_type  VARCHAR(120) NULL,
@@ -1553,11 +1592,15 @@ CREATE TABLE IF NOT EXISTS post_ai_result (
     model         VARCHAR(80)  NULL,
     error_message VARCHAR(1000) NULL,
     attempt_count INT          NOT NULL DEFAULT 0,
+    review_action VARCHAR(10)  NULL COMMENT '경계 검열 결과 수동 결정(HIDE/KEEP)',
+    reviewed_by   BIGINT       NULL COMMENT '경계 검열 결과를 결정한 관리자 ID',
+    reviewed_at   DATETIME     NULL COMMENT '경계 검열 결과 수동 검토 시각',
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at  DATETIME     NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_post_ai_result_task (post_id, task_type),
     KEY idx_post_ai_result_status (task_type, status, completed_at),
+    KEY idx_post_ai_result_review (task_type, status, review_action, completed_at),
     CONSTRAINT fk_post_ai_result_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE
     ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -1613,6 +1656,7 @@ CREATE TABLE IF NOT EXISTS community_comment (
     post_id      BIGINT       NOT NULL,
     user_id      BIGINT       NOT NULL,
     parent_id    BIGINT       NULL,
+    mention_user_id BIGINT    NULL,                         -- 답글 멘션 대상 사용자 (patch 20260619_f 동기화)
     content      MEDIUMTEXT   NOT NULL,
     is_anonymous TINYINT(1)   NOT NULL DEFAULT 1,
     nickname_profile_id BIGINT NULL COMMENT '작성 시 선택한 표시용 닉네임 프로필(user_nickname_profile.id). NULL=계정 기본/계정명 표시',
@@ -1761,6 +1805,7 @@ CREATE TABLE IF NOT EXISTS notice (
     admin_id      BIGINT       NULL,
     view_count    INT          NOT NULL DEFAULT 0,
     published_at  DATETIME     NULL,
+    scheduled_at  DATETIME     NULL,                        -- 예약 발행 시각 (patch 20260701_f 동기화)
     created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -2770,8 +2815,9 @@ CREATE TABLE IF NOT EXISTS `admin_user_group` (
   `granted_by` bigint DEFAULT NULL COMMENT '배정 관리자 ID',
   `granted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '배정일',
   `revoked_at` datetime DEFAULT NULL COMMENT '해제일',
+  `active_assignment_key` tinyint GENERATED ALWAYS AS ((CASE WHEN `revoked_at` IS NULL THEN 1 ELSE NULL END)) STORED COMMENT '활성 배정 1건 유니크 보장용',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_admin_user_group_active` (`user_id`,`group_code`,`revoked_at`),
+  UNIQUE KEY `uk_admin_user_group_active` (`user_id`,`group_code`,`active_assignment_key`),
   KEY `idx_admin_user_group_user` (`user_id`,`revoked_at`),
   KEY `fk_admin_user_group_group` (`group_code`),
   KEY `fk_admin_user_group_granted_by` (`granted_by`),
@@ -2786,8 +2832,9 @@ CREATE TABLE IF NOT EXISTS `admin_user_permission` (
   `granted_by` bigint DEFAULT NULL COMMENT '부여 관리자 ID',
   `granted_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '부여일',
   `revoked_at` datetime DEFAULT NULL COMMENT '회수일',
+  `active_assignment_key` tinyint GENERATED ALWAYS AS ((CASE WHEN `revoked_at` IS NULL THEN 1 ELSE NULL END)) STORED COMMENT '활성 배정 1건 유니크 보장용',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_admin_user_perm_active` (`user_id`,`permission_code`,`revoked_at`),
+  UNIQUE KEY `uk_admin_user_perm_active` (`user_id`,`permission_code`,`active_assignment_key`),
   KEY `idx_admin_user_perm_user` (`user_id`,`revoked_at`),
   KEY `fk_admin_user_perm_code` (`permission_code`),
   KEY `fk_admin_user_perm_granted_by` (`granted_by`),
@@ -3123,6 +3170,7 @@ CREATE TABLE IF NOT EXISTS user_reward_history (
     id           BIGINT       NOT NULL AUTO_INCREMENT,
     user_id      BIGINT       NOT NULL,
     event_code   VARCHAR(40)  NOT NULL COMMENT '적립 이벤트 또는 LEVEL_UP/COUPON_ISSUE',
+    idempotency_key VARCHAR(120) NULL COMMENT '동일 참조 이벤트 중복 적립 방지 키',
     point_delta  INT          NOT NULL DEFAULT 0,
     credit_delta INT          NOT NULL DEFAULT 0,
     level_before INT          NULL,
@@ -3132,6 +3180,7 @@ CREATE TABLE IF NOT EXISTS user_reward_history (
     reason       VARCHAR(255) NULL,
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_user_reward_history_idempotency (user_id, idempotency_key),
     KEY idx_user_reward_history_user (user_id, created_at),
     KEY idx_user_reward_history_event (event_code),
     CONSTRAINT fk_user_reward_history_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
@@ -3235,5 +3284,65 @@ INSERT IGNORE INTO coupon (code, name, discount_type, discount_value, min_purcha
     ('WELCOME10',      '가입 환영 10% 할인',   'PERCENT', 10, 0, NULL, 1),
     ('LEVELUP_PRO',    '전문가 달성 크레딧 20', 'CREDIT',  20, 0, NULL, 1),
     ('LEVELUP_MASTER', '마스터 달성 크레딧 50', 'CREDIT',  50, 0, NULL, 1);
+
+-- ── MFA(2단계 인증) — patch 20260708_mfa_2fa 동기화(신규 환경이 schema.sql 만으로 완전 구성되도록) ──
+CREATE TABLE IF NOT EXISTS user_mfa_setting (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'MFA 설정 ID',
+    user_id BIGINT NOT NULL COMMENT '회원 ID',
+    enabled TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'MFA 활성화 여부',
+    verified TINYINT(1) NOT NULL DEFAULT 0 COMMENT '최초 코드 검증 완료 여부',
+    mfa_type VARCHAR(20) NOT NULL DEFAULT 'TOTP' COMMENT 'MFA 방식(TOTP/PUSH)',
+    secret_key_encrypted TEXT NULL COMMENT '암호화된 TOTP 시크릿 키',
+    device_name VARCHAR(120) NULL COMMENT '등록한 인증 기기 이름',
+    push_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '모바일 승인형 인증 허용 여부',
+    last_verified_at DATETIME NULL COMMENT '마지막 설정 검증 시각',
+    last_used_at DATETIME NULL COMMENT '마지막 MFA 로그인 성공 시각',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일',
+    UNIQUE KEY uk_user_mfa_setting_user (user_id),
+    CONSTRAINT fk_user_mfa_setting_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) COMMENT='회원별 2단계 인증 설정';
+
+CREATE TABLE IF NOT EXISTS mfa_challenge (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'MFA 로그인 챌린지 ID',
+    user_id BIGINT NOT NULL COMMENT '회원 ID',
+    challenge_token VARCHAR(100) NOT NULL COMMENT '로그인 1차 인증 후 발급되는 임시 토큰',
+    challenge_type VARCHAR(30) NOT NULL DEFAULT 'LOGIN' COMMENT '챌린지 용도(LOGIN 등)',
+    delivery_type VARCHAR(30) NOT NULL DEFAULT 'TOTP_OR_PUSH' COMMENT '인증 방식(TOTP/PUSH/TOTP_OR_PUSH)',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '상태(PENDING/APPROVED/DENIED/VERIFIED/EXPIRED)',
+    expires_at DATETIME NOT NULL COMMENT '만료 시각',
+    approved_at DATETIME NULL COMMENT '모바일 승인 시각',
+    verified_at DATETIME NULL COMMENT '코드 또는 승인 검증 완료 시각',
+    ip_address VARCHAR(45) NULL COMMENT '로그인 요청 IP',
+    user_agent VARCHAR(500) NULL COMMENT '로그인 요청 User-Agent',
+    device_name VARCHAR(120) NULL COMMENT '로그인 요청 또는 승인 기기 이름',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일',
+    UNIQUE KEY uk_mfa_challenge_token (challenge_token),
+    KEY idx_mfa_challenge_user_status (user_id, status, expires_at),
+    CONSTRAINT fk_mfa_challenge_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) COMMENT='로그인 2단계 인증 챌린지';
+
+CREATE TABLE IF NOT EXISTS mfa_backup_code (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'MFA 백업 코드 ID',
+    user_id BIGINT NOT NULL COMMENT '회원 ID',
+    code_hash VARCHAR(255) NOT NULL COMMENT 'BCrypt 해시 처리된 백업 코드',
+    used TINYINT(1) NOT NULL DEFAULT 0 COMMENT '사용 여부',
+    used_at DATETIME NULL COMMENT '사용 시각',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일',
+    KEY idx_mfa_backup_code_user_used (user_id, used),
+    CONSTRAINT fk_mfa_backup_code_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) COMMENT='MFA 분실 대비 백업 코드';
+
+CREATE TABLE IF NOT EXISTS mfa_policy (
+    id BIGINT PRIMARY KEY COMMENT 'MFA 정책 ID(단일 정책은 1)',
+    require_admins TINYINT(1) NOT NULL DEFAULT 0 COMMENT '관리자 계정 MFA 설정 유도 여부',
+    allow_backup_code TINYINT(1) NOT NULL DEFAULT 1 COMMENT '백업 코드 로그인 허용 여부',
+    allow_push_approval TINYINT(1) NOT NULL DEFAULT 1 COMMENT '모바일 승인형 인증 허용 여부',
+    updated_by BIGINT NULL COMMENT '마지막 수정 관리자 ID',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일',
+    CONSTRAINT fk_mfa_policy_updated_by FOREIGN KEY (updated_by) REFERENCES users (id) ON DELETE SET NULL
+) COMMENT='MFA 운영 정책';
 
 SET FOREIGN_KEY_CHECKS = 1;

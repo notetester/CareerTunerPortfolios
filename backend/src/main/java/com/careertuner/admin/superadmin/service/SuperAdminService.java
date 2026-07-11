@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.admin.common.AdminAccess;
+import com.careertuner.admin.common.security.AdminAccountMutationGuard;
+import com.careertuner.admin.common.security.AdminAccountState;
 import com.careertuner.admin.ops.service.AdminActionLogService;
 import com.careertuner.admin.superadmin.dto.AdminAccountRow;
 import com.careertuner.admin.superadmin.dto.AdminGroupRequest;
@@ -19,6 +21,7 @@ import com.careertuner.admin.superadmin.dto.AdminPermissionRequest;
 import com.careertuner.admin.superadmin.dto.AdminPermissionRequestRow;
 import com.careertuner.admin.superadmin.mapper.PermissionRequestMapper;
 import com.careertuner.admin.superadmin.mapper.SuperAdminMapper;
+import com.careertuner.auth.mapper.AuthMapper;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -49,8 +52,14 @@ public class SuperAdminService {
             "ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "MEMBER_ADMIN", "AI_ADMIN",
                     "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN"),
             "SUPER_ADMIN", List.of("ADMIN_OPERATOR", "SECURITY_OPERATOR", "MEMBER_ADMIN", "AI_ADMIN",
-                    "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN", "POLICY_ADMIN", "SUPER_ADMIN_GROUP")
+                     "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN", "POLICY_ADMIN", "SUPER_ADMIN_GROUP")
     );
+    private static final Set<String> PERMISSION_CATALOG = ROLE_PERMISSION_CODES.values().stream()
+            .flatMap(List::stream)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    private static final Set<String> GROUP_CATALOG = ROLE_GROUP_CODES.values().stream()
+            .flatMap(List::stream)
+            .collect(java.util.stream.Collectors.toUnmodifiableSet());
     private static final Map<String, String> ACCOUNT_SORT_COLUMNS = Map.of(
             "id", "id",
             "email", "email",
@@ -72,6 +81,8 @@ public class SuperAdminService {
     private final SuperAdminMapper mapper;
     private final AdminActionLogService actionLogService;
     private final PermissionRequestMapper requestMapper;
+    private final AuthMapper authMapper;
+    private final AdminAccountMutationGuard accountMutationGuard;
 
     @Transactional(readOnly = true)
     public List<AdminAccountRow> admins(AuthUser authUser, String keyword, String sortBy, String sortDir, int limit) {
@@ -120,10 +131,15 @@ public class SuperAdminService {
     @Transactional
     public AdminAccountRow updateRole(AuthUser authUser, Long userId, String role, String reason) {
         AdminAccess.requireSuperAdmin(authUser);
-        AdminAccountRow before = findUser(userId);
         String nextRole = normalizeRole(role);
+        AdminAccountState locked = accountMutationGuard.validateRoleChange(authUser, userId, nextRole);
+        if (locked == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원을 찾을 수 없습니다.");
+        }
+        AdminAccountRow before = findUser(userId);
         mapper.updateRole(userId, nextRole);
         revokeAssignmentsOutsideRole(userId, nextRole);
+        authMapper.revokeAllForUser(userId);
         mapper.insertAudit(authUser.id(), userId, "ROLE_UPDATED", null, null, blankToNull(reason));
         actionLogService.record(authUser, userId, "ADMIN_ROLE_UPDATED", "ADMIN_USER",
                 "{\"role\":\"%s\"}".formatted(before.getRole()),
@@ -135,11 +151,17 @@ public class SuperAdminService {
     @Transactional
     public void createPermission(AuthUser authUser, AdminPermissionRequest request) {
         AdminAccess.requireSuperAdmin(authUser);
-        mapper.insertPermission(normalizeCode(request.code()), request.displayName().trim(),
-                blankToNull(request.description()), authUser.id());
-        mapper.insertAudit(authUser.id(), null, "PERMISSION_POLICY_CREATED", normalizeCode(request.code()), null, null);
-        actionLogService.record(authUser, null, "PERMISSION_POLICY_CREATED", "ADMIN_PERMISSION",
-                null, "{\"permissionCode\":\"%s\"}".formatted(normalizeCode(request.code())), request.description());
+        String code = normalizeCode(request.code());
+        if (!PERMISSION_CATALOG.contains(code)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "정의되지 않은 관리자 권한 코드는 생성할 수 없습니다.");
+        }
+        if (mapper.updatePermissionMetadata(code, request.displayName().trim(),
+                blankToNull(request.description()), authUser.id()) == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "기본 관리자 권한 카탈로그 항목을 찾을 수 없습니다.");
+        }
+        mapper.insertAudit(authUser.id(), null, "PERMISSION_POLICY_METADATA_UPDATED", code, null, null);
+        actionLogService.record(authUser, null, "PERMISSION_POLICY_METADATA_UPDATED", "ADMIN_PERMISSION",
+                null, "{\"permissionCode\":\"%s\"}".formatted(code), request.description());
     }
 
     @Transactional
@@ -156,11 +178,17 @@ public class SuperAdminService {
     @Transactional
     public void createGroup(AuthUser authUser, AdminGroupRequest request) {
         AdminAccess.requireSuperAdmin(authUser);
-        mapper.insertGroup(normalizeCode(request.code()), request.displayName().trim(),
-                blankToNull(request.description()), authUser.id());
-        mapper.insertAudit(authUser.id(), null, "PERMISSION_GROUP_CREATED", null, normalizeCode(request.code()), null);
-        actionLogService.record(authUser, null, "PERMISSION_GROUP_CREATED", "ADMIN_GROUP",
-                null, "{\"groupCode\":\"%s\"}".formatted(normalizeCode(request.code())), request.description());
+        String code = normalizeCode(request.code());
+        if (!GROUP_CATALOG.contains(code)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "정의되지 않은 관리자 권한 그룹은 생성할 수 없습니다.");
+        }
+        if (mapper.updateGroupMetadata(code, request.displayName().trim(),
+                blankToNull(request.description()), authUser.id()) == 0) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "기본 관리자 권한 그룹을 찾을 수 없습니다.");
+        }
+        mapper.insertAudit(authUser.id(), null, "PERMISSION_GROUP_METADATA_UPDATED", null, code, null);
+        actionLogService.record(authUser, null, "PERMISSION_GROUP_METADATA_UPDATED", "ADMIN_GROUP",
+                null, "{\"groupCode\":\"%s\"}".formatted(code), request.description());
     }
 
     @Transactional
@@ -336,12 +364,16 @@ public class SuperAdminService {
         int revoked = 0;
         for (Long userId : userIds.stream().distinct().toList()) {
             if (userId.equals(authUser.id())) {
-                continue; // 본인 해제 방지
+                throw new BusinessException(ErrorCode.FORBIDDEN, "본인 관리자 역할을 변경할 수 없습니다.");
             }
-            findUser(userId);
+            AdminAccountState locked = accountMutationGuard.validateRoleChange(authUser, userId, "USER");
+            if (locked == null) {
+                continue;
+            }
             mapper.updateRole(userId, "USER");
             mapper.revokeAllPermissionsForUser(userId);
             mapper.revokeAllGroupsForUser(userId);
+            authMapper.revokeAllForUser(userId);
             mapper.insertAudit(authUser.id(), userId, "ADMIN_REVOKED", null, null, blankToNull(reason));
             revoked++;
         }
