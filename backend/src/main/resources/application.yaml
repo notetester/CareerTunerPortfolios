@@ -282,8 +282,8 @@ careertuner:
   oauth:
     # ⚠️ 아직 키 미발급 → 기본값은 placeholder. 키 수령 후 env 또는 이 값만 교체.
     # 개발/데모는 키가 없어도 signed state 기반 mock OAuth 로 로그인/연동 화면을 확인할 수 있다.
-    # 운영 프로파일(application-aws/domain.yaml)은 false 로 덮어쓴다.
-    mock-enabled: ${OAUTH_MOCK_ENABLED:true}
+    # 기본은 항상 비활성. 로컬 프로파일만 명시적으로 켜며 운영에서는 강제로 false를 주입한다.
+    mock-enabled: ${OAUTH_MOCK_ENABLED:false}
     kakao:
       client-id: ${OAUTH_KAKAO_CLIENT_ID:CHANGEME}
       client-secret: ${OAUTH_KAKAO_CLIENT_SECRET:}

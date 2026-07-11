@@ -17,6 +17,18 @@ services:
     # (--env-file 은 compose 의 ${VAR} 치환용일 뿐 컨테이너 주입이 아니다.)
     env_file:
       - /home/careertuner/careertuner/.env
+    environment:
+      # 운영 인증 경계는 EC2 .env 드리프트와 무관하게 강제한다.
+      SPRING_PROFILES_ACTIVE: aws
+      OAUTH_MOCK_ENABLED: "false"
+      APP_FRONTEND_URL: https://careertuner.kro.kr
+      APP_API_BASE_URL: https://careertuner.kro.kr
+      APP_SITES_FRONTEND_URL: https://careertuner.careertuner.chatgpt.site
+      OAUTH_GOOGLE_REDIRECT_URI: https://careertuner.kro.kr/api/auth/oauth/google/callback
+      OAUTH_KAKAO_REDIRECT_URI: https://careertuner.kro.kr/api/auth/oauth/kakao/callback
+      OAUTH_NAVER_REDIRECT_URI: https://careertuner.kro.kr/api/auth/oauth/naver/callback
+      CAREERTUNER_TOSS_PAYMENTS_SUCCESS_URL: https://careertuner.kro.kr/billing/success
+      CAREERTUNER_TOSS_PAYMENTS_FAIL_URL: https://careertuner.kro.kr/billing/fail
     # 호스트에서 도는 비언어 음성/영상 분석 서버(uvicorn :8500, systemd)를 컨테이너가
     # host.docker.internal 로 부를 수 있게 한다. (CAREERTUNER_INTERVIEW_NONVERBAL_SERVE_URL)
     extra_hosts:
