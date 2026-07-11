@@ -30,7 +30,11 @@ void AuthService::login(const QString& email, const QString& password)
 
     m_api->post("/api/auth/login", body,
         [this](bool ok, const QJsonValue& data, const QString& message) {
-            const QJsonObject o = data.toObject();
+            QJsonObject o = data.toObject();
+            // MFA 도입 후 로그인 응답은 LoginResponse{ mfaRequired, ..., token: TokenResponse } 구조 —
+            // token 객체가 있으면 풀어서 기존 TokenResponse 경로를 그대로 탄다 (refresh 응답은 래핑 없음)
+            if (o.value("token").isObject())
+                o = o.value("token").toObject();
             if (ok && o.contains("accessToken")) {
                 applyTokenResponse(o);
                 emit loggedIn(m_token);
