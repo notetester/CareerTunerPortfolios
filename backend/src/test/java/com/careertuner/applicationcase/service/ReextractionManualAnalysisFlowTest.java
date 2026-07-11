@@ -54,6 +54,10 @@ import tools.jackson.databind.ObjectMapper;
  * 열리고, 초기 자동 파이프라인은 재개되지 않는지를 <b>상태를 공유하는 fake 프로필 mapper</b> 로 검증한다.
  * (재추출 테스트의 mock 상호작용 검증과 달리, 여기서는 재추출→수동분석→파이프라인이 같은 프로필 상태를
  * 읽고 쓰는 진짜 연결을 잠근다.)
+ *
+ * <p><b>범위 한정</b>: 이 테스트는 프로필 <b>상태 연결</b> 회귀용이다 — 실제 DB 의 {@code FOR UPDATE} 대기·
+ * 두 트랜잭션 직렬화는 다루지 않는다(그 계약은 mapper XML 계약 테스트 + 획득→공고조회→모델호출 순서를
+ * 고정하는 InOrder 테스트가 잠근다).</p>
  */
 class ReextractionManualAnalysisFlowTest {
 

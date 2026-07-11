@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,6 +17,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -106,6 +108,31 @@ class CompanyAnalysisServiceStrictTest {
         assertThat(saved.getAttemptPath()).isEqualTo("[\"OPENAI\"]");
         assertThat(saved.getRunMode()).isEqualTo("MANUAL");
         verify(webSearchClient, never()).search(any(), any()); // 웹 OFF → 검색 미호출
+    }
+
+    @Test
+    void strictCompanyAnalysisReadsLatestPostingOnlyAfterExclusiveGate() {
+        // 입력 스냅샷 직렬화 잠금: 배타 획득 → 최신 공고 조회 → 모델 호출 순서 고정(공고를 게이트 앞에서
+        // 읽으면 그 사이 끝난 재추출의 새 revision 을 놓치는 경합이 되살아난다 — job 쪽 테스트와 대칭).
+        webProps.setEnabled(false);
+        ApplicationCase applicationCase = applicationCase("READY");
+        stubOwnedCaseWithPosting(applicationCase);
+        CompanyAnalysisPayload payload = companyPayload(new Usage("openai-gpt", 100, 50, 150));
+        when(generationService.generateCompanyAnalysisStrict(eq(applicationCase), anyString(), any(), eq(BAnalysisProvider.OPENAI)))
+                .thenReturn(new StrictCompanyResult(payload, List.of(BAnalysisProvider.OPENAI)));
+        when(canonicalizer.canonicalizeForStorage(any(), anyLong(), anyInt(), anyString(), any(), any(), any()))
+                .thenReturn(new CanonicalCompanyAnalysis(payload, List.of()));
+        when(canonicalizer.withoutUnknownMarkers(any())).thenReturn(null);
+        when(canonicalizer.extractUnknowns(any())).thenReturn(null);
+        when(companyAnalysisMapper.findLatestCompanyAnalysisByCaseId(10L)).thenReturn(new CompanyAnalysis());
+
+        service().createCompanyAnalysisStrict(1L, 10L, BAnalysisProvider.OPENAI);
+
+        InOrder order = inOrder(statusService, jobPostingMapper, generationService);
+        order.verify(statusService).markAnalyzingExclusive(1L, 10L, "READY");
+        order.verify(jobPostingMapper).findLatestJobPostingByCaseId(10L);
+        order.verify(generationService)
+                .generateCompanyAnalysisStrict(eq(applicationCase), anyString(), any(), eq(BAnalysisProvider.OPENAI));
     }
 
     @Test

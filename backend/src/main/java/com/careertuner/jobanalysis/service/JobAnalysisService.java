@@ -48,11 +48,14 @@ public class JobAnalysisService {
     public JobAnalysisResponse createJobAnalysis(Long userId, Long applicationCaseId) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
         ensureAnalysisRunnable(applicationCase.getStatus());
-        JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
-        String sourceText = accessService.sourceText(jobPosting);
         String previousStatus = applicationCase.getStatus();
-        statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
+        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) 뒤에 최신 공고를 읽는다 — 게이트 앞
+        // 스냅샷이면 그 사이 재추출이 끝나 이전 revision 으로 분석할 수 있다(입력 스냅샷 직렬화).
+        // AutoPrep 등 비-strict 호출도 이 경로라 같은 상호 배제를 받는다. 획득 후 조회 실패는 catch 가 복원한다.
+        statusService.markAnalyzingExclusive(userId, applicationCaseId, previousStatus);
         try {
+            JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
+            String sourceText = accessService.sourceText(jobPosting);
             GeneratedJobAnalysis generated = bAnalysisGenerationService.generateJobAnalysis(applicationCase, sourceText);
             var payload = generated.payload();
             return transactionTemplate.execute(status -> {
@@ -107,17 +110,19 @@ public class JobAnalysisService {
      * strict 수동 재분석 — 고른 provider 하나로만 공고 분석을 다시 실행한다(자동 체인·self-rules 미사용).
      * 성공 시 provenance(선택=실제 provider·모델·attempt_path·run_mode=MANUAL·fallback_used=false)를 함께 저장하고,
      * 실패 시 <b>기존 분석을 보존</b>한 채 상태만 되돌리고 예외를 던진다(안전망 없음 = 실패는 실패).
-     * 자동 {@link #createJobAnalysis(Long, Long)} 와 구조는 같지만 생성 경로·provenance 만 다르다(자동 경로 무수정).
+     * 자동 {@link #createJobAnalysis(Long, Long)} 와 구조는 같지만 생성 경로·provenance 만 다르다
+     * (두 경로 모두 배타 획득 + 획득 후 공고 조회를 공유한다).
      */
     public JobAnalysisResponse createJobAnalysisStrict(Long userId, Long applicationCaseId, BAnalysisProvider provider) {
         ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
         ensureAnalysisRunnable(applicationCase.getStatus());
-        JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
-        String sourceText = accessService.sourceText(jobPosting);
         String previousStatus = applicationCase.getStatus();
-        // 배타 획득: 케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS 를 한 TX 로 — strict 재추출과 직렬화.
+        // 배타 획득(케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS) — strict 재추출과 직렬화. 최신 공고는
+        // 반드시 획득 <b>뒤에</b> 읽는다(게이트 앞 스냅샷이면 그 사이 끝난 재추출의 새 revision 을 놓친다).
         statusService.markAnalyzingExclusive(userId, applicationCaseId, previousStatus);
         try {
+            JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
+            String sourceText = accessService.sourceText(jobPosting);
             StrictJobResult strict = bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, sourceText, provider);
             var payload = strict.payload();
             return transactionTemplate.execute(status -> {
