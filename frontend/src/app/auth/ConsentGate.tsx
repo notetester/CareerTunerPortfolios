@@ -48,7 +48,11 @@ export function RequiredConsentBoundary({ children }: { children: ReactNode }) {
   const { status, loading, error, refresh } = useConsent();
   const location = useLocation();
 
-  if (!isAuthenticated || authLoading || isRecoveryPath(location.pathname)) return children;
+  // 루트는 비로그인 랜딩이면서 네이티브 로그인 홈이기도 하다. 로그인 홈까지
+  // 공개 복구 경로로 취급하면 필수 동의를 철회한 사용자가 AppHome을 계속 이용하게 된다.
+  if (isRecoveryPath(location.pathname) && location.pathname !== "/") return children;
+  if (authLoading && !isAuthenticated) return <ConsentLoading />;
+  if (!isAuthenticated) return children;
   if (loading && !status) return <ConsentLoading />;
   if (error && !status) return <ConsentLoadFailure error={error} onRetry={refresh} />;
   if (!status) return <ConsentLoading />;

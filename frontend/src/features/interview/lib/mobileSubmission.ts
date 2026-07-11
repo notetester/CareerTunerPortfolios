@@ -23,13 +23,13 @@ export const MOBILE_INTERVIEW_AUDIO_BITS_PER_SECOND = 64_000;
 export const SUBMISSION_RECONCILE_DELAYS_MS = [0, 500, 1_500] as const;
 
 export function concludeMissingSubmissionReconciliation(
-  authoritativeMisses: number,
-  totalAttempts: number,
-  hadUntrustedRead: boolean,
+  _authoritativeMisses: number,
+  _totalAttempts: number,
+  _hadUntrustedRead: boolean,
 ): "NOT_SAVED" | "UNKNOWN" {
-  return !hadUntrustedRead && totalAttempts > 0 && authoritativeMisses === totalAttempts
-    ? "NOT_SAVED"
-    : "UNKNOWN";
+  // 백엔드는 AI 평가가 끝난 뒤 답변을 저장하므로 짧은 review 부재만으로 미저장을
+  // 확정할 수 없다. 서버 idempotency/status 계약이 생기기 전까지 원본을 보호한다.
+  return "UNKNOWN";
 }
 
 export type CapturedMediaValidation =

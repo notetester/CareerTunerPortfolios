@@ -16,9 +16,9 @@ interface BackendNotification {
   read: boolean;
   createdAt: string;
   actor?: {
-    id: number;
+    id: number | null;
     name: string;
-    avatarUrl?: string;
+    avatarUrl?: string | null;
   };
 }
 
@@ -42,7 +42,7 @@ function toNotification(n: BackendNotification): Notification {
     targetType: n.targetType,
     targetId: n.targetId,
     senderRelation: n.senderRelation as SenderRelation | undefined,
-    actorId: n.actor?.id,
+    actorId: n.actor?.id ?? null,
     actorName: n.actor?.name,
     isRead: n.read,
     createdAt: n.createdAt,
@@ -50,7 +50,8 @@ function toNotification(n: BackendNotification): Notification {
 }
 
 function destinationQuery(separator: "?" | "&"): string {
-  return isNativeApp() ? `${separator}platform=MOBILE` : "";
+  const platform = isNativeApp() ? "MOBILE" : "WEB";
+  return `${separator}platform=${platform}`;
 }
 
 /** 알림 목록 */
@@ -74,7 +75,7 @@ export async function markAsRead(id: number): Promise<void> {
 
 /** 전체 읽음 */
 export async function markAllAsRead(): Promise<void> {
-  await api<void>("/notifications/read-all", { method: "POST" });
+  await api<void>(`/notifications/read-all${destinationQuery("?")}`, { method: "POST" });
 }
 
 /** 알림 단건 삭제 */
@@ -84,7 +85,7 @@ export async function deleteNotification(id: number): Promise<void> {
 
 /** 알림 전체 삭제(비우기) */
 export async function deleteAllNotifications(): Promise<void> {
-  await api<void>("/notifications", { method: "DELETE" });
+  await api<void>(`/notifications${destinationQuery("?")}`, { method: "DELETE" });
 }
 
 // ───── 알림 설정 ─────

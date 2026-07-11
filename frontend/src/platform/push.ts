@@ -224,17 +224,22 @@ export async function disablePush(): Promise<void> {
       try { token = localStorage.getItem(FCM_TOKEN_KEY); } catch { /* no-op */ }
       if (token) {
         await api<void>(`/notifications/push?token=${encodeURIComponent(token)}`, { method: "DELETE" }).catch(() => {});
-        try { localStorage.removeItem(FCM_TOKEN_KEY); } catch { /* no-op */ }
       }
+      // 서버 응답과 무관하게 이 설치본이 이전 계정 토큰을 다음 로그인에 재사용하지 않게 한다.
+      try { localStorage.removeItem(FCM_TOKEN_KEY); } catch { /* no-op */ }
       return;
     }
     if ("serviceWorker" in navigator) {
-      const reg = await navigator.serviceWorker.ready;
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 3_000)),
+      ]);
+      if (!reg) return;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
         const endpoint = sub.endpoint;
-        await sub.unsubscribe();
         await api<void>(`/notifications/push?token=${encodeURIComponent(endpoint)}`, { method: "DELETE" }).catch(() => {});
+        await sub.unsubscribe().catch(() => false);
       }
     }
   } catch {

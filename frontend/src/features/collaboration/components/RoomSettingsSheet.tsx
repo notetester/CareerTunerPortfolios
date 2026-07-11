@@ -225,8 +225,9 @@ export function RoomSettingsSheet({
     run(async () => updateConversationSettings(conversationId, { [field]: value }),
       "익명 정책을 변경했습니다.");
 
-  const setManager = (member: ConversationMemberDetail, manager: boolean) =>
-    run(async () => updateMemberPermission(conversationId, member.userId, {
+  const setManager = (member: ConversationMemberDetail, manager: boolean) => {
+    if (member.userId == null) return;
+    void run(async () => updateMemberPermission(conversationId, member.userId!, {
       manager,
       canInvite: member.permission.canInvite,
       canKick: member.permission.canKick,
@@ -235,9 +236,11 @@ export function RoomSettingsSheet({
       canEditRoom: member.permission.canEditRoom,
       canManageMembers: member.permission.canManageMembers,
     }), manager ? "방 관리자로 지정했습니다." : "방 관리자 권한을 해제했습니다.");
+  };
 
-  const togglePermission = (member: ConversationMemberDetail, key: PermissionKey) =>
-    run(async () => updateMemberPermission(conversationId, member.userId, {
+  const togglePermission = (member: ConversationMemberDetail, key: PermissionKey) => {
+    if (member.userId == null) return;
+    void run(async () => updateMemberPermission(conversationId, member.userId!, {
       manager: true,
       canInvite: key === "canInvite" ? !member.permission.canInvite : member.permission.canInvite,
       canKick: key === "canKick" ? !member.permission.canKick : member.permission.canKick,
@@ -246,14 +249,19 @@ export function RoomSettingsSheet({
       canEditRoom: key === "canEditRoom" ? !member.permission.canEditRoom : member.permission.canEditRoom,
       canManageMembers: key === "canManageMembers" ? !member.permission.canManageMembers : member.permission.canManageMembers,
     }));
+  };
 
-  const kick = (member: ConversationMemberDetail) =>
-    run(async () => kickConversationMember(conversationId, member.userId),
+  const kick = (member: ConversationMemberDetail) => {
+    if (member.userId == null) return;
+    void run(async () => kickConversationMember(conversationId, member.userId!),
       `${member.displayName}님을 강퇴했습니다.`);
+  };
 
-  const ban = (member: ConversationMemberDetail) =>
-    run(async () => banConversationMember(conversationId, member.userId),
+  const ban = (member: ConversationMemberDetail) => {
+    if (member.userId == null) return;
+    void run(async () => banConversationMember(conversationId, member.userId!),
       `${member.displayName}님을 차단했습니다.`);
+  };
 
   const unban = (userId: number) =>
     run(async () => unbanConversationMember(conversationId, userId), "차단을 해제했습니다.");
@@ -491,19 +499,19 @@ export function RoomSettingsSheet({
                 <div className="space-y-1.5">
                   {nonOwnerMembers.map((member) => (
                     <button
-                      key={member.userId}
+                      key={member.userId ?? `deleted-${member.displayName}`}
                       type="button"
-                      onClick={() => toggleInviteAllow(member.userId)}
-                      disabled={busy || !perm.canEditRoom}
+                      onClick={() => member.userId != null && toggleInviteAllow(member.userId)}
+                      disabled={busy || !perm.canEditRoom || member.userId == null}
                       className={cn(
                         "flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm",
-                        settings.inviteAllowUserIds.includes(member.userId)
+                        member.userId != null && settings.inviteAllowUserIds.includes(member.userId)
                           ? "border-primary bg-primary/10 text-primary"
                           : "border-border text-muted-foreground hover:bg-accent",
                       )}
                     >
                       <span>{member.displayName}</span>
-                      {settings.inviteAllowUserIds.includes(member.userId) && <Check className="size-4" />}
+                      {member.userId != null && settings.inviteAllowUserIds.includes(member.userId) && <Check className="size-4" />}
                     </button>
                   ))}
                 </div>
@@ -536,15 +544,15 @@ export function RoomSettingsSheet({
                 차단된 사용자가 없습니다.
               </div>
             ) : settings.bans.map((banned) => (
-              <div key={banned.userId} className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
+              <div key={banned.userId ?? `deleted-${banned.bannedAt}`} className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-foreground">{banned.displayName}</div>
                   <div className="text-xs text-muted-foreground">
                     {formatDateTime(banned.bannedAt)}{banned.reason ? ` · ${banned.reason}` : ""}
                   </div>
                 </div>
-                {perm.canBan && (
-                  <Button type="button" size="sm" variant="outline" onClick={() => unban(banned.userId)} disabled={busy}>
+                {perm.canBan && banned.userId != null && (
+                  <Button type="button" size="sm" variant="outline" onClick={() => unban(banned.userId!)} disabled={busy}>
                     차단 해제
                   </Button>
                 )}

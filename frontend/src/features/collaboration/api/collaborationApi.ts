@@ -1,6 +1,4 @@
-import { api } from "@/app/lib/api";
-import { apiBase } from "@/app/lib/apiBase";
-import { getAccessToken } from "@/app/lib/tokenStore";
+import { api, apiBlob } from "@/app/lib/api";
 import { trackPendingCollaborationUpload } from "@/app/lib/pendingCollaborationFiles";
 import type {
   AttachmentShareMode,
@@ -212,25 +210,7 @@ export function uploadCollaborationFile(file: File): Promise<FileAssetResponse> 
 }
 
 export async function downloadCollaborationAttachment(file: MessageAttachmentResponse): Promise<void> {
-  const token = getAccessToken();
-  const response = await fetch(`${apiBase()}/collaboration/files/${file.fileId}/content`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-
-  if (!response.ok) {
-    // 서버 envelope 의 message 를 우선 노출 — LOCAL 공유는 소유자 데스크톱이
-    // 목록 조회와 클릭 사이에 오프라인이 되면 CONFLICT 안내 문구가 내려온다.
-    let message = `다운로드에 실패했습니다 (${response.status})`;
-    try {
-      const body = (await response.json()) as { message?: string };
-      if (body?.message) message = body.message;
-    } catch {
-      // envelope 이 아닌 응답 — 기본 문구 유지
-    }
-    throw new Error(message);
-  }
-
-  const blob = await response.blob();
+  const blob = await apiBlob(`/collaboration/files/${file.fileId}/content`);
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

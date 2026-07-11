@@ -22,6 +22,8 @@ import {
   keepStreamForAppLock,
   onAppLockState,
 } from "@/platform/appLockEvents";
+import { registerNativeOverlayLifecycle } from "@/platform/nativeOverlayLifecycle";
+import { MediaCaptureExitConfirm } from "./MediaCaptureExitConfirm";
 
 /**
  * 몰입형 화상 답변 (모바일 풀스크린) — 카메라 프리뷰 전체화면 + 질문 오버레이.
@@ -60,6 +62,7 @@ export function ImmersiveAvatarOverlay({
   const [facing, setFacing] = useState<"user" | "environment">("user");
   const [error, setError] = useState<string | null>(null);
   const [poseNote, setPoseNote] = useState<string | null>(null);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -75,6 +78,9 @@ export function ImmersiveAvatarOverlay({
   const captureGenerationRef = useRef<number | null>(null);
   const processingAbortRef = useRef<AbortController | null>(null);
   const finishRef = useRef<() => void>(() => undefined);
+  const closeRef = useRef<() => void>(() => undefined);
+  const nativeBackRef = useRef<() => void>(() => undefined);
+  const confirmCloseRef = useRef(false);
   /** 녹화 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
   const formatRef = useRef<string>("webm");
 
@@ -107,13 +113,22 @@ export function ImmersiveAvatarOverlay({
   };
 
   const close = () => {
+    if (closedRef.current) return;
     closedRef.current = true;
     captureAttemptRef.current += 1;
     processingAbortRef.current?.abort();
     processingAbortRef.current = null;
     disposeTrackers();
     stopAll();
+    setConfirmClose(false);
     onClose();
+  };
+
+  closeRef.current = close;
+  confirmCloseRef.current = confirmClose;
+  nativeBackRef.current = () => {
+    if (confirmCloseRef.current) setConfirmClose(false);
+    else setConfirmClose(true);
   };
 
   /** 스트림 시작(+플립 시 재시작 — 녹화도 새로 시작한다). */
@@ -199,6 +214,7 @@ export function ImmersiveAvatarOverlay({
   };
 
   useEffect(() => {
+    closedRef.current = false;
     void startCapture("user");
     return () => {
       closedRef.current = true;
@@ -212,8 +228,13 @@ export function ImmersiveAvatarOverlay({
   }, []);
 
   useEffect(() => onAppLockState((locked) => {
-    if (locked) close();
-  }), [onClose]);
+    if (locked) closeRef.current();
+  }), []);
+
+  useEffect(() => registerNativeOverlayLifecycle({
+    onBack: () => nativeBackRef.current(),
+    onSuspend: () => closeRef.current(),
+  }), []);
 
   const flip = () => {
     if (phase !== "recording") return;
@@ -408,7 +429,7 @@ export function ImmersiveAvatarOverlay({
           )}
           <button
             autoFocus
-            onClick={close}
+            onClick={() => setConfirmClose(true)}
             className="ml-auto flex size-9 items-center justify-center rounded-lg bg-black/40 text-white/80 backdrop-blur-md"
             aria-label="닫기"
           >
@@ -466,6 +487,13 @@ export function ImmersiveAvatarOverlay({
           </button>
         </div>
       </div>
+      {confirmClose && (
+        <MediaCaptureExitConfirm
+          processing={phase === "processing"}
+          onKeep={() => setConfirmClose(false)}
+          onDiscard={() => closeRef.current()}
+        />
+      )}
     </div>
   );
 }

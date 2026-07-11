@@ -110,6 +110,8 @@ export const dummyReport: InterviewReport = {
       question: "자기소개를 해주세요.",
       score: 84,
       feedback: "직무 연관 경험을 앞세운 점이 좋습니다. 수치를 덧붙이면 설득력이 더 올라갑니다.",
+      voiceScore: null,
+      visualScore: null,
     },
     {
       questionId: 2,
@@ -117,6 +119,8 @@ export const dummyReport: InterviewReport = {
       question: "지원 동기가 무엇인가요?",
       score: 80,
       feedback: "회사 방향성과 본인 목표를 연결한 점이 인상적입니다.",
+      voiceScore: null,
+      visualScore: null,
     },
     {
       questionId: 3,
@@ -124,6 +128,8 @@ export const dummyReport: InterviewReport = {
       question: "가장 어려웠던 프로젝트 경험은?",
       score: 78,
       feedback: "문제-행동-결과 구조는 좋았지만 결과의 임팩트를 더 구체화하세요.",
+      voiceScore: null,
+      visualScore: null,
     },
   ],
 };

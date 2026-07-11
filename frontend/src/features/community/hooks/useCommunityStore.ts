@@ -93,6 +93,20 @@ function viewerFlagsAfterToggle(type: ReactionType, active: boolean) {
   return flags;
 }
 
+let communityGeneration = 0;
+let postListSequence = 0;
+let hotPostSequence = 0;
+let categoryCountSequence = 0;
+let detailSequence = 0;
+let commentSequence = 0;
+let activeDetailPostId: number | null = null;
+
+const isCurrentGeneration = (generation: number) => generation === communityGeneration;
+const isCurrentDetail = (generation: number, sequence: number, postId: number) =>
+  isCurrentGeneration(generation) && sequence === detailSequence && activeDetailPostId === postId;
+const isCurrentComments = (generation: number, sequence: number, postId: number) =>
+  isCurrentGeneration(generation) && sequence === commentSequence && activeDetailPostId === postId;
+
 export const useCommunityStore = create<CommunityState>((set, get) => ({
   posts: [],
   hotPosts: [],
@@ -106,39 +120,53 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   error: null,
 
   fetchPosts: async (category, sort, keyword) => {
+    const generation = communityGeneration;
+    const sequence = ++postListSequence;
     set({ loading: true, error: null });
     try {
       // 검색어는 서버에서 필터(제목·본문·회사·직무·태그 LIKE) — 기존 "최신 100건만 메모리 필터" 누락을 해소.
       // 단 매칭이 100건을 넘으면 클라 페이지네이션 상한(size=100)에 걸린다 → 서버 페이지네이션은 후속(total 미사용).
       const posts = await communityApi.getPosts(category, sort, 0, 100, keyword);
+      if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
       set({ posts, loading: false });
     } catch (e) {
+      if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
       set({ loading: false, error: (e as Error).message });
     }
   },
 
   fetchPostsByIds: async (ids) => {
+    const generation = communityGeneration;
+    const sequence = ++postListSequence;
     set({ loading: true, error: null });
     try {
       const posts = await communityApi.getPostsByIds(ids);
+      if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
       set({ posts, loading: false });
     } catch (e) {
+      if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
       set({ loading: false, error: (e as Error).message });
     }
   },
 
   fetchHotPosts: async () => {
+    const generation = communityGeneration;
+    const sequence = ++hotPostSequence;
     try {
       const hotPosts = await communityApi.getHotPosts();
+      if (!isCurrentGeneration(generation) || sequence !== hotPostSequence) return;
       set({ hotPosts });
     } catch { /* 인기글 실패는 무시 */ }
   },
 
   fetchCategoryCounts: async () => {
+    const generation = communityGeneration;
+    const sequence = ++categoryCountSequence;
     try {
       // 탭 뱃지는 목록과 동일 소스(community_post)를 봐야 한다.
       // 전체 게시글을 한 번 받아 카테고리별로 집계(목록도 size 100 상한과 동일).
       const all = await communityApi.getPosts(undefined, "latest", 0, 100);
+      if (!isCurrentGeneration(generation) || sequence !== categoryCountSequence) return;
       const counts: Record<string, number> = {};
       for (const p of all) counts[p.category] = (counts[p.category] ?? 0) + 1;
       set({ categoryCounts: counts });
@@ -146,29 +174,43 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   fetchPostDetail: async (id) => {
+    const generation = communityGeneration;
+    const sequence = ++detailSequence;
+    activeDetailPostId = id;
+    commentSequence += 1;
     // 이전 글을 먼저 비운다 — 남겨두면 조회 실패 시 직전에 보던 글(삭제한 글 포함)이 그대로 렌더된다.
-    set({ currentPost: null, detailLoading: true, detailNotFound: false, detailError: null });
+    set({ currentPost: null, comments: [], detailLoading: true, detailNotFound: false, detailError: null });
     try {
       const currentPost = await communityApi.getPostDetail(id);
+      if (!isCurrentDetail(generation, sequence, id)) return;
       set({ currentPost, detailLoading: false });
     } catch (e) {
+      if (!isCurrentDetail(generation, sequence, id)) return;
       const notFound = e instanceof ApiError && e.status === 404;
       set({ currentPost: null, detailLoading: false, detailNotFound: notFound, detailError: (e as Error).message });
     }
   },
 
   fetchComments: async (postId) => {
+    const generation = communityGeneration;
+    const sequence = ++commentSequence;
     try {
       const comments = await communityApi.getComments(postId);
+      if (!isCurrentComments(generation, sequence, postId)) return;
       set({ comments });
     } catch (e) {
+      if (!isCurrentComments(generation, sequence, postId)) return;
       set({ detailError: (e as Error).message });
     }
   },
 
   addComment: async (postId, content, parentId, anonymous = true) => {
+    const generation = communityGeneration;
     await communityApi.createComment(postId, content, parentId, anonymous);
+    if (!isCurrentGeneration(generation) || activeDetailPostId !== postId) return;
+    const sequence = ++commentSequence;
     const comments = await communityApi.getComments(postId);
+    if (!isCurrentComments(generation, sequence, postId)) return;
     set({ comments });
     const { currentPost } = get();
     if (currentPost && currentPost.id === postId) {
@@ -182,20 +224,30 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   createPost: async (data) => {
+    const generation = communityGeneration;
     await communityApi.createPost(data);
+    if (!isCurrentGeneration(generation)) return;
+    const sequence = ++postListSequence;
     const posts = await communityApi.getPosts();
+    if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
     set({ posts });
   },
 
   updatePost: async (id, data) => {
+    const generation = communityGeneration;
     await communityApi.updatePost(id, data);
+    if (!isCurrentGeneration(generation)) return;
+    const sequence = ++postListSequence;
     const posts = await communityApi.getPosts();
+    if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
     set({ posts });
   },
 
   toggleReaction: async (targetType, targetId, reactionType) => {
+    const generation = communityGeneration;
     const anonymous = get().reactAnonymously;
     const result = await communityApi.toggleReaction(targetType, targetId, reactionType, anonymous);
+    if (!isCurrentGeneration(generation)) return result;
     const { currentPost, comments } = get();
     const flags = viewerFlagsAfterToggle(result.reactionType, result.active);
 
@@ -237,8 +289,10 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   toggleScrap: async (postId) => {
+    const generation = communityGeneration;
     const anonymous = get().reactAnonymously;
     const { active, scrapCount } = await communityApi.toggleScrap(postId, anonymous);
+    if (!isCurrentGeneration(generation)) return active;
     const { currentPost } = get();
     if (currentPost && currentPost.id === postId) {
       set({
@@ -253,7 +307,9 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   togglePostSubscription: async (postId) => {
+    const generation = communityGeneration;
     const active = await communityApi.togglePostSubscription(postId);
+    if (!isCurrentGeneration(generation)) return active;
     const { currentPost } = get();
     if (currentPost && currentPost.id === postId) {
       set({ currentPost: { ...currentPost, subscribed: active } });
@@ -262,7 +318,9 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   },
 
   toggleCommentSubscription: async (commentId) => {
+    const generation = communityGeneration;
     const active = await communityApi.toggleCommentSubscription(commentId);
+    if (!isCurrentGeneration(generation)) return active;
     const { comments } = get();
     set({
       comments: comments.map((c) => (c.id === commentId ? { ...c, subscribed: active } : c)),
@@ -273,3 +331,20 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   reactAnonymously: false,
   setReactAnonymously: (v) => set({ reactAnonymously: v }),
 }));
+
+/** 계정 교체·로그아웃 시 viewer별 차단/반응 상태와 늦은 응답을 함께 폐기한다. */
+export function resetCommunityState(): void {
+  communityGeneration += 1;
+  postListSequence += 1;
+  hotPostSequence += 1;
+  categoryCountSequence += 1;
+  detailSequence += 1;
+  commentSequence += 1;
+  activeDetailPostId = null;
+  useCommunityStore.setState({
+    posts: [], hotPosts: [], categoryCounts: {}, loading: false,
+    currentPost: null, comments: [], detailLoading: false,
+    detailNotFound: false, detailError: null, error: null,
+    reactAnonymously: false,
+  });
+}

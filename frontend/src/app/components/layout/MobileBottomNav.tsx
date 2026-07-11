@@ -17,7 +17,7 @@ const TABS = [
   { label: "알림", href: "/notifications", icon: Bell },
 ] as const;
 
-export function MobileBottomNav() {
+export function MobileBottomNav({ alwaysVisible = false }: { alwaysVisible?: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -39,8 +39,9 @@ export function MobileBottomNav() {
   return (
     <>
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-card/95 backdrop-blur dark:border-white/[0.06] dark:bg-[#050506]/95 xl:hidden"
+        className={`fixed inset-x-0 bottom-0 z-50 bg-card/95 backdrop-blur before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:border-t before:border-border ${alwaysVisible ? "" : "xl:hidden"}`}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        aria-label="앱 주요 메뉴"
       >
         <div className="mx-auto grid max-w-lg grid-cols-5">
           {TABS.map((tab) => {
@@ -48,11 +49,13 @@ export function MobileBottomNav() {
             const showUnread = tab.href === "/notifications" && unreadCount > 0;
             return (
               <button
+                type="button"
                 key={tab.href}
                 onClick={() => go(tab.href)}
-                className={`flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors ${
-                  active ? "text-[#5E6AD2] dark:text-[#7d88de]" : "text-slate-500 dark:text-[#8A8F98]"
+                className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                  active ? "text-primary" : "text-muted-foreground"
                 }`}
+                aria-current={active ? "page" : undefined}
               >
                 <span className="relative">
                   <tab.icon
@@ -72,13 +75,16 @@ export function MobileBottomNav() {
             );
           })}
           <button
+            type="button"
             onClick={() => {
               haptic("light");
               setMoreOpen(true);
             }}
-            className={`flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium ${
-              moreOpen ? "text-[#5E6AD2] dark:text-[#7d88de]" : "text-slate-500 dark:text-[#8A8F98]"
+            className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium ${
+              moreOpen ? "text-primary" : "text-muted-foreground"
             }`}
+            aria-expanded={moreOpen}
+            aria-haspopup="dialog"
           >
             <Grid3x3 className="size-5" />
             더보기
@@ -86,7 +92,11 @@ export function MobileBottomNav() {
         </div>
       </nav>
 
-      <MobileMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />
+      <MobileMoreSheet
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        alwaysVisible={alwaysVisible}
+      />
     </>
   );
 }

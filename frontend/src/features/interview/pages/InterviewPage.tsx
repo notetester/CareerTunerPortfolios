@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
@@ -44,8 +44,14 @@ function parseCaseId(value: string | null): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseInterviewTab(value: string | null): InterviewTab | null {
+  return value && INTERVIEW_TABS.includes(value as InterviewTab)
+    ? value as InterviewTab
+    : null;
+}
+
 export function InterviewPage() {
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const mode = useTutorialStore((s) => s.mode);
   const tutStep = useTutorialStore((s) => s.step);
   const startTutorial = useTutorialStore((s) => s.startTutorial);
@@ -70,13 +76,21 @@ export function InterviewPage() {
   // "폰으로 보내기"(기기 핸드오프) 전송 중 여부 — 중복 클릭 방지.
   const [sendingToPhone, setSendingToPhone] = useState(false);
 
-  const cases = useApplicationCases(isAuthenticated);
+  const cases = useApplicationCases(isAuthenticated, false, user?.id ?? null);
+
+  // 같은 탭에서 로그인 계정이 바뀌어도 이전 사용자의 세션·리포트 선택을 재사용하지 않는다.
+  useLayoutEffect(() => {
+    setSelectedMode(null);
+    setSelectedCaseId(null);
+    setActiveSession(null);
+    setSessionOrigin(null);
+    setResumeHint(null);
+    setSendingToPhone(false);
+  }, [user?.id]);
   const requestedCaseId = parseCaseId(searchParams.get("caseId"));
 
-  const requested = searchParams.get("tab") ?? "modes";
-  const activeTab: InterviewTab = INTERVIEW_TABS.includes(requested as InterviewTab)
-    ? (requested as InterviewTab)
-    : "modes";
+  const requestedTab = parseInterviewTab(searchParams.get("tab"));
+  const activeTab: InterviewTab = requestedTab ?? "modes";
   const autoMode = searchParams.get("auto") === "1" && autoPrompt.length > 0;
 
   // 지원 건 상세·챗봇·AutoPrep가 넘긴 ?caseId 를 실제 모드 선택에 반영한다.
@@ -142,6 +156,8 @@ export function InterviewPage() {
     if (!sidRaw || !isAuthenticated) return;
     const sid = Number(sidRaw);
     if (!Number.isFinite(sid)) return;
+    // 리포트 완료 알림처럼 명시된 유효 탭은 복원 뒤에도 유지하고, 누락/오염 값만 질문 탭으로 보정한다.
+    const restoredTab = parseInterviewTab(searchParams.get("tab")) ?? "questions";
     let cancelled = false;
     void (async () => {
       try {
@@ -163,8 +179,14 @@ export function InterviewPage() {
         } catch {
           // 진행률 조회 실패는 무시 — 세션 활성화 자체는 유지
         }
-        // session 파라미터 제거(뒤로가기 재실행 방지) 후 질문 탭으로
-        if (!cancelled) setSearchParams({ tab: "questions" }, { replace: true });
+        // session 파라미터만 제거해 뒤로가기 재실행을 막고, 검증한 요청 탭은 보존한다.
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete("session");
+          if (restoredTab === "modes") next.delete("tab");
+          else next.set("tab", restoredTab);
+          setSearchParams(next, { replace: true });
+        }
       } catch {
         // 세션 목록 조회 실패 — 수동 이어받기 경로(최근 기록)로 대체 가능하므로 조용히 무시
       }

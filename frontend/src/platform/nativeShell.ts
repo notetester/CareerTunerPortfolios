@@ -10,6 +10,10 @@ import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { isNativeApp, platformName } from "./capacitor";
+import {
+  consumeNativeOverlayBack,
+  suspendNativeOverlays,
+} from "./nativeOverlayLifecycle";
 
 let initialized = false;
 
@@ -73,9 +77,25 @@ export function initNativeShell(): void {
     /* no-op */
   }
 
-  // 하드웨어 뒤로가기(Android): 갈 곳이 있으면 뒤로, 루트면 앱 종료.
+  // 앱 비활성화(통화·화면 꺼짐·백그라운드): 활성 미디어 오버레이가
+  // 라우트/초안 상태는 유지한 채 카메라·마이크 스트림을 즉시 정리한다.
+  try {
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive) {
+        suspendNativeOverlays();
+        return;
+      }
+      syncStatusBarTheme();
+    }).catch(() => {});
+  } catch {
+    /* no-op */
+  }
+
+  // 하드웨어 뒤로가기(Android): 최상단 오버레이가 먼저 소비하고,
+  // 오버레이가 없을 때만 브라우저 history 또는 앱 종료로 전달한다.
   try {
     void App.addListener("backButton", ({ canGoBack }) => {
+      if (consumeNativeOverlayBack()) return;
       const goBack = canGoBack ?? (typeof window !== "undefined" && window.history.length > 1);
       if (goBack) {
         window.history.back();

@@ -21,6 +21,8 @@ import {
   keepStreamForAppLock,
   onAppLockState,
 } from "@/platform/appLockEvents";
+import { registerNativeOverlayLifecycle } from "@/platform/nativeOverlayLifecycle";
+import { MediaCaptureExitConfirm } from "./MediaCaptureExitConfirm";
 
 /**
  * 몰입형 음성 답변 (모바일 풀스크린) — Claude 앱식 최소 UI.
@@ -57,6 +59,7 @@ export function ImmersiveVoiceOverlay({
   const [phase, setPhase] = useState<Phase>("recording");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [confirmClose, setConfirmClose] = useState(false);
   // 웨이브폼 시각화용 마이크 스트림 — 실제 음량에 따라 움직인다 (ref 는 리렌더를 못 일으켜 state 로 별도 보관)
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
@@ -71,6 +74,9 @@ export function ImmersiveVoiceOverlay({
   const captureGenerationRef = useRef<number | null>(null);
   const processingAbortRef = useRef<AbortController | null>(null);
   const finishRef = useRef<() => void>(() => undefined);
+  const closeRef = useRef<() => void>(() => undefined);
+  const nativeBackRef = useRef<() => void>(() => undefined);
+  const confirmCloseRef = useRef(false);
   /** 녹음 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
   const formatRef = useRef<string>("webm");
 
@@ -94,6 +100,7 @@ export function ImmersiveVoiceOverlay({
   };
 
   const close = () => {
+    if (closedRef.current) return;
     closedRef.current = true;
     captureAttemptRef.current += 1;
     processingAbortRef.current?.abort();
@@ -103,12 +110,21 @@ export function ImmersiveVoiceOverlay({
     trackerRef.current?.dispose();
     trackerRef.current = null;
     cleanup();
+    setConfirmClose(false);
     onClose();
+  };
+
+  closeRef.current = close;
+  confirmCloseRef.current = confirmClose;
+  nativeBackRef.current = () => {
+    if (confirmCloseRef.current) setConfirmClose(false);
+    else setConfirmClose(true);
   };
 
   // 진입 즉시 녹음 시작 (권한 프리프롬프트는 진입 전에 이미 통과)
   useEffect(() => {
     let cancelled = false;
+    closedRef.current = false;
     const captureAttempt = ++captureAttemptRef.current;
     const lockGeneration = captureAppLockGeneration();
     if (lockGeneration === null) return undefined;
@@ -169,8 +185,13 @@ export function ImmersiveVoiceOverlay({
   }, []);
 
   useEffect(() => onAppLockState((locked) => {
-    if (locked) close();
-  }), [onClose]);
+    if (locked) closeRef.current();
+  }), []);
+
+  useEffect(() => registerNativeOverlayLifecycle({
+    onBack: () => nativeBackRef.current(),
+    onSuspend: () => closeRef.current(),
+  }), []);
 
   const speakQuestion = () => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -331,7 +352,7 @@ export function ImmersiveVoiceOverlay({
         </span>
         <button
           autoFocus
-          onClick={close}
+          onClick={() => setConfirmClose(true)}
           className="ml-auto flex size-9 items-center justify-center rounded-lg text-[#8A8F98] transition-colors hover:bg-white/[0.06]"
           aria-label="닫기"
         >
@@ -396,6 +417,13 @@ export function ImmersiveVoiceOverlay({
         </button>
         <div className="size-14" aria-hidden />
       </div>
+      {confirmClose && (
+        <MediaCaptureExitConfirm
+          processing={phase === "processing"}
+          onKeep={() => setConfirmClose(false)}
+          onDiscard={() => closeRef.current()}
+        />
+      )}
     </div>
   );
 }

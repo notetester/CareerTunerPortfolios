@@ -60,6 +60,8 @@ export interface InterviewAnswer {
   score: number | null;
   feedback: string | null;
   improvedAnswer: string | null;
+  clientSubmissionId?: string | null;
+  submissionStatus?: "PENDING" | "COMPLETED" | "FAILED" | null;
   createdAt: string;
 }
 
@@ -82,6 +84,8 @@ export interface InterviewReportQuestionScore {
   question: string;
   score: number | null;
   feedback: string | null;
+  voiceScore?: number | null;
+  visualScore?: number | null;
 }
 
 // ───── 요청 DTO ─────
@@ -109,6 +113,12 @@ export interface SubmitAnswerRequest {
   videoFileId?: number | null;
   /** 사용자에게 보여준 모범답안(답안지). 있으면 채점의 만점 기준으로 함께 보낸다. */
   modelAnswer?: string | null;
+  /** 응답 유실 재시도에도 동일하게 유지하는 UUID 멱등키. */
+  clientSubmissionId?: string | null;
+  /** 모바일 캡처 전달력 점수. 답변과 같은 서버 트랜잭션에서 영속한다. */
+  voiceScore?: number | null;
+  /** 모바일 캡처 비언어 점수. 답변과 같은 서버 트랜잭션에서 영속한다. */
+  visualScore?: number | null;
 }
 
 /** 자율 에이전트 진행 단계 (AI 사고과정 트레이스) */
@@ -219,6 +229,8 @@ export interface MediaCapabilities {
 export interface MediaAnalysis {
   id: number;
   interviewSessionId: number;
+  questionId: number | null;
+  answerId: number | null;
   kind: "VOICE" | "AVATAR";
   transcript: TranscriptLine[] | null;
   metrics: Record<string, unknown> | null;
@@ -230,6 +242,9 @@ export interface MediaAnalysis {
 /** 분석 결과 저장 요청 (POST /sessions/{id}/media-results) */
 export interface SaveMediaAnalysisRequest {
   kind: "VOICE" | "AVATAR";
+  /** 답변 단위 모바일 분석일 때 함께 보낸다. 기존 세션 단위 저장은 둘 다 생략한다. */
+  questionId?: number | null;
+  answerId?: number | null;
   transcript: TranscriptLine[] | null;
   metrics: Record<string, unknown> | null;
   score: number;
@@ -271,6 +286,8 @@ export interface SessionReviewItem {
   score: number | null;
   feedback: string | null;
   improvedAnswer: string | null;
+  voiceScore?: number | null;
+  visualScore?: number | null;
 }
 
 /** 최근 면접 기록에서 들어가 보는 세션 복기 응답. */

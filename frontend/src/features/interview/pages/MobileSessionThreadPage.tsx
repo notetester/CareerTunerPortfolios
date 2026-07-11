@@ -3,6 +3,14 @@ import { useNavigate, useParams } from "react-router";
 import { ArrowLeft, ArrowUp, Camera, Check, Mic, Monitor, Sparkles, Trash2, X } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { isOutageFallbackActive } from "@/app/lib/outageFallback";
+import {
+  deleteTrackedPendingInterviewFile,
+  isPendingInterviewFileProtected,
+  markPendingInterviewFileLinked,
+  protectPendingInterviewFile,
+  releasePendingInterviewFile,
+  trackPendingInterviewUpload,
+} from "@/app/lib/pendingInterviewFiles";
 import { onAppLockState } from "@/platform/appLockEvents";
 import { haptic } from "@/platform/haptics";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
@@ -10,7 +18,6 @@ import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBad
 import {
   dispatchSessionToDesktop,
   deleteAnswerMedia,
-  deletePendingInterviewFile,
   generateExpectedQuestions,
   generateFollowUps,
   getModelAnswer,
@@ -37,6 +44,7 @@ import {
   validateCapturedMediaSize,
   type PendingInterviewMediaKind,
 } from "../lib/mobileSubmission";
+import { createAnswerSubmissionId } from "../lib/answerSubmissionId";
 import { ImmersiveVoiceOverlay } from "../components/mobile/ImmersiveVoiceOverlay";
 import { ImmersiveAvatarOverlay } from "../components/mobile/ImmersiveAvatarOverlay";
 import {
@@ -105,7 +113,7 @@ export function MobileSessionThreadPage() {
   const sessionId = Number(id);
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
-  const cases = useApplicationCases(isAuthenticated);
+  const cases = useApplicationCases(isAuthenticated, false, user?.id ?? null);
   const consentScope = user ? `user:${user.id}` : "";
 
   const [session, setSession] = useState<InterviewSession | null>(null);
@@ -119,6 +127,8 @@ export function MobileSessionThreadPage() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [openModel, setOpenModel] = useState<Record<number, boolean>>({});
   const [openImproved, setOpenImproved] = useState<Record<number, boolean>>({});
+  const [modelAnswerLoading, setModelAnswerLoading] = useState<Record<number, boolean>>({});
+  const [followUpLoading, setFollowUpLoading] = useState<Record<number, boolean>>({});
   // 몰입형 오버레이 + 권한 프리프롬프트
   const [overlay, setOverlay] = useState<PermKind | null>(null);
   const [preprompt, setPreprompt] = useState<PermKind | null>(null);
@@ -131,6 +141,7 @@ export function MobileSessionThreadPage() {
   const sessionGenerationRef = useRef(0);
   const mountedRef = useRef(true);
   const activeSessionIdRef = useRef(sessionId);
+  const activeAccountIdRef = useRef<number | null>(user?.id ?? null);
   const activeUploadAbortRef = useRef<AbortController | null>(null);
   const [mediaUploadGeneration, setMediaUploadGeneration] = useState<number | null>(null);
   const mediaUploading = mediaUploadGeneration != null;
@@ -153,16 +164,18 @@ export function MobileSessionThreadPage() {
   }, []);
 
   const cleanupPendingFile = useCallback(async (fileId: number, keepalive = false) => {
-    if (protectedFileIdsRef.current.has(fileId)) return false;
-    try {
-      await deletePendingInterviewFile(fileId, keepalive);
+    if (
+      protectedFileIdsRef.current.has(fileId)
+      || isPendingInterviewFileProtected(fileId)
+    ) return false;
+    const deleted = await deleteTrackedPendingInterviewFile(fileId, keepalive);
+    if (deleted) {
       pendingFileIdsRef.current.delete(fileId);
       return true;
-    } catch {
-      // 재시도 가능한 ID를 집합에 남긴다. unmount에서 한 번 더 best-effort 정리한다.
-      pendingFileIdsRef.current.add(fileId);
-      return false;
     }
+    // 재시도 가능한 ID를 집합에 남긴다. unmount에서 한 번 더 best-effort 정리한다.
+    pendingFileIdsRef.current.add(fileId);
+    return false;
   }, []);
 
   const cleanupEligiblePendingFiles = useCallback((keepalive = false) => {
@@ -249,11 +262,14 @@ export function MobileSessionThreadPage() {
     setMediaUploadGeneration(generation);
     try {
       const extension = format === "mp4" ? "mp4" : "webm";
-      const file = await uploadFile(blob, kind, {
-        fileName: `${kind === "AUDIO" ? "voice" : "video"}-answer-${questionId}.${extension}`,
-        refType: "INTERVIEW_ANSWER",
-        signal: controller.signal,
-      });
+      const file = await trackPendingInterviewUpload(
+        uploadFile(blob, kind, {
+          fileName: `${kind === "AUDIO" ? "voice" : "video"}-answer-${questionId}.${extension}`,
+          refType: "INTERVIEW_ANSWER",
+          signal: controller.signal,
+        }),
+        controller,
+      );
       pendingFileIdsRef.current.add(file.id);
       if (
         controller.signal.aborted
@@ -332,11 +348,47 @@ export function MobileSessionThreadPage() {
     setPreprompt(null);
     setOpenModel({});
     setOpenImproved({});
+    setModelAnswerLoading({});
+    setFollowUpLoading({});
     setDeletingMedia({});
     setMediaUploadGeneration(null);
     setToastMsg(null);
     if (toastTimer.current) clearTimeout(toastTimer.current);
   }, [cleanupEligiblePendingFiles, sessionId, setPendingMedia]);
+
+  useLayoutEffect(() => {
+    const nextAccountId = user?.id ?? null;
+    if (activeAccountIdRef.current === nextAccountId) return;
+    activeAccountIdRef.current = nextAccountId;
+    sessionGenerationRef.current += 1;
+    mediaUploadGenerationRef.current += 1;
+    activeUploadAbortRef.current?.abort();
+    activeUploadAbortRef.current = null;
+    // 토큰이 이미 바뀐 계정 경계에서는 이전 사용자 파일을 새 토큰으로 삭제하지 않는다.
+    // 전역 registry는 AuthContext가 무효화하고 서버 orphan 정리가 잔여 파일을 처리한다.
+    pendingFileIdsRef.current.clear();
+    protectedFileIdsRef.current.clear();
+    setPendingMedia(null);
+    draftRef.current = "";
+    setDraft("");
+    setSession(null);
+    setItems([]);
+    setLoading(true);
+    setGenerating(false);
+    setScoring(false);
+    setSubmissionError(null);
+    setUncertainSubmission(null);
+    setOverlay(null);
+    setPreprompt(null);
+    setOpenModel({});
+    setOpenImproved({});
+    setModelAnswerLoading({});
+    setFollowUpLoading({});
+    setDeletingMedia({});
+    setMediaUploadGeneration(null);
+    setToastMsg(null);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, [setPendingMedia, user?.id]);
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => {
@@ -370,6 +422,7 @@ export function MobileSessionThreadPage() {
     () => items.filter((it) => it.kind === "question").length,
     [items],
   );
+  const sessionCompleted = questionCount > 0 && answeredCount >= questionCount;
 
   /** questions + review 병합 → 스레드 재구성 (데스크탑 InterviewSession.reloadThread 와 동형). */
   const reload = useCallback(async (
@@ -414,8 +467,8 @@ export function MobileSessionThreadPage() {
               feedback: rv.feedback ?? null,
               improvedAnswer: rv.improvedAnswer ?? null,
               modelAnswer: rv.modelAnswer ?? null,
-              voiceScore: null,
-              visualScore: null,
+              voiceScore: rv.voiceScore ?? null,
+              visualScore: rv.visualScore ?? null,
             },
           });
         }
@@ -541,8 +594,8 @@ export function MobileSessionThreadPage() {
             feedback: review.feedback,
             improvedAnswer: review.improvedAnswer,
             modelAnswer: review.modelAnswer,
-            voiceScore: submission.voiceScore,
-            visualScore: submission.visualScore,
+            voiceScore: review.voiceScore ?? submission.voiceScore,
+            visualScore: review.visualScore ?? submission.visualScore,
           },
         });
       }
@@ -559,6 +612,7 @@ export function MobileSessionThreadPage() {
       if (media) {
         protectedFileIdsRef.current.delete(media.file.id);
         pendingFileIdsRef.current.delete(media.file.id);
+        markPendingInterviewFileLinked(media.file.id);
       }
       if (!isSubmissionCurrent(submission)) return;
       setUncertainSubmission(null);
@@ -573,7 +627,10 @@ export function MobileSessionThreadPage() {
     }
 
     if (result.status === "NOT_SAVED") {
-      if (media) protectedFileIdsRef.current.delete(media.file.id);
+      if (media) {
+        protectedFileIdsRef.current.delete(media.file.id);
+        releasePendingInterviewFile(media.file.id);
+      }
       if (!isSubmissionCurrent(submission)) {
         if (media) void cleanupPendingFile(media.file.id, true);
         return;
@@ -627,7 +684,7 @@ export function MobileSessionThreadPage() {
     const mediaFields = pending
       ? buildPendingMediaAnswerFields(pending.kind, pending.file.id, pending.file.contentUrl)
       : {};
-    const submissionId = `${qid}-${Date.now()}`;
+    const submissionId = createAnswerSubmissionId();
     const submission: PendingAnswerSubmission = {
       sessionId: expectedSessionId,
       sessionGeneration: expectedSessionGeneration,
@@ -640,6 +697,7 @@ export function MobileSessionThreadPage() {
     };
     if (pending) {
       protectedFileIdsRef.current.add(pending.file.id);
+      protectPendingInterviewFile(pending.file.id);
       setPendingMedia(null);
     }
     setSubmissionError(null);
@@ -662,10 +720,17 @@ export function MobileSessionThreadPage() {
       { kind: "scoring", submissionId },
     ]);
     try {
-      const a = await submitAnswer(qid, { answerText: text, ...mediaFields });
+      const a = await submitAnswer(qid, {
+        answerText: text,
+        ...mediaFields,
+        clientSubmissionId: submissionId,
+        voiceScore,
+        visualScore,
+      });
       if (pending) {
         protectedFileIdsRef.current.delete(pending.file.id);
         pendingFileIdsRef.current.delete(pending.file.id);
+        markPendingInterviewFileLinked(pending.file.id);
       }
       if (!isSubmissionCurrent(submission)) return;
       setItems((prev) => [
@@ -706,7 +771,10 @@ export function MobileSessionThreadPage() {
         setDraft(restored);
       }
       if (classifySubmissionFailure(error) === "DEFINITE") {
-        if (pending) protectedFileIdsRef.current.delete(pending.file.id);
+        if (pending) {
+          protectedFileIdsRef.current.delete(pending.file.id);
+          releasePendingInterviewFile(pending.file.id);
+        }
         if (isSubmissionCurrent(submission)) {
           if (pending) setPendingMedia(pending);
           setSubmissionError("답변이 전송되지 않았습니다. 답변과 원본을 보존했습니다.");
@@ -723,18 +791,17 @@ export function MobileSessionThreadPage() {
     }
   };
 
-  /** 마지막 채점 질문에 꼬리질문 1개. */
-  const followUp = async () => {
+  /** 사용자가 누른 채점 질문에 꼬리질문 1개. 압박 면접에서만 제공한다. */
+  const followUp = async (qid: number) => {
+    if (followUpLoading[qid]) return;
     const expectedSessionId = sessionId;
     const expectedGeneration = sessionGenerationRef.current;
     const stillCurrent = () => mountedRef.current
       && activeSessionIdRef.current === expectedSessionId
       && sessionGenerationRef.current === expectedGeneration;
-    const scoredItems = items.filter((it) => it.kind === "score") as { s: ScoreInfo }[];
-    const last = scoredItems[scoredItems.length - 1];
-    if (!last) return;
+    setFollowUpLoading((current) => ({ ...current, [qid]: true }));
     try {
-      const updated = await generateFollowUps(last.s.qid, { count: 1 });
+      const updated = await generateFollowUps(qid, { count: 1 }, expectedSessionId);
       if (!stillCurrent()) return;
       const known = new Set(
         items.filter((it) => it.kind === "question").map((it) => (it as { q: InterviewQuestion }).q.id),
@@ -748,10 +815,15 @@ export function MobileSessionThreadPage() {
       toast("꼬리질문이 도착했습니다");
     } catch {
       if (stillCurrent()) toast("꼬리질문 생성에 실패했습니다");
+    } finally {
+      if (stillCurrent()) {
+        setFollowUpLoading((current) => ({ ...current, [qid]: false }));
+      }
     }
   };
 
   const showModelAnswer = async (qid: number) => {
+    if (modelAnswerLoading[qid]) return;
     const expectedSessionId = sessionId;
     const expectedGeneration = sessionGenerationRef.current;
     const stillCurrent = () => mountedRef.current
@@ -761,6 +833,7 @@ export function MobileSessionThreadPage() {
       (it) => it.kind === "score" && it.s.qid === qid && it.s.modelAnswer,
     );
     if (!has) {
+      setModelAnswerLoading((current) => ({ ...current, [qid]: true }));
       try {
         const { modelAnswer } = await getModelAnswer(qid);
         if (!stillCurrent()) return;
@@ -772,6 +845,10 @@ export function MobileSessionThreadPage() {
       } catch {
         if (stillCurrent()) toast("모범답안을 불러오지 못했습니다");
         return;
+      } finally {
+        if (stillCurrent()) {
+          setModelAnswerLoading((current) => ({ ...current, [qid]: false }));
+        }
       }
     }
     if (!stillCurrent()) return;
@@ -886,12 +963,12 @@ export function MobileSessionThreadPage() {
         </div>
         <span
           className={`rounded-full border px-2.5 py-0.5 text-[11px] ${
-            currentQ
-              ? "border-border bg-muted text-amber-700 dark:text-[#d6a24c]"
-              : "border-border bg-muted text-emerald-700 dark:text-[#4cc38a]"
+            !sessionCompleted
+              ? "border-border bg-muted text-[var(--warning)]"
+              : "border-border bg-muted text-[var(--success)]"
           }`}
         >
-          {currentQ ? `${answeredCount}/${questionCount}` : "완료"}
+          {sessionCompleted ? "완료" : `${answeredCount}/${questionCount}`}
         </span>
         <button
           onClick={() => void sendToDesktop()}
@@ -935,7 +1012,7 @@ export function MobileSessionThreadPage() {
               <button
                 onClick={() => void generate()}
                 disabled={generating}
-                className="mt-4 rounded-[10px] bg-gradient-to-b from-[#7d88de] to-[#5E6AD2] px-5 py-2.5 text-[12.5px] font-semibold text-white shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_4px_12px_rgba(94,106,210,0.3)] disabled:opacity-50"
+                className="mt-4 rounded-[10px] bg-gradient-to-b from-accent-2 to-primary px-5 py-2.5 text-[12.5px] font-semibold text-primary-foreground shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_4px_12px_rgba(94,106,210,0.3)] disabled:opacity-50"
               >
                 {generating ? "생성 중…" : "예상 질문 생성"}
               </button>
@@ -946,7 +1023,7 @@ export function MobileSessionThreadPage() {
             if (it.kind === "question") {
               return (
                 <div key={`q-${it.q.id}`} className="my-4 flex gap-3">
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-[#5E6AD2]/30 bg-[#5E6AD2]/15 text-[#7d88de]">
+                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-primary/30 bg-primary/15 text-accent-2">
                     <Sparkles className="size-3.5" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -955,7 +1032,7 @@ export function MobileSessionThreadPage() {
                       <span
                         className={`rounded-full border px-2 py-px text-[10px] ${
                           it.q.parentQuestionId != null
-                            ? "border-primary/30 bg-primary/10 text-primary dark:text-[#aab2ef]"
+                            ? "border-primary/30 bg-primary/10 text-accent-2"
                             : "border-border bg-muted text-muted-foreground"
                         }`}
                       >
@@ -1040,19 +1117,19 @@ export function MobileSessionThreadPage() {
                 className="my-3 overflow-hidden rounded-2xl border border-border bg-card shadow-sm dark:shadow-[0_2px_20px_rgba(0,0,0,0.35)]"
               >
                 <div className="flex items-center gap-3.5 border-b border-border px-4 py-3">
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-full border-2 border-[#5E6AD2] font-mono text-[14px] font-bold text-[#7d88de] shadow-[0_0_18px_rgba(94,106,210,0.2)]">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-full border-2 border-primary font-mono text-[14px] font-bold text-accent-2 shadow-[0_0_18px_rgba(94,106,210,0.2)]">
                     {s.score ?? "—"}
                   </div>
                   <div>
                     <div className="text-[13px] font-semibold">답변 평가</div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {s.voiceScore != null && (
-                        <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-px text-[10px] text-primary dark:text-[#aab2ef]">
+                        <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-px text-[10px] text-accent-2">
                           <Mic className="size-2.5" /> 전달력 {s.voiceScore}
                         </span>
                       )}
                       {s.visualScore != null && (
-                        <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-px text-[10px] text-primary dark:text-[#aab2ef]">
+                        <span className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-px text-[10px] text-accent-2">
                           <Camera className="size-2.5" /> 비언어 {s.visualScore}
                         </span>
                       )}
@@ -1064,13 +1141,13 @@ export function MobileSessionThreadPage() {
                 )}
                 {openImproved[s.qid] && s.improvedAnswer && (
                   <div className="mx-3.5 mb-2 rounded-lg bg-muted px-3 py-2.5">
-                    <div className="mb-1 text-[11px] font-semibold text-[#4cc38a]">개선 답변 제안</div>
+                    <div className="mb-1 text-[11px] font-semibold text-[var(--success)]">개선 답변 제안</div>
                     <div className="text-[12px] leading-relaxed text-muted-foreground">{s.improvedAnswer}</div>
                   </div>
                 )}
                 {openModel[s.qid] && s.modelAnswer && (
                   <div className="mx-3.5 mb-2 rounded-lg bg-muted px-3 py-2.5">
-                    <div className="mb-1 text-[11px] font-semibold text-[#58a6ff]">모범답안</div>
+                    <div className="mb-1 text-[11px] font-semibold text-accent-2">모범답안</div>
                     <div className="text-[12px] leading-relaxed text-muted-foreground">{s.modelAnswer}</div>
                   </div>
                 )}
@@ -1081,9 +1158,10 @@ export function MobileSessionThreadPage() {
                 <div className="flex flex-wrap gap-1.5 px-3.5 pb-3.5 pt-1">
                   <button
                     onClick={() => void showModelAnswer(s.qid)}
+                    disabled={modelAnswerLoading[s.qid] === true}
                     className="rounded-lg border border-border px-3 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-accent"
                   >
-                    {openModel[s.qid] ? "모범답안 접기" : "모범답안"}
+                    {modelAnswerLoading[s.qid] ? "생성 중…" : openModel[s.qid] ? "모범답안 접기" : "모범답안"}
                   </button>
                   {s.improvedAnswer && (
                     <button
@@ -1093,12 +1171,15 @@ export function MobileSessionThreadPage() {
                       {openImproved[s.qid] ? "개선 제안 접기" : "개선 제안"}
                     </button>
                   )}
-                  <button
-                    onClick={() => void followUp()}
-                    className="rounded-lg border border-border px-3 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-accent"
-                  >
-                    꼬리질문 받기
-                  </button>
+                  {session?.mode === "PRESSURE" && (
+                    <button
+                      onClick={() => void followUp(s.qid)}
+                      disabled={followUpLoading[s.qid] === true}
+                      className="rounded-lg border border-border px-3 py-1.5 text-[11.5px] font-medium text-foreground hover:bg-accent disabled:opacity-60"
+                    >
+                      {followUpLoading[s.qid] ? "생성 중…" : "꼬리질문 받기"}
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -1124,7 +1205,7 @@ export function MobileSessionThreadPage() {
                   type="button"
                   onClick={() => void retryUncertainReconciliation()}
                   disabled={scoring}
-                  className="mt-2 flex min-h-11 w-full items-center justify-center rounded-lg border border-red-300 bg-white px-3 text-[12px] font-semibold text-red-700 disabled:opacity-50 dark:border-red-400/40 dark:bg-transparent dark:text-red-200"
+                  className="mt-2 flex min-h-11 w-full items-center justify-center rounded-lg border border-destructive/30 bg-card px-3 text-[12px] font-semibold text-destructive disabled:opacity-50"
                 >
                   {scoring ? "저장 여부 확인 중…" : "서버 저장 여부 다시 확인"}
                 </button>
@@ -1178,7 +1259,7 @@ export function MobileSessionThreadPage() {
               </span>
             )}
             {pendingMedia && (
-              <span className="flex min-h-11 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 pl-3 text-[10px] text-primary dark:text-[#aab2ef]">
+              <span className="flex min-h-11 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 pl-3 text-[10px] text-accent-2">
                 <Check className="size-2.5" /> {pendingMedia.kind === "AUDIO" ? "음성" : "영상"} 원본 준비됨
                 <button
                   type="button"
@@ -1197,7 +1278,7 @@ export function MobileSessionThreadPage() {
             <button
               onClick={() => void send()}
               disabled={!currentQ || scoring || mediaUploading || uncertainSubmission != null || !draft.trim()}
-              className="ml-auto flex size-11 shrink-0 items-center justify-center rounded-[9px] bg-gradient-to-b from-[#7d88de] to-[#5E6AD2] text-white shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_3px_10px_rgba(94,106,210,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-40"
+              className="ml-auto flex size-11 shrink-0 items-center justify-center rounded-[9px] bg-gradient-to-b from-accent-2 to-primary text-primary-foreground shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_3px_10px_rgba(94,106,210,0.3),inset_0_1px_0_rgba(255,255,255,0.2)] disabled:opacity-40"
               aria-label="보내기"
             >
               <ArrowUp className="size-[17px]" />

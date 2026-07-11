@@ -1,8 +1,9 @@
-import { api } from "@/app/lib/api";
+import { api, ApiError } from "@/app/lib/api";
 import { runWithAiCharge } from "@/features/billing/api/aiChargePreviewApi";
 import { apiBase } from "@/app/lib/apiBase";
-import { getAccessToken } from "@/app/lib/tokenStore";
+import { getAccessToken, subscribeTokenStore } from "@/app/lib/tokenStore";
 import { isDataMockActive } from "../tutorial/tutorialStore";
+import { createAnswerSubmissionId } from "../lib/answerSubmissionId";
 import {
   dummyAgentSteps,
   dummyAnswer,
@@ -38,6 +39,79 @@ import type {
   TranscribeResult,
   VoiceScoreServerResult,
 } from "../types/interview";
+
+const pendingAnswerSubmissionIds = new Map<number, { fingerprint: string; id: string }>();
+interface PendingQuestionOperation {
+  key: string;
+  baseline: string | null;
+}
+const pendingQuestionOperations = new Map<number, PendingQuestionOperation>();
+const pendingFollowUpOperations = new Map<number, PendingQuestionOperation>();
+
+subscribeTokenStore((event) => {
+  if (event === "refreshed") return;
+  pendingAnswerSubmissionIds.clear();
+  pendingQuestionOperations.clear();
+  pendingFollowUpOperations.clear();
+});
+
+function questionSignature(questions: InterviewQuestion[]): string {
+  return questions.map((question) => question.id).sort((a, b) => a - b).join(",");
+}
+
+function followUpSignature(questions: InterviewQuestion[], parentQuestionId: number): string {
+  return questions
+    .filter((question) => question.parentQuestionId === parentQuestionId)
+    .map((question) => question.id)
+    .sort((a, b) => a - b)
+    .join(",");
+}
+
+function isMutationOutcomeUncertain(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.code === "OUTAGE_MUTATION_UNCERTAIN"
+      || error.status === 408
+      || error.status === 425
+      || error.status === 429
+      || error.status >= 500;
+  }
+  return true;
+}
+
+async function listQuestionsSafely(sessionId: number): Promise<InterviewQuestion[] | null> {
+  try {
+    return await listSessionQuestions(sessionId);
+  } catch {
+    return null;
+  }
+}
+
+async function reconcileQuestionOperation(
+  sessionId: number,
+  baseline: string | null,
+  signature: (questions: InterviewQuestion[]) => string,
+): Promise<InterviewQuestion[] | null> {
+  if (baseline == null) return null;
+  for (const delay of [250, 750, 1_500]) {
+    await new Promise((resolve) => window.setTimeout(resolve, delay));
+    const current = await listQuestionsSafely(sessionId);
+    if (current && signature(current) !== baseline) return current;
+  }
+  return null;
+}
+
+function answerSubmissionFingerprint(request: SubmitAnswerRequest): string {
+  return JSON.stringify([
+    request.answerText,
+    request.audioFileId ?? null,
+    request.videoFileId ?? null,
+    request.audioUrl ?? null,
+    request.videoUrl ?? null,
+    request.modelAnswer ?? null,
+    request.voiceScore ?? null,
+    request.visualScore ?? null,
+  ]);
+}
 
 // 백엔드 계약: /api/interview/** , /api/file/**
 // 컨트롤러는 ApiResponse<T> envelope 로 응답하고, api() 래퍼가 data 만 풀어서 돌려준다.
@@ -110,17 +184,57 @@ export function createInterviewSession(
 }
 
 /** 세션에 대한 AI 예상 질문 생성. */
-export function generateExpectedQuestions(
+export async function generateExpectedQuestions(
   sessionId: number,
   request: GenerateQuestionsRequest,
 ): Promise<InterviewQuestion[]> {
   if (isDataMockActive()) return mockDelay(dummyQuestions, 900);
-  return runWithAiCharge("INTERVIEW_QUESTION_GEN", (headers) =>
-    api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(request),
-    }));
+  let pending = pendingQuestionOperations.get(sessionId);
+  if (!pending) {
+    const current = await listQuestionsSafely(sessionId);
+    pending = {
+      key: `AI_USAGE:${createAnswerSubmissionId()}`,
+      baseline: current ? questionSignature(current) : null,
+    };
+    pendingQuestionOperations.set(sessionId, pending);
+  } else {
+    const current = await listQuestionsSafely(sessionId);
+    if (current && pending.baseline != null && questionSignature(current) !== pending.baseline) {
+      pendingQuestionOperations.delete(sessionId);
+      return current;
+    }
+  }
+
+  let mutationStarted = false;
+  try {
+    const result = await runWithAiCharge("INTERVIEW_QUESTION_GEN", (headers) => {
+      mutationStarted = true;
+      return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(request),
+      });
+    }, pending.key);
+    if (pendingQuestionOperations.get(sessionId)?.key === pending.key) {
+      pendingQuestionOperations.delete(sessionId);
+    }
+    return result;
+  } catch (error) {
+    if (!mutationStarted || !isMutationOutcomeUncertain(error)) {
+      if (pendingQuestionOperations.get(sessionId)?.key === pending.key) {
+        pendingQuestionOperations.delete(sessionId);
+      }
+      throw error;
+    }
+    const reconciled = await reconcileQuestionOperation(sessionId, pending.baseline, questionSignature);
+    if (reconciled) {
+      if (pendingQuestionOperations.get(sessionId)?.key === pending.key) {
+        pendingQuestionOperations.delete(sessionId);
+      }
+      return reconciled;
+    }
+    throw error;
+  }
 }
 
 /** 세션의 질문 목록 조회. */
@@ -134,19 +248,33 @@ export function submitAnswer(
   questionId: number,
   request: SubmitAnswerRequest,
 ): Promise<InterviewAnswer> {
+  const fingerprint = answerSubmissionFingerprint(request);
+  const pending = pendingAnswerSubmissionIds.get(questionId);
+  const clientSubmissionId = request.clientSubmissionId
+    ?? (pending?.fingerprint === fingerprint ? pending.id : createAnswerSubmissionId());
+  if (!request.clientSubmissionId) {
+    pendingAnswerSubmissionIds.set(questionId, { fingerprint, id: clientSubmissionId });
+  }
+  const requestWithId = { ...request, clientSubmissionId };
   if (isDataMockActive()) {
+    pendingAnswerSubmissionIds.delete(questionId);
     return mockDelay({
       ...dummyAnswer(questionId),
       audioUrl: request.audioUrl ?? null,
       videoUrl: request.videoUrl ?? null,
+      clientSubmissionId,
     }, 500);
   }
   return runWithAiCharge("INTERVIEW_ANSWER_EVAL", (headers) =>
     api<InterviewAnswer>(`/interview/questions/${questionId}/answers`, {
       method: "POST",
       headers,
-      body: JSON.stringify(request),
-    }));
+      body: JSON.stringify(requestWithId),
+    })).then((answer) => {
+      const active = pendingAnswerSubmissionIds.get(questionId);
+      if (active?.id === clientSubmissionId) pendingAnswerSubmissionIds.delete(questionId);
+      return answer;
+    });
 }
 
 /** 답변 내용·채점은 유지하고 선택한 음성/영상 원본만 물리 삭제한다. */
@@ -158,23 +286,71 @@ export function deleteAnswerMedia(answerId: number, kind: "AUDIO" | "VIDEO"): Pr
 /** 질문에 대한 모범답안 생성(학습용). 답변 제출 전에도 호출 가능. */
 export function getModelAnswer(questionId: number): Promise<{ modelAnswer: string }> {
   if (isDataMockActive()) return mockDelay({ modelAnswer: dummyModelAnswer }, 700);
-  return api<{ modelAnswer: string }>(`/interview/questions/${questionId}/model-answer`, {
-    method: "POST",
-  });
+  return runWithAiCharge("INTERVIEW_MODEL_ANSWER", (headers) =>
+    api<{ modelAnswer: string }>(`/interview/questions/${questionId}/model-answer`, {
+      method: "POST",
+      headers,
+    }));
 }
 
 /** 질문 + 직전 답변 기반 꼬리 질문 생성 → 갱신된 질문 목록 반환. */
-export function generateFollowUps(
+export async function generateFollowUps(
   questionId: number,
   request: GenerateFollowUpsRequest = {},
+  sessionId?: number,
 ): Promise<InterviewQuestion[]> {
   if (isDataMockActive()) return mockDelay([...dummyQuestions, dummyFollowUp], 800);
-  return runWithAiCharge("INTERVIEW_FOLLOWUP_GEN", (headers) =>
-    api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(request),
-    }));
+  let pending = pendingFollowUpOperations.get(questionId);
+  if (!pending) {
+    const current = sessionId == null ? null : await listQuestionsSafely(sessionId);
+    pending = {
+      key: `AI_USAGE:${createAnswerSubmissionId()}`,
+      baseline: current ? followUpSignature(current, questionId) : null,
+    };
+    pendingFollowUpOperations.set(questionId, pending);
+  } else if (sessionId != null) {
+    const current = await listQuestionsSafely(sessionId);
+    if (current && pending.baseline != null
+        && followUpSignature(current, questionId) !== pending.baseline) {
+      pendingFollowUpOperations.delete(questionId);
+      return current;
+    }
+  }
+
+  let mutationStarted = false;
+  try {
+    const result = await runWithAiCharge("INTERVIEW_FOLLOWUP_GEN", (headers) => {
+      mutationStarted = true;
+      return api<InterviewQuestion[]>(`/interview/questions/${questionId}/follow-ups`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(request),
+      });
+    }, pending.key);
+    if (pendingFollowUpOperations.get(questionId)?.key === pending.key) {
+      pendingFollowUpOperations.delete(questionId);
+    }
+    return result;
+  } catch (error) {
+    if (!mutationStarted || !isMutationOutcomeUncertain(error)) {
+      if (pendingFollowUpOperations.get(questionId)?.key === pending.key) {
+        pendingFollowUpOperations.delete(questionId);
+      }
+      throw error;
+    }
+    const reconciled = sessionId == null ? null : await reconcileQuestionOperation(
+      sessionId,
+      pending.baseline,
+      (questions) => followUpSignature(questions, questionId),
+    );
+    if (reconciled) {
+      if (pendingFollowUpOperations.get(questionId)?.key === pending.key) {
+        pendingFollowUpOperations.delete(questionId);
+      }
+      return reconciled;
+    }
+    throw error;
+  }
 }
 
 /** 세션 진행 상태(다음 질문/종료 여부) 조회. */
@@ -204,13 +380,21 @@ export function getAgentSteps(sessionId: number): Promise<InterviewAgentStep[]> 
 export function createRealtimeSession(sessionId: number, questionLimit?: number): Promise<RealtimeSession> {
   // 튜토리얼: 실제 WebRTC 연결이라 여기서 막지 않고 탭에서 더미 흐름 처리(단계 C).
   const query = questionLimit ? `?questionLimit=${questionLimit}` : "";
-  return api<RealtimeSession>(`/interview/sessions/${sessionId}/realtime${query}`, { method: "POST" });
+  return runWithAiCharge("INTERVIEW_VOICE_SESSION", (headers) =>
+    api<RealtimeSession>(`/interview/sessions/${sessionId}/realtime${query}`, {
+      method: "POST",
+      headers,
+    }));
 }
 
 /** 세션 종료 → AI 종합 리포트 생성/조회. */
 export function getInterviewReport(sessionId: number): Promise<InterviewReport> {
   if (isDataMockActive()) return mockDelay(dummyReport, 700);
-  return api<InterviewReport>(`/interview/sessions/${sessionId}/report`, { method: "GET" });
+  return runWithAiCharge("INTERVIEW_REPORT", (headers) =>
+    api<InterviewReport>(`/interview/sessions/${sessionId}/report`, {
+      method: "GET",
+      headers,
+    }));
 }
 
 /** 지난 세션 복기: 질문 + 모범답안 + 내 최신 답변/점수 (최근 면접 기록에서 들어가 보기). */
@@ -231,6 +415,8 @@ export function getSessionReview(sessionId: number): Promise<SessionReview> {
         score: null,
         feedback: null,
         improvedAnswer: null,
+        voiceScore: null,
+        visualScore: null,
       })),
     });
   }
@@ -261,11 +447,13 @@ export function scoreVoiceServer(
   },
   signal?: AbortSignal,
 ): Promise<VoiceScoreServerResult> {
-  return api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-    signal,
-  });
+  return runWithAiCharge("INTERVIEW_VOICE_SCORING", (headers) =>
+    api<VoiceScoreServerResult>(`/interview/sessions/${sessionId}/voice-score`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal,
+    }));
 }
 
 /**
@@ -284,11 +472,13 @@ export function scoreAvatarServer(
   },
   signal?: AbortSignal,
 ): Promise<AvatarScoreServerResult> {
-  return api<AvatarScoreServerResult>(`/interview/sessions/${sessionId}/avatar-score`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-    signal,
-  });
+  return runWithAiCharge("INTERVIEW_VIDEO_ANALYSIS", (headers) =>
+    api<AvatarScoreServerResult>(`/interview/sessions/${sessionId}/avatar-score`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal,
+    }));
 }
 
 /**
@@ -312,7 +502,11 @@ export function transcribeVoice(
 /** 아바타 화상 면접 세션 토큰 발급 (LiveAvatar). 질문 미생성 시 400. */
 export function createAvatarSession(sessionId: number): Promise<AvatarSession> {
   // 튜토리얼: 실제 LiveAvatar SDK 연결이라 여기서 막지 않고 탭에서 더미 흐름 처리(단계 C).
-  return api<AvatarSession>(`/interview/sessions/${sessionId}/avatar-token`, { method: "POST" });
+  return runWithAiCharge("INTERVIEW_AVATAR_SESSION", (headers) =>
+    api<AvatarSession>(`/interview/sessions/${sessionId}/avatar-token`, {
+      method: "POST",
+      headers,
+    }));
 }
 
 /** 온디바이스 분석 결과(트랜스크립트+지표+점수) 저장. 원본 미디어는 올리지 않는다. */
@@ -324,6 +518,8 @@ export function saveMediaResult(
     return Promise.resolve({
       id: -990000,
       interviewSessionId: sessionId,
+      questionId: request.questionId ?? null,
+      answerId: request.answerId ?? null,
       kind: request.kind,
       transcript: request.transcript,
       metrics: request.metrics,
@@ -373,12 +569,6 @@ export function uploadFile(
   if (options.refId != null) form.append("refId", String(options.refId));
   // api() 는 FormData 면 Content-Type 을 직접 지정하지 않고(boundary 자동), 인증 헤더만 붙인다.
   return api<FileAsset>("/file/upload", { method: "POST", body: form, signal: options.signal });
-}
-
-/** 아직 answer에 연결되지 않은 INTERVIEW_ANSWER 원본을 정리한다. */
-export function deletePendingInterviewFile(fileId: number, keepalive = false): Promise<void> {
-  if (isDataMockActive()) return Promise.resolve();
-  return api<void>(`/file/${fileId}`, { method: "DELETE", keepalive });
 }
 
 /**

@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { AlertTriangle, FileText, History, Loader2, Lock, Paperclip, X, Zap } from "lucide-react";
 
 import { uploadAttachment } from "../api/autoPrepApi";
+import { deletePendingAutoPrepFile } from "@/app/lib/pendingAutoPrepFiles";
 import type { AutoPrepRequest } from "../types/autoPrep";
 
 interface FileItem {
@@ -45,7 +46,17 @@ export function AutoPrepLauncher({ onRun, onHistory, busy }: Props) {
     }
   };
 
-  const removeFile = (target: FileItem) => setFiles((prev) => prev.filter((f) => f !== target));
+  const removeFile = async (target: FileItem) => {
+    if (target.id != null) {
+      try {
+        await deletePendingAutoPrepFile(target.id);
+      } catch {
+        setFiles((prev) => prev.map((file) => (file === target ? { ...file, error: true } : file)));
+        return;
+      }
+    }
+    setFiles((prev) => prev.filter((file) => file !== target));
+  };
 
   const submit = () => {
     if (busy) return;
@@ -54,6 +65,7 @@ export function AutoPrepLauncher({ onRun, onHistory, busy }: Props) {
       query: query.trim() || undefined,
       attachmentFileIds: ids.length ? ids : undefined,
     });
+    setFiles([]);
   };
 
   return (
@@ -133,7 +145,7 @@ export function AutoPrepLauncher({ onRun, onHistory, busy }: Props) {
               {f.uploading ? <Loader2 className="size-3.5 animate-spin" /> : f.error ? <AlertTriangle className="size-3.5" /> : <FileText className="size-3.5" />} {f.file.name}
               <button
                 type="button"
-                onClick={() => removeFile(f)}
+                  onClick={() => void removeFile(f)}
                 className="text-muted-foreground hover:text-foreground"
                 aria-label="첨부 제거"
               >

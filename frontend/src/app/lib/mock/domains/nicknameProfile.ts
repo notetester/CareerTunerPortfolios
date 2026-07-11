@@ -208,6 +208,20 @@ export const nicknameProfileRoutes: MockRoute[] = [
   // ── 계정 정보 ──
   { method: "GET", pattern: /^\/account$/, handler: () => account },
   {
+    method: "DELETE",
+    pattern: /^\/account$/,
+    handler: ({ body }) => {
+      const req = body as { password?: string | null; confirmation?: string };
+      if ((req?.confirmation ?? "").trim() !== "회원탈퇴") {
+        throw new Error("확인 문구로 회원탈퇴를 입력해 주세요.");
+      }
+      if (account.passwordEnabled && req?.password !== "Career1234!") {
+        throw new Error("현재 비밀번호가 올바르지 않습니다.");
+      }
+      return null;
+    },
+  },
+  {
     method: "POST",
     pattern: /^\/account\/login-id$/,
     handler: ({ body }) => {

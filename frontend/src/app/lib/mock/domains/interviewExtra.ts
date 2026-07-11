@@ -207,6 +207,8 @@ const mediaResults: Record<number, MediaAnalysis[]> = {
     {
       id: 71001,
       interviewSessionId: 8002,
+      questionId: null,
+      answerId: null,
       kind: "VOICE",
       transcript: [
         { role: "ai", text: "React에서 상태 관리를 어떻게 설계하나요?" },
@@ -229,6 +231,8 @@ const mediaResults: Record<number, MediaAnalysis[]> = {
     {
       id: 71002,
       interviewSessionId: 8002,
+      questionId: null,
+      answerId: null,
       kind: "AVATAR",
       transcript: [
         { role: "ai", text: "REST API 연동 중 발생한 문제와 해결 과정을 말해주세요." },
@@ -252,6 +256,8 @@ function saveMedia(sessionId: number, req: SaveMediaAnalysisRequest): MediaAnaly
   const saved: MediaAnalysis = {
     id: ++nextMediaId,
     interviewSessionId: sessionId,
+    questionId: req.questionId ?? null,
+    answerId: req.answerId ?? null,
     kind: req.kind,
     transcript: req.transcript,
     metrics: req.metrics,

@@ -4,6 +4,7 @@ import type { ChangeEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Ban,
+  ArrowLeft,
   Bell,
   BellOff,
   Briefcase,
@@ -56,6 +57,7 @@ import {
 import type {
   AttachmentAvailability,
   AttachmentShareMode,
+  CollaborationPublicIdentity,
   CollaborationUser,
   ConversationSummaryResponse,
   ConversationType,
@@ -76,6 +78,8 @@ import {
   discardPendingCollaborationFiles,
   markCollaborationFilesLinked,
 } from "@/app/lib/pendingCollaborationFiles";
+import { useAuth } from "@/app/auth/AuthContext";
+import { registerNativeOverlayLifecycle } from "@/platform/nativeOverlayLifecycle";
 
 const ROOM_TYPES: Array<{ value: Exclude<ConversationType, "DIRECT">; label: string; icon: LucideIcon }> = [
   { value: "GROUP", label: "친구 단체방", icon: Users },
@@ -143,7 +147,7 @@ function conversationTypeLabel(type: ConversationType): string {
   }
 }
 
-function userLabel(user: CollaborationUser | null | undefined): string {
+function userLabel(user: CollaborationUser | CollaborationPublicIdentity | null | undefined): string {
   return user?.name || user?.email || "사용자";
 }
 
@@ -162,13 +166,13 @@ function Panel({
   id?: string;
 }) {
   return (
-    <section id={id} className="rounded-lg border border-border bg-card scroll-mt-24">
-      <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <Icon className="size-4 text-primary" />
-          {title}
+    <section id={id} className="min-w-0 overflow-hidden rounded-lg border border-border bg-card scroll-mt-24">
+      <div className="flex min-h-12 min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <h2 className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold text-foreground">
+          <Icon className="size-4 shrink-0 text-primary" />
+          <span className="truncate">{title}</span>
         </h2>
-        {action}
+        {action && <div className="max-w-full shrink-0">{action}</div>}
       </div>
       {children}
     </section>
@@ -245,6 +249,8 @@ function AttachmentButton({
 }
 
 export function MessengerPage() {
+  const { user, loading: authLoading } = useAuth();
+  const accountId = user?.id ?? null;
   // 헤더 하위메뉴 의도(?tab=friends|discover) 배선 — 단일 뷰라 해당 패널로 스크롤해 초점을 준다.
   const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -282,27 +288,89 @@ export function MessengerPage() {
   const [pendingFiles, setPendingFiles] = useState<FileAssetResponse[]>([]);
   const previousConversationId = useRef<number | null>(null);
   const [selectedApplicationIds, setSelectedApplicationIds] = useState<number[]>([]);
+  const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const accountGeneration = useRef(0);
+  const messageRequestSequence = useRef(0);
+  const activeConversationIdRef = useRef<number | null>(null);
+  const conversationPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (requestedTab === "friends" || requestedTab === "discover") {
+      setMobileConversationOpen(false);
+    }
+  }, [requestedTab]);
+
+  useEffect(() => {
+    if (!mobileConversationOpen) return undefined;
+    return registerNativeOverlayLifecycle({
+      onBack: () => setMobileConversationOpen(false),
+      onSuspend: () => setSettingsOpen(false),
+    });
+  }, [mobileConversationOpen]);
+
+  useEffect(() => {
+    accountGeneration.current += 1;
+    messageRequestSequence.current += 1;
+    activeConversationIdRef.current = null;
+    previousConversationId.current = null;
+    setConversations([]);
+    setDiscoverRooms([]);
+    setFriends([]);
+    setIncomingRequests([]);
+    setOutgoingRequests([]);
+    setMessages([]);
+    setApplicationCases([]);
+    setUserResults([]);
+    setActiveConversationId(null);
+    setPendingFiles([]);
+    setSelectedApplicationIds([]);
+    setMessageText("");
+    setSettingsOpen(false);
+    setMobileConversationOpen(false);
+    setError(null);
+    setNotice(null);
+    if (!accountId) setLoading(authLoading);
+    // authLoading은 같은 계정의 토큰 갱신 중에도 바뀐다. 계정 ID가 실제로
+    // 달라질 때만 대화 상태를 폐기해 작성 중 화면이 불필요하게 초기화되지 않게 한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
 
   const activeConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === activeConversationId) ?? null,
     [activeConversationId, conversations],
   );
 
+  const openConversation = useCallback((conversationId: number) => {
+    setActiveConversationId(conversationId);
+    if (window.matchMedia("(max-width: 1279px)").matches) {
+      setMobileConversationOpen(true);
+      window.requestAnimationFrame(() => {
+        conversationPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, []);
+
   const upsertConversation = useCallback((conversation: ConversationSummaryResponse) => {
     setConversations((current) => [
       conversation,
       ...current.filter((item) => item.id !== conversation.id),
     ]);
-    setActiveConversationId(conversation.id);
-  }, []);
+    openConversation(conversation.id);
+  }, [openConversation]);
 
   const refreshConversations = useCallback(async () => {
+    const generation = accountGeneration.current;
     const rows = await listConversations();
+    if (generation !== accountGeneration.current) return;
     setConversations(rows);
     setActiveConversationId((current) => {
       if (current && rows.some((item) => item.id === current)) return current;
@@ -311,29 +379,48 @@ export function MessengerPage() {
   }, []);
 
   const refreshFriendData = useCallback(async () => {
+    const generation = accountGeneration.current;
     const [friendRows, incoming, outgoing] = await Promise.all([
       listFriends(),
       listIncomingFriendRequests(),
       listOutgoingFriendRequests(),
     ]);
+    if (generation !== accountGeneration.current) return;
     setFriends(friendRows);
     setIncomingRequests(incoming);
     setOutgoingRequests(outgoing);
   }, []);
 
   const refreshDiscoverRooms = useCallback(async () => {
-    setDiscoverRooms(await discoverConversations(roomSearch.trim(), 30));
+    const generation = accountGeneration.current;
+    const rows = await discoverConversations(roomSearch.trim(), 30);
+    if (generation === accountGeneration.current) setDiscoverRooms(rows);
   }, [roomSearch]);
 
   const loadMessages = useCallback(async (conversationId: number | null) => {
+    const generation = accountGeneration.current;
+    const sequence = ++messageRequestSequence.current;
     if (!conversationId) {
       setMessages([]);
       return;
     }
-    setMessages(await listMessages(conversationId, 120));
+    setMessages([]);
+    const rows = await listMessages(conversationId, 120);
+    if (
+      generation === accountGeneration.current
+      && sequence === messageRequestSequence.current
+      && activeConversationIdRef.current === conversationId
+    ) {
+      setMessages(rows);
+    }
   }, []);
 
   const refreshAll = useCallback(async () => {
+    if (authLoading || accountId == null) {
+      if (!authLoading) setLoading(false);
+      return;
+    }
+    const generation = accountGeneration.current;
     setLoading(true);
     setError(null);
     try {
@@ -345,6 +432,7 @@ export function MessengerPage() {
         listApplicationCases({ view: "ACTIVE" }),
         discoverConversations("", 30),
       ]);
+      if (generation !== accountGeneration.current) return;
       setConversations(conversationRows);
       setFriends(friendRows);
       setIncomingRequests(incoming);
@@ -356,11 +444,11 @@ export function MessengerPage() {
         return conversationRows[0]?.id ?? null;
       });
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (generation === accountGeneration.current) setError(getErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (generation === accountGeneration.current) setLoading(false);
     }
-  }, []);
+  }, [accountId, authLoading]);
 
   useEffect(() => {
     void refreshAll();
@@ -400,16 +488,17 @@ export function MessengerPage() {
   }, []);
 
   async function execute(action: () => Promise<void>, success?: string) {
+    const generation = accountGeneration.current;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
       await action();
-      if (success) setNotice(success);
+      if (generation === accountGeneration.current && success) setNotice(success);
     } catch (err) {
-      setError(getErrorMessage(err));
+      if (generation === accountGeneration.current) setError(getErrorMessage(err));
     } finally {
-      setBusy(false);
+      if (generation === accountGeneration.current) setBusy(false);
     }
   }
 
@@ -494,12 +583,14 @@ export function MessengerPage() {
 
   const sendCurrentMessage = () => execute(async () => {
     if (!activeConversation) throw new Error("먼저 채팅방을 선택해 주세요.");
+    const generation = accountGeneration.current;
+    const conversationId = activeConversation.id;
     const content = messageText.trim();
     if (!content && pendingFiles.length === 0 && selectedApplicationIds.length === 0) {
       throw new Error("메시지, 파일, 공유할 공고 중 하나는 필요합니다.");
     }
     const pendingFileIds = pendingFiles.map((file) => file.id);
-    const sent = await sendMessage(activeConversation.id, {
+    const sent = await sendMessage(conversationId, {
       kind: messageKind,
       content: content || null,
       attachmentFileIds: pendingFiles.map((file) => file.id),
@@ -508,9 +599,13 @@ export function MessengerPage() {
       sharedApplicationCaseIds: selectedApplicationIds,
     });
     markCollaborationFilesLinked(pendingFileIds);
-    setMessages((current) => [...current, sent]);
+    if (generation !== accountGeneration.current) return;
+    if (activeConversationIdRef.current === conversationId) {
+      setMessages((current) => [...current, sent]);
+    }
     setMessageText("");
-    setPendingFiles([]);
+    const sentFileIdSet = new Set(pendingFileIds);
+    setPendingFiles((current) => current.filter((file) => !sentFileIdSet.has(file.id)));
     setSelectedApplicationIds([]);
     await refreshConversations();
   });
@@ -552,7 +647,8 @@ export function MessengerPage() {
   });
 
   /** 사용자 차단 — 조용한 차단(상대에게 알리지 않음). 차단 직후 메시지 목록을 다시 받아 톰스톤을 반영한다. */
-  const blockUserQuietly = (target: CollaborationUser) => execute(async () => {
+  const blockUserQuietly = (target: CollaborationUser | CollaborationPublicIdentity) => execute(async () => {
+    if (target.id == null) return;
     await blockUser({ targetUserId: target.id });
     showBlockManageToast(`${userLabel(target)}님을 차단했습니다.`);
     await Promise.all([refreshConversations(), loadMessages(activeConversationId)]);
@@ -569,8 +665,8 @@ export function MessengerPage() {
   });
 
   return (
-    <main className="min-h-[calc(100vh-8rem)] bg-muted/30 pb-28">
-      <div className="mx-auto w-full max-w-[1500px] px-3 py-4 sm:px-6 lg:px-8">
+    <main className="min-h-[calc(100vh-8rem)] min-w-0 overflow-x-hidden bg-muted/30 pb-28">
+      <div className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-4 sm:px-6 lg:px-8">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground">
@@ -598,8 +694,8 @@ export function MessengerPage() {
           </div>
         )}
 
-        <div className="grid gap-4 xl:grid-cols-[320px_minmax(320px,380px)_minmax(0,1fr)]">
-          <div className="space-y-4">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-[320px_minmax(320px,380px)_minmax(0,1fr)]">
+          <div className={cn("min-w-0 space-y-4", mobileConversationOpen && "hidden xl:block")}>
             <Panel title="내 채팅방" icon={Inbox}>
               <div className="max-h-[520px] space-y-2 overflow-y-auto p-3">
                 {loading ? (
@@ -610,7 +706,8 @@ export function MessengerPage() {
                   <button
                     key={conversation.id}
                     type="button"
-                    onClick={() => setActiveConversationId(conversation.id)}
+                    onClick={() => openConversation(conversation.id)}
+                    disabled={busy}
                     className={cn(
                       "flex w-full min-w-0 flex-col gap-2 rounded-md border px-3 py-3 text-left transition-colors",
                       activeConversationId === conversation.id
@@ -697,7 +794,7 @@ export function MessengerPage() {
             </Panel>
           </div>
 
-          <div className="space-y-4">
+          <div className={cn("min-w-0 space-y-4", mobileConversationOpen && "hidden xl:block")}>
             <Panel id="messenger-friends" title="친구" icon={Users}>
               <div className="space-y-3 p-3">
                 <div className="flex gap-2">
@@ -874,7 +971,7 @@ export function MessengerPage() {
                         size="sm"
                         variant={room.joined ? "outline" : "default"}
                         className="mt-3 w-full"
-                        onClick={() => (room.joined ? setActiveConversationId(room.id) : joinRoom(room))}
+                        onClick={() => (room.joined ? openConversation(room.id) : joinRoom(room))}
                         disabled={busy}
                       >
                         {room.joined ? "열기" : "참가"}
@@ -886,11 +983,25 @@ export function MessengerPage() {
             </Panel>
           </div>
 
+          <div
+            ref={conversationPanelRef}
+            className={cn("min-w-0 max-w-full", mobileConversationOpen ? "block" : "hidden xl:block")}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              className="mb-2 xl:hidden"
+              onClick={() => setMobileConversationOpen(false)}
+              disabled={busy}
+            >
+              <ArrowLeft className="size-4" />
+              채팅방 목록
+            </Button>
           <Panel
             title={activeConversation?.displayName ?? "대화"}
             icon={MessageSquare}
             action={activeConversation && (
-              <div className="flex items-center gap-2">
+              <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                 <Badge variant="outline">{conversationTypeLabel(activeConversation.type)}</Badge>
                 {activeConversation.locked && <Lock className="size-4 text-muted-foreground" />}
                 {activeConversation.type !== "DIRECT" && activeConversation.canManageRoom && (
@@ -917,7 +1028,7 @@ export function MessengerPage() {
                 >
                   {activeConversation.muted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
                 </Button>
-                {activeConversation.type === "DIRECT" && activeConversation.peer && (
+                {activeConversation.type === "DIRECT" && activeConversation.peer?.id != null && (
                   <Button
                     type="button"
                     size="icon"
@@ -946,7 +1057,7 @@ export function MessengerPage() {
               </div>
             )}
           >
-            <div className="flex min-h-[680px] flex-col">
+            <div className="flex min-h-[680px] min-w-0 flex-col">
               {activeConversation ? (
                 <>
                   <div className="border-b border-border px-4 py-3">
@@ -972,7 +1083,7 @@ export function MessengerPage() {
                     </div>
                   </div>
 
-                  <div className="max-h-[520px] flex-1 space-y-3 overflow-y-auto bg-muted/20 p-4">
+                  <div className="max-h-[520px] min-w-0 flex-1 space-y-3 overflow-y-auto bg-muted/20 p-4">
                     {messages.length === 0 ? (
                       <div className="flex h-48 items-center justify-center rounded-md border border-dashed border-border bg-background text-sm text-muted-foreground">
                         첫 메시지를 보내보세요.
@@ -990,10 +1101,10 @@ export function MessengerPage() {
                         );
                       }
                       return (
-                      <div key={message.id} className={cn("flex", message.mine ? "justify-end" : "justify-start")}>
+                      <div key={message.id} className={cn("flex min-w-0", message.mine ? "justify-end" : "justify-start")}>
                         <div
                           className={cn(
-                            "max-w-[min(92%,720px)] rounded-lg border px-3 py-2",
+                            "min-w-0 max-w-[min(92%,720px)] rounded-lg border px-3 py-2",
                             message.mine ? "border-primary/30 bg-primary/10" : "border-border bg-background",
                           )}
                         >
@@ -1166,6 +1277,7 @@ export function MessengerPage() {
               )}
             </div>
           </Panel>
+          </div>
         </div>
       </div>
 

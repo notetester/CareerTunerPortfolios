@@ -92,7 +92,7 @@ export function ApplicationDetailPage() {
   }, [params.id]);
   const activeTab = params.section ? tabKeysBySlug[params.section] ?? "overview" : "overview";
   const activeMode: DetailMode = isBAnalysisTab(activeTab) && params.mode === "edit" ? "edit" : "view";
-  const { loading: authLoading, isAuthenticated } = useAuth();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
   const {
     applicationCase,
     setApplicationCase,
@@ -115,7 +115,7 @@ export function ApplicationDetailPage() {
   const {
     applicationCases,
     loading: sidebarLoading,
-  } = useApplicationCases(isAuthenticated);
+  } = useApplicationCases(isAuthenticated, false, user?.id ?? null);
   const fetchNotifications = useNotificationStore((state) => state.fetchNotifications);
   const {
     jobPosting,

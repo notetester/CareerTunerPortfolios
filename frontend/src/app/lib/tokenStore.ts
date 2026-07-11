@@ -1,7 +1,7 @@
 // JWT 토큰 보관소(localStorage). access/refresh 토큰을 한 키에 저장한다.
 const KEY = "careertuner.auth";
 
-export type TokenStoreEvent = "changed" | "cleared";
+export type TokenStoreEvent = "changed" | "refreshed" | "cleared";
 type TokenStoreListener = (event: TokenStoreEvent) => void;
 
 const listeners = new Set<TokenStoreListener>();
@@ -35,10 +35,15 @@ export function getRefreshToken(): string | null {
   return getTokens()?.refreshToken ?? null;
 }
 
-export function setTokens(tokens: StoredTokens): void {
+function writeTokens(tokens: StoredTokens, event: Exclude<TokenStoreEvent, "cleared">): void {
   localStorage.setItem(KEY, JSON.stringify(tokens));
   revision += 1;
-  publish("changed");
+  publish(event);
+}
+
+/** 로그인·계정 전환처럼 사용자 신원을 다시 검증해야 하는 토큰 교체. */
+export function setTokens(tokens: StoredTokens): void {
+  writeTokens(tokens, "changed");
 }
 
 export function clearTokens(): void {
@@ -64,7 +69,9 @@ export function isTokenStoreSnapshotCurrent(expected: TokenStoreSnapshot): boole
 
 export function setTokensIfUnchanged(expected: TokenStoreSnapshot, tokens: StoredTokens): boolean {
   if (!isTokenStoreSnapshotCurrent(expected)) return false;
-  setTokens(tokens);
+  // 401 갱신은 같은 로그인 세션의 자격 증명 회전이다. 계정 전환과 구분해
+  // 진행 중인 화면을 불필요하게 폐기하지 않으면서도 /auth/me 재검증은 수행한다.
+  writeTokens(tokens, "refreshed");
   return true;
 }
 

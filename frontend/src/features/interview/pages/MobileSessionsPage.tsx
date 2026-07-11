@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
@@ -15,10 +15,15 @@ import type { InterviewSession } from "../types/interview";
  */
 export function MobileSessionsPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading } = useAuth();
-  const cases = useApplicationCases(isAuthenticated);
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const cases = useApplicationCases(isAuthenticated, false, user?.id ?? null);
   const [sessions, setSessions] = useState<InterviewSession[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useLayoutEffect(() => {
+    setSessions([]);
+    setLoading(true);
+  }, [user?.id]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -36,7 +41,7 @@ export function MobileSessionsPage() {
         setLoading(false);
       }
     })();
-  }, [authLoading, isAuthenticated, navigate]);
+  }, [authLoading, isAuthenticated, navigate, user?.id]);
 
   const caseLabel = useMemo(() => {
     const map = new Map(cases.applicationCases.map((c) => [c.id, `${c.companyName} · ${c.jobTitle}`]));

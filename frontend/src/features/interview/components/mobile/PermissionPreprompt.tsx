@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
 import { Mic, Camera, Trash2, Hand } from "lucide-react";
+import { registerNativeOverlayLifecycle } from "@/platform/nativeOverlayLifecycle";
 
 /**
  * 마이크/카메라 권한 사전 동의 바텀시트 (스토어 심사 대응).
@@ -111,6 +112,14 @@ export function PermissionPreprompt({
       returnFocusRef.current = null;
       if (!allowingRef.current && returnTarget?.isConnected) returnTarget.focus();
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    return registerNativeOverlayLifecycle({
+      onBack: () => onCloseRef.current(),
+      onSuspend: () => onCloseRef.current(),
+    });
   }, [open]);
 
   if (!open) return null;
