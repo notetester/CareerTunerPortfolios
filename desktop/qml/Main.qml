@@ -10,6 +10,8 @@ ApplicationWindow {
     visible: true
     width: 1280
     height: 820
+    minimumWidth: 960
+    minimumHeight: 640
     title: "CareerTuner — 면접 준비 컨트롤 센터"
     color: Theme.bg
 

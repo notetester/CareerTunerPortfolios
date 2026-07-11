@@ -132,9 +132,14 @@ Item {
                                 const url = index === 0 ? appSettings.localServerUrl
                                     : index === 1 ? appSettings.awsServerUrl
                                     : appSettings.tailscaleServerUrl
-                                appSettings.baseUrl = url
-                                urlField.text = url
-                                win.showToast("서버 주소 변경됨", url)
+                                const previous = appSettings.baseUrl
+                                if (appSettings.applyBaseUrl(url)) {
+                                    urlField.text = appSettings.baseUrl
+                                    win.showToast("서버 주소 변경됨",
+                                                  previous === appSettings.baseUrl
+                                                  ? appSettings.baseUrl
+                                                  : appSettings.baseUrl + " — 다시 로그인해 주세요")
+                                }
                             } else {
                                 urlField.forceActiveFocus()
                             }
@@ -211,8 +216,18 @@ Item {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 enabled: serverPreset.currentIndex === 3
                                 onClicked: {
-                                    appSettings.baseUrl = urlField.text.trim()
-                                    win.showToast("서버 주소 변경됨", appSettings.baseUrl)
+                                    const previous = appSettings.baseUrl
+                                    if (appSettings.applyBaseUrl(urlField.text.trim())) {
+                                        urlField.text = appSettings.baseUrl
+                                        win.showToast("서버 주소 변경됨",
+                                                      previous === appSettings.baseUrl
+                                                      ? appSettings.baseUrl
+                                                      : appSettings.baseUrl + " — 다시 로그인해 주세요")
+                                    } else {
+                                        urlField.text = appSettings.baseUrl
+                                        win.showToast("서버 주소를 적용하지 못했습니다",
+                                                      "HTTPS 주소 또는 localhost/loopback HTTP 주소만 사용할 수 있습니다")
+                                    }
                                 }
                             }
                         }

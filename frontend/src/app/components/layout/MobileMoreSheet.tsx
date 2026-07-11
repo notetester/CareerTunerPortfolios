@@ -1,6 +1,7 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
-  User, PenTool, Users, CreditCard, Bell, Settings, LifeBuoy, ShieldCheck,
+  User, PenTool, Users, CreditCard, Settings, LifeBuoy, ShieldCheck,
   LogOut, X, Download, Share, Award, LayoutDashboard, Briefcase, TrendingUp, MessagesSquare,
   CalendarClock,
 } from "lucide-react";
@@ -45,22 +46,41 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
 
   const items = MORE_ITEMS.filter((i) => !i.adminOnly || isAdmin);
 
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose, open]);
+
+  // 닫힌 시트는 포커스·스크린리더 트리에서도 완전히 제거한다.
+  if (!open) return null;
+
   return (
     <>
       <div
-        className={`fixed inset-0 z-[60] bg-black/40 transition-opacity xl:hidden ${open ? "opacity-100" : "pointer-events-none opacity-0"}`}
+        className="fixed inset-0 z-[60] bg-black/40 xl:hidden"
         onClick={onClose}
+        aria-hidden="true"
       />
       <div
-        className={`fixed inset-x-0 bottom-0 z-[61] rounded-t-2xl bg-card shadow-2xl transition-transform xl:hidden ${open ? "translate-y-0" : "translate-y-full"}`}
+        className="fixed inset-x-0 bottom-0 z-[61] max-h-[calc(100dvh-env(safe-area-inset-top)-8px)] overflow-y-auto overscroll-contain rounded-t-2xl bg-card text-card-foreground shadow-2xl xl:hidden"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="mobile-more-sheet-title"
       >
-        <div className="mx-auto mt-2 h-1.5 w-10 rounded-full bg-slate-200" />
+        <div className="mx-auto mt-2 h-1.5 w-10 rounded-full bg-border" />
         <div className="flex items-center justify-between px-5 pb-1 pt-3">
-          <h2 className="text-base font-bold text-slate-900">더보기</h2>
-          <button onClick={onClose} aria-label="닫기" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+          <h2 id="mobile-more-sheet-title" className="text-base font-bold text-foreground">더보기</h2>
+          <button onClick={onClose} aria-label="닫기" className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
             <X className="size-5" />
           </button>
         </div>
@@ -69,16 +89,16 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
         {isAuthenticated ? (
           <button
             onClick={() => go("/settings?tab=account")}
-            className="mx-4 mb-2 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-slate-50 p-3 text-left"
+            className="mx-4 mb-2 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-muted p-3 text-left"
           >
             <div className="flex size-11 items-center justify-center rounded-full bg-accent-soft text-base font-bold text-primary">
               {user?.name?.trim()?.charAt(0) ?? user?.email?.charAt(0).toUpperCase() ?? "U"}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-bold text-slate-900">{user?.name ?? "사용자"}</div>
-              <div className="truncate text-xs text-slate-500">{user?.email}</div>
+              <div className="truncate text-sm font-bold text-foreground">{user?.name ?? "사용자"}</div>
+              <div className="truncate text-xs text-muted-foreground">{user?.email}</div>
             </div>
-            <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+            <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
               <Award className="size-3.5" /> {user?.credit ?? 0}
             </span>
           </button>
@@ -99,9 +119,9 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
             <button
               key={item.href}
               onClick={() => go(item.href)}
-              className="flex flex-col items-center gap-1.5 rounded-xl p-3 text-slate-600 active:bg-slate-100"
+              className="flex flex-col items-center gap-1.5 rounded-xl p-3 text-muted-foreground active:bg-accent active:text-foreground"
             >
-              <item.icon className="size-6 text-slate-500" />
+              <item.icon className="size-6" />
               <span className="text-[11px] font-medium">{item.label}</span>
             </button>
           ))}
@@ -130,7 +150,7 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
           <div className="px-4 pt-1">
             <button
               onClick={async () => { haptic("light"); await logout(); onClose(); navigate("/"); }}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-3 text-sm font-semibold text-red-600 active:bg-red-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-border py-3 text-sm font-semibold text-red-600 active:bg-red-50 dark:text-red-400 dark:active:bg-red-500/10"
             >
               <LogOut className="size-4" /> 로그아웃
             </button>

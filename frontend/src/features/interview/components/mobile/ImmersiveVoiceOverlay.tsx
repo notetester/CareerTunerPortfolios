@@ -10,6 +10,12 @@ import { BrowserSttTracker } from "../../hooks/speechToText";
 import { createNegotiatedRecorder } from "../../hooks/mediaSupport";
 import { scoreVoiceServer, transcribeVoice } from "../../api/interviewApi";
 import { MicLevelMeter } from "../MicLevelMeter";
+import {
+  captureAppLockGeneration,
+  isAppLockGenerationCurrent,
+  keepStreamForAppLock,
+  onAppLockState,
+} from "@/platform/appLockEvents";
 
 /**
  * 몰입형 음성 답변 (모바일 풀스크린) — Claude 앱식 최소 UI.
@@ -66,10 +72,12 @@ export function ImmersiveVoiceOverlay({
   // 진입 즉시 녹음 시작 (권한 프리프롬프트는 진입 전에 이미 통과)
   useEffect(() => {
     let cancelled = false;
+    const lockGeneration = captureAppLockGeneration();
+    if (lockGeneration === null) return undefined;
     void (async () => {
       try {
         const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (cancelled) {
+        if (cancelled || !keepStreamForAppLock(mic, lockGeneration)) {
           mic.getTracks().forEach((t) => t.stop());
           return;
         }
@@ -87,7 +95,7 @@ export function ImmersiveVoiceOverlay({
         const { recorder, format } = createNegotiatedRecorder(mic, "audio");
         formatRef.current = format;
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunksRef.current.push(e.data);
+          if (isAppLockGenerationCurrent(lockGeneration) && e.data.size > 0) chunksRef.current.push(e.data);
         };
         recorder.start();
         recorderRef.current = recorder;
@@ -105,6 +113,10 @@ export function ImmersiveVoiceOverlay({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => onAppLockState((locked) => {
+    if (locked) onClose();
+  }), [onClose]);
 
   const speakQuestion = () => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;

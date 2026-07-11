@@ -39,6 +39,12 @@ import { getScoreColor } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
+import {
+  captureAppLockGeneration,
+  isAppLockGenerationCurrent,
+  keepStreamForAppLock,
+  useAppLockCleanup,
+} from "@/platform/appLockEvents";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
@@ -153,8 +159,17 @@ export function AvatarTab({
     webcamRef.current = null;
   };
 
+  useAppLockCleanup(() => {
+    cleanup();
+    chunksRef.current = [];
+    setStatus("idle");
+    setError("앱 잠금으로 화상 면접 연결을 종료했습니다.");
+  });
+
   const start = async () => {
     if (!session) return;
+    const lockGeneration = captureAppLockGeneration();
+    if (lockGeneration === null) return;
     setStatus("connecting");
     setError(null);
     setNote(null);
@@ -173,6 +188,7 @@ export function AvatarTab({
     try {
       // 1) 서버에서 LiveAvatar 단기 토큰 + 질문 목록.
       const avatarSession = await createAvatarSession(session.id);
+      if (!isAppLockGenerationCurrent(lockGeneration)) return;
       // 프리미엄 체험판: LiveAvatar 무료 한도(약 2분) 안에 끝나도록 1문제만 진행한다.
       // (정식판 = 전체 질문. 풀기 시 아래 slice(0, 1) 만 제거하면 됨.)
       const trialQuestions = avatarSession.questions.slice(0, 1);
@@ -188,6 +204,7 @@ export function AvatarTab({
       const webcam = remoteCam
         ? remoteCam.clone()
         : await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      if (!keepStreamForAppLock(webcam, lockGeneration)) return;
       webcamRef.current = webcam;
       if (selfVideoRef.current) selfVideoRef.current.srcObject = webcam;
 
@@ -200,7 +217,7 @@ export function AvatarTab({
       const { recorder, format } = createNegotiatedRecorder(webcam, "video");
       recordFormatRef.current = format;
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (isAppLockGenerationCurrent(lockGeneration) && e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.start();
       recorderRef.current = recorder;
@@ -209,16 +226,22 @@ export function AvatarTab({
       const visualTracker = new VisualMetricsTracker();
       visualTrackerRef.current = visualTracker;
       if (selfVideoRef.current) {
-        visualTracker.start(selfVideoRef.current).catch(() => {
-          visualTrackerRef.current = null;
-          setNote((prev) => prev ?? "표정/자세 분석 모델을 불러오지 못해 음성 지표만으로 채점합니다.");
-        });
+        visualTracker.start(selfVideoRef.current)
+          .then(() => {
+            if (!isAppLockGenerationCurrent(lockGeneration)) visualTracker.dispose();
+          })
+          .catch(() => {
+            visualTrackerRef.current = null;
+            if (isAppLockGenerationCurrent(lockGeneration))
+              setNote((prev) => prev ?? "표정/자세 분석 모델을 불러오지 못해 음성 지표만으로 채점합니다.");
+          });
       }
 
       // 3) 아바타 연결.
       const avatar = new LiveAvatarSession(avatarSession.sessionToken, { voiceChat: false });
       avatarRef.current = avatar;
       avatar.on(SessionEvent.SESSION_STREAM_READY, () => {
+        if (!isAppLockGenerationCurrent(lockGeneration)) return;
         if (streamTimeoutRef.current) {
           clearTimeout(streamTimeoutRef.current);
           streamTimeoutRef.current = null;
@@ -226,13 +249,17 @@ export function AvatarTab({
         if (avatarVideoRef.current) avatar.attach(avatarVideoRef.current);
         setStatus("live");
       });
-      avatar.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => setAvatarTalking(true));
+      avatar.on(AgentEventsEnum.AVATAR_SPEAK_STARTED, () => {
+        if (isAppLockGenerationCurrent(lockGeneration)) setAvatarTalking(true);
+      });
       avatar.on(AgentEventsEnum.AVATAR_SPEAK_ENDED, () => {
+        if (!isAppLockGenerationCurrent(lockGeneration)) return;
         setAvatarTalking(false);
         // 질문이 끝났다 → 답변 반응 지연 측정 시작.
         voiceTrackerRef.current?.markAiSpeechEnd();
       });
       avatar.on(SessionEvent.SESSION_DISCONNECTED, () => {
+        if (!isAppLockGenerationCurrent(lockGeneration)) return;
         // 샌드박스 1분 제한 등으로 끊겨도 지금까지 지표로 채점한다.
         if (!finishingRef.current) {
           setNote("아바타 세션이 종료되어 지금까지의 답변으로 채점합니다.");
@@ -253,8 +280,13 @@ export function AvatarTab({
       }, 25000);
 
       await avatar.start();
+      if (!isAppLockGenerationCurrent(lockGeneration)) {
+        await avatar.stop().catch(() => undefined);
+        cleanup();
+      }
     } catch (err) {
       cleanup();
+      if (!isAppLockGenerationCurrent(lockGeneration)) return;
       setError(err instanceof Error ? err.message : "아바타 면접 연결에 실패했습니다.");
       setStatus("error");
     }

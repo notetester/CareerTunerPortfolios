@@ -42,6 +42,7 @@ public:
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void cancel();
+    Q_INVOKABLE bool discard(const QString& filePath);
 
 signals:
     void recordingChanged();
@@ -54,6 +55,7 @@ signals:
 
 private:
     static constexpr int kMaxSeconds = 180; // 영상 답변 최대 3분
+    static QString recordingDir();
 
     QMediaCaptureSession m_session;
     QCamera              m_camera;
