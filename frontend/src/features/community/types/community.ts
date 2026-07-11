@@ -59,6 +59,8 @@ export interface CommunityPost {
   scrapped?: boolean;
   /** 뷰어의 글 구독 여부(새 댓글 알림) */
   subscribed?: boolean;
+  /** 현재 뷰어 본인 글인지 — 수정/삭제 버튼 게이팅용. 익명 글은 author.id 가 null이라 이 플래그로만 판정 가능(상세 응답에만 포함). */
+  mine?: boolean;
   /** 서버가 뷰어 기준으로 차단 처리한 글 — 톰스톤("차단한 사용자의 게시글입니다")만 렌더한다(조용한 차단). */
   blocked?: boolean;
   /** 신고 누적으로 가려진 글(비작성자에게 블러). 클릭 시 해제. */

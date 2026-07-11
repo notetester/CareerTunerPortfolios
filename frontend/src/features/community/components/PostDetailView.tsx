@@ -214,7 +214,9 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
     : "var(--av-ink-3)";
 
   const canNameLink = !d.author?.isAnonymous && !!d.author?.id;
-  const isOwner = !!user && user.id === d.author.id;
+  // 익명 글은 author.id 가 마스킹돼 null 이라 id 비교로는 소유자를 못 가린다 → 서버가 내려준 mine 플래그로 판정.
+  // (댓글의 mine 게이팅과 동형) — mine 이 없으면(구버전 응답) id 비교로 폴백.
+  const isOwner = !!user && (d.mine ?? user.id === d.author.id);
   const isAdmin = !!user && (user.role === "ADMIN" || user.role === "SUPER_ADMIN");
   // 익명 글도 노출: 게시글 id 로 차단(서버가 작성자를 알므로 동작, 익명성 유지)
   const canBlock = d.author.isAnonymous || (!!d.author.id && (!user || user.id !== d.author.id));
