@@ -25,6 +25,7 @@ import com.careertuner.applicationcase.domain.ApplicationCaseExtraction;
 import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.JobPostingExtractionProcessor.ExtractionResult;
 import com.careertuner.applicationcase.service.JobPostingExtractionProcessor.PostFailureAction;
 import com.careertuner.common.exception.BusinessException;
@@ -220,11 +221,12 @@ class JobPostingReextractionServiceTest {
 
     @Test
     void rejectsWhenCaseIsAnalyzingWithoutSideEffect() {
-        // 초기 파이프라인 실행 중(케이스 ANALYZING)에는 extraction 이 이미 SUCCEEDED 라 countActive=0 이어도
-        // 재추출을 거절한다 — 분석이 읽는 공고 revision 과의 경합을 막는다. 부수효과 없음.
+        // 초기 파이프라인·수동 분석 실행 중(케이스 ANALYZING)에는 extraction 이 이미 SUCCEEDED 라 countActive=0
+        // 이어도 재추출을 거절한다 — 분석이 읽는 공고 revision 과의 경합을 막는다. 가드는 획득 TX 안에서
+        // 잠가 읽은 행으로 판정하므로(스냅샷 아님) 잠금 조회를 ANALYZING 으로 스텁한다. 부수효과 없음.
         Fixture f = new Fixture();
         f.stubFailedPdfLatest();
-        when(f.accessService.requireOwned(1L, 10L)).thenReturn(ownedCase("ANALYZING"));
+        when(f.applicationCaseMapper.lockApplicationCaseById(10L)).thenReturn(ownedCase("ANALYZING"));
 
         assertThatThrownBy(() -> f.service.reextract(1L, 10L, "CLAUDE"))
                 .isInstanceOf(BusinessException.class)
@@ -436,10 +438,12 @@ class JobPostingReextractionServiceTest {
                 notificationService,
                 synchronousTransactionTemplate());
         final JobPostingReextractionService service = new JobPostingReextractionService(
-                accessService, extractionMapper, initialRunMapper, jobPostingService, processor, synchronousTransactionTemplate());
+                accessService, applicationCaseMapper, extractionMapper, initialRunMapper, jobPostingService,
+                processor, synchronousTransactionTemplate());
 
         RealFixture() {
             when(accessService.requireOwned(1L, 10L)).thenReturn(ownedCase("READY"));
+            when(applicationCaseMapper.lockApplicationCaseById(10L)).thenReturn(ownedCase("READY"));
             when(extractionMapper.findLatestExtractionByApplicationCaseId(10L))
                     .thenReturn(extraction(40L, 10L, 20L, "PDF", "FAILED"));
             when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
@@ -476,16 +480,20 @@ class JobPostingReextractionServiceTest {
 
     private static final class Fixture {
         final ApplicationCaseAccessService accessService = mock(ApplicationCaseAccessService.class);
+        final ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
         final ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
         final ApplicationCaseInitialRunMapper initialRunMapper = mock(ApplicationCaseInitialRunMapper.class);
         final JobPostingService jobPostingService = mock(JobPostingService.class);
         final JobPostingExtractionProcessor processor = mock(JobPostingExtractionProcessor.class);
         final JobPostingReextractionService service = new JobPostingReextractionService(
-                accessService, extractionMapper, initialRunMapper, jobPostingService, processor, synchronousTransactionTemplate());
+                accessService, applicationCaseMapper, extractionMapper, initialRunMapper, jobPostingService,
+                processor, synchronousTransactionTemplate());
 
         Fixture() {
             // 기본: 소유 케이스는 분석 진행 중이 아니고(READY), 초기 실행 프로필은 없다(가드 통과).
+            // 가드는 획득 TX 안에서 잠가 읽은 행(lockApplicationCaseById)으로 판정한다.
             when(accessService.requireOwned(1L, 10L)).thenReturn(ownedCase("READY"));
+            when(applicationCaseMapper.lockApplicationCaseById(10L)).thenReturn(ownedCase("READY"));
         }
 
         /** 실패한 PDF 최신 추출 + 진행 중 없음 + insert 시 id=41 부여 + claim 성공을 기본 세팅한다. */

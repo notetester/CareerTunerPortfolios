@@ -13,6 +13,7 @@ import com.careertuner.applicationcase.domain.ApplicationCaseInitialRun;
 import com.careertuner.applicationcase.dto.ApplicationCaseExtractionResponse;
 import com.careertuner.applicationcase.mapper.ApplicationCaseExtractionMapper;
 import com.careertuner.applicationcase.mapper.ApplicationCaseInitialRunMapper;
+import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.applicationcase.service.JobPostingExtractionProcessor.ExtractionResult;
 import com.careertuner.applicationcase.service.JobPostingExtractionProcessor.PostFailureAction;
 import com.careertuner.common.exception.BusinessException;
@@ -36,8 +37,9 @@ import lombok.RequiredArgsConstructor;
  *       기존 분석은 revision 비교로 stale 처리되고, 사용자가 모델을 골라 수동 재분석한다.</li>
  *   <li>실패 시 기존 공고·분석을 보존하고 <b>초기 실행 프로필을 건드리지 않는다</b>(reopen/abandon 없음).
  *       성공한 공고를 재추출하다 실패해도 새 FAILED 이력만 남고 기존 성공 revision·분석은 그대로다.</li>
- *   <li>트랜잭션 경계: (insert QUEUED + claim RUNNING) 은 <b>같은 짧은 TX</b>(중간 커밋 시 배경 워커가
- *       QUEUED 행을 선점해 자동 체인으로 처리할 수 있음) → OCR 은 트랜잭션 밖 → 성공/실패 마킹은 다시 짧은 TX.</li>
+ *   <li>트랜잭션 경계: (케이스 행 FOR UPDATE + 초기 실행 가드 + insert QUEUED + claim RUNNING) 은
+ *       <b>같은 짧은 TX</b> — 행 잠금이 수동 분석 획득({@code markAnalyzingExclusive})과의 직렬화 지점이고,
+ *       중간 커밋 시 배경 워커가 QUEUED 행을 선점할 수 있어 묶는다 → OCR 은 트랜잭션 밖 → 마킹은 다시 짧은 TX.</li>
  * </ul>
  * 저장/상태 전이/REVIEW_REQUIRED/알림 lifecycle 은 {@link JobPostingExtractionProcessor} 를 워커와 공유한다.
  */
@@ -61,6 +63,7 @@ public class JobPostingReextractionService {
     private static final int FAILURE_REASON_MAX_LENGTH = 255;
 
     private final ApplicationCaseAccessService accessService;
+    private final ApplicationCaseMapper applicationCaseMapper;
     private final ApplicationCaseExtractionMapper extractionMapper;
     private final ApplicationCaseInitialRunMapper initialRunMapper;
     private final JobPostingService jobPostingService;
@@ -70,7 +73,7 @@ public class JobPostingReextractionService {
     public ApplicationCaseExtractionResponse reextract(Long userId, Long applicationCaseId, String ocrProvider) {
         // 부수효과(새 추출 행) 전에 provider 를 먼저 검증 — 잘못된 값은 아무 행도 만들지 않고 400.
         String provider = validateOcrProvider(ocrProvider);
-        ApplicationCase applicationCase = accessService.requireOwned(userId, applicationCaseId);
+        accessService.requireOwned(userId, applicationCaseId);
 
         ApplicationCaseExtraction latest = extractionMapper.findLatestExtractionByApplicationCaseId(applicationCaseId);
         if (latest == null) {
@@ -94,10 +97,6 @@ public class JobPostingReextractionService {
         }
         JobPosting posting = jobPostingService.getJobPostingDomainForCase(userId, applicationCaseId, latestJobPostingId);
 
-        // 초기 자동 파이프라인과의 경합/데드락을 막는다(모든 순수 검증 뒤, 부수효과 직전에). 진행 중이면 거절하고,
-        // 아직 PENDING 인 초기 실행 프로필은 원자적으로 닫아 재추출 후 수동 분석 경로가 영구 차단되지 않게 한다.
-        guardInitialRunForReextract(applicationCase, applicationCaseId);
-
         ApplicationCaseExtraction extraction = insertAndClaim(userId, applicationCaseId, latestJobPostingId, sourceType, provider);
 
         try {
@@ -118,7 +117,12 @@ public class JobPostingReextractionService {
                 extractionMapper.findExtractionById(extraction.getId()));
     }
 
-    /** insert QUEUED 와 claim RUNNING 을 같은 짧은 TX 로 묶어, 커밋 시 이미 RUNNING(=워커 선점 불가)이 되게 한다. */
+    /**
+     * 재추출 획득 TX — 케이스 행 잠금 + 초기 실행 가드 + (insert QUEUED + claim RUNNING) 을 한 짧은 TX 로 묶는다.
+     * 케이스 행 {@code FOR UPDATE} 가 수동 분석 획득 TX({@code markAnalyzingExclusive})와의 직렬화 지점이라
+     * 스냅샷 검사 사이의 TOCTOU(분석 시작↔재추출 시작 동시 진입)가 없다. 가드가 던지면 프로필 종결까지 함께
+     * 롤백되고(부수효과 없음), 커밋 시엔 이미 RUNNING 이라 배경 워커가 선점하지 못한다.
+     */
     private ApplicationCaseExtraction insertAndClaim(Long userId,
                                                      Long applicationCaseId,
                                                      Long jobPostingId,
@@ -133,6 +137,12 @@ public class JobPostingReextractionService {
                 .status(EXTRACTION_STATUS_QUEUED)
                 .build();
         return transactionTemplate.execute(status -> {
+            // 잠금 하에 최신 상태로 재검사 — 초기 파이프라인 진행 중이면 거절, PENDING 프로필은 원자적으로 닫는다.
+            ApplicationCase locked = applicationCaseMapper.lockApplicationCaseById(applicationCaseId);
+            if (locked == null) {
+                throw new BusinessException(ErrorCode.NOT_FOUND, "지원 건을 찾을 수 없습니다.");
+            }
+            guardInitialRunForReextract(locked, applicationCaseId);
             try {
                 extractionMapper.insertApplicationCaseExtraction(extraction);
             } catch (DuplicateKeyException ex) {
@@ -147,12 +157,14 @@ public class JobPostingReextractionService {
     }
 
     /**
-     * 초기 자동 파이프라인과 수동 재추출이 같은 공고 revision 을 두고 경합하지 않도록 막는다.
+     * 초기 자동 파이프라인·수동 분석과 재추출이 같은 공고 revision 을 두고 경합하지 않도록 막는다.
+     * 획득 TX 안(케이스 행 잠금 하)에서 호출된다 — {@code applicationCase} 는 방금 잠가 읽은 최신 행이라
+     * 스냅샷이 아니고, 수동 분석의 ANALYZING 전이는 같은 행 잠금에 직렬화되어 이 검사와 엇갈리지 않는다.
      *
      * <ul>
-     *   <li>케이스가 {@code ANALYZING} 이거나 초기 실행 프로필이 {@code RUNNING} 이면 초기 파이프라인이 진행
-     *       중이므로 CONFLICT 로 거절한다(부수효과 없음). extraction 이 이미 SUCCEEDED 라 {@code countActive}
-     *       가 0인 상태에서도 초기 분석은 아직 돌 수 있어, 이 게이트가 그 창을 닫는다.</li>
+     *   <li>케이스가 {@code ANALYZING}(초기 파이프라인 또는 수동 분석 진행 중)이거나 초기 실행 프로필이
+     *       {@code RUNNING} 이면 CONFLICT 로 거절한다(부수효과 없음 — TX 롤백). extraction 이 이미 SUCCEEDED 라
+     *       {@code countActive} 가 0인 상태에서도 분석은 돌 수 있어, 이 게이트가 그 창을 닫는다.</li>
      *   <li>프로필이 {@code PENDING}(최초 OCR 이 REVIEW_REQUIRED 라 파이프라인이 아직 실행되지 않음) 이면
      *       원자적으로 claim(PENDING→RUNNING) 한 뒤 FAILED 로 닫는다. 이렇게 하지 않으면 재추출이 PASS 여도
      *       프로필이 PENDING 으로 남아 수동 분석 가드가 영구 409 가 된다. 재추출은 정책상 초기 자동 분석을

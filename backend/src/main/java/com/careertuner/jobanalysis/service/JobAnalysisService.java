@@ -115,7 +115,8 @@ public class JobAnalysisService {
         JobPosting jobPosting = accessService.latestPostingRequired(applicationCaseId);
         String sourceText = accessService.sourceText(jobPosting);
         String previousStatus = applicationCase.getStatus();
-        statusService.markAnalyzing(userId, applicationCaseId, previousStatus);
+        // 배타 획득: 케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS 를 한 TX 로 — strict 재추출과 직렬화.
+        statusService.markAnalyzingExclusive(userId, applicationCaseId, previousStatus);
         try {
             StrictJobResult strict = bAnalysisGenerationService.generateJobAnalysisStrict(applicationCase, sourceText, provider);
             var payload = strict.payload();

@@ -1625,7 +1625,8 @@ class ApplicationCaseServiceImplTest {
     @Test
     void analysisStatusServiceThrowsWhenStartTransitionIsNotApplied() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(applicationCaseMapper);
+        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(
+                applicationCaseMapper, mock(ApplicationCaseExtractionMapper.class));
 
         when(applicationCaseMapper.markAnalysisStarted(10L, 1L, "READY")).thenReturn(0);
 
@@ -1635,9 +1636,44 @@ class ApplicationCaseServiceImplTest {
     }
 
     @Test
+    void analysisStatusServiceExclusiveRejectsWhenReextractionIsActive() {
+        // 수동(strict) 분석 획득은 케이스 행 잠금 + 활성 추출 검사 + ANALYZING CAS 를 한 TX 로 묶는다.
+        // 재추출(QUEUED/RUNNING)이 진행 중이면 CONFLICT — ANALYZING 전이를 시도하지 않는다.
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(
+                applicationCaseMapper, extractionMapper);
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(1);
+
+        assertThatThrownBy(() -> statusService.markAnalyzingExclusive(1L, 10L, "READY"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("공고 재추출이 진행 중입니다");
+        verify(applicationCaseMapper).lockApplicationCaseById(10L); // 직렬화 지점(행 잠금) 후 검사
+        verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), any());
+    }
+
+    @Test
+    void analysisStatusServiceExclusiveMarksAnalyzingAfterLockWhenNoActiveExtraction() {
+        ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
+        ApplicationCaseExtractionMapper extractionMapper = mock(ApplicationCaseExtractionMapper.class);
+        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(
+                applicationCaseMapper, extractionMapper);
+        when(extractionMapper.countActiveExtractionsByApplicationCaseId(10L)).thenReturn(0);
+        when(applicationCaseMapper.markAnalysisStarted(10L, 1L, "READY")).thenReturn(1);
+
+        statusService.markAnalyzingExclusive(1L, 10L, "READY");
+
+        InOrder order = inOrder(applicationCaseMapper, extractionMapper);
+        order.verify(applicationCaseMapper).lockApplicationCaseById(10L);
+        order.verify(extractionMapper).countActiveExtractionsByApplicationCaseId(10L);
+        order.verify(applicationCaseMapper).markAnalysisStarted(10L, 1L, "READY");
+    }
+
+    @Test
     void analysisStatusServiceThrowsWhenReadyTransitionIsNotApplied() {
         ApplicationCaseMapper applicationCaseMapper = mock(ApplicationCaseMapper.class);
-        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(applicationCaseMapper);
+        ApplicationCaseAnalysisStatusService statusService = new ApplicationCaseAnalysisStatusService(
+                applicationCaseMapper, mock(ApplicationCaseExtractionMapper.class));
 
         when(applicationCaseMapper.markReadyAfterAnalysis(10L, 1L, "READY")).thenReturn(0);
 
