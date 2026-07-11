@@ -41,7 +41,7 @@ docs/       기획·아키텍처 문서
 ```bash
 # 백엔드 (JDK 21)
 cd backend && ./gradlew bootRun        # Windows: .\gradlew.bat bootRun
-# 프런트엔드 (Node 20+)
+# 프런트엔드 (Node 22+)
 cd frontend && npm install && npm run dev
 npm run typecheck                      # tsc --noEmit
 ```
