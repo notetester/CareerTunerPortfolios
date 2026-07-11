@@ -33,15 +33,18 @@ public class CertificateEvidenceService {
     private final NationalQualificationCatalogProvider catalog;
     private final NationalTechExamScheduleProvider schedule;
     private final UnifiedExamScheduleProvider unifiedSchedule;
+    private final NationalProfExamScheduleBundle profScheduleBundle;
     private final PrivateCertRegistrationProvider registration;
 
     public CertificateEvidenceService(NationalQualificationCatalogProvider catalog,
                                       NationalTechExamScheduleProvider schedule,
                                       UnifiedExamScheduleProvider unifiedSchedule,
+                                      NationalProfExamScheduleBundle profScheduleBundle,
                                       PrivateCertRegistrationProvider registration) {
         this.catalog = catalog;
         this.schedule = schedule;
         this.unifiedSchedule = unifiedSchedule;
+        this.profScheduleBundle = profScheduleBundle;
         this.registration = registration;
     }
 
@@ -115,8 +118,15 @@ public class CertificateEvidenceService {
     }
 
     private CertificateEvidenceResponse professional(String cert) {
-        // 국가전문자격 시행일정 API(InquiryTestDatesNationalProfessionalQualificationSVC)가 존재하나 계열코드(seriesCd)
-        // 매핑표 미확보 + Q-Net 장애로 아직 연동하지 않았다 — 자동 확인 대상이 아니라는 표현 대신 '현재 미연동'으로 솔직하게.
+        // 공단 연간 사전공고 번들(당해연도 한정)에 있으면 PREANNOUNCED 신뢰층으로 일정 제공 — (안)임을 명시.
+        CertificateScheduleEvidence pre = profScheduleBundle.lookup(cert);
+        if (pre != null) {
+            return new CertificateEvidenceResponse(cert, CertificateKind.NATIONAL_PROFESSIONAL.name(),
+                    pre.status().name(), null,
+                    "공단 연간 사전공고(안) 기준 일정입니다. 자격별 최종 시행계획 공고로 확정되므로, 접수 전 반드시 공식 공고를 확인하세요.",
+                    pre.sourceName(), pre.sourceUrl(), pre.rounds());
+        }
+        // 번들 무매칭/연도 불일치 — '일정 없음' 단정 없이 시행기관 확인 안내(사전공고 37종 밖 자격 포함).
         return new CertificateEvidenceResponse(cert, CertificateKind.NATIONAL_PROFESSIONAL.name(),
                 ScheduleEvidenceStatus.NOT_APPLICABLE.name(), null,
                 "국가전문자격 시험일정은 아직 자동 확인이 연동되지 않아, 시행기관 공식 페이지에서 일정을 확인해야 합니다.",

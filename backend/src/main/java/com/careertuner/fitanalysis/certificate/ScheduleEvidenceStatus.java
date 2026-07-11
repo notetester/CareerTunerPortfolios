@@ -12,6 +12,11 @@ package com.careertuner.fitanalysis.certificate;
 public enum ScheduleEvidenceStatus {
     /** 공식 출처에서 현재연도 일정 확인 → 일정 기반 전략 제공. */
     VERIFIED_CURRENT,
+    /**
+     * 공단 연간 <b>사전공고(안)</b> 기준 일정 — 자격별 최종 시행계획 공고로 확정되기 전 단계.
+     * VERIFIED_CURRENT 보다 낮은 신뢰층: 일정 제시는 하되 '변경 가능, 최종 공고 확인 필수'를 명시한다(국가전문자격).
+     */
+    PREANNOUNCED,
     /** 공식 응답은 정상이나 해당 종목 일정이 비어 있음 → 일반 학습계획만. */
     OFFICIAL_NO_SCHEDULE,
     /** 오래된 일정만 확인됨 → 날짜 단정 금지, 공식 재확인 표시(다중/과거 출처 연동 후 사용). */

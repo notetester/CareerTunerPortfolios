@@ -17,6 +17,7 @@ import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.fitanalysis.dto.CareerCertificateStrategyResponse;
+import com.careertuner.fitanalysis.dto.CareerRoadmapResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisHistoryEntryResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
@@ -43,6 +44,17 @@ public class FitAnalysisController {
     public ApiResponse<CareerCertificateStrategyResponse> careerCertificateStrategy(
             @AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(fitAnalysisService.careerCertificateStrategy(authUser.id()));
+    }
+
+    /**
+     * 장기 커리어 로드맵 — 확인된 실일정(자격증 회차·지원 마감) + 월 단위 학습 계획 블록(결정론, LLM 미관여).
+     * months 3~24 클램프(기본 12). 자격증 근거 수집(외부 I/O)이 포함되므로 수 초 걸릴 수 있다.
+     */
+    @GetMapping("/career-roadmap")
+    public ApiResponse<CareerRoadmapResponse> careerRoadmap(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(defaultValue = "12") int months) {
+        return ApiResponse.ok(fitAnalysisService.careerRoadmap(authUser.id(), months));
     }
 
     @GetMapping("/application-cases/{applicationCaseId}")

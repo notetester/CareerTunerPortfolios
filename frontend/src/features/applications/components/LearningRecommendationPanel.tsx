@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Award, BookOpen, CalendarCheck, CheckCircle2, Circle, GraduationCap, Hammer, RefreshCw } from "lucide-react";
+import { Link } from "react-router";
+import { AlertTriangle, Award, BookOpen, CalendarCheck, CalendarPlus, CheckCircle2, Circle, GraduationCap, Hammer, RefreshCw } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import { getCareerCertificateStrategy, updateFitAnalysisLearningTask } from "@/features/analysis/api/fitAnalysisApi";
+import { createPlannerScheduleItem } from "@/features/planner/api/plannerApi";
+import type { PlannerReminderChannel } from "@/features/planner/types/planner";
+import { toast } from "@/features/notification/components/toast";
 import type {
   CareerCertificateStrategy,
   CertificateEvidenceSnapshot,
@@ -128,7 +132,7 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
                   </div>
                 )}
                 <CertificateList recommendations={detailedCertificates} fallbackItems={certificates} />
-                <CertificateEvidenceSection snapshot={analysis.certificateEvidence ?? null} />
+                <CertificateEvidenceSection snapshot={analysis.certificateEvidence ?? null} fitAnalysisId={analysis.id} applicationCaseId={analysis.applicationCaseId} />
               </CardContent>
             </Card>
           );
@@ -183,13 +187,20 @@ function CareerStrategyCard() {
           <p className="text-xs leading-5 text-slate-500">{strategy.note}</p>
         )}
         {hasContent && <p className="text-[11px] leading-5 text-slate-400">{strategy.note}</p>}
+        <Link to="/career-roadmap" className="mt-2 inline-block text-xs font-semibold text-indigo-600 underline-offset-2 hover:underline">
+          연 단위 장기 로드맵 보기 →
+        </Link>
       </CardContent>
     </Card>
   );
 }
 
 /** 자격증 전략·근거(공식 출처 조회 snapshot). 탭 요청이어도 '평가'라 후순위/불필요도 정상. 확인 못 하면 솔직하게 안내. */
-function CertificateEvidenceSection({ snapshot }: { snapshot: CertificateEvidenceSnapshot | null }) {
+function CertificateEvidenceSection({ snapshot, fitAnalysisId, applicationCaseId }: {
+  snapshot: CertificateEvidenceSnapshot | null;
+  fitAnalysisId: number;
+  applicationCaseId: number;
+}) {
   if (!snapshot) return null;
   const items = snapshot.items ?? [];
   const verdict = strategyVerdict(snapshot.strategyStatus);
@@ -216,7 +227,7 @@ function CertificateEvidenceSection({ snapshot }: { snapshot: CertificateEvidenc
               <ul className="mt-1.5 space-y-0.5 text-[11px] text-slate-500">
                 {item.scheduleRounds.slice(0, 2).map((round, index) => (
                   <li key={index}>
-                    {round.round ? `${round.round} · ` : ""}필기 {fmtCertDate(round.docExam)} · 합격발표 {fmtCertDate(round.docPass)}
+                    {round.round ? `${round.round} · ` : ""}접수 {fmtCertDate(round.docRegStart)}~{fmtCertDate(round.docRegEnd)} · 필기 {fmtCertDate(round.docExam)} · 발표 {fmtCertDate(round.docPass)}
                   </li>
                 ))}
               </ul>
@@ -228,6 +239,7 @@ function CertificateEvidenceSection({ snapshot }: { snapshot: CertificateEvidenc
                   : item.sourceName}
               </div>
             )}
+            <CertScheduleToPlannerButton item={item} fitAnalysisId={fitAnalysisId} applicationCaseId={applicationCaseId} />
           </li>
         ))}
       </ul>
@@ -261,6 +273,7 @@ function EvidenceBadge({ status, registration }: { status: string; registration:
   if (registration === "ABOLISHED_OR_CANCELLED") return <EvidencePill tone="red">등록 폐지</EvidencePill>;
   switch (status) {
     case "VERIFIED_CURRENT": return <EvidencePill tone="green">공식 일정 확인</EvidencePill>;
+    case "PREANNOUNCED": return <EvidencePill tone="blue">사전공고 일정(안)</EvidencePill>;
     case "OFFICIAL_NO_SCHEDULE": return <EvidencePill tone="slate">올해 미편성</EvidencePill>;
     case "UPSTREAM_UNAVAILABLE": return <EvidencePill tone="amber">공식 서비스 확인 불가</EvidencePill>;
     case "MANUAL_REQUIRED": return <EvidencePill tone="blue">주관기관 확인 필요</EvidencePill>;
@@ -283,6 +296,93 @@ function EvidencePill({ tone, children }: { tone: "green" | "slate" | "amber" | 
 function fmtCertDate(value: string | null): string {
   if (!value || value.length !== 8) return "미정";
   return `${value.slice(0, 4)}.${value.slice(4, 6)}.${value.slice(6, 8)}`;
+}
+
+/** yyyymmdd → 플래너 datetime-local 형식(자정). 공식 회차 날짜를 그대로 사용 — 날짜를 만들어내지 않는다. */
+function certDateToPlanner(value: string | null): string | null {
+  if (!value || value.length !== 8) return null;
+  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T00:00:00`;
+}
+
+/**
+ * 확인된 회차(공식/사전공고)를 플래너 일정으로 추가 — 접수 시작=DEADLINE, 필기/시험일=EVENT.
+ * 날짜가 확인된 상태(VERIFIED_CURRENT/PREANNOUNCED)에서만 노출한다(확인 못한 날짜로 일정 생성 금지).
+ */
+function CertScheduleToPlannerButton({ item, fitAnalysisId, applicationCaseId }: {
+  item: { certName: string; scheduleStatus: string; message: string; scheduleRounds: { round: string | null; docRegStart: string | null; docRegEnd: string | null; docExam: string | null; pracExamStart: string | null }[] };
+  fitAnalysisId: number;
+  applicationCaseId: number;
+}) {
+  const [state, setState] = useState<"idle" | "saving" | "done">("idle");
+  if (item.scheduleStatus !== "VERIFIED_CURRENT" && item.scheduleStatus !== "PREANNOUNCED") return null;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+  // 다음 회차 = 시험일이 오늘 이후인 첫 회차. 없으면(모든 회차가 지남) 버튼을 노출하지 않는다 —
+  // 과거 회차를 '다음 회차'로 플래너에 넣지 않기 위함(지난 날짜 일정 생성 금지).
+  const next = item.scheduleRounds.find((round) => (round.docExam ?? "") >= todayKey);
+  if (!next) return null;
+  const preNote = item.scheduleStatus === "PREANNOUNCED" ? " (사전공고 기준 — 최종 공고 확인 필요)" : "";
+
+  const add = async () => {
+    setState("saving");
+    try {
+      const base = {
+        description: `${next.round ?? "회차"}${preNote}`.trim(),
+        status: "PLANNED",
+        allDay: true,
+        timingPrecision: "DAY",
+        endAt: null as string | null,
+        timezone: "Asia/Seoul",
+        applicationCaseId,
+        fitAnalysisId,
+        sourceType: "CERTIFICATE_EXAM",
+        sourceRef: `${item.certName}:${next.round ?? ""}`,
+        overlayVisible: true,
+        opacity: 0.96,
+        pinned: false,
+        clickThrough: false,
+        reminders: [{ remindAt: null, offsetMinutes: 1440, channels: ["WEB_TOAST"] as PlannerReminderChannel[], soundEnabled: false, vibrationEnabled: false }],
+      };
+      let added = 0;
+      // 접수 시작일이 이미 지났으면(진행 중이거나 마감) 과거 날짜 DEADLINE 을 만들지 않는다 — 미래 회차의 접수만 등록.
+      const regStart = (next.docRegStart ?? "") >= todayKey ? certDateToPlanner(next.docRegStart) : null;
+      if (regStart) {
+        await createPlannerScheduleItem({ ...base, title: `${item.certName} 원서접수 시작`, kind: "DEADLINE", startAt: regStart, endAt: certDateToPlanner(next.docRegEnd) });
+        added += 1;
+      }
+      const exam = certDateToPlanner(next.docExam);
+      if (exam) {
+        await createPlannerScheduleItem({ ...base, title: `${item.certName} 필기시험`, kind: "EVENT", startAt: exam });
+        added += 1;
+      }
+      const prac = certDateToPlanner(next.pracExamStart);
+      if (prac) {
+        await createPlannerScheduleItem({ ...base, title: `${item.certName} 실기시험 시작`, kind: "EVENT", startAt: prac });
+        added += 1;
+      }
+      if (added === 0) throw new Error("추가할 확인된 날짜가 없습니다.");
+      setState("done");
+      toast.success(`${item.certName} 일정 ${added}건을 플래너에 추가했습니다.`);
+    } catch (requestError) {
+      setState("idle");
+      toast.error(requestError instanceof Error ? requestError.message : "일정을 추가하지 못했습니다.");
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      {state === "done" ? (
+        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700">
+          <CheckCircle2 className="size-3.5" /> 플래너에 추가됨
+        </span>
+      ) : (
+        <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-[11px]" onClick={add} disabled={state === "saving"}>
+          <CalendarPlus className="size-3.5" />
+          {state === "saving" ? "추가 중..." : "다음 회차 플래너에 추가"}
+        </Button>
+      )}
+    </div>
+  );
 }
 
 /** 주간 학습 계획: 미완료 과제를 우선순위(HIGH→LOW)·정렬순으로 골라 이번 주 목표 3개를 제안한다. */
