@@ -10,6 +10,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.applicationcase.service.AiUsageLogService;
@@ -82,7 +83,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     }
 
     @Override
-    public FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy) {
+    public FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy,
+                                              RequestedAiModel requestedModel) {
         // 외부 I/O(AI 호출·자격증 근거 조회)는 트랜잭션 밖에서 수행한다 — DB 커넥션을 물지 않아, Q-Net 등 외부 장애가
         // 커넥션 풀을 고갈시켜 무관한 조회까지 막는 일이 없다. DB 쓰기만 아래 transactionTemplate 로 짧게 감싼다.
         FitAnalysisGenerationSource source = fitAnalysisMapper.findGenerationSource(userId, applicationCaseId);
@@ -104,7 +106,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 composeProfileInsight(userId));
 
         FitAnalysisResult previous = fitAnalysisMapper.findLatestByUserIdAndApplicationCaseId(userId, applicationCaseId);
-        FitAnalysisAiResult ai = fitAnalysisAiService.generate(command);
+        // 사용자가 고른 모델 tier 부터 시작하는 폴백(AUTO=현행). 판단값은 규칙엔진 소유라 모델 무관 불변, 설명만 가변.
+        FitAnalysisAiResult ai = fitAnalysisAiService.generate(command, requestedModel);
         // 신뢰도는 AI 판단이 아니라 입력 상태 기반의 결정적 계산이라 mock/실 AI 모두 동일하게 산정된다.
         FitAnalysisConfidence confidence = FitAnalysisConfidence.evaluate(command);
         // review-first evidence gate: AI 호출 + 기존 E1 grounding guard '이후'의 결정론 후처리 안전층.

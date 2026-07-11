@@ -2,6 +2,7 @@ package com.careertuner.fitanalysis.service;
 
 import java.util.List;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.fitanalysis.dto.CareerCertificateStrategyResponse;
 import com.careertuner.fitanalysis.dto.CareerRoadmapResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
@@ -29,8 +30,15 @@ public interface FitAnalysisService {
     }
 
     /** certificateStrategy=true 면 학습/자격증 탭의 명시 요청으로 보고 자격증 관점을 함께 <b>평가</b>한다
-     * (무조건 추천이 아니라 평가 — 결과는 NOT_NEEDED/OPTIONAL_LOW_PRIORITY 도 정상). */
-    FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy);
+     * (무조건 추천이 아니라 평가 — 결과는 NOT_NEEDED/OPTIONAL_LOW_PRIORITY 도 정상). 모델은 AUTO(현행 폴백). */
+    default FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy) {
+        return generate(userId, applicationCaseId, certificateStrategy, RequestedAiModel.AUTO);
+    }
+
+    /** 사용자가 AI 모델을 <b>명시 선택</b>하는 재분석 경로(기본 AUTO=현행). 모델 선택은 설명 생성 provider 만 바꾸고
+     * 판단값(fitScore/matched/missing/applyDecision)은 규칙엔진이 소유해 어느 모델이든 동일하다. */
+    FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy,
+                                       RequestedAiModel requestedModel);
 
     /** 장기 커리어 자격증 전략(desiredJob 기준, 현재 지원 건 전략과 분리). 결정론 규칙만 사용(외부 API 미호출). */
     CareerCertificateStrategyResponse careerCertificateStrategy(Long userId);
