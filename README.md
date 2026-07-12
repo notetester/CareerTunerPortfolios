@@ -9,7 +9,7 @@
 ```text
 CareerTuner/
  ├─ backend/    Spring Boot 4 + MyBatis + MySQL  (REST API · :8080)
- ├─ frontend/   React 18 + Vite + TypeScript      (사용자/관리자 반응형 웹/PWA-ready · :5173)
+ ├─ frontend/   React 19 + Vite + TypeScript      (사용자/관리자 반응형 웹/PWA-ready · :5173)
  ├─ ml/         자체 LLM 파인튜닝/평가 실험 산출물
  └─ docs/       기획 및 아키텍처 문서
 ```
@@ -67,7 +67,7 @@ git tag demo-apk-3 && git push origin demo-apk-3
 ## 기술 스택
 
 Spring Boot 4.1.0 · Java 21 · MyBatis · MySQL 8 · Spring Security · springdoc-openapi
-／ React 18 · Vite 6 · TypeScript · Tailwind CSS v4 · shadcn/ui · react-router 7
+／ React 19 · Vite 8 · TypeScript 7 · Tailwind CSS v4 · shadcn/ui · react-router 8
 
 > 영속성은 **MyBatis만** 사용한다(JPA 미사용).
 

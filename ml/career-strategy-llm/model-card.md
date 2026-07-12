@@ -1,6 +1,6 @@
 # 모델 카드 — careertuner-c-career-strategy (작성 중)
 
-> 운영안 13장 항목. Phase 진행에 따라 채운다. (현재 Phase 0: 스캐폴딩)
+> 운영안 13장 항목. Phase 진행에 따라 채운다. (현재 Phase 1 — 3B LoRA 운영 기준 + E1 grounding guard·R3 evidence gate 안전계층 반영. 최신 재벤치마크 2026-07: base 비교·이중 판정단(Claude Opus 4.8+Codex) 대량 평가 완료. 아래 §변경 이력·`CURRENT_STATE.md` 참조.)
 
 | 항목 | 내용 |
 | --- | --- |
