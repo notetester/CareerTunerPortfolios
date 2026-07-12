@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
@@ -97,6 +97,62 @@ def choose_tls_server(configs: dict[Path, str], hostname: str) -> tuple[Path, Se
     return selected[0]
 
 
+def _server_level_text(text: str) -> str:
+    """Return only directives declared directly inside a server block."""
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    in_comment = False
+    visible: list[str] = []
+
+    for character in text:
+        if in_comment:
+            visible.append("\n" if character == "\n" else " ")
+            if character == "\n":
+                in_comment = False
+            continue
+        if quote:
+            visible.append(character if depth <= 1 else " ")
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+            continue
+        if character == "#":
+            in_comment = True
+            visible.append(" ")
+            continue
+        if character in {'"', "'"}:
+            quote = character
+            visible.append(character if depth <= 1 else " ")
+            continue
+        if character == "{":
+            visible.append(character if depth <= 1 else " ")
+            depth += 1
+            continue
+        if character == "}":
+            depth -= 1
+            visible.append(character if depth <= 1 else " ")
+            continue
+        visible.append(character if depth <= 1 else " ")
+    return "".join(visible)
+
+
+def server_root(block: ServerBlock) -> PurePosixPath:
+    roots = re.findall(r"\broot\s+([^;]+);", _server_level_text(block.text))
+    if len(roots) != 1:
+        raise ValueError(f"선택한 TLS server block의 root를 하나로 결정할 수 없습니다: {roots or '없음'}")
+    raw_root = roots[0].strip().strip('"\'')
+    if "$" in raw_root:
+        raise ValueError(f"변수가 포함된 nginx root는 자동 배포할 수 없습니다: {raw_root}")
+    root = PurePosixPath(raw_root)
+    if not root.is_absolute():
+        raise ValueError(f"nginx root는 절대 경로여야 합니다: {raw_root}")
+    return root
+
+
 def ensure_aasa_location(text: str, block: ServerBlock) -> tuple[str, bool]:
     exact_location = re.compile(rf"\blocation\s*=\s*{re.escape(LOCATION_PATH)}\s*\{{")
     existing = exact_location.search(block.text)
@@ -149,8 +205,12 @@ def main() -> int:
     parser.add_argument("--hostname", default="careertuner.kro.kr")
     parser.add_argument("configs", nargs="+", type=Path)
     args = parser.parse_args()
+    configs = {path.resolve(): path.resolve().read_text(encoding="utf-8") for path in args.configs}
+    _, block = choose_tls_server(configs, args.hostname)
+    root = server_root(block)
     target, changed = install(args.hostname, args.configs)
     print(f"AASA nginx location {'updated' if changed else 'already configured'}: {target}")
+    print(f"CAREERTUNER_ROOT={root}")
     return 0
 
 

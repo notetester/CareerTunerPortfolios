@@ -1,7 +1,7 @@
 import unittest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from ensure_aasa_nginx_location import choose_tls_server, ensure_aasa_location, server_blocks
+from ensure_aasa_nginx_location import choose_tls_server, ensure_aasa_location, server_blocks, server_root
 
 
 HTTP_AND_TLS = """
@@ -31,6 +31,24 @@ class EnsureAasaNginxLocationTest(unittest.TestCase):
         self.assertEqual(updated.count("location = /.well-known/apple-app-site-association"), 1)
         self.assertIn("default_type application/json;", updated)
         self.assertLess(updated.index("location = /.well-known/apple-app-site-association"), updated.rindex("}"))
+        self.assertEqual(server_root(block), PurePosixPath("/var/www/careertuner"))
+
+    def test_server_root_ignores_nested_location_root(self):
+        config = HTTP_AND_TLS.replace(
+            "    location /api/ { proxy_pass http://127.0.0.1:8080; }",
+            "    location /legacy/ { root /var/www/legacy; }\n"
+            "    location /api/ { proxy_pass http://127.0.0.1:8080; }",
+        )
+        block = [candidate for candidate in server_blocks(config) if candidate.is_tls][0]
+
+        self.assertEqual(server_root(block), PurePosixPath("/var/www/careertuner"))
+
+    def test_server_root_rejects_variable_path(self):
+        config = HTTP_AND_TLS.replace("root /var/www/careertuner;", "root $site_root;")
+        block = [candidate for candidate in server_blocks(config) if candidate.is_tls][0]
+
+        with self.assertRaisesRegex(ValueError, "변수가 포함된"):
+            server_root(block)
 
     def test_is_idempotent(self):
         block = [block for block in server_blocks(HTTP_AND_TLS) if block.is_tls][0]
