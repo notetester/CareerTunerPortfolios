@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { generateFitAnalysis, getFitAnalysisByApplicationCase } from "../api/fitAnalysisApi";
 import type { FitAnalysisDetail } from "../types/fitAnalysis";
 
@@ -41,12 +42,12 @@ export function useApplicationFitAnalysis(applicationCaseId: number | null, enab
     };
   }, [applicationCaseId, enabled]);
 
-  const generate = useCallback(async (certificateStrategy = false) => {
+  const generate = useCallback(async (certificateStrategy = false, model: AiModelChoice = "AUTO") => {
     if (!applicationCaseId) return;
     setGenerating(true);
     setError(null);
     try {
-      const detail = await generateFitAnalysis(applicationCaseId, certificateStrategy);
+      const detail = await generateFitAnalysis(applicationCaseId, certificateStrategy, model);
       setAnalyses(detail ? [detail] : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "적합도 분석 생성에 실패했습니다.");

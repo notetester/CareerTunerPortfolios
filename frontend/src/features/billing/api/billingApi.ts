@@ -86,6 +86,20 @@ export interface CreditTransaction {
   createdAt: string;
 }
 
+export interface PlanRecommendation {
+  recommendation: "UPGRADE_PLAN" | "BUY_CREDITS" | "KEEP";
+  currentPlanCode: string;
+  currentPlanName: string;
+  creditBalance: number;
+  monthlyUsageCount: number;
+  monthlyCreditUsed: number;
+  topFeatureType: string | null;
+  headline: string;
+  reasons: string[];
+  recommendedPlan: { code: string; name: string; monthlyPrice: number } | null;
+  recommendedCreditPack: { code: string; name: string; price: number; creditAmount: number } | null;
+}
+
 export type BillingCycle = "MONTHLY" | "YEARLY";
 
 export const getPlans = () => api<SubscriptionPlan[]>("/billing/plans", {}, { auth: false });
@@ -96,6 +110,7 @@ export const getMyBilling = () => api<MyBilling>("/billing/me");
 export const getMyPayments = () => api<Payment[]>("/billing/payments");
 export const getMonthlyUsage = () => api<UsageRow[]>("/billing/usage");
 export const getCreditTransactions = () => api<CreditTransaction[]>("/billing/credit-transactions");
+export const getPlanRecommendation = () => api<PlanRecommendation>("/billing/plan-recommendation");
 
 export const subscribe = (planCode: string, cycle: BillingCycle = "MONTHLY") =>
   api<MyBilling>("/billing/subscribe", { method: "POST", body: JSON.stringify({ planCode, cycle }) });

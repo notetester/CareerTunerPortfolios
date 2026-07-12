@@ -16,6 +16,7 @@ import {
 import { useAuth } from "@/app/auth/AuthContext";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { deleteApplicationCase, updateApplicationCase } from "../api/applicationCasesApi";
 import { getApplicationCaseAnalysisOverview } from "../api/analysisApi";
@@ -177,6 +178,8 @@ export function ApplicationDetailPage() {
     error: fitAnalysisError,
     generate: generateFit,
   } = useApplicationFitAnalysis(id, needsFitAnalysis);
+  // 적합도 설명 생성 모델(기본 AUTO). 선택은 설명 provider 만 바꾸고 점수·매칭 판단값은 규칙엔진 소유라 불변.
+  const [fitModel, setFitModel] = useState<AiModelChoice>("AUTO");
   const refreshedExtractionIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -591,10 +594,11 @@ export function ApplicationDetailPage() {
                     <p className="text-sm text-slate-600">공고 분석 결과와 내 프로필을 비교해 적합도·부족 역량·학습/자격증·전략을 분석합니다.</p>
                     <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
                       <AiChargeCostBadge featureType="FIT_ANALYSIS" />
+                      <ModelPicker value={fitModel} onChange={setFitModel} disabled={fitGenerating} />
                       <Button
                         className="bg-blue-600 text-white hover:bg-blue-700"
                         disabled={fitGenerating}
-                        onClick={() => void generateFit()}
+                        onClick={() => void generateFit(false, fitModel)}
                       >
                         {fitGenerating ? "분석 중..." : fitAnalyses.length > 0 ? "적합도 재분석" : "적합도 분석 생성"}
                       </Button>
@@ -606,7 +610,7 @@ export function ApplicationDetailPage() {
                     analyses={fitAnalyses}
                     loading={fitAnalysisLoading}
                     error={fitAnalysisError}
-                    onReanalyze={() => void generateFit(true)}
+                    onReanalyze={() => void generateFit(true, fitModel)}
                     reanalyzing={fitGenerating}
                   />
                   {/* C 담당: 재분석 히스토리(점수·역량 변화 추적). 최신 분석 id가 바뀌면 다시 불러온다. */}
