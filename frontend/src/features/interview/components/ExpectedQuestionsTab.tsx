@@ -12,6 +12,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { InterviewProgressBar } from "./InterviewProgressBar";
 import {
   generateExpectedQuestions,
@@ -224,6 +225,7 @@ export function ExpectedQuestionsTab({
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [genModel, setGenModel] = useState<AiModelChoice>("AUTO");
   const [error, setError] = useState<string | null>(null);
   const [resetVersion, setResetVersion] = useState(0);
   const [modelAnswersPreparing, setModelAnswersPreparing] = useState(false);
@@ -279,7 +281,7 @@ export function ExpectedQuestionsTab({
     setGenerating(true);
     setError(null);
     try {
-      const generated = await generateExpectedQuestions(session.id, { mode: session.mode });
+      const generated = await generateExpectedQuestions(session.id, { mode: session.mode }, genModel);
       setQuestions(generated);
       setAnswerMap({}); // 재생성하면 과거 답변은 무효
       setModelAnswersPreparing(true); // 모범답안 백그라운드 생성 동안 잠깐 준비 중 힌트 표시
@@ -304,6 +306,7 @@ export function ExpectedQuestionsTab({
         <h2 className="font-bold text-slate-800">예상 면접 질문</h2>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <AiChargeCostBadge featureType="INTERVIEW_QUESTION_GEN" />
+          <ModelPicker value={genModel} onChange={setGenModel} disabled={generating} />
           {questions.length > 0 && (
             <Button size="sm" variant="outline" className="gap-1.5" disabled={generating} onClick={handleGenerate}>
               {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}

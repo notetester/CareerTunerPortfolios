@@ -1,4 +1,5 @@
 import { api, ApiError } from "@/app/lib/api";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { runWithAiCharge } from "@/features/billing/api/aiChargePreviewApi";
 import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken, subscribeTokenStore } from "@/app/lib/tokenStore";
@@ -183,10 +184,11 @@ export function createInterviewSession(
   });
 }
 
-/** 세션에 대한 AI 예상 질문 생성. */
+/** 세션에 대한 AI 예상 질문 생성. model 로 생성 모델 명시 선택(AUTO=현행 폴백, 채점 경로엔 무관). */
 export async function generateExpectedQuestions(
   sessionId: number,
   request: GenerateQuestionsRequest,
+  model: AiModelChoice = "AUTO",
 ): Promise<InterviewQuestion[]> {
   if (isDataMockActive()) return mockDelay(dummyQuestions, 900);
   let pending = pendingQuestionOperations.get(sessionId);
@@ -209,7 +211,8 @@ export async function generateExpectedQuestions(
   try {
     const result = await runWithAiCharge("INTERVIEW_QUESTION_GEN", (headers) => {
       mutationStarted = true;
-      return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions`, {
+      const modelQuery = model && model !== "AUTO" ? `?model=${model}` : "";
+      return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions${modelQuery}`, {
         method: "POST",
         headers,
         body: JSON.stringify(request),
