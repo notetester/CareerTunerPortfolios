@@ -336,9 +336,10 @@ export function PhoneVerificationCard() {
                     maxLength={6}
                     disabled={verifying}
                   />
+                  {/* 테마가 green 팔레트를 회색조로 재매핑해 활성 버튼이 비활성처럼 보였다 — 발송 버튼과 같은 blue 로 통일 */}
                   <Button
                     size="sm"
-                    className="bg-green-600 text-white hover:bg-green-700"
+                    className="bg-blue-600 text-white hover:bg-blue-700"
                     onClick={() => void handleVerify()}
                     disabled={verifying || code.trim().length === 0}
                   >
