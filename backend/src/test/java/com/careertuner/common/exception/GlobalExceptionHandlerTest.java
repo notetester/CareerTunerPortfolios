@@ -1,5 +1,6 @@
 package com.careertuner.common.exception;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -8,7 +9,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -71,6 +76,37 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
     }
 
+    @Test
+    void dbConnectionFailureMapsTo503() throws Exception {
+        mockMvc.perform(get("/request/db-unavailable"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
+    }
+
+    @Test
+    void transientResourceFailureMapsTo503() {
+        var response = new GlobalExceptionHandler()
+                .handleDbUnavailable(new TransientDataAccessResourceException("communications link failure"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    void constraintViolationIsNotTreatedAsOutage() {
+        var response = new GlobalExceptionHandler()
+                .handleUnexpected(new DataIntegrityViolationException("duplicate key"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void genericErrorStays500() {
+        var response = new GlobalExceptionHandler().handleUnexpected(new RuntimeException("some bug"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
     @RestController
     @RequestMapping("/request")
     private static class RequestController {
@@ -93,6 +129,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/only-get")
         String onlyGet() {
             return "ok";
+        }
+
+        @GetMapping("/db-unavailable")
+        String dbUnavailable() {
+            throw new DataAccessResourceFailureException("connection refused");
         }
     }
 
