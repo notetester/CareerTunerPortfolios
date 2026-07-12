@@ -1,7 +1,12 @@
 package com.careertuner.sms;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import org.springframework.stereotype.Component;
 
@@ -35,9 +40,9 @@ public class FirebaseAuthClient {
 
     public FirebaseAuthClient(SmsProperties properties) {
         FirebaseAuth ready = null;
-        String path = properties.getFirebase().getServiceAccount();
-        if (path != null && !path.isBlank()) {
-            try (InputStream credentials = new FileInputStream(path)) {
+        String raw = properties.getFirebase().getServiceAccount();
+        if (raw != null && !raw.isBlank()) {
+            try (InputStream credentials = openCredentials(raw)) {
                 FirebaseOptions options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(credentials))
                         .build();
@@ -52,6 +57,28 @@ public class FirebaseAuthClient {
             }
         }
         this.auth = ready;
+    }
+
+    /**
+     * 서비스계정 자격증명을 연다. Docker 배포에서 파일 볼륨 마운트 없이 {@code .env} 한 줄로 주입할 수 있도록
+     * 세 형식을 모두 허용한다:
+     * <ul>
+     *   <li>{@code {} 로 시작 → JSON 문자열 그대로</li>
+     *   <li>존재하는 파일 경로 → 파일에서 로드(로컬 개발)</li>
+     *   <li>그 외 → base64 로 인코딩된 JSON(운영 .env 권장)</li>
+     * </ul>
+     */
+    private static InputStream openCredentials(String raw) throws IOException {
+        String v = raw.trim();
+        if (v.startsWith("{")) {
+            return new ByteArrayInputStream(v.getBytes(StandardCharsets.UTF_8));
+        }
+        File file = new File(v);
+        if (file.isFile()) {
+            return new FileInputStream(file);
+        }
+        byte[] decoded = Base64.getDecoder().decode(v);
+        return new ByteArrayInputStream(decoded);
     }
 
     /** 서비스계정이 설정·로드돼 토큰 검증이 가능한 상태인지. */
