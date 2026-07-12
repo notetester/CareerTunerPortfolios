@@ -263,6 +263,16 @@ public class IntakeSlotTrace {
         return new IntakeSlots(state.caseId, state.mode, state.originalQuery);
     }
 
+    /**
+     * 대화 단위 누적 슬롯을 통째로 제거(대화 삭제 시). clearOnboarding 과 달리 일반 intake 슬롯까지
+     * 버린다 — 남기면 삭제된 대화 id 로 온 stale 요청(다른 탭 등)이 옛 case/mode 로 인테이크를 되살린다.
+     */
+    public void drop(Long conversationId) {
+        if (conversationId != null) {
+            slotsByConversation.remove(conversationId);
+        }
+    }
+
     /** 요청 ThreadLocal 만 정리. 대화 단위 누적 슬롯은 다음 턴을 위해 보존한다. */
     public void clear() {
         userIdTL.remove();

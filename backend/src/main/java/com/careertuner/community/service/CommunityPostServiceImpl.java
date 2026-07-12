@@ -231,7 +231,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         }
 
         ViewerState viewer = resolveViewerState(postId, currentUserId);
-        return toDetailResponse(post, review, viewer);
+        boolean mine = currentUserId != null && currentUserId.equals(post.getUserId());
+        return toDetailResponse(post, review, viewer, mine);
     }
 
     /** 뷰어의 리액션/스크랩/구독 상태 — 리액션은 벌크 1쿼리로 판정한다. */
@@ -458,7 +459,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     }
 
     private PostDetailResponse toDetailResponse(CommunityPost post, CommunityInterviewReview review,
-                                                ViewerState viewer) {
+                                                ViewerState viewer, boolean mine) {
         PostCategory cat = PostCategory.valueOf(post.getCategory());
         PostDetailResponse.InterviewReviewDto reviewDto = null;
 
@@ -497,7 +498,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 viewer.scrapped(),
                 viewer.subscribed(),
                 false,
-                resolveBlurredImages(post.getId())
+                resolveBlurredImages(post.getId()),
+                mine
         );
     }
 
@@ -573,7 +575,8 @@ public class CommunityPostServiceImpl implements CommunityPostService {
                 false,
                 false,
                 true,
-                Collections.emptyList()
+                Collections.emptyList(),
+                false
         );
     }
 

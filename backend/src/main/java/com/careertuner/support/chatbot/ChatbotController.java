@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -1599,6 +1600,28 @@ public class ChatbotController {
                 .filter(m -> m != null)
                 .collect(Collectors.toList());
         return ApiResponse.ok(new ChatHistoryResponse(conversationId, messages));
+    }
+
+    /**
+     * 대화 삭제(본인 소유만). 대화 기록(메모리 행)과 인테이크 슬롯(1:1 논리참조)을 함께 지운다 —
+     * 대화 밖 산출물(지원 건·면접 리포트·자소서)은 건드리지 않는다. 익명 대화는 소유자가 없어 삭제 불가.
+     * DELETE /api/chatbot/conversations/{conversationId}
+     */
+    @DeleteMapping("/chatbot/conversations/{conversationId}")
+    public ApiResponse<Void> deleteConversation(@PathVariable Long conversationId,
+                                                @AuthenticationPrincipal AuthUser authUser) {
+        if (authUser == null) {
+            return ApiResponse.error("UNAUTHORIZED", "로그인이 필요합니다.");
+        }
+        Long owner = memoryStore.findOwnerUserId(conversationId);
+        if (owner == null || !owner.equals(authUser.id())) {
+            // 없는 대화도 같은 응답 — id 존재 여부를 노출하지 않는다(messages 조회와 동일 정책).
+            return ApiResponse.error("FORBIDDEN", "삭제할 수 없는 대화입니다.");
+        }
+        // 슬롯 먼저 — 반대 순서에서 두 번째 삭제가 실패하면 고아 슬롯이 남는다(이 순서면 대화가 남아 재시도 가능).
+        intakeAskService.deleteIntakeState(conversationId);
+        memoryStore.deleteConversation(conversationId);
+        return ApiResponse.ok(null);
     }
 
     /**
