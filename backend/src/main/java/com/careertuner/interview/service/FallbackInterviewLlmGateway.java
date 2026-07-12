@@ -1,11 +1,16 @@
 package com.careertuner.interview.service;
 
+import java.util.List;
 import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
+
+import com.careertuner.ai.common.model.AiProviderChain;
+import com.careertuner.ai.common.model.AiProviderTier;
+import com.careertuner.ai.common.model.RequestedAiModel;
 
 /**
  * 면접 LLM 디스패처: 자체 모델(학습된 생성 task) → Claude(Haiku) → OpenAI → 목업 순으로 폴백.
@@ -42,49 +47,76 @@ public class FallbackInterviewLlmGateway implements InterviewLlmGateway {
      */
     private static final Set<String> OSS_GENERATION_TASKS = Set.of();
 
+    /** 생성 tier 순서. AUTO 는 이 전체(자체모델은 화이트리스트 task 만), 명시 선택은 그 tier 부터. */
+    private static final List<AiProviderTier> DEFAULT_ORDER =
+            List.of(AiProviderTier.CAREERTUNER, AiProviderTier.CLAUDE, AiProviderTier.OPENAI);
+
     private final OssLlmGateway oss;
     private final AnthropicLlmGateway anthropic;
     private final OpenAiLlmGateway openAi;
     private final MockInterviewLlmGateway mock;
     private final InterviewEvalProperties evalProperties;
+    private final InterviewModelSelectionTrace selectionTrace;
 
     public FallbackInterviewLlmGateway(OssLlmGateway oss, AnthropicLlmGateway anthropic,
                                        OpenAiLlmGateway openAi, MockInterviewLlmGateway mock,
-                                       InterviewEvalProperties evalProperties) {
+                                       InterviewEvalProperties evalProperties,
+                                       InterviewModelSelectionTrace selectionTrace) {
         this.oss = oss;
         this.anthropic = anthropic;
         this.openAi = openAi;
         this.mock = mock;
         this.evalProperties = evalProperties;
+        this.selectionTrace = selectionTrace;
     }
 
+    /**
+     * 사용자 선택 모델 tier 부터 시작하는 생성 폴백(요청 스코프 {@link InterviewModelSelectionTrace} 기준).
+     * {@code AUTO}(미설정 포함)는 현행과 동일 — 자체모델은 학습된 생성 task({@code OSS_GENERATION_TASKS}, 현재 빈)만,
+     * 그 외엔 Claude → OpenAI → Mock. 명시 {@code CAREERTUNER}는 화이트리스트를 우회해 서빙되면 자체모델을 시도한다
+     * (QGEN 형식 불안정 위험은 사용자 선택). 어느 경우든 목업 안전망까지 폴백해 화면이 깨지지 않는다.
+     */
     @Override
     public Result complete(Request request) {
-        // 1) 자체 모델 우선 — provider=oss + 서빙됨 + 학습된 생성 task 일 때만. 실패 시 아래로 폴백.
-        if (evalProperties.isOss() && oss.available() && OSS_GENERATION_TASKS.contains(request.schemaName())) {
-            try {
-                return oss.complete(request);
-            } catch (RuntimeException ex) {
-                log.warn("자체 모델 호출 실패 → Claude 폴백 ({}): {}", request.schemaName(), ex.getMessage());
+        RequestedAiModel requestedModel = selectionTrace.current();
+        boolean explicitSelf = requestedModel == RequestedAiModel.CAREERTUNER;
+        for (AiProviderTier tier : AiProviderChain.startingFrom(requestedModel, DEFAULT_ORDER)) {
+            switch (tier) {
+                case CAREERTUNER -> {
+                    // AUTO: 기존 화이트리스트 규칙. 명시 CAREERTUNER: 화이트리스트 무시하고 서빙되면 시도.
+                    boolean ossEligible = explicitSelf
+                            ? oss.available()
+                            : (evalProperties.isOss() && oss.available()
+                                    && OSS_GENERATION_TASKS.contains(request.schemaName()));
+                    if (ossEligible) {
+                        try {
+                            return oss.complete(request);
+                        } catch (RuntimeException ex) {
+                            log.warn("자체 모델 호출 실패 → 다음 폴백 ({}): {}", request.schemaName(), ex.getMessage());
+                        }
+                    }
+                }
+                case CLAUDE -> {
+                    if (anthropic.available()) {
+                        try {
+                            return anthropic.complete(request);
+                        } catch (RuntimeException ex) {
+                            log.warn("Claude 호출 실패 → 다음 폴백 ({}): {}", request.schemaName(), ex.getMessage());
+                        }
+                    }
+                }
+                case OPENAI -> {
+                    if (openAi.available()) {
+                        try {
+                            return openAi.complete(request);
+                        } catch (RuntimeException ex) {
+                            log.warn("OpenAI 호출 실패 → 목업 폴백 ({}): {}", request.schemaName(), ex.getMessage());
+                        }
+                    }
+                }
             }
         }
-        // 2) 1차 폴백: Claude(Haiku) — run-local.bat 으로 주입되는 공통 키라 가장 안정적. 실패 시 OpenAI 로.
-        if (anthropic.available()) {
-            try {
-                return anthropic.complete(request);
-            } catch (RuntimeException ex) {
-                log.warn("Claude 호출 실패 → OpenAI 폴백 ({}): {}", request.schemaName(), ex.getMessage());
-            }
-        }
-        // 3) 2차 폴백: OpenAI. 실패 시 목업으로.
-        if (openAi.available()) {
-            try {
-                return openAi.complete(request);
-            } catch (RuntimeException ex) {
-                log.warn("OpenAI 호출 실패 → 목업 폴백 ({}): {}", request.schemaName(), ex.getMessage());
-            }
-        }
-        // 4) 3차(최종) 폴백: 목업 — 외부 LLM 이 모두 미설정/실패해도 화면이 깨지지 않게 한다.
+        // 최종 폴백: 목업 — 외부 LLM 이 모두 미설정/실패해도 화면이 깨지지 않게 한다.
         log.warn("모든 외부 LLM provider 미설정/실패 → 목업으로 응답 ({})", request.schemaName());
         return mock.complete(request);
     }

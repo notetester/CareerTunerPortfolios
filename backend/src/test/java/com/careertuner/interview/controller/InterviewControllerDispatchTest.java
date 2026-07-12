@@ -10,13 +10,14 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.interview.dto.DispatchInterviewSessionRequest;
 import com.careertuner.interview.dto.InterviewDispatchTarget;
 import com.careertuner.interview.realtime.InterviewRealtimeService;
+import com.careertuner.interview.service.InterviewModelSelectionTrace;
 import com.careertuner.interview.service.InterviewService;
 
 class InterviewControllerDispatchTest {
 
     private final InterviewService interviewService = mock(InterviewService.class);
     private final InterviewController controller = new InterviewController(
-            interviewService, mock(InterviewRealtimeService.class));
+            interviewService, mock(InterviewRealtimeService.class), new InterviewModelSelectionTrace());
     private final AuthUser user = new AuthUser(7L, "user@example.com", "USER");
 
     @Test
