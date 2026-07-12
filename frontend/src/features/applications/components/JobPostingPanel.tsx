@@ -9,11 +9,8 @@ import { isApplicationCaseExtractionActive, isApplicationCaseExtractionReviewReq
 import { shouldDisableSaveForReview } from "../utils/jobPostingConfirm";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { formatKoreaDateTime } from "../utils/dateFormat";
-import {
-  JOB_POSTING_IMAGE_ACCEPT,
-  JOB_POSTING_MAX_FILE_SIZE_LABEL,
-  validateJobPostingFile,
-} from "../utils/jobPostingUpload";
+import { JOB_POSTING_IMAGE_ACCEPT, validateJobPostingFile } from "../utils/jobPostingUpload";
+import { useJobPostingUploadLimit } from "../hooks/useJobPostingUploadLimit";
 import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
 import { OcrRetryButton } from "./OcrRetryButton";
 
@@ -84,6 +81,7 @@ export function JobPostingPanel({
   onRetryExtraction,
   onReviewExtraction,
 }: JobPostingPanelProps) {
+  const { maxBytes: uploadMaxBytes, label: uploadLimitLabel, loading: uploadLimitLoading } = useJobPostingUploadLimit();
   const initialText = useMemo(
     () => jobPosting?.extractedText ?? jobPosting?.originalText ?? "",
     [jobPosting],
@@ -137,7 +135,7 @@ export function JobPostingPanel({
       return;
     }
 
-    const validationError = validateJobPostingFile(sourceType, nextFile);
+    const validationError = validateJobPostingFile(sourceType, nextFile, uploadMaxBytes);
     if (validationError) {
       event.currentTarget.value = "";
       setFile(null);
@@ -186,7 +184,7 @@ export function JobPostingPanel({
       setLocalError("업로드할 파일을 선택해 주세요.");
       return;
     }
-    const validationError = validateJobPostingFile(sourceType, file);
+    const validationError = validateJobPostingFile(sourceType, file, uploadMaxBytes);
     if (validationError) {
       setLocalError(validationError);
       return;
@@ -369,11 +367,18 @@ export function JobPostingPanel({
                     accept={sourceType === "PDF" ? "application/pdf" : JOB_POSTING_IMAGE_ACCEPT}
                     onChange={handleFileChange}
                     className="bg-card"
+                    disabled={uploadLimitLoading}
                   />
                 </div>
                 <div className="space-y-1 text-xs text-slate-500">
                   <div className="font-semibold text-slate-600">추출 방식</div>
-                  <p>파일은 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다.</p>
+                  <p>
+                    {uploadLimitLoading
+                      ? "업로드 한도를 확인하고 있습니다."
+                      : uploadLimitLabel
+                        ? `파일은 ${uploadLimitLabel} 이하만 업로드할 수 있습니다.`
+                        : "파일 크기는 업로드 시 서버에서 확인합니다."}
+                  </p>
                   <p>텍스트 PDF는 서버에서 바로 추출합니다.</p>
                   <p>이미지와 스캔 PDF는 자체 OCR로 텍스트를 추출하며 완료까지 시간이 걸릴 수 있습니다.</p>
                 </div>
