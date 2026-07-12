@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { api } from "@/app/lib/api";
 import { useAuth } from "@/app/auth/AuthContext";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import {
   deletePendingAutoPrepFile,
@@ -445,7 +446,7 @@ export function useChatbot() {
   const close = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
   const minimize = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
 
-  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string; silent?: boolean; faqChip?: boolean }) => {
+  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string; silent?: boolean; faqChip?: boolean; model?: AiModelChoice }) => {
     // silent: 유저 말풍선을 남기지 않는다(가이드 X/여기서-물어보기의 서버 이탈 — UI 제스처지 사용자 발화가 아님).
     //   응답 처리(봇 말풍선·orchestrator·onbPhase 파생)는 그대로 재사용한다.
     if (!opts?.silent) {
@@ -464,7 +465,7 @@ export function useChatbot() {
     requestScope.cancelLane("interview-result");
     const request = requestScope.begin("reply");
 
-    api<ChatbotApiResponse>("/chatbot/ask", {
+    api<ChatbotApiResponse>(`/chatbot/ask${opts?.model && opts.model !== "AUTO" ? `?model=${opts.model}` : ""}`, {
       method: "POST",
       body: JSON.stringify({
         question: text,

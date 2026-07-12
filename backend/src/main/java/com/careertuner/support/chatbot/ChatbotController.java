@@ -178,6 +178,8 @@ public class ChatbotController {
     private final OnboardingRestartStore onboardingRestartStore;
     // 챗봇 일일 사용 쿼터 정책(관리자 편집). OFF면 무제약, ON이면 로그인 사용자 하루 한도 집행.
     private final com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService;
+    // 사용자 모델 선택(요청 스코프) — ask/summarize 진입에서 set, FallbackChatModel 이 읽는다.
+    private final com.careertuner.ai.chat.llm.ChatModelSelectionTrace chatModelSelectionTrace;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -204,7 +206,8 @@ public class ChatbotController {
                             JobPostingService jobPostingService,
                             SideQuestionStore sideQuestionStore,
                             OnboardingRestartStore onboardingRestartStore,
-                            com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService) {
+                            com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService,
+                            com.careertuner.ai.chat.llm.ChatModelSelectionTrace chatModelSelectionTrace) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.quickReplyParser = quickReplyParser;
@@ -231,6 +234,7 @@ public class ChatbotController {
         this.sideQuestionStore = sideQuestionStore;
         this.onboardingRestartStore = onboardingRestartStore;
         this.chatbotQuotaPolicyService = chatbotQuotaPolicyService;
+        this.chatModelSelectionTrace = chatModelSelectionTrace;
     }
 
     /* ── (g) 이탈성 질문 가드 헬퍼 ── */
@@ -1040,7 +1044,19 @@ public class ChatbotController {
     @PostMapping("/chatbot/ask")
     @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ChatAskResponse> ask(@RequestBody ChatAskRequest req,
-                                            @AuthenticationPrincipal AuthUser authUser) {
+                                            @AuthenticationPrincipal AuthUser authUser,
+                                            @org.springframework.web.bind.annotation.RequestParam(required = false) String model) {
+        // 사용자 선택 모델(AUTO/CAREERTUNER/CLAUDE/OPENAI)을 요청 스코프에 실어 FallbackChatModel 이 tier 를 고르게 한다.
+        // 동기 실행이라 ThreadLocal 안전. 자유생성 챗봇 문장에만 적용되고, finally 로 반드시 clear(스레드 재사용 누수 방지).
+        chatModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
+        try {
+            return askInternal(req, authUser);
+        } finally {
+            chatModelSelectionTrace.clear();
+        }
+    }
+
+    private ApiResponse<ChatAskResponse> askInternal(ChatAskRequest req, AuthUser authUser) {
         if (req == null || req.question() == null || req.question().isBlank()) {
             return ApiResponse.error("BAD_REQUEST", "질문을 입력해 주세요.");
         }
@@ -1787,7 +1803,17 @@ public class ChatbotController {
     @PostMapping("/chatbot/summarize-posts")
     @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ChatAskResponse> summarizePosts(@RequestBody ChatSummarizeRequest req,
-                                                       @AuthenticationPrincipal AuthUser authUser) {
+                                                       @AuthenticationPrincipal AuthUser authUser,
+                                                       @org.springframework.web.bind.annotation.RequestParam(required = false) String model) {
+        chatModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
+        try {
+            return summarizePostsInternal(req, authUser);
+        } finally {
+            chatModelSelectionTrace.clear();
+        }
+    }
+
+    private ApiResponse<ChatAskResponse> summarizePostsInternal(ChatSummarizeRequest req, AuthUser authUser) {
         if (req == null || req.postIds() == null || req.postIds().isEmpty()) {
             return ApiResponse.error("BAD_REQUEST", "요약할 글을 선택해 주세요.");
         }
