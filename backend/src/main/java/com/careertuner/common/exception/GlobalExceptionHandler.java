@@ -97,7 +97,7 @@ public class GlobalExceptionHandler {
     })
     public ResponseEntity<ApiResponse<Void>> handleDbUnavailable(DataAccessException ex) {
         ErrorCode code = ErrorCode.SERVICE_UNAVAILABLE;
-        log.error("DB 리소스 장애(연결 불가 추정) → 503", ex);
+        log.warn("DB 리소스 장애(연결 불가 추정) → 503: {}", ex.getMessage());
         return ResponseEntity.status(code.getStatus())
                 .body(ApiResponse.error(code.name(), code.getDefaultMessage()));
     }

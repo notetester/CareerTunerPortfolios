@@ -1,5 +1,6 @@
 package com.careertuner.common.exception;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -9,7 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -73,12 +77,34 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void dbConnectionFailureReturnsServiceUnavailable() throws Exception {
-        // DB 연결/리소스 장애 → 503(프론트 outage 폴백 신호). 제약위반·일반 오류(500)와 구분된다.
-        mockMvc.perform(get("/request/db-fail"))
+    void dbConnectionFailureMapsTo503() throws Exception {
+        mockMvc.perform(get("/request/db-unavailable"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
+    }
+
+    @Test
+    void transientResourceFailureMapsTo503() {
+        var response = new GlobalExceptionHandler()
+                .handleDbUnavailable(new TransientDataAccessResourceException("communications link failure"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
+    void constraintViolationIsNotTreatedAsOutage() {
+        var response = new GlobalExceptionHandler()
+                .handleUnexpected(new DataIntegrityViolationException("duplicate key"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    void genericErrorStays500() {
+        var response = new GlobalExceptionHandler().handleUnexpected(new RuntimeException("some bug"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
     @RestController
@@ -105,9 +131,9 @@ class GlobalExceptionHandlerTest {
             return "ok";
         }
 
-        @GetMapping("/db-fail")
-        String dbFail() {
-            throw new DataAccessResourceFailureException("db connection refused");
+        @GetMapping("/db-unavailable")
+        String dbUnavailable() {
+            throw new DataAccessResourceFailureException("connection refused");
         }
     }
 

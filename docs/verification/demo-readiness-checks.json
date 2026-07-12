@@ -360,7 +360,13 @@
       "id": "PLATFORM-WEB",
       "area": "PLATFORM",
       "name": "운영 웹, 반응형, 테마, 접근 경계와 PWA",
-      "paths": ["frontend/src/**", "frontend/public/**", "frontend/vite.config**"],
+      "paths": [
+        "frontend/src/**",
+        "frontend/public/**",
+        "frontend/worker/**",
+        "frontend/scripts/test-sites-worker-outage.mjs",
+        "frontend/vite.config**"
+      ],
       "requires": ["RELEASE-GATE"]
     },
     {
