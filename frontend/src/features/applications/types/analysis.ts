@@ -565,7 +565,7 @@ const ANALYSIS_PROVIDER_LABELS: Record<string, string> = {
 };
 
 const ANALYSIS_RUN_MODE_LABELS: Record<string, string> = {
-  INITIAL: "초기 자동 분석",
+  INITIAL: "초기 분석",
   MANUAL: "수동 재분석",
 };
 
@@ -606,7 +606,7 @@ export interface AnalysisProvenanceView {
   fallbackLabel: string | null;
   /** 실제 시도 순서 라벨(예: ["Local LLM","Claude"]). attempt_path 미기록/파싱 불가면 null. */
   attemptPathLabels: string[] | null;
-  /** 실행 모드 라벨("초기 자동 분석"/"수동 재분석"). 없으면 null. */
+  /** 실행 모드 라벨("초기 분석"/"수동 재분석"). 없으면 null. */
   runModeLabel: string | null;
 }
 
