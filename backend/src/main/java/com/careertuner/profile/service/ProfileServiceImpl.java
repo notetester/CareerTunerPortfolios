@@ -25,6 +25,7 @@ import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.profile.ai.ProfileAiResult;
 import com.careertuner.profile.ai.ProfileAiService;
 import com.careertuner.profile.ai.ProfileCriterionScore;
@@ -244,22 +245,22 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     @Transactional
-    public ProfileAiResponse summarize(AuthUser authUser) {
-        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_SUMMARY");
+    public ProfileAiResponse summarize(AuthUser authUser, RequestedAiModel requestedModel) {
+        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_SUMMARY", requestedModel);
         return toAiResponse(result);
     }
 
     @Override
     @Transactional
-    public ProfileAiResponse extractSkills(AuthUser authUser) {
-        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_SKILL_EXTRACT");
+    public ProfileAiResponse extractSkills(AuthUser authUser, RequestedAiModel requestedModel) {
+        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_SKILL_EXTRACT", requestedModel);
         return toAiResponse(result);
     }
 
     @Override
     @Transactional
-    public ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser) {
-        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_COMPLETENESS");
+    public ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser, RequestedAiModel requestedModel) {
+        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_COMPLETENESS", requestedModel);
         return toCompletenessResponse(result);
     }
 
@@ -278,13 +279,14 @@ public class ProfileServiceImpl implements ProfileService {
         return toResponse(findOrEmpty(userId));
     }
 
-    private ProfileAiResult evaluateWithConsent(AuthUser authUser, String featureType) {
+    private ProfileAiResult evaluateWithConsent(AuthUser authUser, String featureType, RequestedAiModel requestedModel) {
         Long userId = requireUser(authUser);
         requireAiConsent(userId);
         requireResumeAnalysisConsent(userId);
         UserProfile profile = findOrEmpty(userId);
         profile.setPortfolioEvidence(profilePortfolioService.evidenceText(userId));
-        ProfileAiResult result = profileAiService.evaluate(profile, featureType);
+        // 모델 선택은 어느 provider 가 요약·강점·보완점 텍스트를 쓰는가만 바꾼다(점수 계산 로직은 provider 공통).
+        ProfileAiResult result = profileAiService.evaluate(profile, featureType, requestedModel);
         recordAi(userId, result);
         // 성공 산출물을 영속한다(feature 별 최신 1행) — 사용자 조회 + C 적합도 입력 창구.
         // 실패해도 분석 응답 자체는 막지 않는다(best-effort persist).

@@ -11,6 +11,7 @@ import java.util.Map;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 import com.careertuner.profile.domain.UserProfile;
 
@@ -46,8 +47,19 @@ public class FineTunedProfileAiService implements ProfileAiService {
 
     @Override
     public ProfileAiResult evaluate(UserProfile profile, String featureType) {
-        if (!properties.configured()) {
-            return fallbackService.evaluate(profile, featureType);
+        return evaluate(profile, featureType, RequestedAiModel.AUTO);
+    }
+
+    /**
+     * 사용자 선택 모델부터 시작한다. AUTO/CAREERTUNER 는 자체모델(설정 시)을 우선 시도하고 실패하면 폴백으로
+     * 넘어간다(AUTO=현행 동일). CLAUDE/OPENAI 를 명시하거나 자체모델이 미설정이면 자체 tier 를 건너뛰고 폴백
+     * 디스패처가 선택 tier(Claude/OpenAI)부터 라우팅한다. 어느 경우든 최종 안전망(OpenAI 내부 규칙기반)까지 폴백.
+     */
+    @Override
+    public ProfileAiResult evaluate(UserProfile profile, String featureType, RequestedAiModel requestedModel) {
+        boolean selfEligible = requestedModel == RequestedAiModel.AUTO || requestedModel == RequestedAiModel.CAREERTUNER;
+        if (!selfEligible || !properties.configured()) {
+            return fallbackService.evaluate(profile, featureType, requestedModel);
         }
 
         JobFamily jobFamily = JobFamily.classify(profile);
@@ -62,7 +74,7 @@ public class FineTunedProfileAiService implements ProfileAiService {
                     usage(profile, payload));
         } catch (RuntimeException exception) {
             log.warn("자체 프로필 AI 호출 실패, fallback으로 전환합니다: {}", exception.toString());
-            ProfileAiResult fallback = fallbackService.evaluate(profile, featureType);
+            ProfileAiResult fallback = fallbackService.evaluate(profile, featureType, requestedModel);
             return new ProfileAiResult(
                     fallback.featureType(),
                     fallback.summary(),
