@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:admin-access": "node --test scripts/test-admin-access.mjs",
+    "test:applications": "node --test --experimental-strip-types src/features/applications/utils/jobPostingUpload.node.test.ts",
     "test:native-oauth": "node --test scripts/test-native-oauth.mjs",
     "test:native-config": "node --test scripts/test-capacitor-config.mjs",
     "test:deep-link-runtime": "node --test scripts/test-deep-link-runtime.mjs",

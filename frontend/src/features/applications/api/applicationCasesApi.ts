@@ -62,6 +62,12 @@ export function getApplicationCase(id: number): Promise<ApplicationCase> {
   return api<ApplicationCase>(`/application-cases/${id}`, { method: "GET" });
 }
 
+/** 현재 공고 업로드 한도(관리자 설정 반영) 바이트. 사용자 사전 검증·표기를 서버 값에 맞추는 데 쓴다. */
+export async function getJobPostingUploadLimit(): Promise<number> {
+  const result = await api<{ maxBytes: number }>("/application-cases/upload-limit", { method: "GET" });
+  return result.maxBytes;
+}
+
 export function createApplicationCase(request: CreateApplicationCaseRequest): Promise<ApplicationCase> {
   return api<ApplicationCase>("/application-cases", {
     method: "POST",

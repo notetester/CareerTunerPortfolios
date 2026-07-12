@@ -54,11 +54,8 @@ import {
 } from "../types/applicationCase";
 import type { JobPosting } from "../types/jobPosting";
 import { registerApplicationCaseExtraction } from "../utils/applicationExtractionTracker";
-import {
-  JOB_POSTING_IMAGE_ACCEPT,
-  JOB_POSTING_MAX_FILE_SIZE_LABEL,
-  validateJobPostingFile,
-} from "../utils/jobPostingUpload";
+import { JOB_POSTING_IMAGE_ACCEPT, validateJobPostingFile } from "../utils/jobPostingUpload";
+import { useJobPostingUploadLimit } from "../hooks/useJobPostingUploadLimit";
 
 type WizardStep = 0 | 1 | 2;
 type FileSourceType = Extract<ApplicationSourceType, "PDF" | "IMAGE">;
@@ -109,6 +106,7 @@ function isHttpPostingUrl(value: string): boolean {
 export function NewApplicationPage() {
   const navigate = useNavigate();
   const { loading: authLoading, isAuthenticated } = useAuth();
+  const { maxBytes: uploadMaxBytes, label: uploadLimitLabel, loading: uploadLimitLoading } = useJobPostingUploadLimit();
   const [step, setStep] = useState<WizardStep>(0);
   const [createdCase, setCreatedCase] = useState<ApplicationCase | null>(null);
   const [jobPosting, setJobPosting] = useState<JobPosting | null>(null);
@@ -180,7 +178,7 @@ export function NewApplicationPage() {
       return;
     }
 
-    const validationError = validateJobPostingFile(postingForm.sourceType, nextFile);
+    const validationError = validateJobPostingFile(postingForm.sourceType, nextFile, uploadMaxBytes);
     if (validationError) {
       event.currentTarget.value = "";
       setPostingField("file", null);
@@ -255,7 +253,7 @@ export function NewApplicationPage() {
         if (!postingForm.file) {
           throw new Error("업로드할 파일을 선택하세요.");
         }
-        const validationError = validateJobPostingFile(postingForm.sourceType, postingForm.file);
+        const validationError = validateJobPostingFile(postingForm.sourceType, postingForm.file, uploadMaxBytes);
         if (validationError) {
           throw new Error(validationError);
         }
@@ -614,9 +612,15 @@ export function NewApplicationPage() {
                       type="file"
                       accept={postingForm.sourceType === "PDF" ? "application/pdf" : JOB_POSTING_IMAGE_ACCEPT}
                       onChange={handlePostingFileChange}
+                      disabled={uploadLimitLoading}
                     />
                     <span className="text-xs font-normal leading-5 text-slate-500">
-                      PDF와 이미지는 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다. 이미지/스캔 PDF OCR은 완료까지 시간이 걸릴 수 있습니다.
+                      {uploadLimitLoading
+                        ? "업로드 한도를 확인하고 있습니다."
+                        : uploadLimitLabel
+                          ? `PDF와 이미지는 ${uploadLimitLabel} 이하만 업로드할 수 있습니다.`
+                          : "파일 크기는 업로드 시 서버에서 확인합니다."}
+                      {" "}이미지/스캔 PDF OCR은 완료까지 시간이 걸릴 수 있습니다.
                     </span>
                   </Field>
                 )}
