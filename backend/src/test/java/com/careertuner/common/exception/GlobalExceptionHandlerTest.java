@@ -77,14 +77,11 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void dbConnectionFailureMapsTo503() {
-        var handler = new GlobalExceptionHandler();
-        var response = handler.handleDbUnavailable(new DataAccessResourceFailureException("connection refused"));
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().success()).isFalse();
-        assertThat(response.getBody().code()).isEqualTo("SERVICE_UNAVAILABLE");
+    void dbConnectionFailureMapsTo503() throws Exception {
+        mockMvc.perform(get("/request/db-unavailable"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
     }
 
     @Test
@@ -132,6 +129,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/only-get")
         String onlyGet() {
             return "ok";
+        }
+
+        @GetMapping("/db-unavailable")
+        String dbUnavailable() {
+            throw new DataAccessResourceFailureException("connection refused");
         }
     }
 
