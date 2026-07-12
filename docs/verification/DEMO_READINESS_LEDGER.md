@@ -9,9 +9,9 @@
 | 항목 | 값 |
 | --- | --- |
 | 이전 전 영역 기준 | PR #379, merge `a86d089a39adad67e362d2e61c1396dd8435afd9` |
-| 이번 후보 기준 | `PARK-SEONG-HO-SYS/demo-readiness-a-f` (PR·후보 SHA는 게시 직전 갱신) |
+| 이번 후보 기준 | PR #391, 검증된 코드 기준 `58aae8f6b223daa4a9dd4eaa4260f6f856627019` (이 원장 갱신 커밋 제외) |
 | 검증일 | 2026-07-12 |
-| 변경 기준 | `origin/dev` `95edad0c2e62aab2b9700b32e43724eef35876cf` 이후 작업 트리 |
+| 변경 기준 | PR #390 merge `7364c4e51e137453e89044e19d0a684c66021174` 이후 PR #391 diff |
 | 종합 판정 | 코드·mock 시연 `PASS`; 실 공급자 인증은 아래 `BLOCKED_EXTERNAL` 참조 |
 
 상태는 `PASS`, `PASS_TARGETED`, `PENDING_LIVE`, `BLOCKED_EXTERNAL`만 사용한다.
