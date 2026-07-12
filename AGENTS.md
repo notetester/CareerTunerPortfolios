@@ -9,7 +9,7 @@
 
 ```text
 backend/    Spring Boot 4.1.0 + Java 21 + MyBatis + MySQL 8  (REST API, :8080)
-frontend/   React 18 + Vite 6 + TypeScript + Tailwind v4     (사용자/관리자 SPA, :5173)
+frontend/   React 19 + Vite 8 + TypeScript 7 + Tailwind v4    (사용자/관리자 SPA, :5173)
 docs/       기획·아키텍처 문서
 ```
 

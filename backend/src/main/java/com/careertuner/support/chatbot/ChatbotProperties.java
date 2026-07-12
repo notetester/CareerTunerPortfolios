@@ -43,4 +43,26 @@ public class ChatbotProperties {
 
     /** 화행 분류(QUESTION/COMMAND)에 쓰는 모델. ③ 인테이크 에이전트와 동일한 qwen3:8b. */
     private String speechActModel = "qwen3:8b";
+
+    /** 사용자 질문 입력 상한(자). 초과 시 400 — 무제한 입력 → 토큰/메모리 폭증 차단. */
+    private int maxQuestionLength = 2000;
+
+    /** 후기 요약 시 글 1건 본문 상한(자). 초과분은 절단(TOP_K=3 과 함께 토큰 상한). */
+    private int maxSummaryBodyLength = 4000;
+
+    /** 익명(비로그인) 챗봇 호출 남용 방어 설정. 로그인 사용자는 일일 쿼터가 별도로 담당. */
+    private AnonRateLimit anonRateLimit = new AnonRateLimit();
+
+    /**
+     * 익명 hot-path per-IP rate limit. permitAll 인 ask/summarize-posts 를 비로그인이
+     * 무제한 호출해 생성형 백엔드를 포화시키는 것을 완만히 막는다. 기본값은 정상 사용을
+     * 막지 않을 만큼 넉넉하며 enabled=false 로 즉시 끌 수 있다.
+     */
+    @Getter
+    @Setter
+    public static class AnonRateLimit {
+        private boolean enabled = true;
+        private int perMinute = 30;
+        private int perDay = 300;
+    }
 }

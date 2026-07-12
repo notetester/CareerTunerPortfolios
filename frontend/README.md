@@ -1,6 +1,6 @@
 # CareerTuner — Frontend
 
-React 18 + Vite + TypeScript + Tailwind CSS v4 (shadcn/ui). PC 웹과 모바일 웹을 모두 대상으로 하는 반응형 SPA이며, 이후 PWA → Capacitor 순으로 모바일 앱으로 확장한다.
+React 19 + Vite + TypeScript + Tailwind CSS v4 (shadcn/ui). PC 웹과 모바일 웹을 모두 대상으로 하는 반응형 SPA이며, 이후 PWA → Capacitor 순으로 모바일 앱으로 확장한다.
 
 관리자 화면도 같은 Vite React 앱 안에서 관리한다. 관리자 전용 라우트와 기능은 `src/admin/` 아래에 두고,
 일반 사용자 기능은 `src/features/` 아래에 둔다.

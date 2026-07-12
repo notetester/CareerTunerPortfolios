@@ -180,6 +180,8 @@ public class ChatbotController {
     private final com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService;
     // 사용자 모델 선택(요청 스코프) — ask/summarize 진입에서 set, FallbackChatModel 이 읽는다.
     private final com.careertuner.ai.chat.llm.ChatModelSelectionTrace chatModelSelectionTrace;
+    // 익명 hot-path 남용 방어(per-IP). 로그인은 일일 쿼터가 별도로 담당.
+    private final AnonChatRateLimiter anonChatRateLimiter;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -207,7 +209,8 @@ public class ChatbotController {
                             SideQuestionStore sideQuestionStore,
                             OnboardingRestartStore onboardingRestartStore,
                             com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService,
-                            com.careertuner.ai.chat.llm.ChatModelSelectionTrace chatModelSelectionTrace) {
+                            com.careertuner.ai.chat.llm.ChatModelSelectionTrace chatModelSelectionTrace,
+                            AnonChatRateLimiter anonChatRateLimiter) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.quickReplyParser = quickReplyParser;
@@ -235,6 +238,7 @@ public class ChatbotController {
         this.onboardingRestartStore = onboardingRestartStore;
         this.chatbotQuotaPolicyService = chatbotQuotaPolicyService;
         this.chatModelSelectionTrace = chatModelSelectionTrace;
+        this.anonChatRateLimiter = anonChatRateLimiter;
     }
 
     /* ── (g) 이탈성 질문 가드 헬퍼 ── */
@@ -1045,7 +1049,13 @@ public class ChatbotController {
     @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ChatAskResponse> ask(@RequestBody ChatAskRequest req,
                                             @AuthenticationPrincipal AuthUser authUser,
-                                            @org.springframework.web.bind.annotation.RequestParam(required = false) String model) {
+                                            @org.springframework.web.bind.annotation.RequestParam(required = false) String model,
+                                            jakarta.servlet.http.HttpServletRequest httpRequest) {
+        // 익명 hot-path 남용 방어 — permitAll 인 이 엔드포인트를 비로그인이 무제한 호출해 생성형 백엔드를
+        // 포화시키는 것을 per-IP 로 막는다. 로그인 사용자는 아래 askInternal 의 일일 쿼터가 담당하므로 대상 아님.
+        if (authUser == null && !anonChatRateLimiter.tryAcquire(AnonChatRateLimiter.clientIp(httpRequest))) {
+            return ApiResponse.error("TOO_MANY_REQUESTS", "요청이 많아 잠시 후 다시 시도해 주세요.");
+        }
         // 사용자 선택 모델(AUTO/CAREERTUNER/CLAUDE/OPENAI)을 요청 스코프에 실어 FallbackChatModel 이 tier 를 고르게 한다.
         // 동기 실행이라 ThreadLocal 안전. 자유생성 챗봇 문장에만 적용되고, finally 로 반드시 clear(스레드 재사용 누수 방지).
         chatModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
@@ -1059,6 +1069,11 @@ public class ChatbotController {
     private ApiResponse<ChatAskResponse> askInternal(ChatAskRequest req, AuthUser authUser) {
         if (req == null || req.question() == null || req.question().isBlank()) {
             return ApiResponse.error("BAD_REQUEST", "질문을 입력해 주세요.");
+        }
+        // 입력 길이 상한 — 무제한 입력이 LLM 토큰/메모리로 폭증하는 벡터 차단(익명 포함 전 경로).
+        int maxQuestionLen = chatbotProperties.getMaxQuestionLength();
+        if (req.question().length() > maxQuestionLen) {
+            return ApiResponse.error("BAD_REQUEST", "질문이 너무 길어요. " + maxQuestionLen + "자 이내로 입력해 주세요.");
         }
 
         // 로그인 시 user_id 기록 → 나중에 "이전 대화 복원" 대상이 된다. 비로그인은 null(익명).
@@ -1804,7 +1819,12 @@ public class ChatbotController {
     @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ChatAskResponse> summarizePosts(@RequestBody ChatSummarizeRequest req,
                                                        @AuthenticationPrincipal AuthUser authUser,
-                                                       @org.springframework.web.bind.annotation.RequestParam(required = false) String model) {
+                                                       @org.springframework.web.bind.annotation.RequestParam(required = false) String model,
+                                                       jakarta.servlet.http.HttpServletRequest httpRequest) {
+        // 익명 hot-path 남용 방어 — ask 와 동일(로그인 사용자는 대상 아님).
+        if (authUser == null && !anonChatRateLimiter.tryAcquire(AnonChatRateLimiter.clientIp(httpRequest))) {
+            return ApiResponse.error("TOO_MANY_REQUESTS", "요청이 많아 잠시 후 다시 시도해 주세요.");
+        }
         chatModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
         try {
             return summarizePostsInternal(req, authUser);
@@ -1830,11 +1850,14 @@ public class ChatbotController {
         ids = communityTools.visiblePostIds(ids, authUser != null ? authUser.id() : null);
 
         // 각 글 본문 수집 — 비공개/삭제("찾을 수 없")·차단 톰스톤은 요약 소스에서 제외.
+        // 본문 1건이 과도하게 길면 상한까지 절단 — 긴 입력 → 토큰 폭증 차단(TOP_K=3 과 함께).
+        int maxBodyLen = chatbotProperties.getMaxSummaryBodyLength();
         List<String> bodies = ids.stream()
                 .map(communityTools::getPostContent)
                 .filter(c -> c != null
                         && !c.startsWith("해당 글을 찾을 수 없")
                         && !c.startsWith("차단한 사용자의 게시글"))
+                .map(c -> c.length() > maxBodyLen ? c.substring(0, maxBodyLen) : c)
                 .collect(Collectors.toList());
 
         String message;
