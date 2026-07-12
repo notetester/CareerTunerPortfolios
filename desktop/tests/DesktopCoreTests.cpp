@@ -1066,6 +1066,8 @@ private slots:
         QVERIFY(qml.contains("session.requestFollowUp(scoreRoot.data_.qid)"));
         QVERIFY(qml.contains("session.followUpPendingQuestionIds.indexOf(data_.qid)"));
         QVERIFY(qml.contains("session.modelAnswerPendingQuestionIds.indexOf(data_.qid)"));
+        QVERIFY(qml.contains("session.questionGenerationModel"));
+        QVERIFY(qml.contains("질문 생성 AI 모델"));
     }
 
     void aiChargeCoordinatorPreviewsAcknowledgesAndSuppliesBoundHeaders()
@@ -2219,7 +2221,8 @@ private slots:
                             };
                             writeHttpResponse(socket, 200, QJsonDocument(QJsonObject{
                                 {"success", true}, {"data", preview}}).toJson(QJsonDocument::Compact));
-                        } else if (request.startsWith("POST /api/interview/sessions/12/generate-questions ")) {
+                        } else if (request.startsWith(
+                                       "POST /api/interview/sessions/12/generate-questions?model=CLAUDE ")) {
                             ++generations;
                             writeHttpResponse(socket, 200, R"({"success":true,"data":null})");
                         } else {
@@ -2235,6 +2238,8 @@ private slots:
         AiChargeCoordinator charge(&api);
         InterviewSession session(&api, &store, &charge);
         session.open(12, QStringLiteral("테스트"), QStringLiteral("BASIC"), 1);
+        session.setQuestionGenerationModel(QStringLiteral("claude"));
+        QCOMPARE(session.questionGenerationModel(), QStringLiteral("CLAUDE"));
         session.generateQuestions();
         session.generateQuestions();
 
@@ -2303,7 +2308,8 @@ private slots:
                                 {"sufficient", true}, {"refundPolicyVersion", 1}};
                             writeHttpResponse(socket, 200, QJsonDocument(QJsonObject{
                                 {"success", true}, {"data", preview}}).toJson(QJsonDocument::Compact));
-                        } else if (request.startsWith("POST /api/interview/sessions/33/generate-questions ")) {
+                        } else if (request.startsWith(
+                                       "POST /api/interview/sessions/33/generate-questions?model=CLAUDE ")) {
                             ++generations;
                             if (generations == 1)
                                 writeHttpResponse(socket, 500, R"({"success":false,"message":"timeout","data":null})");
@@ -2332,16 +2338,20 @@ private slots:
         InterviewSession session(&api, &store, &charge);
         session.m_sessionId = 33;
         session.m_sessionGeneration = 1;
+        session.setQuestionGenerationModel(QStringLiteral("CLAUDE"));
         session.generateQuestions();
         QTRY_VERIFY_WITH_TIMEOUT(!session.loading(), 4000);
         QCOMPARE(generations, 1);
         QVERIFY(!session.m_questionGenerationActionKey.isEmpty());
+        QCOMPARE(session.m_questionGenerationActionModel, QStringLiteral("CLAUDE"));
+        session.setQuestionGenerationModel(QStringLiteral("OPENAI"));
         session.generateQuestions();
         QTRY_COMPARE_WITH_TIMEOUT(generations, 2, 4000);
         QTRY_COMPARE_WITH_TIMEOUT(session.currentQid(), 330LL, 4000);
         QCOMPARE(actionKeys.size(), 2);
         QCOMPARE(actionKeys.at(0), actionKeys.at(1));
         QVERIFY(session.m_questionGenerationActionKey.isEmpty());
+        QVERIFY(session.m_questionGenerationActionModel.isEmpty());
     }
 
     void plannerStopRejectsLateDashboardAndScopesReminderIdsByEnvironment()

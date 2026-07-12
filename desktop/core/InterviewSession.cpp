@@ -33,6 +33,7 @@ void InterviewSession::clear()
     m_caseId = -1;
     m_title.clear();
     m_mode.clear();
+    setQuestionGenerationModel(QStringLiteral("AUTO"));
     m_thread.clear();
     m_agentSteps.clear();
     m_progress.clear();
@@ -57,6 +58,7 @@ void InterviewSession::clear()
     m_questionGenerationQueued = false;
     m_reportLoadInFlight = false;
     m_questionGenerationActionKey.clear();
+    m_questionGenerationActionModel.clear();
     m_followUpActionKeys.clear();
 
     emit sessionChanged();
@@ -150,6 +152,7 @@ void InterviewSession::open(int sessionId, const QString& title, const QString& 
     m_caseId    = caseId;
     m_title     = title;
     m_mode      = mode;
+    setQuestionGenerationModel(QStringLiteral("AUTO"));
     m_thread.clear();
     m_agentSteps.clear();
     m_report.clear();
@@ -172,6 +175,7 @@ void InterviewSession::open(int sessionId, const QString& title, const QString& 
     m_questionGenerationQueued = false;
     m_reportLoadInFlight = false;
     m_questionGenerationActionKey.clear();
+    m_questionGenerationActionModel.clear();
     m_followUpActionKeys.clear();
 
     emit sessionChanged();
@@ -287,7 +291,10 @@ void InterviewSession::reloadThread(bool completesQuestionGeneration)
                         }
                     }
                     setCurrentQuestion(firstUnanswered, firstUnansweredText);
-                    if (!order.isEmpty()) m_questionGenerationActionKey.clear();
+                    if (!order.isEmpty()) {
+                        m_questionGenerationActionKey.clear();
+                        m_questionGenerationActionModel.clear();
+                    }
                     for (qint64 qid : order) {
                         const qint64 parentId = qById.value(qid).value(QStringLiteral("parentQuestionId")).toInteger();
                         if (parentId > 0) m_followUpActionKeys.remove(parentId);
@@ -371,6 +378,21 @@ void InterviewSession::loadAgentSteps()
 
 // ─────────────────────────── 연습 흐름 ───────────────────────────
 
+void InterviewSession::setQuestionGenerationModel(const QString& model)
+{
+    QString normalized = model.trimmed().toUpper();
+    static const QSet<QString> allowed{
+        QStringLiteral("AUTO"),
+        QStringLiteral("CAREERTUNER"),
+        QStringLiteral("CLAUDE"),
+        QStringLiteral("OPENAI")
+    };
+    if (!allowed.contains(normalized)) normalized = QStringLiteral("AUTO");
+    if (m_questionGenerationModel == normalized) return;
+    m_questionGenerationModel = normalized;
+    emit questionGenerationModelChanged();
+}
+
 void InterviewSession::generateQuestions()
 {
     if (m_threadLoadFailed) {
@@ -395,14 +417,22 @@ void InterviewSession::startQuestionGeneration()
     const int sid = m_sessionId;
     if (sid < 0 || m_questionGenerationInFlight || m_threadLoadFailed) return;
     const quint64 generation = m_sessionGeneration;
-    if (m_questionGenerationActionKey.isEmpty())
+    if (m_questionGenerationActionKey.isEmpty()) {
         m_questionGenerationActionKey = AiChargeCoordinator::createActionKey();
+        m_questionGenerationActionModel = m_questionGenerationModel;
+    }
+    if (m_questionGenerationActionModel.isEmpty())
+        m_questionGenerationActionModel = m_questionGenerationModel;
     const QString actionKey = m_questionGenerationActionKey;
+    const QString operationModel = m_questionGenerationActionModel;
+    QString endpoint = QStringLiteral("/api/interview/sessions/%1/generate-questions").arg(sid);
+    if (operationModel != QStringLiteral("AUTO"))
+        endpoint += QStringLiteral("?model=") + operationModel;
     m_questionGenerationInFlight = true;
     updateLoading();
-    const auto operation = [this, sid, generation, actionKey](const ApiClient::Headers& headers) {
+    const auto operation = [this, sid, generation, actionKey, endpoint](const ApiClient::Headers& headers) {
         if (!isCurrentSession(sid, generation)) return;
-        m_api->postDetailed(QStringLiteral("/api/interview/sessions/%1/generate-questions").arg(sid),
+        m_api->postDetailed(endpoint,
             QJsonObject(), headers,
             [this, sid, generation, actionKey](bool ok, const QJsonValue&, const QString& msg,
                                                int httpStatus) {
@@ -412,16 +442,20 @@ void InterviewSession::startQuestionGeneration()
                     reconcileQuestionGeneration(sid, generation,
                         msg.isEmpty() ? QStringLiteral("질문 생성 결과를 확인하지 못했습니다.") : msg);
                 } else {
-                    if (m_questionGenerationActionKey == actionKey)
+                    if (m_questionGenerationActionKey == actionKey) {
                         m_questionGenerationActionKey.clear();
+                        m_questionGenerationActionModel.clear();
+                    }
                     m_questionGenerationInFlight = false;
                     updateLoading();
                     emit errorOccurred(msg.isEmpty() ? QStringLiteral("질문 생성 실패") : msg);
                 }
                 return;
             }
-            if (m_questionGenerationActionKey == actionKey)
+            if (m_questionGenerationActionKey == actionKey) {
                 m_questionGenerationActionKey.clear();
+                m_questionGenerationActionModel.clear();
+            }
             reloadThread(true);
             refreshProgress();
             loadAgentSteps();
@@ -455,6 +489,7 @@ void InterviewSession::reconcileQuestionGeneration(int sessionId, quint64 genera
             if (!isCurrentSession(sessionId, generation)) return;
             if (ok && !data.toArray().isEmpty()) {
                 m_questionGenerationActionKey.clear();
+                m_questionGenerationActionModel.clear();
                 reloadThread(true);
                 refreshProgress();
                 loadAgentSteps();

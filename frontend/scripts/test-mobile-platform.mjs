@@ -200,6 +200,7 @@ for (const mediaFile of directMediaFiles) {
   assert(source.includes("keepStreamForAppLock"), `${mediaFile}는 획득한 스트림을 잠금 세대로 검증해야 한다`);
 }
 const mobileThreadSource = await readFile(resolve("src/features/interview/pages/MobileSessionThreadPage.tsx"), "utf8");
+const modelPickerSource = await readFile(resolve("src/app/components/ai/ModelPicker.tsx"), "utf8");
 const expectedQuestionsSource = await readFile(resolve("src/features/interview/components/ExpectedQuestionsTab.tsx"), "utf8");
 const appHomeSource = await readFile(resolve("src/features/onboarding/AppHome.tsx"), "utf8");
 const rootLayoutSource = await readFile(resolve("src/app/components/layout/Root.tsx"), "utf8");
@@ -234,6 +235,19 @@ assert(
   "모바일 전체 삭제는 MOBILE 플랫폼 범위만 변경해야 한다",
 );
 assert(mobileThreadSource.includes("rollbackOptimisticSubmission"), "모바일 답변 실패 시 낙관 항목 롤백을 유지해야 한다");
+assert(
+  mobileThreadSource.includes('useState<AiModelChoice>("AUTO")')
+    && mobileThreadSource.includes("generateExpectedQuestions(sessionId, { mode: session.mode }, generationModel)")
+    && mobileThreadSource.includes("<ModelPicker"),
+  "모바일 전용 면접 화면도 웹과 같은 질문 생성 모델 선택을 서버에 전달해야 한다",
+);
+assert(
+  modelPickerSource.includes("border-border")
+    && modelPickerSource.includes("text-foreground")
+    && modelPickerSource.includes("text-muted-foreground")
+    && !modelPickerSource.includes("text-slate-700"),
+  "공통 모델 선택기는 라이트·다크 테마 시맨틱 토큰을 사용해야 한다",
+);
 assert(mobileThreadSource.includes("clientSubmissionId: submissionId"), "모바일 답변은 UI 제출 ID와 동일한 서버 멱등키를 보내야 한다");
 assert(interviewApiSource.includes("pendingAnswerSubmissionIds"), "웹 답변 재시도도 동일 질문·본문의 멱등키를 재사용해야 한다");
 assert(

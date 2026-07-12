@@ -155,6 +155,35 @@ Item {
                         color: Theme.muted; font.pixelSize: 12
                         Layout.alignment: Qt.AlignHCenter
                     }
+                    RowLayout {
+                        Layout.alignment: Qt.AlignHCenter
+                        spacing: 8
+                        Text {
+                            text: "AI 모델"
+                            color: Theme.muted
+                            font.pixelSize: 11
+                        }
+                        ComboBox {
+                            id: generationModelPicker
+                            implicitWidth: 184
+                            implicitHeight: 30
+                            enabled: !session.loading
+                            Accessible.name: "질문 생성 AI 모델"
+                            property var modelValues: ["AUTO", "CAREERTUNER", "CLAUDE", "OPENAI"]
+                            model: ["자동 (추천)", "CareerTuner 자체 모델", "Claude Haiku", "OpenAI GPT"]
+                            function syncFromSession() {
+                                currentIndex = Math.max(0, modelValues.indexOf(session.questionGenerationModel))
+                            }
+                            Component.onCompleted: syncFromSession()
+                            onActivated: (index) => session.questionGenerationModel = modelValues[index]
+                            Connections {
+                                target: session
+                                function onQuestionGenerationModelChanged() {
+                                    generationModelPicker.syncFromSession()
+                                }
+                            }
+                        }
+                    }
                     Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         width: genLbl.implicitWidth + 28; height: 32; radius: 8
