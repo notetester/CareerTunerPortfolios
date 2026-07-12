@@ -9,8 +9,8 @@
   },
   "lastReleaseGate": {
     "date": "2026-07-12",
-    "pr": 392,
-    "commit": "6e7ed22b3a000dafb0249d241994d7aaf4681ebf",
+    "pr": 395,
+    "commit": "30a5511a13a6a304fdf13231bfea1afe7a335c2e",
     "status": "PASS"
   },
   "ignoredPaths": [
