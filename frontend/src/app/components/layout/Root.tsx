@@ -95,7 +95,7 @@ export function Root() {
       <MfaApprovalWatcher />
       <PlannerFloatingOverlay enabled={isAuthenticated && !isAdmin && !isMobileRoute && !renderAppHome && consentStatus?.aiDataAgreed === true} />
       {!isMobileRoute && (
-        <div className="sticky top-0 z-[60]">
+        <div className={isAdmin ? "relative z-[60]" : "sticky top-0 z-[60]"}>
           <ServiceStatusBanners />
           {!isAdmin && !renderAppHome && <Header />}
         </div>

@@ -28,6 +28,9 @@ class InterviewSession : public QObject
     Q_PROPERTY(int          sessionId   READ sessionId   NOTIFY sessionChanged)
     Q_PROPERTY(QString      title       READ title       NOTIFY sessionChanged)
     Q_PROPERTY(QString      mode        READ mode        NOTIFY sessionChanged)
+    Q_PROPERTY(QString      questionGenerationModel READ questionGenerationModel
+               WRITE setQuestionGenerationModel NOTIFY questionGenerationModelChanged)
+    Q_PROPERTY(bool         canRegenerateQuestions READ canRegenerateQuestions NOTIFY threadChanged)
     Q_PROPERTY(QVariantList thread      READ thread      NOTIFY threadChanged)
     Q_PROPERTY(QVariantList agentSteps  READ agentSteps  NOTIFY agentStepsChanged)
     Q_PROPERTY(QVariantMap  progress    READ progress    NOTIFY progressChanged)
@@ -36,6 +39,7 @@ class InterviewSession : public QObject
     Q_PROPERTY(bool         loading     READ loading     NOTIFY busyChanged)
     Q_PROPERTY(bool         scoring     READ scoring     NOTIFY busyChanged)
     Q_PROPERTY(bool         transcribing READ transcribing NOTIFY busyChanged)
+    Q_PROPERTY(bool         hasPendingAnswerMedia READ hasPendingAnswerMedia NOTIFY busyChanged)
     Q_PROPERTY(bool         reportLoading READ reportLoading NOTIFY busyChanged)
     Q_PROPERTY(bool         threadLoadFailed READ threadLoadFailed NOTIFY busyChanged)
     Q_PROPERTY(qint64       currentQid  READ currentQid  NOTIFY progressChanged)
@@ -51,6 +55,9 @@ public:
     int sessionId() const { return m_sessionId; }
     QString title() const { return m_title; }
     QString mode() const { return m_mode; }
+    QString questionGenerationModel() const { return m_questionGenerationModel; }
+    void setQuestionGenerationModel(const QString& model);
+    bool canRegenerateQuestions() const;
     QVariantList thread() const { return m_thread; }
     QVariantList agentSteps() const { return m_agentSteps; }
     QVariantMap progress() const { return m_progress; }
@@ -59,6 +66,7 @@ public:
     bool loading() const { return m_loading; }
     bool scoring() const { return m_scoring; }
     bool transcribing() const { return m_transcribing; }
+    bool hasPendingAnswerMedia() const { return !m_pendingAudioPath.isEmpty(); }
     bool reportLoading() const { return m_reportLoadInFlight; }
     bool threadLoadFailed() const { return m_threadLoadFailed; }
     qint64 currentQid() const { return m_currentQid; }
@@ -69,7 +77,8 @@ public:
     // ── 세션 열기/연습 흐름 ──
     Q_INVOKABLE void open(int sessionId, const QString& title, const QString& mode, int caseId);
     Q_INVOKABLE void clear();                        // 로그아웃/계정 전환 시 이전 사용자 세션 폐기
-    Q_INVOKABLE void generateQuestions();            // 질문이 아직 없을 때
+    Q_INVOKABLE void generateQuestions();            // 최초 생성 또는 답변 전 질문 교체
+    Q_INVOKABLE void discardPendingAnswerMedia();    // 질문 교체 확인 뒤 미제출 로컬 원본 폐기
     Q_INVOKABLE void retryLoadThread();               // review/questions 실패 뒤 안전한 재조회
     Q_INVOKABLE void submitAnswer(const QString& text);
     Q_INVOKABLE void requestFollowUp(qint64 questionId);
@@ -94,6 +103,7 @@ public:
 
 signals:
     void sessionChanged();
+    void questionGenerationModelChanged();
     void threadChanged();
     void agentStepsChanged();
     void progressChanged();
@@ -109,6 +119,7 @@ signals:
     void videoScored(int score);                  // 영상 답변 결합 점수 도착
     void videoAnswerSubmitted();                  // 영상 원본+표준 답변 저장 완료
     void answerMediaDeleted(const QString& kind); // 연결 원본 물리 삭제 완료
+    void questionsRegenerated();                  // 미답변 질문 교체 성공 — 입력 초안/임시 원본 초기화
     void exported(const QString& path, const QString& what);
     void errorOccurred(const QString& message);
     void sessionFinished();                       // 마지막 답변 완료
@@ -122,7 +133,10 @@ private:
     void reloadThread(bool completesQuestionGeneration = false); // questions+review 병합 → thread 구성
     void startQuestionGeneration();
     void reconcileQuestionGeneration(int sessionId, quint64 generation,
-                                     const QString& message, int attempt = 0);
+                                     const QString& message,
+                                     const QString& baselineQuestionSignature,
+                                     bool replacingQuestions,
+                                     int attempt = 0);
     void reconcileFollowUp(int sessionId, quint64 generation, qint64 questionId,
                            const QString& message, int attempt = 0);
     static bool isAmbiguousOperationStatus(int httpStatus);
@@ -173,6 +187,7 @@ private:
     int     m_caseId = -1;
     QString m_title;
     QString m_mode;
+    QString m_questionGenerationModel = QStringLiteral("AUTO");
 
     QVariantList m_thread;
     QVariantList m_agentSteps;
@@ -207,5 +222,6 @@ private:
     QString m_pendingSubmissionMediaKey;
     QString m_pendingClientSubmissionId;
     QString m_questionGenerationActionKey;
+    QString m_questionGenerationActionModel;
     QHash<qint64, QString> m_followUpActionKeys;
 };

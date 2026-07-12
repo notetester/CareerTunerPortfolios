@@ -8,9 +8,9 @@
     <!-- ── 세션 ── -->
     <insert id="insertSession" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO interview_session
-            (application_case_id, mode, started_at, total_score, report)
+            (application_case_id, mode, started_at, total_score, report, source_snapshot)
         VALUES
-            (#{applicationCaseId}, #{mode}, #{startedAt}, #{totalScore}, #{report})
+            (#{applicationCaseId}, #{mode}, #{startedAt}, #{totalScore}, #{report}, #{sourceSnapshot})
     </insert>
 
     <select id="findSessionsByUserId" resultType="com.careertuner.interview.domain.InterviewSession">
@@ -24,6 +24,7 @@
                   FROM interview_answer a
                   JOIN interview_question q ON q.id = a.question_id
                  WHERE q.interview_session_id = s.id
+                   AND q.deleted_at IS NULL
                    AND a.submission_status = 'COMPLETED'
                    AND a.score IS NOT NULL) AS avg_answer_score,
                (SELECT ROUND(AVG(m.score))
@@ -39,6 +40,7 @@
             FROM interview_question q
             LEFT JOIN interview_answer a ON a.question_id = q.id
                                         AND a.submission_status = 'COMPLETED'
+            WHERE q.deleted_at IS NULL
             GROUP BY q.interview_session_id
         ) progress ON progress.interview_session_id = s.id
         WHERE ac.user_id = #{userId}
@@ -117,6 +119,90 @@
           AND (total_score IS NOT NULL OR report IS NOT NULL OR ended_at IS NOT NULL)
     </update>
 
+    <update id="softDeleteTrainingSamplesBySessionId">
+        UPDATE interview_training_sample
+        SET deleted_at = NOW()
+        WHERE interview_session_id = #{sessionId}
+          AND deleted_at IS NULL
+    </update>
+
+    <select id="findPreparationContext"
+            resultType="com.careertuner.interview.domain.InterviewPreparationContextSource">
+        SELECT
+            upv.id AS profile_version_id,
+            COALESCE(upv.version_no, up.version_no) AS profile_version_no,
+            COALESCE(upv.desired_job, up.desired_job) AS desired_job,
+            COALESCE(upv.education, up.education) AS education,
+            COALESCE(upv.career, up.career) AS career,
+            COALESCE(upv.projects, up.projects) AS projects,
+            COALESCE(upv.skills, up.skills) AS skills,
+            COALESCE(upv.certificates, up.certificates) AS certificates,
+            COALESCE(upv.portfolio_links, up.portfolio_links) AS portfolio_links,
+            COALESCE(upv.resume_text, up.resume_text) AS resume_text,
+            COALESCE(upv.self_intro, up.self_intro) AS self_intro,
+            ja.id AS job_analysis_id,
+            ja.required_skills,
+            ja.preferred_skills,
+            ja.duties,
+            ja.qualifications,
+            ja.summary AS job_summary,
+            ca.id AS company_analysis_id,
+            ca.company_summary,
+            ca.recent_issues,
+            ca.interview_points,
+            fa.id AS fit_analysis_id,
+            fa.fit_score,
+            fa.matched_skills,
+            fa.missing_skills,
+            fa.gap_recommendations,
+            fa.strategy_actions,
+            fa.model AS fit_model,
+            fa.prompt_version AS fit_prompt_version,
+            fa.created_at AS fit_created_at
+        FROM application_case ac
+        LEFT JOIN user_profile up
+          ON up.user_id = ac.user_id
+         AND up.deleted_at IS NULL
+        LEFT JOIN user_profile_version upv
+          ON upv.id = (
+              SELECT latest_profile.id
+              FROM user_profile_version latest_profile
+              WHERE latest_profile.user_id = ac.user_id
+                AND latest_profile.deleted_at IS NULL
+              ORDER BY latest_profile.version_no DESC, latest_profile.id DESC
+              LIMIT 1
+          )
+        LEFT JOIN job_analysis ja
+          ON ja.id = (
+              SELECT MAX(latest_job.id)
+              FROM job_analysis latest_job
+              WHERE latest_job.application_case_id = ac.id
+          )
+        LEFT JOIN company_analysis ca
+          ON ca.id = (
+              SELECT MAX(latest_company.id)
+              FROM company_analysis latest_company
+              WHERE latest_company.application_case_id = ac.id
+          )
+        LEFT JOIN fit_analysis fa
+          ON fa.id = (
+              SELECT MAX(latest_fit.id)
+              FROM fit_analysis latest_fit
+              WHERE latest_fit.application_case_id = ac.id
+                AND latest_fit.status = 'SUCCESS'
+          )
+        WHERE ac.id = #{applicationCaseId}
+          AND ac.user_id = #{userId}
+          AND ac.deleted_at IS NULL
+    </select>
+
+    <update id="updateSessionSourceSnapshot">
+        UPDATE interview_session
+        SET source_snapshot = #{sourceSnapshot}
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+
     <select id="findLatestScoredSessionScore" resultType="java.lang.Integer">
         SELECT total_score
         FROM interview_session
@@ -142,6 +228,7 @@
         UPDATE interview_question
         SET model_answer = #{modelAnswer}
         WHERE id = #{id}
+          AND deleted_at IS NULL
           AND (model_answer IS NULL OR model_answer = '')
     </update>
 
@@ -149,12 +236,15 @@
         SELECT MAX(sort_order)
         FROM interview_question
         WHERE interview_session_id = #{sessionId}
+          AND deleted_at IS NULL
     </select>
 
-    <delete id="deleteQuestionsBySessionId">
-        DELETE FROM interview_question
+    <update id="softDeleteQuestionsBySessionId">
+        UPDATE interview_question
+        SET deleted_at = NOW()
         WHERE interview_session_id = #{sessionId}
-    </delete>
+          AND deleted_at IS NULL
+    </update>
 
     <select id="findQuestionsBySessionId" resultType="com.careertuner.interview.domain.InterviewQuestion">
         <!-- 꼬리질문(반박)을 부모 본질문 바로 밑에 인접 배치한다.
@@ -163,6 +253,7 @@
         FROM interview_question q
         LEFT JOIN interview_question p ON p.id = q.parent_question_id
         WHERE q.interview_session_id = #{sessionId}
+          AND q.deleted_at IS NULL
         ORDER BY COALESCE(p.sort_order, q.sort_order),
                  (q.parent_question_id IS NOT NULL),
                  q.sort_order, q.id
@@ -181,6 +272,7 @@
         JOIN interview_session s ON s.id = q.interview_session_id
         JOIN application_case ac ON ac.id = s.application_case_id
         WHERE q.id = #{id}
+          AND q.deleted_at IS NULL
           AND ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
           AND s.deleted_at IS NULL
@@ -192,6 +284,7 @@
         JOIN interview_session s ON s.id = q.interview_session_id
         JOIN application_case ac ON ac.id = s.application_case_id
         WHERE q.id = #{id}
+          AND q.deleted_at IS NULL
           AND ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
           AND s.deleted_at IS NULL
@@ -205,6 +298,7 @@
                 FROM interview_answer a
                 JOIN interview_question q ON q.id = a.question_id
                 WHERE q.interview_session_id = #{sessionId}
+                  AND q.deleted_at IS NULL
             )
             OR EXISTS (
                 SELECT 1
@@ -213,6 +307,7 @@
                 JOIN interview_question q ON q.id = a.question_id
                 WHERE f.ref_type = 'INTERVIEW_ANSWER'
                   AND q.interview_session_id = #{sessionId}
+                  AND q.deleted_at IS NULL
             )
             OR EXISTS (
                 SELECT 1
@@ -276,6 +371,7 @@
         FROM interview_answer a
         JOIN interview_question q ON q.id = a.question_id
         WHERE q.interview_session_id = #{sessionId}
+          AND q.deleted_at IS NULL
           AND a.submission_status = 'COMPLETED'
         ORDER BY q.sort_order, a.id
     </select>
@@ -296,6 +392,7 @@
           JOIN interview_session s ON s.id = q.interview_session_id
           JOIN application_case ac ON ac.id = s.application_case_id
          WHERE a.id = #{id}
+           AND q.deleted_at IS NULL
            AND ac.user_id = #{userId}
            AND ac.deleted_at IS NULL
            AND s.deleted_at IS NULL

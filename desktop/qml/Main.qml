@@ -27,6 +27,16 @@ ApplicationWindow {
     property bool autoLoginPending: true
     property string view: "home"      // home | thread | report | collaboration | board | devices | settings
     property bool phoneOpen: false
+    readonly property bool sessionAnswerDraftPending: sessionInputBar.hasDraftActivity
+    readonly property bool sessionAnswerMediaPending: sessionInputBar.hasPendingMediaActivity
+
+    function startQuestionRegeneration() {
+        if (sessionAnswerMediaPending) {
+            win.showToast("미제출 원본 정리 필요", "녹음·영상 작업을 취소하거나 제출한 뒤 질문을 다시 생성해 주세요")
+            return
+        }
+        session.generateQuestions()
+    }
 
     function openSession(jobId, title, mode, caseId) {
         const targetSessionId = Number(jobId)
@@ -175,6 +185,11 @@ ApplicationWindow {
         function onVoiceScored(score) { win.showToast("전달력 채점 — " + score + "점", "음성 전달력 평가가 반영되었습니다") }
         function onAnswerMediaDeleted(kind) {
             win.showToast("원본 삭제됨", kind === "VIDEO" ? "영상 원본을 삭제했습니다" : "음성 원본을 삭제했습니다")
+        }
+        function onQuestionsRegenerated() {
+            sessionInputBar.clear()
+            sessionInputBar.cancelSessionMedia()
+            win.showToast("질문 교체 완료", "선택한 모델로 미답변 질문을 다시 만들었습니다")
         }
         function onExported(path, what) { win.showToast(what + " 저장됨", path) }
         function onErrorOccurred(message) { win.showToast("오류", message) }

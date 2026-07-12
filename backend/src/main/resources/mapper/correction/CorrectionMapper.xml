@@ -6,37 +6,61 @@
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO correction_request
             (user_id, request_key, application_case_id, correction_type, source_type, source_ref_id,
-             original_text, improved_text, result_json, status, ai_usage_log_id)
+             original_text, improved_text, result_json, source_snapshot, status, ai_usage_log_id)
         VALUES
             (#{userId}, #{requestKey}, #{applicationCaseId}, #{correctionType}, #{sourceType}, #{sourceRefId},
-             #{originalText}, #{improvedText}, #{resultJson}, #{status}, #{aiUsageLogId})
+             #{originalText}, #{improvedText}, #{resultJson}, #{sourceSnapshot}, #{status}, #{aiUsageLogId})
     </insert>
 
     <select id="findByIdAndUserId" resultType="com.careertuner.correction.domain.CorrectionRequest">
         SELECT *
-        FROM correction_request
-        WHERE id = #{id}
-          AND user_id = #{userId}
+        FROM correction_request cr
+        WHERE cr.id = #{id}
+          AND cr.user_id = #{userId}
+          AND cr.deleted_at IS NULL
+          AND (cr.application_case_id IS NULL OR EXISTS (
+              SELECT 1 FROM application_case ac
+              WHERE ac.id = cr.application_case_id AND ac.deleted_at IS NULL
+          ))
     </select>
 
     <select id="findByUserIdAndRequestKey" resultType="com.careertuner.correction.domain.CorrectionRequest">
         SELECT *
-        FROM correction_request
-        WHERE user_id = #{userId}
-          AND request_key = #{requestKey}
+        FROM correction_request cr
+        WHERE cr.user_id = #{userId}
+          AND cr.request_key = #{requestKey}
+          AND cr.deleted_at IS NULL
+          AND (cr.application_case_id IS NULL OR EXISTS (
+              SELECT 1 FROM application_case ac
+              WHERE ac.id = cr.application_case_id AND ac.deleted_at IS NULL
+          ))
     </select>
 
     <select id="findByUserId" resultType="com.careertuner.correction.domain.CorrectionRequest">
         SELECT *
-        FROM correction_request
-        WHERE user_id = #{userId}
+        FROM correction_request cr
+        WHERE cr.user_id = #{userId}
+          AND cr.deleted_at IS NULL
+          AND (cr.application_case_id IS NULL OR EXISTS (
+              SELECT 1 FROM application_case active_case
+              WHERE active_case.id = cr.application_case_id AND active_case.deleted_at IS NULL
+          ))
         <if test="applicationCaseId != null">
-            AND application_case_id = #{applicationCaseId}
+            AND cr.application_case_id = #{applicationCaseId}
         </if>
         <if test="correctionType != null and correctionType != ''">
-            AND correction_type = #{correctionType}
+            AND cr.correction_type = #{correctionType}
         </if>
-        ORDER BY id DESC
+        ORDER BY cr.id DESC
         LIMIT #{limit}
     </select>
+
+    <update id="softDelete">
+        UPDATE correction_request
+           SET deleted_at = COALESCE(deleted_at, NOW()),
+               status = 'DELETED'
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
 </mapper>

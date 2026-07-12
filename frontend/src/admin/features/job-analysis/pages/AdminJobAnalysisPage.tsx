@@ -18,6 +18,8 @@ import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import {
   formatAnalysisProvenanceSummary,
+  getEmploymentTypeLabel,
+  getExperienceLevelLabel,
   parseJsonArrayOrText,
   parseJsonStringArray,
 } from "@/features/applications/types/analysis";
@@ -366,7 +368,7 @@ export function AdminJobAnalysisPage() {
           <EmptyBlock message="검색 조건에 맞는 공고 분석이 없습니다." />
         ) : (
           <>
-            <div className="hidden gap-4 lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(380px,0.95fr)]">
+            <div className="hidden gap-4 lg:grid lg:grid-cols-[minmax(260px,0.55fr)_minmax(0,1fr)]">
               <Card className="overflow-hidden rounded-lg border-slate-200 bg-card">
                 <CardContent className="p-0">
                   <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -376,13 +378,11 @@ export function AdminJobAnalysisPage() {
                     </div>
                   </div>
                   <div className="max-h-[720px] overflow-auto">
-                    <table className="w-full min-w-[780px] text-left text-sm">
+                    <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
                         <tr>
                           <th className="px-4 py-3">지원 건</th>
-                          <th className="px-4 py-3">난이도</th>
                           <th className="px-4 py-3">검토</th>
-                          <th className="px-4 py-3">생성일</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -402,12 +402,8 @@ export function AdminJobAnalysisPage() {
                                 </div>
                               </td>
                               <td className="px-4 py-3 align-top">
-                                <Badge className={difficultyBadgeClass(row.difficulty)}>{getDifficultyLabel(row.difficulty)}</Badge>
-                              </td>
-                              <td className="px-4 py-3 align-top">
                                 <QualityBadges row={row} />
                               </td>
-                              <td className="px-4 py-3 align-top text-xs leading-5 text-slate-500">{formatDateTime(row.createdAt)}</td>
                             </tr>
                           );
                         })}
@@ -516,7 +512,7 @@ function SummaryCard({
 
 function LoadingBlock() {
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(380px,0.95fr)]">
+    <div className="grid gap-4 lg:grid-cols-[minmax(260px,0.55fr)_minmax(0,1fr)]">
       <div className="h-96 animate-pulse rounded-lg bg-slate-200" />
       <div className="hidden h-96 animate-pulse rounded-lg bg-slate-200 lg:block" />
     </div>
@@ -598,8 +594,8 @@ function JobAnalysisDetail({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <MetaBlock label="고용 형태" value={row.employmentType ?? "미정"} />
-        <MetaBlock label="경력 수준" value={row.experienceLevel ?? "미정"} />
+        <MetaBlock label="고용 형태" value={getEmploymentTypeLabel(row.employmentType)} />
+        <MetaBlock label="경력 수준" value={getExperienceLevelLabel(row.experienceLevel)} />
         <MetaBlock label="공고 revision" value={formatPostingRevision(row)} />
         <MetaBlock label="생성일" value={formatDateTime(row.createdAt)} />
         <MetaBlock label="확정일" value={row.confirmedAt ? formatDateTime(row.confirmedAt) : "미확정"} />

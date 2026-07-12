@@ -309,7 +309,7 @@ export function AdminApplicationCasesPage() {
       breadcrumb="지원 건 관리"
       title="지원 건 관리"
       icon={Briefcase}
-      desc="지원 건별 상태, 공고 revision, 분석 이력과 B AI 사용 로그를 확인합니다."
+      desc="지원 건별 상태, 공고 revision, 분석 이력과 AI 사용 로그를 확인합니다."
       actions={(
         <Button variant="outline" onClick={() => void loadRows()} disabled={rowsLoading}>
           <RefreshCw className={`size-4 ${rowsLoading ? "animate-spin" : ""}`} />
@@ -349,11 +349,10 @@ export function AdminApplicationCasesPage() {
           />
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <section className="min-w-0 space-y-4">
-          <Card className="border-slate-200 bg-card">
-            <CardContent className="space-y-4 p-4">
-              <label className="grid gap-1 text-xs font-semibold text-slate-500">
+        <Card className="border-slate-200 bg-card">
+          <CardContent className="space-y-3 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+              <label className="grid gap-1 text-xs font-semibold text-slate-500 lg:w-72">
                 검색
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -369,7 +368,7 @@ export function AdminApplicationCasesPage() {
                 </div>
               </label>
 
-              <div className="space-y-2">
+              <div className="space-y-2 lg:flex-1">
                 <div className="text-xs font-semibold text-slate-500">상태</div>
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -397,97 +396,42 @@ export function AdminApplicationCasesPage() {
                   ))}
                 </div>
               </div>
+            </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <label className="grid gap-1 text-xs font-semibold text-slate-500">
-                  출처 유형
-                  <select
-                    className={SELECT_CLASS_NAME}
-                    value={sourceType}
-                    onChange={(event) => {
-                      setSourceType(event.target.value as ApplicationSourceType | "");
-                      resetOffset();
-                    }}
-                  >
-                    <option value="">전체 출처</option>
-                    {APPLICATION_SOURCE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {SOURCE_TYPE_LABELS[option.value] ?? option.value}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-xs font-semibold text-slate-500">
-                  즐겨찾기
-                  <select
-                    className={SELECT_CLASS_NAME}
-                    value={favorite}
-                    onChange={(event) => {
-                      setFavorite(event.target.value as FavoriteFilter);
-                      resetOffset();
-                    }}
-                  >
-                    <option value="">전체</option>
-                    <option value="true">즐겨찾기만</option>
-                    <option value="false">즐겨찾기 제외</option>
-                  </select>
-                </label>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <label className="grid gap-1 text-xs font-semibold text-slate-500">
-                  생성 시작
-                  <Input
-                    type="date"
-                    value={createdFrom}
-                    onChange={(event) => {
-                      setCreatedFrom(event.target.value);
-                      resetOffset();
-                    }}
-                    className="bg-card"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-semibold text-slate-500">
-                  생성 종료
-                  <Input
-                    type="date"
-                    value={createdTo}
-                    onChange={(event) => {
-                      setCreatedTo(event.target.value);
-                      resetOffset();
-                    }}
-                    className="bg-card"
-                  />
-                </label>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <label className="grid gap-1 text-xs font-semibold text-slate-500">
-                  마감 시작
-                  <Input
-                    type="date"
-                    value={deadlineFrom}
-                    onChange={(event) => {
-                      setDeadlineFrom(event.target.value);
-                      resetOffset();
-                    }}
-                    className="bg-card"
-                  />
-                </label>
-                <label className="grid gap-1 text-xs font-semibold text-slate-500">
-                  마감 종료
-                  <Input
-                    type="date"
-                    value={deadlineTo}
-                    onChange={(event) => {
-                      setDeadlineTo(event.target.value);
-                      resetOffset();
-                    }}
-                    className="bg-card"
-                  />
-                </label>
-              </div>
-
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="grid gap-1 text-xs font-semibold text-slate-500">
+                출처 유형
+                <select
+                  className={SELECT_CLASS_NAME}
+                  value={sourceType}
+                  onChange={(event) => {
+                    setSourceType(event.target.value as ApplicationSourceType | "");
+                    resetOffset();
+                  }}
+                >
+                  <option value="">전체 출처</option>
+                  {APPLICATION_SOURCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {SOURCE_TYPE_LABELS[option.value] ?? option.value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-500">
+                즐겨찾기
+                <select
+                  className={SELECT_CLASS_NAME}
+                  value={favorite}
+                  onChange={(event) => {
+                    setFavorite(event.target.value as FavoriteFilter);
+                    resetOffset();
+                  }}
+                >
+                  <option value="">전체</option>
+                  <option value="true">즐겨찾기만</option>
+                  <option value="false">즐겨찾기 제외</option>
+                </select>
+              </label>
               <label className="grid gap-1 text-xs font-semibold text-slate-500">
                 분석 상태
                 <select
@@ -505,7 +449,6 @@ export function AdminApplicationCasesPage() {
                   ))}
                 </select>
               </label>
-
               <label className="grid gap-1 text-xs font-semibold text-slate-500">
                 정렬
                 <select
@@ -523,8 +466,61 @@ export function AdminApplicationCasesPage() {
                   ))}
                 </select>
               </label>
+            </div>
 
-              <div className="grid gap-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="grid gap-1 text-xs font-semibold text-slate-500">
+                생성 시작
+                <Input
+                  type="date"
+                  value={createdFrom}
+                  onChange={(event) => {
+                    setCreatedFrom(event.target.value);
+                    resetOffset();
+                  }}
+                  className="bg-card"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-500">
+                생성 종료
+                <Input
+                  type="date"
+                  value={createdTo}
+                  onChange={(event) => {
+                    setCreatedTo(event.target.value);
+                    resetOffset();
+                  }}
+                  className="bg-card"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-500">
+                마감 시작
+                <Input
+                  type="date"
+                  value={deadlineFrom}
+                  onChange={(event) => {
+                    setDeadlineFrom(event.target.value);
+                    resetOffset();
+                  }}
+                  className="bg-card"
+                />
+              </label>
+              <label className="grid gap-1 text-xs font-semibold text-slate-500">
+                마감 종료
+                <Input
+                  type="date"
+                  value={deadlineTo}
+                  onChange={(event) => {
+                    setDeadlineTo(event.target.value);
+                    resetOffset();
+                  }}
+                  className="bg-card"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-4">
                 <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                   <Checkbox
                     checked={includeArchived}
@@ -547,12 +543,16 @@ export function AdminApplicationCasesPage() {
                 </label>
               </div>
 
-              <Button className="w-full bg-blue-600 text-white hover:bg-blue-700" onClick={applyFilters} disabled={rowsLoading}>
+              <Button className="w-full bg-blue-600 text-white hover:bg-blue-700 sm:w-auto" onClick={applyFilters} disabled={rowsLoading}>
                 {rowsLoading && <Loader2 className="size-4 animate-spin" />}
                 필터 적용
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <section className="min-w-0 space-y-4">
 
           {listError && <ErrorBox message={listError} />}
 
@@ -926,106 +926,131 @@ function OverviewTab({
 }
 
 function PostingTab({ detail }: { detail: AdminApplicationCaseDetail }) {
+  const postings = [...detail.jobPostings].sort((a, b) => b.revision - a.revision);
   return (
-    <GridSection title="공고문 revision" empty={detail.jobPostings.length === 0} emptyMessage="등록된 공고문 revision이 없습니다.">
-      {detail.jobPostings.map((posting) => (
-        <Card key={posting.id} className="border-slate-200 bg-card">
-          <CardContent className="space-y-3 p-4 text-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="font-semibold text-slate-900">rev {posting.revision} · {posting.sourceType}</div>
-              <div className="text-xs text-slate-500">{formatDateTime(posting.createdAt)}</div>
-            </div>
-            <ExpandableText
-              value={posting.extractedText ?? posting.originalText ?? posting.uploadedFileUrl}
-              emptyText="공고 원문이 없습니다."
-              collapsedLines={6}
-            />
-          </CardContent>
-        </Card>
+    <RevisionBoard title="공고문 revision" empty={postings.length === 0} emptyMessage="등록된 공고문 revision이 없습니다.">
+      {postings.map((posting, index) => (
+        <RevisionRow
+          key={posting.id}
+          defaultOpen={index === 0}
+          header={`rev ${posting.revision} · ${posting.sourceType}`}
+          meta={formatDateTime(posting.createdAt)}
+        >
+          <ExpandableText
+            value={posting.extractedText ?? posting.originalText ?? posting.uploadedFileUrl}
+            emptyText="공고 원문이 없습니다."
+            collapsedLines={6}
+          />
+        </RevisionRow>
       ))}
-    </GridSection>
+    </RevisionBoard>
   );
 }
 
 function JobAnalysisTab({ detail }: { detail: AdminApplicationCaseDetail }) {
+  const analyses = [...detail.jobAnalyses].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
   return (
-    <GridSection title="공고 분석 이력" empty={detail.jobAnalyses.length === 0} emptyMessage="공고 분석 이력이 없습니다.">
-      {detail.jobAnalyses.map((analysis) => (
-        <Card key={analysis.id} className="border-slate-200 bg-card">
-          <CardContent className="space-y-3 p-4 text-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="font-semibold text-slate-900">#{analysis.id} · 공고 rev {analysis.jobPostingRevision ?? "-"}</div>
-              <div className="text-xs text-slate-500">
-                {formatDateTime(analysis.createdAt)} · {analysis.confirmedAt ? "확정" : "미확정"}
-              </div>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Info label="고용 형태" value={formatTextValue(analysis.employmentType) || "-"} />
-              <Info label="경력" value={formatTextValue(analysis.experienceLevel) || "-"} />
-              <Info label="난이도" value={formatTextValue(analysis.difficulty) || "-"} />
-            </div>
-            <FieldBlock label="요약">
-              <ExpandableText value={analysis.summary} emptyText="요약이 없습니다." />
-            </FieldBlock>
-            <SkillBadges label="필수 역량" values={parseStringArrayValue(analysis.requiredSkills)} />
-            <SkillBadges label="우대 역량" values={parseStringArrayValue(analysis.preferredSkills)} />
-            <AnalysisText label="담당 업무" value={analysis.duties} />
-            <AnalysisText label="자격 요건" value={analysis.qualifications} />
-            <AnalysisText label="근거" value={analysis.evidence} />
-            <AnalysisText label="모호한 조건" value={analysis.ambiguousConditions} />
-          </CardContent>
-        </Card>
+    <RevisionBoard title="공고 분석 이력" empty={analyses.length === 0} emptyMessage="공고 분석 이력이 없습니다.">
+      {analyses.map((analysis, index) => (
+        <RevisionRow
+          key={analysis.id}
+          defaultOpen={index === 0}
+          header={`#${analysis.id} · 공고 rev ${analysis.jobPostingRevision ?? "-"}`}
+          meta={
+            <>
+              <span>{formatDateTime(analysis.createdAt)}</span>
+              <Badge className={analysis.confirmedAt ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}>
+                {analysis.confirmedAt ? "확정" : "미확정"}
+              </Badge>
+            </>
+          }
+        >
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Info label="고용 형태" value={formatTextValue(analysis.employmentType) || "-"} />
+            <Info label="경력" value={formatTextValue(analysis.experienceLevel) || "-"} />
+            <Info label="난이도" value={formatTextValue(analysis.difficulty) || "-"} />
+          </div>
+          <FieldBlock label="요약">
+            <ExpandableText value={analysis.summary} emptyText="요약이 없습니다." />
+          </FieldBlock>
+          <SkillBadges label="필수 역량" values={parseStringArrayValue(analysis.requiredSkills)} />
+          <SkillBadges label="우대 역량" values={parseStringArrayValue(analysis.preferredSkills)} />
+          <AnalysisText label="담당 업무" value={analysis.duties} />
+          <AnalysisText label="자격 요건" value={analysis.qualifications} />
+          <AnalysisText label="근거" value={analysis.evidence} />
+          <AnalysisText label="모호한 조건" value={analysis.ambiguousConditions} />
+        </RevisionRow>
       ))}
-    </GridSection>
+    </RevisionBoard>
   );
 }
 
 function CompanyAnalysisTab({ detail }: { detail: AdminApplicationCaseDetail }) {
+  const analyses = [...detail.companyAnalyses].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
   return (
-    <GridSection title="기업 분석 이력" empty={detail.companyAnalyses.length === 0} emptyMessage="기업 분석 이력이 없습니다.">
-      {detail.companyAnalyses.map((analysis) => (
-        <Card key={analysis.id} className="border-slate-200 bg-card">
-          <CardContent className="space-y-3 p-4 text-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="font-semibold text-slate-900">#{analysis.id} · 공고 rev {analysis.jobPostingRevision ?? "-"}</div>
-              <div className="text-xs text-slate-500">
-                {formatDateTime(analysis.createdAt)} · {analysis.confirmedAt ? "확정" : "미확정"}
-              </div>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <Info label="출처 유형" value={analysis.sourceType ?? "-"} />
-              <Info label="확인 시각" value={formatDateTime(analysis.checkedAt)} />
-              <Info label="갱신 권장" value={formatDateTime(analysis.refreshRecommendedAt)} />
-            </div>
-            <FieldBlock label="기업 요약">
-              <ExpandableText value={analysis.companySummary} emptyText="요약이 없습니다." />
-            </FieldBlock>
-            <AnalysisText label="최근 이슈" value={analysis.recentIssues} />
-            <AnalysisText label="산업" value={analysis.industry} />
-            <AnalysisText label="경쟁사" value={analysis.competitors} />
-            <AnalysisText label="면접 포인트" value={analysis.interviewPoints} />
-            <AnalysisText label="출처" value={analysis.sources} />
-            <AnalysisText label="검증된 사실" value={analysis.verifiedFacts} />
-            <AnalysisText label="AI 추론" value={analysis.aiInferences} />
-          </CardContent>
-        </Card>
+    <RevisionBoard title="기업 분석 이력" empty={analyses.length === 0} emptyMessage="기업 분석 이력이 없습니다.">
+      {analyses.map((analysis, index) => (
+        <RevisionRow
+          key={analysis.id}
+          defaultOpen={index === 0}
+          header={`#${analysis.id} · 공고 rev ${analysis.jobPostingRevision ?? "-"}`}
+          meta={
+            <>
+              <span>{formatDateTime(analysis.createdAt)}</span>
+              <Badge className={analysis.confirmedAt ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}>
+                {analysis.confirmedAt ? "확정" : "미확정"}
+              </Badge>
+            </>
+          }
+        >
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Info label="출처 유형" value={analysis.sourceType ?? "-"} />
+            <Info label="확인 시각" value={formatDateTime(analysis.checkedAt)} />
+            <Info label="갱신 권장" value={formatDateTime(analysis.refreshRecommendedAt)} />
+          </div>
+          <FieldBlock label="기업 요약">
+            <ExpandableText value={analysis.companySummary} emptyText="요약이 없습니다." />
+          </FieldBlock>
+          <AnalysisText label="최근 이슈" value={analysis.recentIssues} />
+          <AnalysisText label="산업" value={analysis.industry} />
+          <AnalysisText label="경쟁사" value={analysis.competitors} />
+          <AnalysisText label="면접 포인트" value={analysis.interviewPoints} />
+          <AnalysisText label="출처" value={analysis.sources} />
+          <AnalysisText label="검증된 사실" value={analysis.verifiedFacts} />
+          <AnalysisText label="AI 추론" value={analysis.aiInferences} />
+        </RevisionRow>
       ))}
-    </GridSection>
+    </RevisionBoard>
   );
 }
 
 function AiLogsTab({ detail }: { detail: AdminApplicationCaseDetail }) {
+  const logs = [...detail.usageLogs].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
   return (
-    <GridSection title="B AI 사용량/실패 로그" empty={detail.usageLogs.length === 0} emptyMessage="AI 사용 로그가 없습니다.">
-      {detail.usageLogs.map((log) => (
-        <Card key={log.id} className={log.status === "FAILED" ? "border-red-200 bg-red-50" : "border-slate-200 bg-card"}>
-          <CardContent className="space-y-3 p-4 text-sm">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className={log.status === "FAILED" ? "font-semibold text-red-800" : "font-semibold text-slate-900"}>
-                {log.featureType} · {log.status}
-              </div>
-              <div className="text-xs text-slate-500">{formatDateTime(log.createdAt)}</div>
-            </div>
+    <RevisionBoard title="AI 사용량/실패 로그" empty={logs.length === 0} emptyMessage="AI 사용 로그가 없습니다.">
+      {logs.map((log, index) => {
+        const failed = log.status === "FAILED";
+        return (
+          <RevisionRow
+            key={log.id}
+            defaultOpen={index === 0}
+            fail={failed}
+            header={log.featureType}
+            meta={
+              <>
+                <span>{formatDateTime(log.createdAt)}</span>
+                <Badge className={failed ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>
+                  {log.status}
+                </Badge>
+              </>
+            }
+          >
             <div className="grid gap-2 sm:grid-cols-3">
               <Info label="모델" value={log.model ?? "-"} />
               <Info label="토큰" value={`${log.tokenUsage ?? 0}`} />
@@ -1038,10 +1063,10 @@ function AiLogsTab({ detail }: { detail: AdminApplicationCaseDetail }) {
             ) : (
               <EmptyInline text="오류 메시지가 없습니다." />
             )}
-          </CardContent>
-        </Card>
-      ))}
-    </GridSection>
+          </RevisionRow>
+        );
+      })}
+    </RevisionBoard>
   );
 }
 
@@ -1229,5 +1254,64 @@ function GridSection({
         <div className="grid gap-3 xl:grid-cols-2">{children}</div>
       )}
     </section>
+  );
+}
+
+function RevisionBoard({
+  title,
+  empty,
+  emptyMessage,
+  children,
+}: {
+  title: string;
+  empty: boolean;
+  emptyMessage?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-bold text-slate-900">{title}</h2>
+      {empty ? (
+        <EmptyState title={emptyMessage ?? "표시할 데이터가 없습니다."} />
+      ) : (
+        <div className="space-y-2">{children}</div>
+      )}
+    </section>
+  );
+}
+
+/** 게시판 형식 접이식 행 — 최신순 목록에서 버전을 제목 행으로 접고, 클릭하면 내용을 펼친다(최신 1개는 기본 펼침). */
+function RevisionRow({
+  header,
+  meta,
+  defaultOpen = false,
+  fail = false,
+  children,
+}: {
+  header: React.ReactNode;
+  meta?: React.ReactNode;
+  defaultOpen?: boolean;
+  fail?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div
+      className={`overflow-hidden rounded-lg border bg-card ${
+        fail ? "border-red-200" : open ? "border-blue-200" : "border-slate-200"
+      }`}
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
+      >
+        <ChevronDown className={`size-4 shrink-0 text-slate-400 transition-transform ${open ? "" : "-rotate-90"}`} />
+        <div className="min-w-0 flex-1 text-sm font-semibold text-slate-900">{header}</div>
+        {meta && <div className="flex shrink-0 items-center gap-2 text-xs text-slate-500">{meta}</div>}
+      </button>
+      {open && <div className="space-y-3 border-t border-slate-100 px-4 pb-4 pt-3 text-sm">{children}</div>}
+    </div>
   );
 }

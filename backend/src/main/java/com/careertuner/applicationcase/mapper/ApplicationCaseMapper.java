@@ -46,8 +46,6 @@ public interface ApplicationCaseMapper {
                               @Param("userId") Long userId,
                               @Param("previousStatus") String previousStatus);
 
-    int deleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
-
     int softDeleteApplicationCase(@Param("id") Long id, @Param("userId") Long userId);
 
     int restoreDeletedApplicationCase(@Param("id") Long id, @Param("userId") Long userId);

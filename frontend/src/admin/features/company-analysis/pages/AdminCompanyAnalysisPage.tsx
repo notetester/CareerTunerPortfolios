@@ -18,6 +18,7 @@ import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import {
   formatAnalysisProvenanceSummary,
+  getCompanySourceTypeLabel,
   parseJsonArrayOrText,
   parseJsonStringArray,
 } from "@/features/applications/types/analysis";
@@ -488,7 +489,7 @@ export function AdminCompanyAnalysisPage() {
           <EmptyBlock message="검색 조건에 맞는 기업 분석이 없습니다." />
         ) : (
           <>
-            <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)] xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+            <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-[minmax(260px,0.55fr)_minmax(0,1fr)]">
               <Card className="min-w-0 overflow-hidden rounded-lg border-slate-200 bg-card">
                 <CardContent className="p-0">
                   <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -498,14 +499,11 @@ export function AdminCompanyAnalysisPage() {
                     </div>
                   </div>
                   <div className="max-h-[720px] overflow-auto">
-                    <table className="w-full min-w-[740px] text-left text-sm">
+                    <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
                         <tr>
                           <th className="px-4 py-3">지원 건</th>
-                          <th className="px-4 py-3">산업</th>
-                          <th className="px-4 py-3">출처</th>
                           <th className="px-4 py-3">상태</th>
-                          <th className="px-4 py-3">갱신 권장</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -525,18 +523,8 @@ export function AdminCompanyAnalysisPage() {
                                 </div>
                               </td>
                               <td className="px-4 py-3 align-top">
-                                <Badge className="max-w-[180px] whitespace-normal border-slate-200 bg-slate-100 text-slate-700">
-                                  {row.industry ?? "미정"}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 align-top text-sm text-slate-600">
-                                <div className="break-words font-semibold text-slate-800">{row.sourceType ?? "-"}</div>
-                                <div className="mt-1 text-xs text-slate-500">출처 {parseJsonStringArray(row.sources).length}개</div>
-                              </td>
-                              <td className="px-4 py-3 align-top">
                                 <QualityBadges row={row} />
                               </td>
-                              <td className="px-4 py-3 align-top text-xs leading-5 text-slate-500">{formatDateTime(row.refreshRecommendedAt)}</td>
                             </tr>
                           );
                         })}
@@ -655,7 +643,7 @@ function SummaryCard({
 
 function LoadingBlock() {
   return (
-    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)] xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(260px,0.55fr)_minmax(0,1fr)]">
       <div className="h-96 animate-pulse rounded-lg bg-slate-200" />
       <div className="hidden h-96 animate-pulse rounded-lg bg-slate-200 lg:block" />
     </div>
@@ -743,7 +731,7 @@ function CompanyAnalysisDetail({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <MetaBlock label="출처 유형" value={row.sourceType ?? "미정"} />
+        <MetaBlock label="출처 유형" value={getCompanySourceTypeLabel(row.sourceType) ?? "미정"} />
         <MetaBlock label="확인 시각" value={formatDateTime(row.checkedAt)} />
         <MetaBlock label="갱신 권장" value={formatDateTime(row.refreshRecommendedAt)} />
         <MetaBlock label="공고 revision" value={formatPostingRevision(row)} />

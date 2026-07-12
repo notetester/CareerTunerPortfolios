@@ -14,6 +14,7 @@ import {
 import { onAppLockState } from "@/platform/appLockEvents";
 import { haptic } from "@/platform/haptics";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import {
   dispatchSessionToDesktop,
@@ -120,6 +121,7 @@ export function MobileSessionThreadPage() {
   const [items, setItems] = useState<ThreadItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generationModel, setGenerationModel] = useState<AiModelChoice>("AUTO");
   const [draft, setDraft] = useState("");
   const draftRef = useRef("");
   const [scoring, setScoring] = useState(false);
@@ -151,6 +153,10 @@ export function MobileSessionThreadPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   draftRef.current = draft;
+
+  useEffect(() => {
+    setGenerationModel("AUTO");
+  }, [sessionId, user?.id]);
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg);
@@ -422,6 +428,16 @@ export function MobileSessionThreadPage() {
     () => items.filter((it) => it.kind === "question").length,
     [items],
   );
+  const hasAnswerActivity = useMemo(
+    () => items.some((it) => it.kind === "answer" || it.kind === "score" || it.kind === "scoring"),
+    [items],
+  );
+  const canRegenerateQuestions = questionCount > 0
+    && !hasAnswerActivity
+    && !pendingMedia
+    && !uncertainSubmission
+    && !scoring
+    && !mediaUploading;
   const sessionCompleted = questionCount > 0 && answeredCount >= questionCount;
 
   /** questions + review 병합 → 스레드 재구성 (데스크탑 InterviewSession.reloadThread 와 동형). */
@@ -889,6 +905,19 @@ export function MobileSessionThreadPage() {
 
   const generate = async () => {
     if (!session) return;
+    const replacingQuestions = questionCount > 0;
+    if (replacingQuestions && !canRegenerateQuestions) {
+      toast("답변이나 원본이 시작된 세션의 질문은 교체할 수 없습니다");
+      return;
+    }
+    if (replacingQuestions) {
+      const draftNotice = draft.trim()
+        ? "\n작성 중인 답변은 새 질문 생성이 완료되면 초기화됩니다."
+        : "";
+      if (!window.confirm(
+        `선택한 모델로 기존 미답변 질문을 교체할까요? 새 AI 사용으로 별도 차감될 수 있습니다.${draftNotice}`,
+      )) return;
+    }
     const expectedSessionId = sessionId;
     const expectedGeneration = sessionGenerationRef.current;
     const stillCurrent = () => mountedRef.current
@@ -896,11 +925,19 @@ export function MobileSessionThreadPage() {
       && sessionGenerationRef.current === expectedGeneration;
     setGenerating(true);
     try {
-      await generateExpectedQuestions(sessionId, { mode: session.mode });
+      await generateExpectedQuestions(sessionId, { mode: session.mode }, generationModel);
       if (!stillCurrent()) return;
+      if (replacingQuestions) {
+        draftRef.current = "";
+        setDraft("");
+      }
       await reload(expectedSessionId, expectedGeneration);
-    } catch {
-      if (stillCurrent()) toast("질문 생성에 실패했습니다");
+    } catch (error) {
+      if (stillCurrent()) {
+        toast(error instanceof Error && error.message
+          ? error.message
+          : "질문 생성에 실패했습니다. 같은 모델로 재시도하거나 다른 모델을 선택해 보세요.");
+      }
     } finally {
       if (stillCurrent()) setGenerating(false);
     }
@@ -1009,6 +1046,13 @@ export function MobileSessionThreadPage() {
                 featureType="INTERVIEW_QUESTION_GEN"
                 className="mx-auto mt-3 bg-accent text-primary"
               />
+              <div className="mt-3 flex justify-center">
+                <ModelPicker
+                  value={generationModel}
+                  onChange={setGenerationModel}
+                  disabled={generating}
+                />
+              </div>
               <button
                 onClick={() => void generate()}
                 disabled={generating}
@@ -1016,6 +1060,34 @@ export function MobileSessionThreadPage() {
               >
                 {generating ? "생성 중…" : "예상 질문 생성"}
               </button>
+            </div>
+          )}
+
+          {!loading && canRegenerateQuestions && (
+            <div className="my-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
+              <div className="text-[13px] font-semibold">질문을 다른 모델로 다시 만들어 볼까요?</div>
+              <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+                답변 전에는 기존 선택을 유지하거나 다른 모델을 골라 미답변 질문을 교체할 수 있습니다.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <AiChargeCostBadge
+                  featureType="INTERVIEW_QUESTION_GEN"
+                  className="bg-accent text-primary"
+                />
+                <ModelPicker
+                  value={generationModel}
+                  onChange={setGenerationModel}
+                  disabled={generating}
+                />
+                <button
+                  type="button"
+                  onClick={() => void generate()}
+                  disabled={generating}
+                  className="min-h-11 rounded-lg border border-primary/35 bg-primary/10 px-3 text-[11.5px] font-semibold text-primary hover:bg-primary/15 disabled:opacity-50"
+                >
+                  {generating ? "재생성 중…" : "선택 모델로 질문 재생성"}
+                </button>
+              </div>
             </div>
           )}
 

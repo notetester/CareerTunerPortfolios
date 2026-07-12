@@ -17,6 +17,7 @@ public record UserProfileResponse(
         String resumeText,
         String selfIntro,
         Object preferences,
+        Integer versionNo,
         LocalDateTime updatedAt
 ) {
 }

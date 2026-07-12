@@ -79,8 +79,10 @@ public class ReactionServiceImpl implements ReactionService {
         }
         if (existing != null) {
             // 같은 축의 반대 리액션 → 교체(기존 행 삭제 후 새 행 등록)
-            reactionMapper.deletePostReaction(userId, postId, existing.getReactionType());
-            reactionMapper.adjustPostReactionCount(postId, existing.getReactionType(), -1);
+            int deleted = reactionMapper.deletePostReaction(userId, postId, existing.getReactionType());
+            if (deleted > 0) {
+                reactionMapper.adjustPostReactionCount(postId, existing.getReactionType(), -1);
+            }
         }
         try {
             int inserted = reactionMapper.insertPostReaction(PostReaction.builder()
@@ -132,15 +134,20 @@ public class ReactionServiceImpl implements ReactionService {
             return commentResponse(commentId, type, false);
         }
         if (existing != null) {
-            reactionMapper.deleteCommentReaction(userId, commentId, existing.getReactionType());
-            reactionMapper.adjustCommentReactionCount(commentId, existing.getReactionType(), -1);
+            int deleted = reactionMapper.deleteCommentReaction(userId, commentId, existing.getReactionType());
+            if (deleted > 0) {
+                reactionMapper.adjustCommentReactionCount(commentId, existing.getReactionType(), -1);
+            }
         }
         try {
-            reactionMapper.insertCommentReaction(CommentReaction.builder()
+            int inserted = reactionMapper.insertCommentReaction(CommentReaction.builder()
                     .userId(userId).commentId(commentId)
                     .reactionType(type.name()).axis(type.axis().name())
                     .anonymous(anonymous)
                     .build());
+            if (inserted <= 0) {
+                throw new BusinessException(ErrorCode.CONFLICT, "댓글 리액션 등록에 실패했습니다.");
+            }
         } catch (DuplicateKeyException e) {
             log.info("댓글 리액션 동시 등록 충돌 흡수 commentId={} userId={} type={}", commentId, userId, type);
             return commentResponse(commentId, type, true);

@@ -29,6 +29,10 @@ const MODE_OPTIONS = [
   { code: "JOB", label: "직무 면접" },
   { code: "PERSONALITY", label: "인성 면접" },
   { code: "PRESSURE", label: "압박 면접" },
+  { code: "RESUME", label: "자소서 기반" },
+  { code: "PORTFOLIO", label: "포트폴리오 기반" },
+  { code: "REAL", label: "실전 종합" },
+  { code: "COMPANY", label: "기업 맞춤" },
 ];
 
 const CASE_CANDIDATES = demoApplicationCases

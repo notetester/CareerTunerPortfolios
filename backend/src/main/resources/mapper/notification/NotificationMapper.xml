@@ -31,6 +31,7 @@
          FROM notification n
           LEFT JOIN users a ON n.actor_id = a.id
          WHERE n.user_id = #{userId}
+           AND n.deleted_at IS NULL
         <if test="platform != null">
            AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
         </if>
@@ -43,6 +44,7 @@
         SELECT COUNT(*)
           FROM notification n
          WHERE n.user_id = #{userId}
+           AND n.deleted_at IS NULL
         <if test="platform != null">
            AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
         </if>
@@ -54,6 +56,7 @@
           FROM notification n
          WHERE n.user_id = #{userId}
            AND n.is_read = 0
+           AND n.deleted_at IS NULL
         <if test="platform != null">
            AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
         </if>
@@ -67,6 +70,7 @@
           FROM notification n
           LEFT JOIN users a ON n.actor_id = a.id
          WHERE n.id = #{id}
+           AND n.deleted_at IS NULL
     </select>
 
     <!-- 단건 읽음 처리 -->
@@ -76,6 +80,7 @@
                read_at = NOW()
          WHERE id = #{id}
            AND is_read = 0
+           AND deleted_at IS NULL
     </update>
 
     <!-- 전체 읽음 처리 -->
@@ -85,26 +90,31 @@
                read_at = NOW()
          WHERE user_id = #{userId}
            AND is_read = 0
+           AND deleted_at IS NULL
         <if test="platform != null">
            AND COALESCE(destination_platform, 'ALL') IN ('ALL', #{platform})
         </if>
     </update>
 
     <!-- 단건 삭제 (본인 알림만) -->
-    <delete id="deleteByIdAndUser">
-        DELETE FROM notification
+    <update id="deleteByIdAndUser">
+        UPDATE notification
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE id = #{id}
            AND user_id = #{userId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <!-- 전체 삭제 (본인 알림 전부 비우기) -->
-    <delete id="deleteAllByUser">
-        DELETE FROM notification
+    <update id="deleteAllByUser">
+        UPDATE notification
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE user_id = #{userId}
+           AND deleted_at IS NULL
         <if test="platform != null">
            AND COALESCE(destination_platform, 'ALL') IN ('ALL', #{platform})
         </if>
-    </delete>
+    </update>
 
     <!-- 알림 INSERT -->
     <update id="markTypeAsReadByTarget">
@@ -116,6 +126,7 @@
            AND target_type = #{targetType}
            AND target_id = #{targetId}
            AND is_read = 0
+           AND deleted_at IS NULL
     </update>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
@@ -138,6 +149,7 @@
           FROM collaboration_friendship
          WHERE user_id = #{userId}
            AND friend_user_id = #{otherUserId}
+           AND deleted_at IS NULL
     </select>
 
 </mapper>

@@ -1066,6 +1066,13 @@ private slots:
         QVERIFY(qml.contains("session.requestFollowUp(scoreRoot.data_.qid)"));
         QVERIFY(qml.contains("session.followUpPendingQuestionIds.indexOf(data_.qid)"));
         QVERIFY(qml.contains("session.modelAnswerPendingQuestionIds.indexOf(data_.qid)"));
+        QVERIFY(qml.contains("session.questionGenerationModel"));
+        QVERIFY(qml.contains("질문 생성 AI 모델"));
+        QVERIFY(qml.contains("session.canRegenerateQuestions"));
+        QVERIFY(qml.contains("선택 모델로 질문 재생성"));
+        QVERIFY(qml.contains("regenerateQuestionsDialog"));
+        QVERIFY(qml.contains("palette.window: Theme.surface"));
+        QVERIFY(qml.contains("enabled: !win.sessionAnswerMediaPending"));
     }
 
     void aiChargeCoordinatorPreviewsAcknowledgesAndSuppliesBoundHeaders()
@@ -1386,6 +1393,19 @@ private slots:
         QVERIFY(planner.contains("color: Theme.darkMode"));
         QVERIFY(planner.contains("Qt.rgba(0.985, 0.985, 0.99, 0.96)"));
 
+        const QByteArray home = readQml(QStringLiteral("HomeView.qml"));
+        for (const QByteArray& cPath : {
+                 QByteArray("/dashboard"), QByteArray("/analysis"),
+                 QByteArray("/career-roadmap"), QByteArray("/certificates")}) {
+            QVERIFY2(home.contains(cPath), cPath.constData());
+        }
+        QVERIFY(home.contains("Qt.openUrlExternally(appSettings.webAppUrl + path)"));
+        QVERIFY(home.contains("path: \"/correction\""));
+        QVERIFY(home.contains("path: \"/billing\""));
+        QVERIFY(home.contains("path: \"/community\""));
+        QVERIFY(home.contains("path: \"/support\""));
+        QVERIFY(home.contains("Accessible.name: modelData.label + \" 웹 화면 열기\""));
+
         const QByteArray collaboration = readQml(QStringLiteral("CollaborationPage.qml"));
         QVERIFY(collaboration.contains("온라인 제한 서버 공유"));
         QVERIFY(collaboration.contains("서버를 통해 전달되며 소유자 데스크톱이 온라인일 때만"));
@@ -1403,6 +1423,17 @@ private slots:
         }
 
         const QByteArray main = readQml(QStringLiteral("Main.qml"));
+        QVERIFY(main.contains("function onQuestionsRegenerated()"));
+        QVERIFY(main.contains("sessionInputBar.cancelSessionMedia()"));
+        QVERIFY(main.contains("function startQuestionRegeneration()"));
+        QVERIFY(main.contains("if (sessionAnswerMediaPending)"));
+        const qsizetype regenerationStart = main.indexOf("function startQuestionRegeneration()");
+        const qsizetype openSessionStart = main.indexOf("function openSession", regenerationStart);
+        QVERIFY(regenerationStart >= 0 && openSessionStart > regenerationStart);
+        const QByteArray regenerationStartBlock = main.mid(
+            regenerationStart, openSessionStart - regenerationStart);
+        QVERIFY(!regenerationStartBlock.contains("sessionInputBar.clear()"));
+        QVERIFY(!regenerationStartBlock.contains("sessionInputBar.cancelSessionMedia()"));
         for (const QByteArray& contract : {
                  QByteArray("Accessible.name: notifications.unread > 0"),
                  QByteArray("Accessible.name: \"면접 세션 열기: \" + title + \", \" + mode"),
@@ -1415,6 +1446,9 @@ private slots:
         }
 
         const QByteArray input = readQml(QStringLiteral("InputBar.qml"));
+        QVERIFY(input.contains("session.currentQid < 0 || session.loading || session.scoring"));
+        QVERIFY(input.contains("readonly property bool hasPendingMediaActivity"));
+        QVERIFY(input.contains("session.hasPendingAnswerMedia"));
         for (const QByteArray& contract : {
                  QByteArray("Accessible.name: \"영상 답변 패널 닫기\""),
                  QByteArray("Accessible.name: cameraRecorder.recording ? \"영상 녹화 중지\" : \"영상 녹화 시작\""),
@@ -2191,6 +2225,7 @@ private slots:
         int questionReads = 0;
         int previews = 0;
         int generations = 0;
+        QList<QString> actionKeys;
         connect(&server, &QTcpServer::newConnection, this, [&]() {
             while (server.hasPendingConnections()) {
                 QTcpSocket* socket = server.nextPendingConnection();
@@ -2202,7 +2237,9 @@ private slots:
                         if (request.startsWith("GET /api/interview/sessions/12/questions ")) {
                             ++questionReads;
                             const QByteArray data = questionReads == 1 ? QByteArrayLiteral("[]")
-                                : QByteArrayLiteral(R"([{"id":91,"question":"첫 질문","questionType":"BASIC"}])");
+                                : questionReads == 2
+                                    ? QByteArrayLiteral(R"([{"id":91,"question":"첫 질문","questionType":"BASIC"}])")
+                                    : QByteArrayLiteral(R"([{"id":92,"question":"교체 질문","questionType":"BASIC"}])");
                             writeHttpResponse(socket, 200, "{\"success\":true,\"data\":" + data + "}");
                         } else if (request.startsWith("GET /api/interview/sessions/12/review ")) {
                             writeHttpResponse(socket, 200, R"({"success":true,"data":{"items":[]}})");
@@ -2213,13 +2250,19 @@ private slots:
                         } else if (request.startsWith("POST /api/billing/charge-preview ")) {
                             ++previews;
                             const QJsonObject requestBody = QJsonDocument::fromJson(httpBody(request)).object();
+                            actionKeys.push_back(requestBody.value("actionKey").toString());
                             const QJsonObject preview{
                                 {"featureType", "INTERVIEW_QUESTION_GEN"}, {"actionKey", requestBody.value("actionKey")},
                                 {"chargeType", "FREE"}, {"sufficient", true}, {"refundPolicyVersion", 1}
                             };
                             writeHttpResponse(socket, 200, QJsonDocument(QJsonObject{
                                 {"success", true}, {"data", preview}}).toJson(QJsonDocument::Compact));
-                        } else if (request.startsWith("POST /api/interview/sessions/12/generate-questions ")) {
+                        } else if (request.startsWith(
+                                       "POST /api/interview/sessions/12/generate-questions?model=CLAUDE ")) {
+                            ++generations;
+                            writeHttpResponse(socket, 200, R"({"success":true,"data":null})");
+                        } else if (request.startsWith(
+                                       "POST /api/interview/sessions/12/generate-questions?model=OPENAI ")) {
                             ++generations;
                             writeHttpResponse(socket, 200, R"({"success":true,"data":null})");
                         } else {
@@ -2234,7 +2277,10 @@ private slots:
         SettingsStore store;
         AiChargeCoordinator charge(&api);
         InterviewSession session(&api, &store, &charge);
+        QSignalSpy regeneratedSpy(&session, &InterviewSession::questionsRegenerated);
         session.open(12, QStringLiteral("테스트"), QStringLiteral("BASIC"), 1);
+        session.setQuestionGenerationModel(QStringLiteral("claude"));
+        QCOMPARE(session.questionGenerationModel(), QStringLiteral("CLAUDE"));
         session.generateQuestions();
         session.generateQuestions();
 
@@ -2243,6 +2289,27 @@ private slots:
         QCOMPARE(previews, 1);
         QCOMPARE(questionReads, 2);
         QVERIFY(!session.loading());
+        QCOMPARE(regeneratedSpy.count(), 0);
+
+        QVERIFY(session.canRegenerateQuestions());
+        session.setQuestionGenerationModel(QStringLiteral("OPENAI"));
+        session.generateQuestions();
+        QTRY_COMPARE_WITH_TIMEOUT(generations, 2, 4000);
+        QTRY_COMPARE_WITH_TIMEOUT(session.currentQid(), 92LL, 4000);
+        QCOMPARE(previews, 2);
+        QCOMPARE(questionReads, 3);
+        QCOMPARE(actionKeys.size(), 2);
+        QVERIFY(actionKeys.at(0) != actionKeys.at(1));
+        QVERIFY(session.canRegenerateQuestions());
+        QCOMPARE(regeneratedSpy.count(), 1);
+
+        QSignalSpy blockedSpy(&session, &InterviewSession::errorOccurred);
+        session.m_thread.push_back(QVariantMap{
+            {"kind", "answer"}, {"qid", 92}, {"text", "이미 시작한 답변"}});
+        QVERIFY(!session.canRegenerateQuestions());
+        session.generateQuestions();
+        QCOMPARE(generations, 2);
+        QCOMPARE(blockedSpy.count(), 1);
     }
 
     void invalidatingChargeCoordinatorPreventsLatePaidOperation()
@@ -2281,12 +2348,77 @@ private slots:
         QVERIFY(!operationCalled);
     }
 
-    void ambiguousQuestionGenerationReusesActionKeyAfterBoundedReconcile()
+    void ambiguousQuestionGenerationKeepsActionKeyUntilChangedModelIsExecuted()
     {
+        ApiClient api;
+        SettingsStore store;
+        AiChargeCoordinator charge(&api);
+        InterviewSession session(&api, &store, &charge);
+        session.setQuestionGenerationModel(QStringLiteral("CLAUDE"));
+        session.m_questionGenerationActionKey = QStringLiteral("AI_USAGE:original");
+        session.m_questionGenerationActionModel = QStringLiteral("CLAUDE");
+
+        session.setQuestionGenerationModel(QStringLiteral("claude"));
+        QCOMPARE(session.m_questionGenerationActionKey, QStringLiteral("AI_USAGE:original"));
+        QCOMPARE(session.m_questionGenerationActionModel, QStringLiteral("CLAUDE"));
+
+        session.setQuestionGenerationModel(QStringLiteral("OPENAI"));
+        QCOMPARE(session.m_questionGenerationActionKey, QStringLiteral("AI_USAGE:original"));
+        QCOMPARE(session.m_questionGenerationActionModel, QStringLiteral("CLAUDE"));
+        QCOMPARE(session.questionGenerationModel(), QStringLiteral("OPENAI"));
+
+        session.setQuestionGenerationModel(QStringLiteral("CLAUDE"));
+        QCOMPARE(session.m_questionGenerationActionKey, QStringLiteral("AI_USAGE:original"));
+        QCOMPARE(session.m_questionGenerationActionModel, QStringLiteral("CLAUDE"));
+    }
+
+    void questionRegenerationDiscardsManagedPendingAudioState()
+    {
+        const QString pendingPath = VoiceRecorder::recordingDir()
+            + QStringLiteral("/answer-regenerate-%1.m4a")
+                  .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+        QVERIFY(QDir().mkpath(QFileInfo(pendingPath).absolutePath()));
+        QFile pendingFile(pendingPath);
+        QVERIFY(pendingFile.open(QIODevice::WriteOnly));
+        QCOMPARE(pendingFile.write("pending-audio"), 13);
+        pendingFile.close();
+
+        ApiClient api;
+        SettingsStore store;
+        InterviewSession session(&api, &store);
+        session.m_pendingAudioPath = pendingPath;
+        session.m_pendingAudioQuestionId = 77;
+        session.m_audioSourceByQuestion.insert(77, pendingPath);
+        session.m_voiceScoreByQuestion.insert(77, 81);
+        QSignalSpy busySpy(&session, &InterviewSession::busyChanged);
+
+        session.discardPendingAnswerMedia();
+
+        QVERIFY(!QFile::exists(pendingPath));
+        QVERIFY(session.m_pendingAudioPath.isEmpty());
+        QCOMPARE(session.m_pendingAudioQuestionId, -1LL);
+        QVERIFY(!session.m_audioSourceByQuestion.contains(77));
+        QVERIFY(!session.m_voiceScoreByQuestion.contains(77));
+        QCOMPARE(busySpy.count(), 1);
+    }
+
+    void ambiguousQuestionGenerationHonorsRetryModelChoice_data()
+    {
+        QTest::addColumn<QString>("retryModel");
+        QTest::addColumn<bool>("expectsSameActionKey");
+        QTest::newRow("same-model") << QStringLiteral("CLAUDE") << true;
+        QTest::newRow("changed-model") << QStringLiteral("OPENAI") << false;
+    }
+
+    void ambiguousQuestionGenerationHonorsRetryModelChoice()
+    {
+        QFETCH(QString, retryModel);
+        QFETCH(bool, expectsSameActionKey);
         QTcpServer server;
         QVERIFY(server.listen(QHostAddress::LocalHost, 0));
         int generations = 0;
         QList<QString> actionKeys;
+        QList<QString> requestedModels;
         connect(&server, &QTcpServer::newConnection, this, [&]() {
             while (server.hasPendingConnections()) {
                 QTcpSocket* socket = server.nextPendingConnection();
@@ -2303,14 +2435,22 @@ private slots:
                                 {"sufficient", true}, {"refundPolicyVersion", 1}};
                             writeHttpResponse(socket, 200, QJsonDocument(QJsonObject{
                                 {"success", true}, {"data", preview}}).toJson(QJsonDocument::Compact));
-                        } else if (request.startsWith("POST /api/interview/sessions/33/generate-questions ")) {
+                        } else if (request.startsWith(
+                                       "POST /api/interview/sessions/33/generate-questions?model=CLAUDE ")) {
                             ++generations;
+                            requestedModels.push_back(QStringLiteral("CLAUDE"));
                             if (generations == 1)
                                 writeHttpResponse(socket, 500, R"({"success":false,"message":"timeout","data":null})");
                             else
                                 writeHttpResponse(socket, 200, R"({"success":true,"data":null})");
+                        } else if (request.startsWith(
+                                       "POST /api/interview/sessions/33/generate-questions?model=OPENAI ")) {
+                            ++generations;
+                            requestedModels.push_back(QStringLiteral("OPENAI"));
+                            writeHttpResponse(socket, 200, R"({"success":true,"data":null})");
                         } else if (request.startsWith("GET /api/interview/sessions/33/questions ")) {
-                            const QByteArray data = generations < 2 ? QByteArrayLiteral("[]")
+                            const QByteArray data = generations < 2
+                                ? QByteArrayLiteral(R"([{"id":100,"question":"기존 질문","questionType":"BASIC"}])")
                                 : QByteArrayLiteral(R"([{"id":330,"question":"복구 질문","questionType":"BASIC"}])");
                             writeHttpResponse(socket, 200, "{\"success\":true,\"data\":" + data + "}");
                         } else if (request.startsWith("GET /api/interview/sessions/33/review ")) {
@@ -2332,16 +2472,32 @@ private slots:
         InterviewSession session(&api, &store, &charge);
         session.m_sessionId = 33;
         session.m_sessionGeneration = 1;
+        session.m_thread.push_back(QVariantMap{
+            {"kind", "question"}, {"qid", 100}, {"text", "기존 질문"}});
+        QSignalSpy regeneratedSpy(&session, &InterviewSession::questionsRegenerated);
+        session.setQuestionGenerationModel(QStringLiteral("CLAUDE"));
         session.generateQuestions();
         QTRY_VERIFY_WITH_TIMEOUT(!session.loading(), 4000);
         QCOMPARE(generations, 1);
         QVERIFY(!session.m_questionGenerationActionKey.isEmpty());
+        QCOMPARE(session.m_questionGenerationActionModel, QStringLiteral("CLAUDE"));
+        QCOMPARE(regeneratedSpy.count(), 0);
+        const QString originalActionKey = session.m_questionGenerationActionKey;
+        session.setQuestionGenerationModel(retryModel);
+        QVERIFY(!session.m_questionGenerationActionKey.isEmpty());
+        QCOMPARE(session.m_questionGenerationActionModel, QStringLiteral("CLAUDE"));
         session.generateQuestions();
         QTRY_COMPARE_WITH_TIMEOUT(generations, 2, 4000);
         QTRY_COMPARE_WITH_TIMEOUT(session.currentQid(), 330LL, 4000);
         QCOMPARE(actionKeys.size(), 2);
-        QCOMPARE(actionKeys.at(0), actionKeys.at(1));
+        QCOMPARE(requestedModels.size(), 2);
+        QCOMPARE(requestedModels.at(0), QStringLiteral("CLAUDE"));
+        QCOMPARE(requestedModels.at(1), retryModel);
+        QCOMPARE(actionKeys.at(0) == actionKeys.at(1), expectsSameActionKey);
+        QCOMPARE(actionKeys.at(0), originalActionKey);
+        QCOMPARE(regeneratedSpy.count(), 1);
         QVERIFY(session.m_questionGenerationActionKey.isEmpty());
+        QVERIFY(session.m_questionGenerationActionModel.isEmpty());
     }
 
     void plannerStopRejectsLateDashboardAndScopesReminderIdsByEnvironment()
@@ -2721,6 +2877,23 @@ private slots:
         PlannerOverlayController controller;
         QVERIFY(!controller.enabled());
         QVERIFY(!controller.alwaysOnTop());
+    }
+
+    void windowsPackagingDetectsCmakeAndFallsBackToMinGwMake()
+    {
+        QFile script(QStringLiteral(CAREERTUNER_DESKTOP_SOURCE_DIR "/scripts/package-windows.ps1"));
+        QVERIFY(script.open(QIODevice::ReadOnly));
+        const QByteArray source = script.readAll();
+        QVERIFY(source.contains("function Get-CMakeExecutable"));
+        QVERIFY(source.contains("CMake\\bin\\cmake.exe"));
+        QVERIFY(source.contains("function Get-BuildGenerator"));
+        QVERIFY(source.contains("MinGW Makefiles"));
+        QVERIFY(source.contains("mingw32-make.exe"));
+        QVERIFY(source.contains("CMAKE_GENERATOR:INTERNAL="));
+        QVERIFY(source.contains("$BuildDir-$GeneratorSlug"));
+        QVERIFY(source.contains("Preserving the existing build"));
+        QVERIFY(source.contains("& $CMakeExecutable -S"));
+        QVERIFY(source.contains("& $CMakeExecutable --build"));
     }
 
 private:

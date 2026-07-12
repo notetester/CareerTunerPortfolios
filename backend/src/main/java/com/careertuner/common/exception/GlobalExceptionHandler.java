@@ -3,15 +3,23 @@ package com.careertuner.common.exception;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.TransientDataAccessResourceException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.ServletRequestBindingException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.careertuner.common.web.ApiResponse;
 
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -37,6 +45,35 @@ public class GlobalExceptionHandler {
                 : ErrorCode.INVALID_INPUT.getDefaultMessage();
         return ResponseEntity.status(ErrorCode.INVALID_INPUT.getStatus())
                 .body(ApiResponse.error(ErrorCode.INVALID_INPUT.name(), message));
+    }
+
+    @ExceptionHandler({
+            HttpMessageNotReadableException.class,
+            ServletRequestBindingException.class,
+            MethodArgumentTypeMismatchException.class,
+            BindException.class,
+            ConstraintViolationException.class,
+            HandlerMethodValidationException.class
+    })
+    public ResponseEntity<ApiResponse<Void>> handleInvalidRequest(Exception ex) {
+        log.debug("Invalid request: {}", ex.getClass().getSimpleName());
+        ErrorCode code = ErrorCode.INVALID_INPUT;
+        return ResponseEntity.status(code.getStatus())
+                .body(ApiResponse.error(code.name(), code.getDefaultMessage()));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotAllowed(HttpRequestMethodNotSupportedException ex) {
+        ErrorCode code = ErrorCode.METHOD_NOT_ALLOWED;
+        return ResponseEntity.status(code.getStatus())
+                .body(ApiResponse.error(code.name(), code.getDefaultMessage()));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
+        ErrorCode code = ErrorCode.UNSUPPORTED_MEDIA_TYPE;
+        return ResponseEntity.status(code.getStatus())
+                .body(ApiResponse.error(code.name(), code.getDefaultMessage()));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

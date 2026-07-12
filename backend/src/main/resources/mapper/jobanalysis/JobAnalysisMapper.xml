@@ -3,11 +3,6 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.jobanalysis.mapper.JobAnalysisMapper">
 
-    <delete id="deleteJobAnalysesByCaseId">
-        DELETE FROM job_analysis
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
-
     <insert id="insertJobAnalysis" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO job_analysis
             (application_case_id, job_posting_id, job_posting_revision, employment_type, experience_level, required_skills,

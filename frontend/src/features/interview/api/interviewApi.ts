@@ -5,6 +5,7 @@ import { apiBase } from "@/app/lib/apiBase";
 import { getAccessToken, subscribeTokenStore } from "@/app/lib/tokenStore";
 import { isDataMockActive } from "../tutorial/tutorialStore";
 import { createAnswerSubmissionId } from "../lib/answerSubmissionId";
+import { ModelAwareSingleFlight } from "./questionGenerationSingleFlight";
 import {
   dummyAgentSteps,
   dummyAnswer,
@@ -46,14 +47,19 @@ interface PendingQuestionOperation {
   key: string;
   baseline: string | null;
 }
-const pendingQuestionOperations = new Map<number, PendingQuestionOperation>();
+interface PendingQuestionGenerationOperation extends PendingQuestionOperation {
+  model: AiModelChoice;
+}
+const pendingQuestionOperations = new Map<number, PendingQuestionGenerationOperation>();
 const pendingFollowUpOperations = new Map<number, PendingQuestionOperation>();
+const questionGenerationSingleFlight = new ModelAwareSingleFlight<InterviewQuestion[], AiModelChoice>();
 
 subscribeTokenStore((event) => {
   if (event === "refreshed") return;
   pendingAnswerSubmissionIds.clear();
   pendingQuestionOperations.clear();
   pendingFollowUpOperations.clear();
+  questionGenerationSingleFlight.clear();
 });
 
 function questionSignature(questions: InterviewQuestion[]): string {
@@ -185,10 +191,23 @@ export function createInterviewSession(
 }
 
 /** 세션에 대한 AI 예상 질문 생성. model 로 생성 모델 명시 선택(AUTO=현행 폴백, 채점 경로엔 무관). */
-export async function generateExpectedQuestions(
+export function generateExpectedQuestions(
   sessionId: number,
   request: GenerateQuestionsRequest,
   model: AiModelChoice = "AUTO",
+): Promise<InterviewQuestion[]> {
+  const selectedModel = model || "AUTO";
+  return questionGenerationSingleFlight.run(
+    sessionId,
+    selectedModel,
+    () => executeExpectedQuestionsGeneration(sessionId, request, selectedModel),
+  );
+}
+
+async function executeExpectedQuestionsGeneration(
+  sessionId: number,
+  request: GenerateQuestionsRequest,
+  selectedModel: AiModelChoice,
 ): Promise<InterviewQuestion[]> {
   if (isDataMockActive()) return mockDelay(dummyQuestions, 900);
   let pending = pendingQuestionOperations.get(sessionId);
@@ -197,11 +216,19 @@ export async function generateExpectedQuestions(
     pending = {
       key: `AI_USAGE:${createAnswerSubmissionId()}`,
       baseline: current ? questionSignature(current) : null,
+      model: selectedModel,
     };
     pendingQuestionOperations.set(sessionId, pending);
   } else {
     const current = await listQuestionsSafely(sessionId);
-    if (current && pending.baseline != null && questionSignature(current) !== pending.baseline) {
+    if (pending.model !== selectedModel) {
+      pending = {
+        key: `AI_USAGE:${createAnswerSubmissionId()}`,
+        baseline: current ? questionSignature(current) : pending.baseline,
+        model: selectedModel,
+      };
+      pendingQuestionOperations.set(sessionId, pending);
+    } else if (current && pending.baseline != null && questionSignature(current) !== pending.baseline) {
       pendingQuestionOperations.delete(sessionId);
       return current;
     }
@@ -211,7 +238,7 @@ export async function generateExpectedQuestions(
   try {
     const result = await runWithAiCharge("INTERVIEW_QUESTION_GEN", (headers) => {
       mutationStarted = true;
-      const modelQuery = model && model !== "AUTO" ? `?model=${model}` : "";
+      const modelQuery = selectedModel !== "AUTO" ? `?model=${encodeURIComponent(selectedModel)}` : "";
       return api<InterviewQuestion[]>(`/interview/sessions/${sessionId}/generate-questions${modelQuery}`, {
         method: "POST",
         headers,
@@ -411,13 +438,13 @@ export function getSessionReview(sessionId: number): Promise<SessionReview> {
         question: q.question,
         questionType: q.questionType ?? "EXPECTED",
         modelAnswer: dummyModelAnswer,
-        answerId: null,
-        answerText: null,
+        answerId: 9000 + Math.abs(q.id),
+        answerText: "프로젝트에서 문제 상황을 분석하고 팀과 우선순위를 합의해 개선한 경험이 있습니다.",
         audioUrl: null,
         videoUrl: null,
-        score: null,
-        feedback: null,
-        improvedAnswer: null,
+        score: 78,
+        feedback: "방향은 좋지만 본인의 구체적인 행동과 정량 결과를 더 분명히 설명해 보세요.",
+        improvedAnswer: "프로젝트에서 병목 원인을 측정한 뒤 팀과 우선순위를 합의했고, 개선안을 적용해 응답 시간을 줄였습니다.",
         voiceScore: null,
         visualScore: null,
       })),

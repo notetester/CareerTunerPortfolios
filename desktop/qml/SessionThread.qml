@@ -8,6 +8,38 @@ import CareerTuner
 Item {
     id: root
 
+    Dialog {
+        id: regenerateQuestionsDialog
+        x: Math.round((root.width - width) / 2)
+        y: Math.round((root.height - height) / 2)
+        width: Math.min(440, root.width - 48)
+        modal: true
+        focus: true
+        title: "예상 질문 다시 생성"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: win.startQuestionRegeneration()
+        palette.window: Theme.surface
+        palette.windowText: Theme.text
+        palette.base: Theme.surface
+        palette.text: Theme.text
+        palette.button: Theme.raised
+        palette.buttonText: Theme.text
+        background: Rectangle {
+            radius: Theme.radius
+            color: Theme.surface
+            border.color: Theme.border
+        }
+        contentItem: Text {
+            text: "선택한 모델로 기존 미답변 질문을 교체합니다. "
+                  + (win.sessionAnswerDraftPending
+                     ? "작성 중인 텍스트 답변은 생성 성공 후 초기화됩니다. " : "")
+                  + "새 AI 사용으로 별도 차감될 수 있습니다. 계속할까요?"
+            color: Theme.text
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+        }
+    }
+
     ListView {
         id: list
         anchors.fill: parent
@@ -155,6 +187,35 @@ Item {
                         color: Theme.muted; font.pixelSize: 12
                         Layout.alignment: Qt.AlignHCenter
                     }
+                    RowLayout {
+                        Layout.alignment: Qt.AlignHCenter
+                        spacing: 8
+                        Text {
+                            text: "AI 모델"
+                            color: Theme.muted
+                            font.pixelSize: 11
+                        }
+                        ComboBox {
+                            id: generationModelPicker
+                            implicitWidth: 184
+                            implicitHeight: 30
+                            enabled: !session.loading
+                            Accessible.name: "질문 생성 AI 모델"
+                            property var modelValues: ["AUTO", "CAREERTUNER", "CLAUDE", "OPENAI"]
+                            model: ["자동 (추천)", "CareerTuner 자체 모델", "Claude Haiku", "OpenAI GPT"]
+                            function syncFromSession() {
+                                currentIndex = Math.max(0, modelValues.indexOf(session.questionGenerationModel))
+                            }
+                            Component.onCompleted: syncFromSession()
+                            onActivated: (index) => session.questionGenerationModel = modelValues[index]
+                            Connections {
+                                target: session
+                                function onQuestionGenerationModelChanged() {
+                                    generationModelPicker.syncFromSession()
+                                }
+                            }
+                        }
+                    }
                     Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         width: genLbl.implicitWidth + 28; height: 32; radius: 8
@@ -178,6 +239,85 @@ Item {
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                             onClicked: parent.generateExpectedQuestions()
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                visible: !session.loading && !session.threadLoadFailed && session.canRegenerateQuestions
+                width: parent.width
+                radius: Theme.radius
+                color: Theme.surface
+                border.color: Theme.border
+                height: regenerateCol.implicitHeight + 28
+                ColumnLayout {
+                    id: regenerateCol
+                    anchors.centerIn: parent
+                    width: parent.width - 40
+                    spacing: 8
+                    Text {
+                        text: "질문을 다른 모델로 다시 만들어 볼까요?"
+                        color: Theme.text; font.pixelSize: 13; font.bold: true
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "답변 전에는 기존 선택을 유지하거나 다른 모델을 골라 미답변 질문을 교체할 수 있습니다."
+                        color: Theme.muted; font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text { text: "AI 모델"; color: Theme.muted; font.pixelSize: 11 }
+                        ComboBox {
+                            id: regenerationModelPicker
+                            Layout.preferredWidth: 184
+                            implicitHeight: 30
+                            enabled: !session.loading
+                            Accessible.name: "질문 재생성 AI 모델"
+                            property var modelValues: ["AUTO", "CAREERTUNER", "CLAUDE", "OPENAI"]
+                            model: ["자동 (추천)", "CareerTuner 자체 모델", "Claude Haiku", "OpenAI GPT"]
+                            function syncFromSession() {
+                                currentIndex = Math.max(0, modelValues.indexOf(session.questionGenerationModel))
+                            }
+                            Component.onCompleted: syncFromSession()
+                            onActivated: (index) => session.questionGenerationModel = modelValues[index]
+                            Connections {
+                                target: session
+                                function onQuestionGenerationModelChanged() {
+                                    regenerationModelPicker.syncFromSession()
+                                }
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Rectangle {
+                            width: regenerateLabel.implicitWidth + 22; height: 32; radius: 8
+                            enabled: !win.sessionAnswerMediaPending
+                            color: Theme.accentSoft
+                            border.color: activeFocus ? Theme.accentText : Theme.accent
+                            activeFocusOnTab: visible && enabled
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "선택 모델로 질문 재생성"
+                            Accessible.description: enabled ? "" : "미제출 녹음·영상 작업을 먼저 정리하세요"
+                            opacity: enabled ? 1 : 0.45
+                            function confirmRegeneration() { regenerateQuestionsDialog.open() }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    confirmRegeneration()
+                                }
+                            }
+                            Text {
+                                id: regenerateLabel
+                                anchors.centerIn: parent
+                                text: "선택 모델로 질문 재생성"
+                                color: Theme.accentText; font.pixelSize: 11; font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                enabled: parent.enabled
+                                onClicked: parent.confirmRegeneration()
+                            }
                         }
                     }
                 }

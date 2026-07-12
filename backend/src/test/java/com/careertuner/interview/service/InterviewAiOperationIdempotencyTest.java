@@ -69,7 +69,7 @@ class InterviewAiOperationIdempotencyTest {
         assertThat(result).extracting("id").containsExactly(31L);
         verify(aiClient, never()).generateQuestions(any(), anyString(), anyString(), anyInt());
         verify(usageLogService, never()).recordSuccess(any(), any(), anyString(), any());
-        verify(mapper, never()).deleteQuestionsBySessionId(11L);
+        verify(mapper, never()).softDeleteQuestionsBySessionId(11L);
     }
 
     @Test

@@ -18,6 +18,7 @@ import { NULL_ANALYSIS_PROVENANCE } from "@/features/applications/types/analysis
 
 // from-job-posting 응답 타입(applicationCasesApi 에서 export). 타입 전용 import.
 import type { CreateApplicationCaseFromJobPostingResponse } from "@/features/applications/api/applicationCasesApi";
+import type { ModelOptions, ProviderOption, StageOptions } from "@/features/applications/api/modelOptionsApi";
 // 분석 종합 응답 타입(analysisApi 에서 export). jobAnalysis/fitAnalysis 존재 여부만 사용한다.
 import type { ApplicationCaseAnalysisOverview } from "@/features/applications/api/analysisApi";
 
@@ -166,8 +167,8 @@ function buildJobAnalysis(applicationCaseId: number, analysisId: number): JobAna
     applicationCaseId,
     jobPostingId: 1100 + applicationCaseId,
     jobPostingRevision: 1,
-    employmentType: "정규직",
-    experienceLevel: "신입~3년",
+    employmentType: "FULL_TIME",
+    experienceLevel: "JUNIOR",
     requiredSkills: JSON.stringify(["React", "JavaScript", "REST API"]),
     preferredSkills: JSON.stringify(["TypeScript", "테스트 코드"]),
     duties: JSON.stringify(["서비스 웹 프론트엔드 개발", "기존 화면 유지보수"]),
@@ -199,7 +200,7 @@ function buildCompanyAnalysis(applicationCaseId: number, analysisId: number): Co
     verifiedFacts: JSON.stringify([{ fact: "메신저 서비스 운영", source: "기업 홈페이지" }]),
     aiInferences: JSON.stringify([{ inference: "프론트엔드 인력 수요 증가", basis: "AI 서비스 확장" }]),
     unknowns: null,
-    sourceType: "TEXT",
+    sourceType: "WEB",
     checkedAt: iso(3),
     refreshRecommendedAt: iso(-27),
     confirmedAt: iso(1),
@@ -214,7 +215,67 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
+function demoProvider(
+  provider: string,
+  displayName: string,
+  actualModel: string,
+  autoFallbackIncluded: boolean | null = null,
+): ProviderOption {
+  return {
+    provider,
+    displayName,
+    selectable: true,
+    reason: null,
+    actualModel,
+    autoFallbackIncluded,
+  };
+}
+
+const demoJobAnalysisOptions: StageOptions = {
+  recommendedDefault: "LOCAL",
+  options: [
+    demoProvider("LOCAL", "자체 모델(R1)", "careertuner-b-jobposting-r1"),
+    demoProvider("CLAUDE", "Claude", "claude-haiku-4-5-20251001"),
+    demoProvider("OPENAI", "OpenAI", "gpt-5"),
+  ],
+};
+
+const demoCompanyAnalysisOptions: StageOptions = {
+  recommendedDefault: "OPENAI",
+  options: [
+    demoProvider("OPENAI", "OpenAI", "gpt-5.4-mini"),
+    demoProvider("CLAUDE", "Claude", "claude-haiku-4-5-20251001"),
+    demoProvider("LOCAL", "자체 모델(R1)", "careertuner-b-jobposting-r1"),
+  ],
+};
+
+function demoModelOptions(sourceType: string | null): ModelOptions {
+  const normalizedSourceType = sourceType?.trim().toUpperCase();
+  const requiresOcr = normalizedSourceType === "PDF" || normalizedSourceType === "IMAGE";
+  return {
+    ocr: requiresOcr
+      ? {
+          recommendedDefault: "CLAUDE",
+          options: [
+            demoProvider("CLAUDE", "Claude", "claude-haiku-4-5-20251001"),
+            demoProvider("OPENAI", "OpenAI", "gpt-5", true),
+            demoProvider("SELF_OCR", "자체 OCR 워커(PaddleOCR)", "PaddleOCR"),
+          ],
+        }
+      : null,
+    jobAnalysis: demoJobAnalysisOptions,
+    companyAnalysis: demoCompanyAnalysisOptions,
+  };
+}
+
 export const applicationsExtraRoutes: MockRoute[] = [
+  // ── 등록·재실행 모델 선택. 운영 응답과 같은 shape을 제공해 데모에서도 picker를 온전히 시연한다. ──
+  {
+    method: "GET",
+    pattern: /^\/application-cases\/model-options$/,
+    handler: ({ query }) => demoModelOptions(query.get("sourceType")),
+  },
+
   // ── 지원 건 생성(수동 입력). 요청 body(기업명/직무 등)를 echo 하며 새 id 부여. ──
   {
     method: "POST",

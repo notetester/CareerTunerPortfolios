@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ClipboardCopy, FileCheck2, ListChecks, Lightbulb, ShieldAlert } from "lucide-react";
+import { Check, ClipboardCopy, Database, FileCheck2, ListChecks, Lightbulb, ShieldAlert } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -13,6 +13,7 @@ export function CorrectionResultCard({ result }: CorrectionResultCardProps) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const copyResetTimer = useRef<number | null>(null);
+  const provenance = parseSourceSnapshot(result.sourceSnapshot);
 
   useEffect(() => {
     setCopied(false);
@@ -60,6 +61,21 @@ export function CorrectionResultCard({ result }: CorrectionResultCardProps) {
           <TextPanel title="원문" text={result.originalText} tone="bg-slate-50" />
           <TextPanel title="개선문" text={result.improvedText || "개선문이 생성되지 않았습니다."} tone="bg-emerald-50/60" />
         </div>
+
+        {provenance && (
+          <section className="rounded-lg border border-violet-200 bg-violet-50/60 p-4">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-violet-900">
+              <Database className="size-4" /> 입력 출처
+            </h3>
+            <p className="mt-2 text-sm text-violet-800">
+              {provenance.fitAnalysisId ? `적합도 분석 #${provenance.fitAnalysisId}의 부족 역량·전략 반영` : "적합도 분석 없이 프로필·공고 맥락으로 생성"}
+              {provenance.answerId ? ` · 면접 답변 #${provenance.answerId}` : ""}
+            </p>
+            {provenance.missingSkills.length > 0 && (
+              <p className="mt-1 text-xs text-violet-700">부족 역량: {provenance.missingSkills.join(", ")}</p>
+            )}
+          </section>
+        )}
 
         {result.summary && (
           <section className="rounded-lg border border-blue-100 bg-blue-50/60 p-4">
@@ -127,4 +143,26 @@ function formatDate(value: string | null) {
   if (!value) return "생성 시각 없음";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "생성 시각 없음" : date.toLocaleString("ko-KR");
+}
+
+function parseSourceSnapshot(raw: string | null | undefined) {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    const fit = value.fitAnalysis && typeof value.fitAnalysis === "object"
+      ? value.fitAnalysis as Record<string, unknown>
+      : null;
+    const interview = value.interviewAnswer && typeof value.interviewAnswer === "object"
+      ? value.interviewAnswer as Record<string, unknown>
+      : null;
+    return {
+      fitAnalysisId: typeof fit?.fitAnalysisId === "number" ? fit.fitAnalysisId : null,
+      answerId: typeof interview?.answerId === "number" ? interview.answerId : null,
+      missingSkills: Array.isArray(fit?.missingSkills)
+        ? fit.missingSkills.filter((item): item is string => typeof item === "string")
+        : [],
+    };
+  } catch {
+    return null;
+  }
 }

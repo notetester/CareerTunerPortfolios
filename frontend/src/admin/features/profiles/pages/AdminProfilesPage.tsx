@@ -5,12 +5,13 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
-import { getAdminProfile, getAdminProfiles } from "../api";
-import type { AdminUserProfile } from "../types";
+import { getAdminProfile, getAdminProfileVersions, getAdminProfiles } from "../api";
+import type { AdminUserProfile, AdminUserProfileVersion } from "../types";
 
 export function AdminProfilesPage() {
   const [rows, setRows] = useState<AdminUserProfile[]>([]);
   const [selected, setSelected] = useState<AdminUserProfile | null>(null);
+  const [versions, setVersions] = useState<AdminUserProfileVersion[]>([]);
   const [keyword, setKeyword] = useState("");
   const [hasResume, setHasResume] = useState("");
   const [hasSkills, setHasSkills] = useState("");
@@ -36,7 +37,18 @@ export function AdminProfilesPage() {
     try {
       const next = await getAdminProfiles({ keyword, limit: 100 });
       setRows(next);
-      if (!selectedUserId && next[0]?.userId) setSelected(next[0]);
+      const detailId = selectedUserId ?? next[0]?.userId;
+      if (detailId) {
+        const [profile, profileVersions] = await Promise.all([
+          getAdminProfile(detailId),
+          getAdminProfileVersions(detailId),
+        ]);
+        setSelected(profile);
+        setVersions(profileVersions);
+      } else {
+        setSelected(null);
+        setVersions([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "관리자 프로필 목록을 불러오지 못했습니다.");
     } finally {
@@ -47,7 +59,12 @@ export function AdminProfilesPage() {
   const loadDetail = async (userId: number) => {
     setError(null);
     try {
-      setSelected(await getAdminProfile(userId));
+      const [profile, profileVersions] = await Promise.all([
+        getAdminProfile(userId),
+        getAdminProfileVersions(userId),
+      ]);
+      setSelected(profile);
+      setVersions(profileVersions);
     } catch (err) {
       setError(err instanceof Error ? err.message : "프로필 상세를 불러오지 못했습니다.");
     }
@@ -160,6 +177,7 @@ export function AdminProfilesPage() {
                   <ProfileListBlock title="선호 조건" value={selected.preferences} type="preference" />
                   <TextBlock title="이력서 원문" value={selected.resumeText} />
                   <TextBlock title="자기소개" value={selected.selfIntro} />
+                  <AdminProfileVersionHistory versions={versions} />
                 </>
               )}
             </CardContent>
@@ -306,6 +324,30 @@ function TextBlock({ title, value }: { title: string; value?: string | null }) {
     <div>
       <div className="mb-2 text-xs font-bold text-slate-500">{title}</div>
       <div className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700">{value || "-"}</div>
+    </div>
+  );
+}
+
+function AdminProfileVersionHistory({ versions }: { versions: AdminUserProfileVersion[] }) {
+  return (
+    <div>
+      <div className="mb-2 text-xs font-bold text-muted-foreground">프로필 버전 이력</div>
+      {versions.length === 0 ? (
+        <EmptyBlock message="저장된 프로필 스냅샷이 없습니다." />
+      ) : (
+        <div className="max-h-72 space-y-2 overflow-y-auto">
+          {versions.map((version) => (
+            <details key={version.id} className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+              <summary className="cursor-pointer text-sm font-semibold text-foreground">
+                v{version.versionNo} · {version.source} · {formatDate(version.createdAt)}
+              </summary>
+              <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded-md bg-slate-950 p-3 text-xs leading-5 text-slate-100">
+                {JSON.stringify(version, null, 2)}
+              </pre>
+            </details>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

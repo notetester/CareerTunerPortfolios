@@ -9,21 +9,25 @@
         SELECT EXISTS (
             SELECT 1 FROM post_subscription
              WHERE user_id = #{userId} AND post_id = #{postId}
+               AND deleted_at IS NULL
         )
     </select>
 
     <insert id="insertPostSubscription">
         INSERT INTO post_subscription (user_id, post_id)
         VALUES (#{userId}, #{postId})
+        ON DUPLICATE KEY UPDATE deleted_at = NULL
     </insert>
 
-    <delete id="deletePostSubscription">
-        DELETE FROM post_subscription
+    <update id="deletePostSubscription">
+        UPDATE post_subscription
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE user_id = #{userId} AND post_id = #{postId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <select id="findPostSubscriberIds" resultType="java.lang.Long">
-        SELECT user_id FROM post_subscription WHERE post_id = #{postId}
+        SELECT user_id FROM post_subscription WHERE post_id = #{postId} AND deleted_at IS NULL
     </select>
 
     <!-- ── 댓글 구독 ── -->
@@ -32,23 +36,28 @@
         SELECT EXISTS (
             SELECT 1 FROM comment_subscription
              WHERE user_id = #{userId} AND comment_id = #{commentId}
+               AND deleted_at IS NULL
         )
     </select>
 
     <insert id="insertCommentSubscription">
         INSERT INTO comment_subscription (user_id, comment_id)
         VALUES (#{userId}, #{commentId})
+        ON DUPLICATE KEY UPDATE deleted_at = NULL
     </insert>
 
-    <delete id="deleteCommentSubscription">
-        DELETE FROM comment_subscription
+    <update id="deleteCommentSubscription">
+        UPDATE comment_subscription
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE user_id = #{userId} AND comment_id = #{commentId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <select id="findCommentSubscriberIds" resultType="java.lang.Long">
         SELECT DISTINCT user_id
-          FROM comment_subscription
-         WHERE comment_id IN
+         FROM comment_subscription
+         WHERE deleted_at IS NULL
+           AND comment_id IN
         <foreach collection="commentIds" item="cid" open="(" separator="," close=")">
             #{cid}
         </foreach>
@@ -59,6 +68,7 @@
           FROM comment_subscription cs
           JOIN community_comment cc ON cc.id = cs.comment_id
          WHERE cs.user_id = #{userId}
+           AND cs.deleted_at IS NULL
            AND cc.post_id = #{postId}
     </select>
 

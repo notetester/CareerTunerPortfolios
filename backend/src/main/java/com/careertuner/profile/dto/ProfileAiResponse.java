@@ -18,6 +18,8 @@ public record ProfileAiResponse(
         int aiScore,
         int qualityPenalty,
         List<String> qualityWarnings,
-        List<String> qualityRecommendations
+        List<String> qualityRecommendations,
+        Long profileVersionId,
+        Integer profileVersionNo
 ) {
 }

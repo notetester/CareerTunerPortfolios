@@ -16,6 +16,7 @@ const details: AdminCorrectionDetail[] = [
     originalText: "프로젝트에서 API 개발을 담당했습니다. 문제가 생겼을 때 팀원들과 해결했습니다.",
     improvedText: "프로젝트의 핵심 API를 설계·구현하며 응답 지연 문제를 추적했습니다. 팀원과 지표를 공유하고 쿼리를 개선해 평균 응답 시간을 단축했습니다.",
     resultJson: JSON.stringify({ summary: "역할과 문제 해결 결과를 구체화했습니다.", issues: ["성과 수치가 부족함", "협업 과정이 추상적임"], changeReasons: ["담당 범위를 명확히 표현", "문제·행동·결과 순서로 재구성"], suggestions: ["실제 응답 시간 수치를 추가하세요."] }),
+    sourceSnapshot: JSON.stringify({ requestedModel: "AUTO", fitAnalysis: { fitAnalysisId: 5101, missingSkills: ["대규모 트래픽 경험"] } }),
     status: "SUCCESS", aiUsageLogId: 8303, model: "correction-3b", inputTokens: 160, outputTokens: 230,
     totalTokens: 390, creditUsed: 2, adminMemo: "장문 보존 정상", createdAt: iso(0),
   },
@@ -26,6 +27,7 @@ const details: AdminCorrectionDetail[] = [
     originalText: "갈등이 있었지만 대화로 해결했습니다.",
     improvedText: "일정 산정 방식에 대한 의견 차이가 발생했을 때 작업을 기능 단위로 나눠 근거를 비교했습니다. 합의된 기준으로 일정을 다시 산정해 출시 범위를 지켰습니다.",
     resultJson: JSON.stringify({ summary: "갈등 해결 과정을 행동 중심으로 보완했습니다.", issues: ["갈등 원인이 불명확함"], changeReasons: ["합의 과정 추가"], suggestions: ["본인의 제안이 반영된 결과를 설명하세요."] }),
+    sourceSnapshot: null,
     status: "SUCCESS", aiUsageLogId: 8302, model: "correction-3b", inputTokens: 120, outputTokens: 190,
     totalTokens: 310, creditUsed: 2, adminMemo: null, createdAt: iso(1),
   },
@@ -36,6 +38,7 @@ const details: AdminCorrectionDetail[] = [
     originalText: "Spring Boot 개발, MySQL 사용, 배포 경험",
     improvedText: "Spring Boot 기반 REST API 개발 · MyBatis/MySQL 데이터 계층 구현 · CI 파이프라인을 통한 배포 자동화 경험",
     resultJson: JSON.stringify({ summary: "기술 경험을 수행 단위로 정리했습니다.", issues: [], changeReasons: ["기술과 역할 연결"], suggestions: ["프로젝트 규모를 함께 기재하세요."] }),
+    sourceSnapshot: null,
     status: "SUCCESS", aiUsageLogId: 8301, model: "correction-3b", inputTokens: 80, outputTokens: 130,
     totalTokens: 210, creditUsed: 2, adminMemo: null, createdAt: iso(3),
   },
@@ -47,7 +50,7 @@ const failures: AdminCorrectionFailureRow[] = [
 ];
 
 function rows(): AdminCorrectionRow[] {
-  return details.map(({ sourceRefId: _sourceRefId, originalText: _originalText, improvedText: _improvedText, resultJson: _resultJson, aiUsageLogId: _aiUsageLogId, inputTokens: _inputTokens, outputTokens: _outputTokens, adminMemo, ...row }) => ({ ...row, hasMemo: Boolean(adminMemo) }));
+  return details.map(({ sourceRefId: _sourceRefId, originalText: _originalText, improvedText: _improvedText, resultJson: _resultJson, sourceSnapshot: _sourceSnapshot, aiUsageLogId: _aiUsageLogId, inputTokens: _inputTokens, outputTokens: _outputTokens, adminMemo, ...row }) => ({ ...row, hasMemo: Boolean(adminMemo) }));
 }
 
 function summary(): AdminCorrectionSummary {

@@ -33,6 +33,7 @@ void InterviewSession::clear()
     m_caseId = -1;
     m_title.clear();
     m_mode.clear();
+    setQuestionGenerationModel(QStringLiteral("AUTO"));
     m_thread.clear();
     m_agentSteps.clear();
     m_progress.clear();
@@ -57,6 +58,7 @@ void InterviewSession::clear()
     m_questionGenerationQueued = false;
     m_reportLoadInFlight = false;
     m_questionGenerationActionKey.clear();
+    m_questionGenerationActionModel.clear();
     m_followUpActionKeys.clear();
 
     emit sessionChanged();
@@ -150,6 +152,7 @@ void InterviewSession::open(int sessionId, const QString& title, const QString& 
     m_caseId    = caseId;
     m_title     = title;
     m_mode      = mode;
+    setQuestionGenerationModel(QStringLiteral("AUTO"));
     m_thread.clear();
     m_agentSteps.clear();
     m_report.clear();
@@ -172,6 +175,7 @@ void InterviewSession::open(int sessionId, const QString& title, const QString& 
     m_questionGenerationQueued = false;
     m_reportLoadInFlight = false;
     m_questionGenerationActionKey.clear();
+    m_questionGenerationActionModel.clear();
     m_followUpActionKeys.clear();
 
     emit sessionChanged();
@@ -287,7 +291,10 @@ void InterviewSession::reloadThread(bool completesQuestionGeneration)
                         }
                     }
                     setCurrentQuestion(firstUnanswered, firstUnansweredText);
-                    if (!order.isEmpty()) m_questionGenerationActionKey.clear();
+                    if (!order.isEmpty()) {
+                        m_questionGenerationActionKey.clear();
+                        m_questionGenerationActionModel.clear();
+                    }
                     for (qint64 qid : order) {
                         const qint64 parentId = qById.value(qid).value(QStringLiteral("parentQuestionId")).toInteger();
                         if (parentId > 0) m_followUpActionKeys.remove(parentId);
@@ -371,6 +378,54 @@ void InterviewSession::loadAgentSteps()
 
 // ─────────────────────────── 연습 흐름 ───────────────────────────
 
+void InterviewSession::setQuestionGenerationModel(const QString& model)
+{
+    QString normalized = model.trimmed().toUpper();
+    static const QSet<QString> allowed{
+        QStringLiteral("AUTO"),
+        QStringLiteral("CAREERTUNER"),
+        QStringLiteral("CLAUDE"),
+        QStringLiteral("OPENAI")
+    };
+    if (!allowed.contains(normalized)) normalized = QStringLiteral("AUTO");
+    if (m_questionGenerationModel == normalized) return;
+
+    m_questionGenerationModel = normalized;
+    emit questionGenerationModelChanged();
+}
+
+bool InterviewSession::canRegenerateQuestions() const
+{
+    if (m_scoring || m_transcribing || !m_pendingClientSubmissionId.isEmpty()) return false;
+    bool hasQuestion = false;
+    for (const QVariant& item : m_thread) {
+        const QString kind = item.toMap().value(QStringLiteral("kind")).toString();
+        if (kind == QStringLiteral("question")) {
+            hasQuestion = true;
+        } else if (kind == QStringLiteral("answer")
+                   || kind == QStringLiteral("score")
+                   || kind == QStringLiteral("scoring")) {
+            return false;
+        }
+    }
+    return hasQuestion;
+}
+
+void InterviewSession::discardPendingAnswerMedia()
+{
+    const qint64 pendingQuestionId = m_pendingAudioQuestionId;
+    const bool hadPendingMedia = !m_pendingAudioPath.isEmpty();
+    const QString managedPath = managedLocalMediaPath(m_pendingAudioPath);
+    if (!managedPath.isEmpty()) QFile::remove(managedPath);
+    m_pendingAudioPath.clear();
+    m_pendingAudioQuestionId = -1;
+    if (pendingQuestionId >= 0) {
+        m_audioSourceByQuestion.remove(pendingQuestionId);
+        m_voiceScoreByQuestion.remove(pendingQuestionId);
+    }
+    if (hadPendingMedia) emit busyChanged();
+}
+
 void InterviewSession::generateQuestions()
 {
     if (m_threadLoadFailed) {
@@ -384,8 +439,17 @@ void InterviewSession::generateQuestions()
         m_questionGenerationQueued = true;
         return;
     }
+    bool hasQuestion = false;
     for (const QVariant& item : m_thread) {
-        if (item.toMap().value(QStringLiteral("kind")) == QStringLiteral("question")) return;
+        if (item.toMap().value(QStringLiteral("kind")) == QStringLiteral("question")) {
+            hasQuestion = true;
+            break;
+        }
+    }
+    if (hasQuestion && !canRegenerateQuestions()) {
+        emit errorOccurred(QStringLiteral(
+            "답변·원본·분석이 시작된 세션의 질문은 교체할 수 없습니다. 새 면접 세션을 만들어 주세요."));
+        return;
     }
     startQuestionGeneration();
 }
@@ -395,33 +459,67 @@ void InterviewSession::startQuestionGeneration()
     const int sid = m_sessionId;
     if (sid < 0 || m_questionGenerationInFlight || m_threadLoadFailed) return;
     const quint64 generation = m_sessionGeneration;
-    if (m_questionGenerationActionKey.isEmpty())
+    // 선택만 바꾸고 확인을 취소한 경우에는 기존 복구 키를 보존한다. 실제 실행 시점에
+    // 모델이 달라졌을 때만 사용자가 요청한 별도 생성 의도로 새 action key를 발급한다.
+    if (!m_questionGenerationActionKey.isEmpty()
+        && !m_questionGenerationActionModel.isEmpty()
+        && m_questionGenerationActionModel != m_questionGenerationModel) {
+        m_questionGenerationActionKey.clear();
+        m_questionGenerationActionModel.clear();
+    }
+    if (m_questionGenerationActionKey.isEmpty()) {
         m_questionGenerationActionKey = AiChargeCoordinator::createActionKey();
+        m_questionGenerationActionModel = m_questionGenerationModel;
+    }
+    if (m_questionGenerationActionModel.isEmpty())
+        m_questionGenerationActionModel = m_questionGenerationModel;
     const QString actionKey = m_questionGenerationActionKey;
+    const QString operationModel = m_questionGenerationActionModel;
+    QStringList baselineQuestionIds;
+    for (const QVariant& item : m_thread) {
+        const QVariantMap row = item.toMap();
+        if (row.value(QStringLiteral("kind")) == QStringLiteral("question"))
+            baselineQuestionIds.push_back(QString::number(row.value(QStringLiteral("qid")).toLongLong()));
+    }
+    const QString baselineQuestionSignature = baselineQuestionIds.join(QLatin1Char(','));
+    const bool replacingQuestions = !baselineQuestionSignature.isEmpty();
+    QString endpoint = QStringLiteral("/api/interview/sessions/%1/generate-questions").arg(sid);
+    if (operationModel != QStringLiteral("AUTO"))
+        endpoint += QStringLiteral("?model=") + operationModel;
     m_questionGenerationInFlight = true;
     updateLoading();
-    const auto operation = [this, sid, generation, actionKey](const ApiClient::Headers& headers) {
+    const auto operation = [this, sid, generation, actionKey, endpoint,
+                            baselineQuestionSignature, replacingQuestions](const ApiClient::Headers& headers) {
         if (!isCurrentSession(sid, generation)) return;
-        m_api->postDetailed(QStringLiteral("/api/interview/sessions/%1/generate-questions").arg(sid),
+        m_api->postDetailed(endpoint,
             QJsonObject(), headers,
-            [this, sid, generation, actionKey](bool ok, const QJsonValue&, const QString& msg,
-                                               int httpStatus) {
+            [this, sid, generation, actionKey, baselineQuestionSignature, replacingQuestions]
+            (bool ok, const QJsonValue&, const QString& msg, int httpStatus) {
             if (!isCurrentSession(sid, generation)) return;
             if (!ok) {
                 if (isAmbiguousOperationStatus(httpStatus)) {
                     reconcileQuestionGeneration(sid, generation,
-                        msg.isEmpty() ? QStringLiteral("질문 생성 결과를 확인하지 못했습니다.") : msg);
+                        msg.isEmpty() ? QStringLiteral("질문 생성 결과를 확인하지 못했습니다.") : msg,
+                        baselineQuestionSignature, replacingQuestions);
                 } else {
-                    if (m_questionGenerationActionKey == actionKey)
+                    if (m_questionGenerationActionKey == actionKey) {
                         m_questionGenerationActionKey.clear();
+                        m_questionGenerationActionModel.clear();
+                    }
                     m_questionGenerationInFlight = false;
                     updateLoading();
                     emit errorOccurred(msg.isEmpty() ? QStringLiteral("질문 생성 실패") : msg);
                 }
                 return;
             }
-            if (m_questionGenerationActionKey == actionKey)
+            if (m_questionGenerationActionKey == actionKey) {
                 m_questionGenerationActionKey.clear();
+                m_questionGenerationActionModel.clear();
+            }
+            if (replacingQuestions) {
+                discardPendingAnswerMedia();
+                emit questionsRegenerated();
+            }
             reloadThread(true);
             refreshProgress();
             loadAgentSteps();
@@ -446,15 +544,30 @@ bool InterviewSession::isAmbiguousOperationStatus(int httpStatus)
 }
 
 void InterviewSession::reconcileQuestionGeneration(int sessionId, quint64 generation,
-                                                   const QString& message, int attempt)
+                                                   const QString& message,
+                                                   const QString& baselineQuestionSignature,
+                                                   bool replacingQuestions,
+                                                   int attempt)
 {
     if (!isCurrentSession(sessionId, generation)) return;
     m_api->get(QStringLiteral("/api/interview/sessions/%1/questions").arg(sessionId),
-        [this, sessionId, generation, message, attempt](bool ok, const QJsonValue& data,
-                                                        const QString&) {
+        [this, sessionId, generation, message, baselineQuestionSignature,
+         replacingQuestions, attempt](bool ok, const QJsonValue& data, const QString&) {
             if (!isCurrentSession(sessionId, generation)) return;
-            if (ok && !data.toArray().isEmpty()) {
+            QStringList currentQuestionIds;
+            for (const QJsonValue& question : data.toArray())
+                currentQuestionIds.push_back(QString::number(question.toObject().value(QStringLiteral("id")).toInteger()));
+            const QString currentSignature = currentQuestionIds.join(QLatin1Char(','));
+            const bool mutationVisible = baselineQuestionSignature.isEmpty()
+                ? !currentSignature.isEmpty()
+                : currentSignature != baselineQuestionSignature;
+            if (ok && mutationVisible) {
                 m_questionGenerationActionKey.clear();
+                m_questionGenerationActionModel.clear();
+                if (replacingQuestions) {
+                    discardPendingAnswerMedia();
+                    emit questionsRegenerated();
+                }
                 reloadThread(true);
                 refreshProgress();
                 loadAgentSteps();
@@ -462,14 +575,17 @@ void InterviewSession::reconcileQuestionGeneration(int sessionId, quint64 genera
             }
             if (attempt < 2) {
                 QTimer::singleShot(150 * (attempt + 1), this,
-                    [this, sessionId, generation, message, attempt]() {
-                        reconcileQuestionGeneration(sessionId, generation, message, attempt + 1);
+                    [this, sessionId, generation, message, baselineQuestionSignature,
+                     replacingQuestions, attempt]() {
+                        reconcileQuestionGeneration(sessionId, generation, message,
+                            baselineQuestionSignature, replacingQuestions, attempt + 1);
                     });
                 return;
             }
             m_questionGenerationInFlight = false;
             updateLoading();
-            emit errorOccurred(message + QStringLiteral(" 같은 요청 키로 다시 시도해 주세요."));
+            emit errorOccurred(message + QStringLiteral(
+                " 같은 모델로 재시도하거나 다른 모델을 선택해 새로 시도해 주세요."));
         });
 }
 

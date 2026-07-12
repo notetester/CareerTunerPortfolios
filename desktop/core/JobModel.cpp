@@ -13,6 +13,8 @@ static QString modeLabel(const QString& m)
     if (m == "PERSONALITY") return QStringLiteral("인성 면접");
     if (m == "PRESSURE")    return QStringLiteral("압박 면접");
     if (m == "RESUME")      return QStringLiteral("자소서 면접");
+    if (m == "PORTFOLIO")   return QStringLiteral("포트폴리오 면접");
+    if (m == "REAL")        return QStringLiteral("실전 종합 면접");
     return m;
 }
 

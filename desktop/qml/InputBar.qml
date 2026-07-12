@@ -9,6 +9,14 @@ import CareerTuner
 Item {
     id: root
     property string mode: "answer"
+    readonly property bool hasDraftActivity: mode === "answer" && input.text.trim() !== ""
+    readonly property bool hasPendingMediaActivity: mode === "answer" && (
+        recorder.recording
+        || cameraRecorder.recording
+        || recordedVideoPath !== ""
+        || videoPanelOpen
+        || session.transcribing
+        || session.hasPendingAnswerMedia)
     signal submitted(string text)
 
     // 영상 답변 상태 — 패널 열림 / 녹화 완료된 임시 mp4 경로
@@ -385,7 +393,7 @@ Item {
                 font.pixelSize: 13
                 wrapMode: TextArea.Wrap
                 background: null
-                enabled: root.mode === "intake" || session.currentQid >= 0
+                enabled: root.mode === "intake" || (session.currentQid >= 0 && !session.loading)
 
                 Keys.onReturnPressed: (event) => {
                     if (event.modifiers & Qt.ShiftModifier) {
@@ -404,7 +412,8 @@ Item {
                 // 마이크 (답변 모드)
                 Rectangle {
                     visible: root.mode === "answer"
-                    enabled: session.currentQid >= 0 && !session.scoring && !session.transcribing
+                    enabled: session.currentQid >= 0 && !session.loading
+                             && !session.scoring && !session.transcribing
                     activeFocusOnTab: visible && enabled
                     Accessible.role: Accessible.Button
                     Accessible.name: recorder.recording ? "음성 녹음 정지" : "음성 답변 녹음 시작"
@@ -446,7 +455,7 @@ Item {
                 // 영상 답변 (답변 모드) — 카메라 없으면 폰 이어하기 안내로 대체
                 Rectangle {
                     visible: root.mode === "answer"
-                    enabled: session.currentQid >= 0 && !session.scoring
+                    enabled: session.currentQid >= 0 && !session.loading && !session.scoring
                     activeFocusOnTab: visible && enabled
                     Accessible.role: Accessible.Button
                     Accessible.name: cameraRecorder.cameraAvailable ? "영상 답변 열기" : "폰으로 이어하기"
@@ -534,6 +543,7 @@ Item {
                     border.width: activeFocus ? 2 : 0
                     property bool sendEnabled: input.text.trim() !== ""
                                                && !session.scoring
+                                               && (root.mode === "intake" || !session.loading)
                                                && (root.mode === "intake" || session.currentQid >= 0)
                     gradient: Gradient {
                         GradientStop { position: 0.0; color: Theme.accent2 }
@@ -559,7 +569,7 @@ Item {
     function trySend() {
         const t = input.text.trim()
         if (t === "") return
-        if (root.mode === "answer" && (session.currentQid < 0 || session.scoring)) return
+        if (root.mode === "answer" && (session.currentQid < 0 || session.loading || session.scoring)) return
         root.submitted(t)
         if (root.mode === "intake") input.text = ""
     }

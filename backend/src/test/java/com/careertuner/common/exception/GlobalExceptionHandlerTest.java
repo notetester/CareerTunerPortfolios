@@ -1,45 +1,116 @@
 package com.careertuner.common.exception;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.TransientDataAccessResourceException;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-/**
- * DB 연결 장애만 503(→ 프론트 outage 폴백 신호)으로 매핑되고, 제약위반/일반 오류는 500 을
- * 유지하는지 검증한다. 실제 버그가 outage 로 오인되면 안 되기 때문이다.
- */
 class GlobalExceptionHandlerTest {
 
-    private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+    private MockMvc mockMvc;
 
-    @Test
-    void dbConnectionFailureMapsTo503() {
-        var res = handler.handleDbUnavailable(new DataAccessResourceFailureException("connection refused"));
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-        assertThat(res.getBody().success()).isFalse();
-        assertThat(res.getBody().code()).isEqualTo("SERVICE_UNAVAILABLE");
+    @BeforeEach
+    void setUp() {
+        mockMvc = MockMvcBuilders.standaloneSetup(new RequestController())
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
     }
 
     @Test
-    void transientResourceFailureMapsTo503() {
-        var res = handler.handleDbUnavailable(new TransientDataAccessResourceException("communications link failure"));
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    void malformedJsonReturnsInvalidInputEnvelope() throws Exception {
+        mockMvc.perform(post("/request/body")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{bad-json}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
     }
 
     @Test
-    void constraintViolationIsNotTreatedAsOutage() {
-        // DataIntegrityViolationException 은 handleDbUnavailable 대상이 아니므로 catch-all(500)로 남는다.
-        var res = handler.handleUnexpected(new DataIntegrityViolationException("duplicate key"));
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    void missingParameterAndHeaderReturnBadRequest() throws Exception {
+        mockMvc.perform(get("/request/number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+
+        mockMvc.perform(get("/request/header"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
     }
 
     @Test
-    void genericErrorStays500() {
-        var res = handler.handleUnexpected(new RuntimeException("some bug"));
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    void invalidParameterTypeReturnsBadRequest() throws Exception {
+        mockMvc.perform(get("/request/number").param("value", "not-a-number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+    }
+
+    @Test
+    void unsupportedMethodAndMediaTypeKeepProtocolStatus() throws Exception {
+        mockMvc.perform(put("/request/only-get"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+
+        mockMvc.perform(post("/request/body")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("plain"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
+    void dbConnectionFailureReturnsServiceUnavailable() throws Exception {
+        // DB 연결/리소스 장애 → 503(프론트 outage 폴백 신호). 제약위반·일반 오류(500)와 구분된다.
+        mockMvc.perform(get("/request/db-fail"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
+    }
+
+    @RestController
+    @RequestMapping("/request")
+    private static class RequestController {
+
+        @PostMapping(value = "/body", consumes = MediaType.APPLICATION_JSON_VALUE)
+        String body(@RequestBody Payload payload) {
+            return payload.value();
+        }
+
+        @GetMapping("/number")
+        int number(@RequestParam int value) {
+            return value;
+        }
+
+        @GetMapping("/header")
+        String header(@RequestHeader("X-Required") String value) {
+            return value;
+        }
+
+        @GetMapping("/only-get")
+        String onlyGet() {
+            return "ok";
+        }
+
+        @GetMapping("/db-fail")
+        String dbFail() {
+            throw new DataAccessResourceFailureException("db connection refused");
+        }
+    }
+
+    private record Payload(String value) {
     }
 }

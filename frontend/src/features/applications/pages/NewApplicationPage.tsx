@@ -638,7 +638,7 @@ export function NewApplicationPage() {
                         type="button"
                         onClick={() => setModelOptionsReloadKey((key) => key + 1)}
                         disabled={busy}
-                        className="rounded border border-amber-300 bg-white px-2 py-1 font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                        className="rounded border border-amber-300 bg-card px-2 py-1 font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                       >
                         다시 시도
                       </button>

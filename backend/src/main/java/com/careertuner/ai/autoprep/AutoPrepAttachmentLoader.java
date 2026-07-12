@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 
 import com.careertuner.common.text.DocumentTextExtractor;
 import com.careertuner.common.text.DocumentTextExtractor.Extraction;
+import com.careertuner.billing.domain.SubscriptionBenefitPolicy;
+import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.user.domain.User;
@@ -19,7 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 첨부 파일 로더. 요청의 attachmentFileIds 를 플랜 한도 내에서 불러오고, 텍스트형(text/*, 텍스트 PDF, .docx)은 본문을 추출한다.
  *
- * <p>플랜 게이팅: 무료(FREE/BASIC) 1개, 유료(PRO/PREMIUM) 5개. (요금제 세부 정책은 E와 추후 조정 — TODO)
+ * <p>플랜 게이팅은 E billing policy의 {@code AUTOPREP_ATTACHMENT} 수량을 정본으로 사용한다.
  * 한도 초과분은 버리고 로그만 남긴다. 개별 파일 로드 실패도 건너뛰어 항상 진행한다.
  * 텍스트 추출은 {@link DocumentTextExtractor} 에 위임하고, 절단({@link #MAX_TEXT_CHARS})은 로더에 남긴다.
  * 추출 실패(스캔 PDF 등)는 throw 하지 않고 text=null 로 유지한다(항상 진행 — AutoPrep 원칙).
@@ -29,11 +31,13 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class AutoPrepAttachmentLoader {
 
-    private static final int FREE_LIMIT = 1;
-    private static final int PAID_LIMIT = 5;
+    static final String ATTACHMENT_BENEFIT_CODE = "AUTOPREP_ATTACHMENT";
+    private static final int SAFE_FALLBACK_LIMIT = 1;
+    private static final int MAX_POLICY_LIMIT = 20;
     static final int MAX_TEXT_CHARS = 12000;
 
     private final UserMapper userMapper;
+    private final BillingPolicyService billingPolicyService;
     private final FileService fileService;
     private final DocumentTextExtractor documentTextExtractor;
 
@@ -64,10 +68,14 @@ public class AutoPrepAttachmentLoader {
     private int attachmentLimit(Long userId) {
         User user = userMapper.findById(userId);
         String plan = (user == null || user.getPlan() == null) ? "FREE" : user.getPlan().trim().toUpperCase();
-        return switch (plan) {
-            case "PRO", "PREMIUM" -> PAID_LIMIT;
-            default -> FREE_LIMIT;
-        };
+        SubscriptionBenefitPolicy policy = billingPolicyService.activeBenefitPolicy(
+                plan, ATTACHMENT_BENEFIT_CODE, null);
+        if (policy == null || policy.getQuantity() < 0) {
+            log.warn("AutoPrep 첨부 정책 누락/오류 — 안전 기본값 {}개 적용(plan={})",
+                    SAFE_FALLBACK_LIMIT, plan);
+            return SAFE_FALLBACK_LIMIT;
+        }
+        return Math.min(policy.getQuantity(), MAX_POLICY_LIMIT);
     }
 
     private PrepAttachment toAttachment(FileService.Download download) {

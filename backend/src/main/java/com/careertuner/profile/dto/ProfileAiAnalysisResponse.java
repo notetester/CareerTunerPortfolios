@@ -33,10 +33,12 @@ public record ProfileAiAnalysisResponse(
         Integer aiScore,
         List<ProfileCriterionScoreResponse> criteria,
         List<String> qualityWarnings,
+        Long profileVersionId,
+        Integer profileVersionNo,
         String analyzedAt) {
 
     public static ProfileAiAnalysisResponse empty() {
         return new ProfileAiAnalysisResponse(false, null, List.of(), List.of(), List.of(), List.of(),
-                null, null, null, null, List.of(), List.of(), null);
+                null, null, null, null, List.of(), List.of(), null, null, null);
     }
 }

@@ -12,8 +12,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.billing.policy.RequiresAiCharge;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.dashboard.dto.DashboardDerivedTodoUpdateRequest;
 import com.careertuner.dashboard.dto.DashboardSummaryResponse;
 import com.careertuner.dashboard.dto.DashboardTodoCreateRequest;
@@ -31,12 +34,15 @@ public class DashboardController {
     private final DashboardService dashboardService;
 
     @GetMapping("/summary")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<DashboardSummaryResponse> summary(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(dashboardService.getSummary(authUser.id()));
     }
 
     // 사용자가 명시적으로 요청한 대시보드 요약 재생성. AI를 강제로 실행하고 크레딧을 차감한다.
     @PostMapping("/summary/refresh")
+    @RequiresConsent(ConsentType.AI_DATA)
+    @RequiresAiCharge("DASHBOARD_SUMMARY")
     public ApiResponse<DashboardSummaryResponse> refresh(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(dashboardService.refreshSummary(authUser.id()));
     }

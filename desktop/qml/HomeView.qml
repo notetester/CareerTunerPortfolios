@@ -13,6 +13,10 @@ Item {
     property string askMessage: ""
     property int pendingCaseId: -1
 
+    function openWebPath(path) {
+        Qt.openUrlExternally(appSettings.webAppUrl + path)
+    }
+
     function startIntake(query) {
         root.lastQuery = query
         root.candidates = []
@@ -106,6 +110,58 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: root.startIntake(modelData)
                             }
+                        }
+                    }
+                }
+            }
+
+            // 웹 연동 허브: 데스크톱에 없는 상세 화면은 운영 웹의 반응형 구현을 이어 연다.
+            // 토큰은 URL에 싣지 않고 브라우저 세션 경계에서 다시 확인한다.
+            Flow {
+                Layout.fillWidth: true
+                Layout.preferredHeight: childrenRect.height
+                spacing: 8
+                Repeater {
+                    model: [
+                        { label: "웹 대시보드", path: "/dashboard" },
+                        { label: "취업 분석", path: "/analysis" },
+                        { label: "커리어 로드맵", path: "/career-roadmap" },
+                        { label: "자격증 검색", path: "/certificates" },
+                        { label: "AI 첨삭", path: "/correction" },
+                        { label: "결제·크레딧", path: "/billing" },
+                        { label: "커뮤니티", path: "/community" },
+                        { label: "고객센터", path: "/support" }
+                    ]
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: cWebLabel.implicitWidth + 26
+                        height: 32
+                        radius: 8
+                        color: cWebHover.containsMouse ? Theme.hover : Theme.raised
+                        border.color: activeFocus ? Theme.accent : Theme.border
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: modelData.label + " 웹 화면 열기"
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                root.openWebPath(modelData.path)
+                            }
+                        }
+                        Text {
+                            id: cWebLabel
+                            anchors.centerIn: parent
+                            text: modelData.label + " ↗"
+                            color: Theme.text
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+                        MouseArea {
+                            id: cWebHover
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.openWebPath(modelData.path)
                         }
                     }
                 }

@@ -13,6 +13,7 @@ import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.billing.dto.AiChargeCommand;
 import com.careertuner.billing.dto.AiChargeResult;
+import com.careertuner.billing.policy.AiChargePreflightService;
 import com.careertuner.billing.service.AiChargeService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -21,9 +22,12 @@ import com.careertuner.correction.ai.CorrectionAiClient.CorrectionCommand;
 import com.careertuner.correction.ai.CorrectionAiClient.CorrectionPayload;
 import com.careertuner.correction.domain.CorrectionRequest;
 import com.careertuner.correction.dto.CorrectionCreateRequest;
+import com.careertuner.correction.dto.CorrectionInterviewSourceResponse;
 import com.careertuner.correction.dto.CorrectionResponse;
 import com.careertuner.correction.dto.CorrectionResultPayload;
 import com.careertuner.correction.mapper.CorrectionMapper;
+import com.careertuner.correction.ai.SelfCorrectionInput;
+import com.careertuner.correction.ai.prompt.CorrectionPromptCatalog;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -58,7 +62,9 @@ public class CorrectionService {
     private final CorrectionAiUsageLogService usageLogService;
     private final ApplicationCaseAccessService applicationCaseAccessService;
     private final CorrectionContextService contextService;
+    private final CorrectionSourceService sourceService;
     private final TransactionTemplate transactionTemplate;
+    private final AiChargePreflightService chargePreflightService;
     private final AiChargeService aiChargeService;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
@@ -80,8 +86,15 @@ public class CorrectionService {
     private CorrectionResponse create(Long userId, CorrectionCreateRequest request, boolean chargeRequired,
                                       RequestedAiModel requestedModel) {
         String correctionType = normalizeCorrectionType(request == null ? null : request.correctionType());
-        String originalText = normalizeOriginalText(request == null ? null : request.originalText());
         String sourceType = normalizeSourceType(request == null ? null : request.sourceType());
+        CorrectionInterviewSourceResponse interviewSource = resolveInterviewSource(
+                userId, correctionType, sourceType, request);
+        String originalText = normalizeOriginalText(interviewSource == null
+                ? request == null ? null : request.originalText()
+                : interviewSource.originalText());
+        String questionText = interviewSource == null
+                ? request == null ? null : request.questionText()
+                : interviewSource.questionText();
         String policyAcknowledgementKey = chargeRequired
                 ? normalizePolicyAcknowledgementKey(request == null ? null : request.policyAcknowledgementKey())
                 : null;
@@ -90,7 +103,9 @@ public class CorrectionService {
         String requestKey = chargeRequired
                 ? normalizeRequestKey(request == null ? null : request.requestKey())
                 : optionalRequestKey(request == null ? null : request.requestKey());
-        Long applicationCaseId = request == null ? null : request.applicationCaseId();
+        Long applicationCaseId = interviewSource == null
+                ? request == null ? null : request.applicationCaseId()
+                : interviewSource.applicationCaseId();
         ApplicationCase applicationCase = applicationCaseId == null
                 ? null
                 : applicationCaseAccessService.requireOwned(userId, applicationCaseId);
@@ -99,12 +114,17 @@ public class CorrectionService {
         if (existing != null) {
             return replayedResponse(existing);
         }
+        if (chargeRequired) {
+            // AI 실행 전에 잔여 사용권/크레딧과 정책 확인을 검증한다. 후단 charge는 실제 사용량으로 확정한다.
+            chargePreflightService.requireAcknowledged(userId, featureType, policyAcknowledgementKey);
+        }
         var selfInput = contextService.build(
                 userId,
                 correctionType,
                 applicationCase,
                 originalText,
-                request == null ? null : request.questionText());
+                questionText,
+                interviewSource);
 
         CorrectionPayload payload;
         try {
@@ -115,7 +135,7 @@ public class CorrectionService {
                     applicationCaseId,
                     applicationCase,
                     originalText,
-                    request == null ? null : request.questionText(),
+                    questionText,
                     selfInput), requestedModel);
             validateChargeablePayload(payload);
         } catch (RuntimeException ex) {
@@ -134,10 +154,11 @@ public class CorrectionService {
                         .applicationCaseId(applicationCaseId)
                         .correctionType(correctionType)
                         .sourceType(sourceType)
-                        .sourceRefId(request == null ? null : request.sourceRefId())
+                        .sourceRefId(interviewSource == null ? null : interviewSource.sourceRefId())
                         .originalText(originalText)
                         .improvedText(payload.improvedText())
                         .resultJson(resultJson(payload))
+                        .sourceSnapshot(sourceSnapshot(selfInput, requestedModel, payload.usage().model()))
                         .status("SUCCESS")
                         .aiUsageLogId(aiUsageLogId)
                         .build();
@@ -196,6 +217,13 @@ public class CorrectionService {
         return CorrectionResponse.from(correction, readResultPayload(correction.getResultJson()));
     }
 
+    @Transactional
+    public void delete(Long userId, Long id) {
+        if (id == null || correctionMapper.softDelete(id, userId) != 1) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "Correction request was not found.");
+        }
+    }
+
     private String normalizeCorrectionType(String value) {
         String type = value == null ? "" : value.trim().toUpperCase();
         return switch (type) {
@@ -206,10 +234,34 @@ public class CorrectionService {
 
     private String normalizeSourceType(String value) {
         String sourceType = value == null || value.trim().isEmpty() ? "DIRECT_INPUT" : value.trim().toUpperCase();
-        if (sourceType.length() > 40) {
-            throw new BusinessException(ErrorCode.INVALID_INPUT, "sourceType is too long.");
+        if (!"DIRECT_INPUT".equals(sourceType) && !"INTERVIEW_ANSWER".equals(sourceType)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "Unsupported correction source type.");
         }
         return sourceType;
+    }
+
+    private CorrectionInterviewSourceResponse resolveInterviewSource(
+            Long userId,
+            String correctionType,
+            String sourceType,
+            CorrectionCreateRequest request
+    ) {
+        Long sourceRefId = request == null ? null : request.sourceRefId();
+        if (sourceRefId == null) {
+            if (!"DIRECT_INPUT".equals(sourceType)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT, "연결할 면접 답변 ID가 필요합니다.");
+            }
+            return null;
+        }
+        if (!TYPE_INTERVIEW_ANSWER.equals(correctionType) || !"INTERVIEW_ANSWER".equals(sourceType)) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "면접 답변 출처는 답변 첨삭에서만 사용할 수 있습니다.");
+        }
+        CorrectionInterviewSourceResponse source = sourceService.interviewAnswer(userId, sourceRefId);
+        if (request.applicationCaseId() != null
+                && !request.applicationCaseId().equals(source.applicationCaseId())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "면접 답변과 지원 건이 일치하지 않습니다.");
+        }
+        return source;
     }
 
     private String normalizeOriginalText(String value) {
@@ -335,6 +387,25 @@ public class CorrectionService {
             return objectMapper.writeValueAsString(result);
         } catch (JacksonException ex) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Correction result could not be serialized.");
+        }
+    }
+
+    private String sourceSnapshot(
+            SelfCorrectionInput input,
+            RequestedAiModel requestedModel,
+            String actualModel
+    ) {
+        try {
+            Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+            if (input != null && input.sourceProvenance() != null) {
+                snapshot.putAll(input.sourceProvenance());
+            }
+            snapshot.put("correctionPromptVersion", CorrectionPromptCatalog.VERSION);
+            snapshot.put("requestedModel", requestedModel == null ? RequestedAiModel.AUTO.name() : requestedModel.name());
+            snapshot.put("actualModel", actualModel == null ? "" : actualModel);
+            return objectMapper.writeValueAsString(snapshot);
+        } catch (JacksonException ex) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Correction source snapshot could not be serialized.");
         }
     }
 

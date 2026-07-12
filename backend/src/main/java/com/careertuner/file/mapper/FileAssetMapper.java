@@ -17,6 +17,11 @@ public interface FileAssetMapper {
 
     List<FileAsset> findByRef(@Param("refType") String refType, @Param("refId") Long refId);
 
+    /** 회원 탈퇴 시 실제 저장소에서도 제거할 이력서/포트폴리오 원본. */
+    List<FileAsset> findProfileFilesByOwner(@Param("ownerUserId") Long ownerUserId);
+
+    List<FileAsset> findDeletedOwnerProfileFiles(@Param("limit") int limit);
+
     void updateRef(@Param("id") Long id,
                    @Param("refType") String refType,
                    @Param("refId") Long refId);
@@ -83,4 +88,7 @@ public interface FileAssetMapper {
                                  @Param("expectedKind") String expectedKind,
                                  @Param("refType") String refType,
                                  @Param("refId") Long refId);
+
+    int deleteProfileFileByIdAndOwner(@Param("id") Long id,
+                                      @Param("ownerUserId") Long ownerUserId);
 }
