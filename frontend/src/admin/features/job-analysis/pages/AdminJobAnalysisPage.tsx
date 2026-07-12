@@ -18,6 +18,8 @@ import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import {
   formatAnalysisProvenanceSummary,
+  getEmploymentTypeLabel,
+  getExperienceLevelLabel,
   parseJsonArrayOrText,
   parseJsonStringArray,
 } from "@/features/applications/types/analysis";
@@ -598,8 +600,8 @@ function JobAnalysisDetail({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <MetaBlock label="고용 형태" value={row.employmentType ?? "미정"} />
-        <MetaBlock label="경력 수준" value={row.experienceLevel ?? "미정"} />
+        <MetaBlock label="고용 형태" value={getEmploymentTypeLabel(row.employmentType)} />
+        <MetaBlock label="경력 수준" value={getExperienceLevelLabel(row.experienceLevel)} />
         <MetaBlock label="공고 revision" value={formatPostingRevision(row)} />
         <MetaBlock label="생성일" value={formatDateTime(row.createdAt)} />
         <MetaBlock label="확정일" value={row.confirmedAt ? formatDateTime(row.confirmedAt) : "미확정"} />

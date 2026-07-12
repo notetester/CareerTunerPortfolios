@@ -16,6 +16,8 @@ import type {
 import {
   formatJsonArrayForTextarea,
   getDifficultyLabel,
+  getEmploymentTypeLabel,
+  getExperienceLevelLabel,
   parseAmbiguousConditionRows,
   parseEvidenceRows,
   parseJsonStringArray,
@@ -318,11 +320,11 @@ export function JobAnalysisPanel({
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="text-xs font-semibold text-slate-500">고용 형태</div>
-                <div className="mt-1 text-sm font-bold text-slate-900">{analysis.employmentType ?? "미정"}</div>
+                <div className="mt-1 text-sm font-bold text-slate-900">{getEmploymentTypeLabel(analysis.employmentType)}</div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="text-xs font-semibold text-slate-500">경력 수준</div>
-                <div className="mt-1 text-sm font-bold text-slate-900">{analysis.experienceLevel ?? "미정"}</div>
+                <div className="mt-1 text-sm font-bold text-slate-900">{getExperienceLevelLabel(analysis.experienceLevel)}</div>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="text-xs font-semibold text-slate-500">난이도</div>

@@ -226,8 +226,8 @@ export function AdminAiUsagePage() {
   return (
     <AdminShell
       active="ai-usage"
-      breadcrumb="B AI 사용량"
-      title="B AI 사용량"
+      breadcrumb="AI 사용량"
+      title="AI 사용량"
       icon={Gauge}
       desc="공고 분석, 기업 분석, 공고 OCR의 AI 호출 로그와 사용량을 확인합니다."
       actions={(
