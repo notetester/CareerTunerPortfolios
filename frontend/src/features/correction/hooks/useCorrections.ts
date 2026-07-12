@@ -4,6 +4,7 @@ import {
   notifyAndAcknowledgeAiCharge,
   toastAiChargeCompleted,
 } from "@/features/billing/api/aiChargePreviewApi";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { createCorrection, getCorrection, listCorrections } from "../api/correctionApi";
 import type {
   CorrectionResponse,
@@ -70,7 +71,7 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
     void loadHistory();
   }, [loadHistory]);
 
-  const submit = useCallback(async (request: CorrectionSubmitRequest) => {
+  const submit = useCallback(async (request: CorrectionSubmitRequest, model: AiModelChoice = "AUTO") => {
     if (submittingRef.current) return null;
     const requestId = ++submitRequestId.current;
     const requestScope = scopeKeyRef.current;
@@ -86,7 +87,7 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
         ...request,
         policyAcknowledgementKey: acknowledged.policyAcknowledgementKey,
         requestKey,
-      });
+      }, model);
       clearPendingRequest(requestScope, requestKey);
       if (!result.replayed) {
         toastAiChargeCompleted(acknowledged.preview, result);

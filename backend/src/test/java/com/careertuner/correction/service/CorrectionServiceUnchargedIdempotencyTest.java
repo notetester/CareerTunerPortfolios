@@ -80,14 +80,14 @@ class CorrectionServiceUnchargedIdempotencyTest {
 
         assertThat(response.id()).isEqualTo(99L);
         assertThat(response.replayed()).isTrue();
-        verify(aiClient, never()).correct(any());
+        verify(aiClient, never()).correct(any(), any());
         verify(transactionTemplate, never()).execute(any());
     }
 
     @Test
     @DisplayName("requestKey 가 없으면 멱등성 조회 자체를 하지 않는다 — 기존 동작 유지")
     void unchargedPathWithoutRequestKeySkipsIdempotencyLookup() {
-        when(aiClient.correct(any())).thenThrow(new IllegalStateException("AI 호출까지 도달"));
+        when(aiClient.correct(any(), any())).thenThrow(new IllegalStateException("AI 호출까지 도달"));
 
         try {
             service.createUnchargedForAutoPrep(7L, autoPrepRequest(null));
