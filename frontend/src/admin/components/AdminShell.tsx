@@ -128,7 +128,8 @@ const NAV_GROUPS: NavGroup[] = [
       { key: "corrections", label: "첨삭 모니터링", icon: FilePenLine, href: "/admin/corrections" },
       { key: "ai-usage", label: "AI 사용량", icon: Gauge, href: "/admin/ai-usage" },
       { key: "ai-settings", label: "AI 운영 설정", icon: SlidersHorizontal, href: "/admin/ai-settings" },
-      { key: "prompts", label: "프롬프트 템플릿", icon: FileText, href: "/admin/prompts" },
+      // 프롬프트 템플릿(B 공고/기업)은 읽기 전용 확인 화면이라 메뉴에서 숨김. 라우트(/admin/prompts)는 유지.
+      // { key: "prompts", label: "프롬프트 템플릿", icon: FileText, href: "/admin/prompts" },
     ],
   },
   {
