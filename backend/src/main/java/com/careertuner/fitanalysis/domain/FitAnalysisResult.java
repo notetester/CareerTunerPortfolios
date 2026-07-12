@@ -40,6 +40,7 @@ public class FitAnalysisResult {
     private String companyName;
     private String jobTitle;
     private LocalDate postingDate;
+    private LocalDate deadlineDate;
     private String applicationStatus;
     private boolean favorite;
     private LocalDateTime applicationUpdatedAt;

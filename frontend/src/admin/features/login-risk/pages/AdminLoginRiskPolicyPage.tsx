@@ -3,8 +3,10 @@ import { ShieldAlert } from "lucide-react";
 
 import AdminShell from "../../../components/AdminShell";
 import { getLoginRiskPolicy, updateLoginRiskPolicy, type LoginRiskPolicy } from "../api";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 
 export function AdminLoginRiskPolicyPage() {
+  const { canUpdate } = useAdminDomainAuthorization("SECURITY");
   const [policy, setPolicy] = useState<LoginRiskPolicy | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [maxFailed, setMaxFailed] = useState(5);
@@ -35,6 +37,7 @@ export function AdminLoginRiskPolicyPage() {
   const dirty = !!policy && (enabled !== policy.enabled || maxFailed !== policy.maxFailedCount || lockMinutes !== policy.lockMinutes);
 
   const save = async () => {
+    if (!canUpdate) return;
     setSaving(true);
     try {
       const clampedMax = Math.min(1000, Math.max(1, maxFailed || 1));
@@ -79,7 +82,8 @@ export function AdminLoginRiskPolicyPage() {
             type="button"
             role="switch"
             aria-checked={enabled}
-            onClick={() => setEnabled((v) => !v)}
+            disabled={!canUpdate}
+            onClick={() => { if (canUpdate) setEnabled((v) => !v); }}
             className={`relative h-6 w-11 rounded-full transition-colors ${enabled ? "bg-emerald-500" : "bg-slate-300"}`}
           >
             <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
@@ -90,22 +94,22 @@ export function AdminLoginRiskPolicyPage() {
         <div className={`mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 ${enabled ? "" : "opacity-50"}`}>
           <label className="flex flex-col gap-1">
             <span className="av-flabel">잠금 트리거 실패 횟수</span>
-            <input type="number" min={1} max={1000} className="av-input" disabled={!enabled}
+            <input type="number" min={1} max={1000} className="av-input" disabled={!enabled || !canUpdate}
                    value={maxFailed} onChange={(e) => setMaxFailed(Number(e.target.value))} />
             <span className="av-hint">연속 실패가 이 횟수에 도달하면 잠금</span>
           </label>
           <label className="flex flex-col gap-1">
             <span className="av-flabel">잠금 유지 시간 (분)</span>
-            <input type="number" min={1} max={525600} className="av-input" disabled={!enabled}
+            <input type="number" min={1} max={525600} className="av-input" disabled={!enabled || !canUpdate}
                    value={lockMinutes} onChange={(e) => setLockMinutes(Number(e.target.value))} />
             <span className="av-hint">잠금 후 이 시간이 지나면 자동 해제</span>
           </label>
         </div>
 
         <div className="mt-5 flex items-center gap-2">
-          <button type="button" className="av-btn bg-slate-900 text-white" disabled={!dirty || saving} onClick={() => void save()}>
+          {canUpdate && <button type="button" className="av-btn bg-slate-900 text-white" disabled={!dirty || saving} onClick={() => void save()}>
             {saving ? "저장 중…" : "저장"}
-          </button>
+          </button>}
           {policy && (
             <span className="text-xs text-slate-400">
               현재: {policy.enabled ? `ON · ${policy.maxFailedCount}회 / ${policy.lockMinutes}분` : "OFF(무제약)"}

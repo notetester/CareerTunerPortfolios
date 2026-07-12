@@ -73,7 +73,7 @@ class AdminCorrectionServiceTest {
         detail.setId(10L);
         detail.setUserId(20L);
         detail.setAdminMemo("이전 메모");
-        when(mapper.findCorrection(10L)).thenReturn(detail);
+        when(mapper.findCorrectionForUpdate(10L)).thenReturn(detail);
         when(mapper.updateAdminMemo(10L, "새 메모")).thenReturn(1);
 
         service.updateMemo(admin(), 10L, "  새 메모  ");

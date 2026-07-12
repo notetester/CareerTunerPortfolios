@@ -36,6 +36,9 @@ public interface AdminInterviewMapper {
     /** 관리자 운영 메모 조회 (상세 전용 — 목록 SessionSelect 엔 넣지 않아 마이그레이션 전에도 목록은 동작). */
     String findAdminMemo(@Param("id") Long id);
 
+    /** 메모 수정 트랜잭션에서 최신 변경 전 값을 읽고 행을 잠근다. */
+    String findAdminMemoForUpdate(@Param("id") Long id);
+
     /** 관리자 운영 메모 갱신. */
     int updateAdminMemo(@Param("id") Long id, @Param("adminMemo") String adminMemo);
 }

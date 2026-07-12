@@ -21,4 +21,6 @@ public interface CorrectionMapper {
                                          @Param("applicationCaseId") Long applicationCaseId,
                                          @Param("correctionType") String correctionType,
                                          @Param("limit") int limit);
+
+    int softDelete(@Param("id") Long id, @Param("userId") Long userId);
 }

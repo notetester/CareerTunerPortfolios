@@ -58,6 +58,8 @@ import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.community.search.PostHit;
 import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.jobposting.service.JobPostingService;
@@ -177,6 +179,10 @@ public class ChatbotController {
     private final OnboardingRestartStore onboardingRestartStore;
     // 챗봇 일일 사용 쿼터 정책(관리자 편집). OFF면 무제약, ON이면 로그인 사용자 하루 한도 집행.
     private final com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService;
+    // 사용자 모델 선택(요청 스코프) — ask/summarize 진입에서 set, FallbackChatModel 이 읽는다.
+    private final com.careertuner.ai.chat.llm.ChatModelSelectionTrace chatModelSelectionTrace;
+    // 익명 hot-path 남용 방어(per-IP). 로그인은 일일 쿼터가 별도로 담당.
+    private final AnonChatRateLimiter anonChatRateLimiter;
 
     public ChatbotController(CommunityChatAgent agent,
                             QuickReplyAgent quickReplyAgent,
@@ -203,7 +209,9 @@ public class ChatbotController {
                             JobPostingService jobPostingService,
                             SideQuestionStore sideQuestionStore,
                             OnboardingRestartStore onboardingRestartStore,
-                            com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService) {
+                            com.careertuner.support.chatbot.quota.ChatbotQuotaPolicyService chatbotQuotaPolicyService,
+                            com.careertuner.ai.chat.llm.ChatModelSelectionTrace chatModelSelectionTrace,
+                            AnonChatRateLimiter anonChatRateLimiter) {
         this.agent = agent;
         this.quickReplyAgent = quickReplyAgent;
         this.quickReplyParser = quickReplyParser;
@@ -230,6 +238,8 @@ public class ChatbotController {
         this.sideQuestionStore = sideQuestionStore;
         this.onboardingRestartStore = onboardingRestartStore;
         this.chatbotQuotaPolicyService = chatbotQuotaPolicyService;
+        this.chatModelSelectionTrace = chatModelSelectionTrace;
+        this.anonChatRateLimiter = anonChatRateLimiter;
     }
 
     /* ── (g) 이탈성 질문 가드 헬퍼 ── */
@@ -1037,10 +1047,34 @@ public class ChatbotController {
      * 명확구역이면 ③ 즉시 진입, 경계구역이면 확인 1턴을 띄운다. 인테이크 진입 후 sticky 유지는 다음 PR.</p>
      */
     @PostMapping("/chatbot/ask")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ChatAskResponse> ask(@RequestBody ChatAskRequest req,
-                                            @AuthenticationPrincipal AuthUser authUser) {
+                                            @AuthenticationPrincipal AuthUser authUser,
+                                            @org.springframework.web.bind.annotation.RequestParam(required = false) String model,
+                                            jakarta.servlet.http.HttpServletRequest httpRequest) {
+        // 익명 hot-path 남용 방어 — permitAll 인 이 엔드포인트를 비로그인이 무제한 호출해 생성형 백엔드를
+        // 포화시키는 것을 per-IP 로 막는다. 로그인 사용자는 아래 askInternal 의 일일 쿼터가 담당하므로 대상 아님.
+        if (authUser == null && !anonChatRateLimiter.tryAcquire(AnonChatRateLimiter.clientIp(httpRequest))) {
+            return ApiResponse.error("TOO_MANY_REQUESTS", "요청이 많아 잠시 후 다시 시도해 주세요.");
+        }
+        // 사용자 선택 모델(AUTO/CAREERTUNER/CLAUDE/OPENAI)을 요청 스코프에 실어 FallbackChatModel 이 tier 를 고르게 한다.
+        // 동기 실행이라 ThreadLocal 안전. 자유생성 챗봇 문장에만 적용되고, finally 로 반드시 clear(스레드 재사용 누수 방지).
+        chatModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
+        try {
+            return askInternal(req, authUser);
+        } finally {
+            chatModelSelectionTrace.clear();
+        }
+    }
+
+    private ApiResponse<ChatAskResponse> askInternal(ChatAskRequest req, AuthUser authUser) {
         if (req == null || req.question() == null || req.question().isBlank()) {
             return ApiResponse.error("BAD_REQUEST", "질문을 입력해 주세요.");
+        }
+        // 입력 길이 상한 — 무제한 입력이 LLM 토큰/메모리로 폭증하는 벡터 차단(익명 포함 전 경로).
+        int maxQuestionLen = chatbotProperties.getMaxQuestionLength();
+        if (req.question().length() > maxQuestionLen) {
+            return ApiResponse.error("BAD_REQUEST", "질문이 너무 길어요. " + maxQuestionLen + "자 이내로 입력해 주세요.");
         }
 
         // 로그인 시 user_id 기록 → 나중에 "이전 대화 복원" 대상이 된다. 비로그인은 null(익명).
@@ -1201,12 +1235,15 @@ public class ChatbotController {
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
-        if (routeConfirmStore.consumePending(conversationId)) {
+        String pendingQuestion = routeConfirmStore.consumePendingQuestion(conversationId);
+        if (pendingQuestion != null) {
             if (isAffirmative(question)) {
                 return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(확인후)",
                         req.selectedCaseId(), req.selectedModeCode()));
             }
-            return ApiResponse.ok(faqPath(conversationId, question, userId, "①(확인후)"));
+            // 빠른 응답 "그냥 질문이에요"는 의도 설명일 뿐 실제 질문이 아니다. 최초 발화를 복원해 답한다.
+            String effectiveQuestion = isGenericQuestionConfirmation(question) ? pendingQuestion : question;
+            return ApiResponse.ok(faqPath(conversationId, effectiveQuestion, userId, "①(확인후)"));
         }
 
         // 통합 라우팅 판정.
@@ -1217,7 +1254,7 @@ public class ChatbotController {
                         req.selectedCaseId(), req.selectedModeCode()));
             }
             case INTAKE_CONFIRM -> {
-                routeConfirmStore.markPending(conversationId);
+                routeConfirmStore.markPending(conversationId, question);
                 responseLogService.record(conversationId, userId, question, "INTAKE", false, null, null, false);
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
@@ -1276,6 +1313,14 @@ public class ChatbotController {
         }
         String norm = question.trim().toLowerCase().replace(" ", "");
         return AFFIRMATIVE.contains(norm);
+    }
+
+    /** 확인 카드의 부정/질문 전용 빠른 응답인지 판정한다. 실제 새 질문이면 그 문장을 그대로 사용한다. */
+    static boolean isGenericQuestionConfirmation(String question) {
+        if (question == null) return true;
+        String norm = question.trim().toLowerCase().replace(" ", "");
+        return Set.of("그냥질문이에요", "그냥질문이요", "질문이에요", "질문이요", "아니", "아니요")
+                .contains(norm);
     }
 
     /**
@@ -1805,8 +1850,24 @@ public class ChatbotController {
      * 남은 본문을 이어 요약 에이전트에 넘긴다. 응답은 묶음 요약 평문(summaryChip=null, links/quickReplies=[]).
      */
     @PostMapping("/chatbot/summarize-posts")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ChatAskResponse> summarizePosts(@RequestBody ChatSummarizeRequest req,
-                                                       @AuthenticationPrincipal AuthUser authUser) {
+                                                       @AuthenticationPrincipal AuthUser authUser,
+                                                       @org.springframework.web.bind.annotation.RequestParam(required = false) String model,
+                                                       jakarta.servlet.http.HttpServletRequest httpRequest) {
+        // 익명 hot-path 남용 방어 — ask 와 동일(로그인 사용자는 대상 아님).
+        if (authUser == null && !anonChatRateLimiter.tryAcquire(AnonChatRateLimiter.clientIp(httpRequest))) {
+            return ApiResponse.error("TOO_MANY_REQUESTS", "요청이 많아 잠시 후 다시 시도해 주세요.");
+        }
+        chatModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
+        try {
+            return summarizePostsInternal(req, authUser);
+        } finally {
+            chatModelSelectionTrace.clear();
+        }
+    }
+
+    private ApiResponse<ChatAskResponse> summarizePostsInternal(ChatSummarizeRequest req, AuthUser authUser) {
         if (req == null || req.postIds() == null || req.postIds().isEmpty()) {
             return ApiResponse.error("BAD_REQUEST", "요약할 글을 선택해 주세요.");
         }
@@ -1823,11 +1884,14 @@ public class ChatbotController {
         ids = communityTools.visiblePostIds(ids, authUser != null ? authUser.id() : null);
 
         // 각 글 본문 수집 — 비공개/삭제("찾을 수 없")·차단 톰스톤은 요약 소스에서 제외.
+        // 본문 1건이 과도하게 길면 상한까지 절단 — 긴 입력 → 토큰 폭증 차단(TOP_K=3 과 함께).
+        int maxBodyLen = chatbotProperties.getMaxSummaryBodyLength();
         List<String> bodies = ids.stream()
                 .map(communityTools::getPostContent)
                 .filter(c -> c != null
                         && !c.startsWith("해당 글을 찾을 수 없")
                         && !c.startsWith("차단한 사용자의 게시글"))
+                .map(c -> c.length() > maxBodyLen ? c.substring(0, maxBodyLen) : c)
                 .collect(Collectors.toList());
 
         String message;

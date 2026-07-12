@@ -1,4 +1,5 @@
 #include "AdClient.h"
+#include "SettingsStore.h"
 
 #include <QDesktopServices>
 #include <QJsonArray>
@@ -54,17 +55,21 @@ QUrl safeAdTarget(const QString& rawValue, const QString& baseUrl)
 
 } // namespace
 
-AdClient::AdClient(ApiClient* api, QObject* parent)
-    : QObject(parent), m_api(api)
+AdClient::AdClient(ApiClient* api, SettingsStore* settings, QObject* parent)
+    : QObject(parent), m_api(api), m_settings(settings)
 {
 }
 
 void AdClient::refresh()
 {
     if (!m_api) return;
+    const quint64 refreshGeneration = ++m_refreshGeneration;
+    const quint64 lifecycleGeneration = m_lifecycleGeneration;
     // 서빙: placement 는 필수. 데스크톱 홈 배너 1건만 요청.
     m_api->get(QStringLiteral("/api/ads?placement=HOME_BANNER&platform=DESKTOP&limit=1"),
-               [this](bool ok, const QJsonValue& data, const QString&) {
+               [this, refreshGeneration, lifecycleGeneration](bool ok, const QJsonValue& data, const QString&) {
+        if (refreshGeneration != m_refreshGeneration
+            || lifecycleGeneration != m_lifecycleGeneration) return;
         if (!ok || !data.isArray() || data.toArray().isEmpty()) {
             applyEmpty();
             return;
@@ -89,25 +94,33 @@ void AdClient::refresh()
 
 void AdClient::clear()
 {
+    ++m_lifecycleGeneration;
+    ++m_refreshGeneration;
     applyEmpty();
 }
 
 void AdClient::openTarget()
 {
     if (!m_api || !m_visible || m_adId <= 0) return;
+    const qint64 adId = m_adId;
+    const QString fallbackTargetUrl = m_targetUrl;
+    const QString webOrigin = m_settings ? m_settings->webAppUrl() : m_api->baseUrl();
+    const quint64 lifecycleGeneration = m_lifecycleGeneration;
     // 클릭 집계 후 서버가 돌려주는 linkUrl 로 외부 브라우저를 연다.
     // (SPA 302 대신 URL 반환 계약 — 응답 linkUrl 을 우선하고, 없으면 캐시된 m_targetUrl 로 폴백.)
-    m_api->post(QStringLiteral("/api/ads/%1/click").arg(m_adId), QJsonObject(),
-                [this](bool ok, const QJsonValue& data, const QString&) {
+    m_api->post(QStringLiteral("/api/ads/%1/click").arg(adId), QJsonObject(),
+                [this, fallbackTargetUrl, webOrigin, lifecycleGeneration](bool ok, const QJsonValue& data, const QString&) {
+        if (lifecycleGeneration != m_lifecycleGeneration) return;
         QString url;
         if (ok && data.isObject()) {
             url = data.toObject().value(QStringLiteral("linkUrl")).toString();
         }
         if (url.isEmpty()) {
-            url = m_targetUrl;
+            url = fallbackTargetUrl;
         }
-        const QUrl target = safeAdTarget(url, m_api->baseUrl());
+        const QUrl target = safeAdTarget(url, webOrigin);
         if (target.isValid() && !target.isEmpty()) {
+            emit targetOpened(target);
             QDesktopServices::openUrl(target);
         }
     });
@@ -116,8 +129,9 @@ void AdClient::openTarget()
 void AdClient::recordImpression()
 {
     if (!m_api || m_adId <= 0) return;
+    const qint64 adId = m_adId;
     // 본문 없는 POST. best-effort — 결과는 무시.
-    m_api->post(QStringLiteral("/api/ads/%1/impression").arg(m_adId), QJsonObject(),
+    m_api->post(QStringLiteral("/api/ads/%1/impression").arg(adId), QJsonObject(),
                 [](bool, const QJsonValue&, const QString&) {});
 }
 

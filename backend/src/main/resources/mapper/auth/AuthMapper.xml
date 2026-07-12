@@ -16,7 +16,10 @@
 
     <insert id="insertSocial" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_social (user_id, provider, provider_user_id)
-        VALUES (#{userId}, #{provider}, #{providerUserId})
+        SELECT u.id, #{provider}, #{providerUserId}
+          FROM users u
+         WHERE u.id = #{userId}
+           AND u.status = 'ACTIVE'
     </insert>
 
     <delete id="deleteSocial">
@@ -27,7 +30,10 @@
     <!-- 이메일 인증 토큰 -->
     <insert id="insertEmailVerification" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO email_verification (user_id, email, token, purpose, frontend_client, expired_at)
-        VALUES (#{userId}, #{email}, #{token}, #{purpose}, COALESCE(#{frontendClient}, 'primary'), #{expiredAt})
+        SELECT u.id, #{email}, #{token}, #{purpose}, COALESCE(#{frontendClient}, 'primary'), #{expiredAt}
+          FROM users u
+         WHERE u.id = #{userId}
+           AND u.status = 'ACTIVE'
     </insert>
 
     <select id="findEmailVerificationByToken" resultType="com.careertuner.auth.domain.EmailVerification">
@@ -49,7 +55,10 @@
     <!-- 리프레시 토큰 -->
     <insert id="insertRefreshToken" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO refresh_token (user_id, token, expired_at, ip_address, user_agent)
-        VALUES (#{userId}, #{token}, #{expiredAt}, #{ipAddress}, #{userAgent})
+        SELECT u.id, #{token}, #{expiredAt}, #{ipAddress}, #{userAgent}
+          FROM users u
+         WHERE u.id = #{userId}
+           AND u.status = 'ACTIVE'
     </insert>
 
     <select id="findRefreshToken" resultType="com.careertuner.auth.domain.RefreshToken">
@@ -69,6 +78,42 @@
             revoked_at = COALESCE(revoked_at, NOW())
         WHERE user_id = #{userId} AND revoked = 0
     </update>
+
+    <!-- 네이티브 OAuth 일회성 handoff: PKCE 검증 전에는 회원/소셜 계정을 만들지 않는다. -->
+    <insert id="insertNativeAuthHandoff" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO native_auth_handoff (
+            provider, provider_user_id, email, email_verified, display_name,
+            code_hash, handoff_challenge, expired_at
+        )
+        VALUES (
+            #{provider}, #{providerUserId}, #{email}, #{emailVerified}, #{displayName},
+            #{codeHash}, #{handoffChallenge}, DATE_ADD(NOW(), INTERVAL 3 MINUTE)
+        )
+    </insert>
+
+    <select id="findNativeAuthHandoffForUpdate"
+            resultType="com.careertuner.auth.domain.NativeAuthHandoff">
+        SELECT id, provider, provider_user_id, email, email_verified, display_name,
+               code_hash, handoff_challenge, expired_at, created_at
+          FROM native_auth_handoff
+         WHERE code_hash = #{codeHash}
+         LIMIT 1
+           FOR UPDATE
+    </select>
+
+    <!-- 검증 성공 행은 같은 트랜잭션에서 삭제한다. 실패 시 삭제와 후속 회원 생성이 함께 rollback된다. -->
+    <delete id="consumeNativeAuthHandoff">
+        DELETE FROM native_auth_handoff
+         WHERE id = #{id}
+           AND expired_at &gt; NOW()
+    </delete>
+
+    <delete id="deleteExpiredNativeAuthHandoffs">
+        DELETE FROM native_auth_handoff
+         WHERE expired_at &lt;= NOW()
+         ORDER BY expired_at
+         LIMIT 100
+    </delete>
 
     <insert id="insertLoginHistory" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_login_history (

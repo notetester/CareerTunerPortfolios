@@ -52,6 +52,14 @@
         WHERE id = #{id} AND user_id = #{userId} AND deleted_at IS NULL
     </select>
 
+    <!-- 수동 분석·strict 재추출 획득 TX 의 직렬화 지점: 같은 케이스 행 잠금으로 TOCTOU 를 없앤다. -->
+    <select id="lockApplicationCaseById" resultMap="ApplicationCaseResultMap">
+        SELECT *
+        FROM application_case
+        WHERE id = #{id} AND deleted_at IS NULL
+        FOR UPDATE
+    </select>
+
     <update id="updateApplicationCase">
         UPDATE application_case
         SET company_name = #{companyName},
@@ -102,11 +110,6 @@
           AND deleted_at IS NULL
           AND status = 'ANALYZING'
     </update>
-
-    <delete id="deleteApplicationCase">
-        DELETE FROM application_case
-        WHERE id = #{id} AND user_id = #{userId}
-    </delete>
 
     <update id="softDeleteApplicationCase">
         UPDATE application_case

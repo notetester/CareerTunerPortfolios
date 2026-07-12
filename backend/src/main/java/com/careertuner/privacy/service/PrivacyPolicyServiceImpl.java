@@ -38,6 +38,9 @@ import tools.jackson.databind.ObjectMapper;
 @Transactional(readOnly = true)
 public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
 
+    private static final String DELETED_USER_STATUS = "DELETED";
+    private static final String DELETED_USER_LABEL = "탈퇴한 사용자";
+
     private static final Logger log = LoggerFactory.getLogger(PrivacyPolicyServiceImpl.class);
 
     /**
@@ -419,7 +422,7 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
             if (blockIp) {
                 deriveIpBlock(userId, block.getBlockedUserId());
             } else {
-                mapper.deleteIpBlocksBySource(userId, block.getBlockedUserId());
+                mapper.softDeleteIpBlocksBySource(userId, block.getBlockedUserId());
             }
         }
         mapper.updateBlock(block);
@@ -430,8 +433,8 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
     @Transactional
     public void unblockUser(Long userId, Long blockId) {
         UserBlock block = requireOwnBlock(userId, blockId);
-        mapper.deleteIpBlocksBySource(userId, block.getBlockedUserId());
-        mapper.deleteBlock(blockId);
+        mapper.softDeleteIpBlocksBySource(userId, block.getBlockedUserId());
+        mapper.softDeleteBlock(blockId);
     }
 
     @Override
@@ -440,9 +443,11 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
                 .map(b -> new IpBlockResponse(
                         b.getId(),
                         b.getLabel() != null ? b.getLabel() : "차단 IP #" + b.getId(),
-                        b.getSourceUserId(),
+                        DELETED_USER_STATUS.equals(b.getSourceUserStatus()) ? null : b.getSourceUserId(),
                         // 파생 원본이 익명 콘텐츠 기반 차단이면 실명 대신 masked_label 표시(익명성 유지)
-                        b.getSourceMaskedLabel() != null ? b.getSourceMaskedLabel() : b.getSourceUserName(),
+                        DELETED_USER_STATUS.equals(b.getSourceUserStatus())
+                                ? DELETED_USER_LABEL
+                                : b.getSourceMaskedLabel() != null ? b.getSourceMaskedLabel() : b.getSourceUserName(),
                         countMatchedAccounts(b),
                         b.getCreatedAt()))
                 .toList();
@@ -451,7 +456,7 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
     @Override
     @Transactional
     public void deleteIpBlock(Long userId, Long ipBlockId) {
-        mapper.deleteIpBlock(ipBlockId, userId);
+        mapper.softDeleteIpBlock(ipBlockId, userId);
     }
 
     @Override
@@ -501,7 +506,7 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
         if (block == null || !userId.equals(block.getUserId())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "차단 항목을 찾을 수 없습니다.");
         }
-        mapper.deleteConversationBlock(blockId);
+        mapper.softDeleteConversationBlock(blockId);
     }
 
     /* ─────────────────────────── 내부 ─────────────────────────── */
@@ -561,11 +566,12 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
     private UserBlockResponse toBlockResponse(UserBlock block) {
         // 익명 콘텐츠 기반 차단 — 실명/이메일 대신 masked_label 을 노출해 익명성을 지킨다.
         boolean masked = block.getMaskedLabel() != null && !block.getMaskedLabel().isBlank();
+        boolean deletedUser = DELETED_USER_STATUS.equals(block.getBlockedUserStatus());
         return new UserBlockResponse(
                 block.getId(),
-                block.getBlockedUserId(),
-                masked ? block.getMaskedLabel() : block.getBlockedUserName(),
-                masked ? null : block.getBlockedUserEmail(),
+                deletedUser ? null : block.getBlockedUserId(),
+                deletedUser ? DELETED_USER_LABEL : masked ? block.getMaskedLabel() : block.getBlockedUserName(),
+                deletedUser || masked ? null : block.getBlockedUserEmail(),
                 masked,
                 parseFlags(block.getFlagsJson()),
                 block.isBlockIp(),

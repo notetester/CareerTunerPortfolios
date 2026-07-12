@@ -9,8 +9,8 @@ import CareerTuner
 Popup {
     id: root
 
-    // 클릭한 알림의 link — Main.qml 의 routeNotificationLink 로 연결
-    signal linkActivated(string link)
+    // 모든 알림 진입점을 Main.qml 의 activateNotification 으로 통합한다.
+    signal notificationActivated(string type, string link, string targetType, var targetId)
 
     width: 340
     padding: 0
@@ -219,10 +219,12 @@ Popup {
                         onClicked: {
                             if (noteItem.note.isRead !== true)
                                 notifications.markAsRead(noteItem.note.id)
+                            const type = String(noteItem.note.type || "")
                             const link = String(noteItem.note.link || "")
+                            const targetType = String(noteItem.note.targetType || "")
+                            const targetId = Number(noteItem.note.targetId || 0)
                             root.close()
-                            if (link.length > 0)
-                                root.linkActivated(link)
+                            root.notificationActivated(type, link, targetType, targetId)
                         }
                     }
                 }

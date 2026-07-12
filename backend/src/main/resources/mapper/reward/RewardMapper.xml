@@ -25,6 +25,7 @@
                benefit_note, active, created_at, updated_at
           FROM user_level_policy
          WHERE active = 1
+           AND deleted_at IS NULL
          ORDER BY min_point ASC, level ASC
     </select>
 

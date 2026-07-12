@@ -41,4 +41,5 @@ public class CommunityPost {
 
     // JOIN으로 가져오는 작성자 정보
     private String userName;
+    private String userStatus;
 }

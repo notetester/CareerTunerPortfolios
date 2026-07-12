@@ -8,6 +8,7 @@ import {
   Minimize2, Maximize2, Loader2, SquarePen, Trash2,
 } from "lucide-react";
 import { getAccessToken } from "@/app/lib/tokenStore";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { useChatbot } from "../hooks/useChatbot";
 import type {
   ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption, ChatSession,
@@ -124,18 +125,22 @@ export function ChatbotBubble() {
 /* ════════════════ Chat Panel (Widget) ════════════════ */
 interface ChatbotPanelProps {
   chatbot: ReturnType<typeof useChatbot>;
+  /** /support/chat 안에 포함할 때 fixed overlay 대신 페이지 본문으로 렌더한다. */
+  embedded?: boolean;
 }
 
 /** 면접 모드 코드 → 라벨(배너 서브텍스트용). 백엔드 MODE_OPTIONS 와 동일. */
 const MODE_LABELS: Record<string, string> = {
   BASIC: "기본 면접", JOB: "직무 면접", PERSONALITY: "인성 면접",
-  PRESSURE: "압박 면접", RESUME: "자소서 기반", COMPANY: "기업 맞춤",
+  PRESSURE: "압박 면접", RESUME: "자소서 기반", PORTFOLIO: "포트폴리오 기반",
+  REAL: "실전 종합", COMPANY: "기업 맞춤",
 };
 
 /** 면접 모드 코드 → 짧은 배지 라벨(SessionRow 모드 배지용 — MODE_LABELS 보다 압축). */
 const MODE_BADGE: Record<string, string> = {
   BASIC: "기본", JOB: "직무", PERSONALITY: "인성",
-  PRESSURE: "압박", RESUME: "자소서", COMPANY: "기업맞춤",
+  PRESSURE: "압박", RESUME: "자소서", PORTFOLIO: "포트폴리오",
+  REAL: "실전", COMPANY: "기업맞춤",
 };
 
 /** epoch millis → 상대시각("방금"/"3분 전"/"2시간 전"/"5일 전"). 0/미지정이면 빈 문자열. */
@@ -149,7 +154,7 @@ function relativeTime(ts: number): string {
   return `${Math.floor(h / 24)}일 전`;
 }
 
-function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
+export function ChatbotPanel({ chatbot, embedded = false }: ChatbotPanelProps) {
   const {
     close, messages, sendMessage, leaveOnboarding, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
@@ -160,10 +165,11 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     sessions, activeSessionId, openSession, newSession, loadSessions, deleteSession,
     surface, expandToFloating, collapseToCorner, markInterviewHandoff,
   } = chatbot;
-  const floating = surface === "floating";
+  const floating = !embedded && surface === "floating";
+  const wide = embedded || floating;
   // 플로팅에서 오케 실행이 시작되면 WorkView를 채팅 항목이 아니라 "무대(stage)"로 —
   // 컨테이너 720 캡을 풀어 6파트 그리드가 콘텐츠 폭을 채우고, 말풍선은 좁은 컬럼으로 위에 남는다.
-  const stage = floating && runStarted;
+  const stage = wide && runStarted;
 
   // 면접 인계: caseId 를 표식으로 남기고 D 면접 페이지로 이동(모드 선택 탭). caseId 없으면 그냥 진입.
   const goInterview = (caseId: number | null) => {
@@ -186,6 +192,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
   // 파이프라인과 페이지당 1개인 SpeechRecognition·마이크를 다투므로) 에서는 숨긴다.
   const micAvailable = voiceSupported && !/^\/(interview|mic-remote)(\/|$)/.test(location.pathname);
   const [input, setInput] = useState("");
+  const [chatModel, setChatModel] = useState<AiModelChoice>("AUTO");
   const [showSessions, setShowSessions] = useState(false);
   // ③→가이드 매핑: 인테이크 CASE 되묻기를 텍스트 대신 가이드 스텝 UI 로. msgId = 어느 되묻기 턴에 붙은 가이드인지.
   const [intakeGuide, setIntakeGuide] = useState<{ msgId: string; steps: GuideStep[] } | null>(null);
@@ -373,7 +380,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     const text = input.trim();
     if (!text) return;
     setInput("");
-    sendMessage(text);
+    sendMessage(text, { model: chatModel });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -404,10 +411,18 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
 
   // 표면 크기 전환(morph): corner=우하단 340/360, floating=중앙 970×606 + 스크림.
   // 앵커(우하단↔중앙)가 달라 CSS 크기 보간은 깨지므로 즉시 전환(부드러운 shared-element 은 2차).
-  const panelClass = floating
-    ? "ct-float-in fixed z-50 flex flex-col bg-card overflow-hidden"
-    : "fixed right-5 bottom-5 z-50 w-[min(360px,calc(100vw-2.5rem))] h-[min(560px,calc(100dvh-2.5rem))] flex flex-col bg-card border border-border rounded-2xl overflow-hidden";
-  const panelStyle: React.CSSProperties = floating
+  const panelClass = embedded
+    ? "relative flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card"
+    : floating
+      ? "ct-float-in fixed z-50 flex flex-col bg-card overflow-hidden"
+      : "fixed right-5 bottom-5 z-50 w-[min(360px,calc(100vw-2.5rem))] h-[min(560px,calc(100dvh-2.5rem))] flex flex-col bg-card border border-border rounded-2xl overflow-hidden";
+  const panelStyle: React.CSSProperties = embedded
+    ? {
+        height: "min(780px, calc(100dvh - 180px))",
+        minHeight: 560,
+        boxShadow: "0 12px 28px rgba(15,23,42,0.12), 0 4px 10px rgba(15,23,42,0.06)",
+      }
+    : floating
     ? {
         left: "50%", top: "50%", transform: "translate(-50%,-50%)",
         width: "min(970px, calc(100vw - 32px))",
@@ -437,12 +452,12 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
         isDisconnected={isDisconnected}
         isVoiceListening={voiceState === "listening"}
         floating={floating}
-        canExpand={orchestrator}
+        canExpand={!embedded && orchestrator}
         onNewChat={() => { resetGuideOverlays(); newSession(); }}
         onSessions={handleOpenSessions}
         onCollapse={collapseToCorner}
         onExpand={expandToFloating}
-        onClose={close}
+        onClose={embedded ? () => navigate("/support") : close}
       />
 
       {/* ── Mode Banner (인테이크·실행 내내 유지) ── */}
@@ -465,12 +480,12 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
       ) : (
         <>
           <div ref={scrollRef}
-            className={`flex-1 p-4 overflow-y-auto flex flex-col gap-3.5 ${floating ? "items-stretch" : ""}`}
+            className={`flex-1 p-4 overflow-y-auto flex flex-col gap-3.5 ${wide ? "items-stretch" : ""}`}
             style={{
               background: orchestrator ? "var(--orch-chat-bg)" : "var(--secondary)",
               // 플로팅은 무대(WorkView)와 동일 폭 기준 — 중앙 720 캡을 없애고 콘텐츠가 폭을 쓰게(좌우 24px).
               // 인테이크 말풍선/후보 카드·칩도 이 폭을 따른다. 실행 stage에선 말풍선만 아래 좁은 컬럼(720)으로 제한.
-              ...(floating ? { width: "100%", paddingInline: 24 } : {}),
+              ...(wide ? { width: "100%", paddingInline: 24 } : {}),
             }}>
             {messages.length === 0 && botStatus === "idle" ? (
               // FAQ 추천 칩은 faqChip 신호를 실어 깡통 온보딩 게이트를 그 턴만 우회한다(칩=결정적 FAQ 의도).
@@ -553,6 +568,9 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
               </>
             )}
           </div>
+          <div className="flex items-center justify-end px-3 pt-1">
+            <ModelPicker value={chatModel} onChange={setChatModel} disabled={botStatus === "thinking"} />
+          </div>
           <InputBar
             value={input}
             onChange={setInput}
@@ -590,7 +608,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
              텍스트 프로토콜 그대로(직무 텍스트→기술 CSV→공고 본문). 자소서 fileId 는 ready 병합 예약. ── */}
       {onbGuideOpen && onbPhase && (
         <OnboardingGuide
-          wide={floating}
+          wide={wide}
           server={{
             phase: onbPhase,
             bubbleText: lastBotMsg?.text,
@@ -621,7 +639,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
              제출 시 selectedCaseId 로 기존 프로토콜 회신, 닫으면 텍스트/칩 되묻기 폴백. ── */}
       {intakeGuide && (
         <OnboardingGuide
-          wide={floating}
+          wide={wide}
           intake={{ steps: intakeGuide.steps }}
           onCollapse={collapseToCorner}
           onExpand={expandToFloating}
@@ -1414,10 +1432,11 @@ function NotFoundView() {
             관련 문서를 확인했지만 확실한 안내가 없어서, <b className="text-foreground">잘못된 정보를 드리지 않으려고</b> 답변을 멈췄어요. 상담사가 정확히 도와드릴게요.
           </div>
         </div>
-        <button className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-primary text-white text-[13.5px] font-bold hover:brightness-110 transition-colors">
+        <Link to="/support/contact?channel=agent"
+          className="flex items-center justify-center gap-1.5 w-full h-[42px] rounded-lg bg-primary text-white text-[13.5px] font-bold hover:brightness-110 transition-colors">
           <Headset size={16} />
           상담사 연결하기
-        </button>
+        </Link>
         <Link to="/support/contact"
           className="flex items-center justify-center gap-1.5 w-full h-10 rounded-lg border border-border bg-card text-foreground text-[13px] font-semibold hover:bg-secondary transition-colors">
           <PenLine size={15} />

@@ -15,6 +15,7 @@ import com.careertuner.common.web.ApiResponse;
 import com.careertuner.common.web.FrontendReturnUrlResolver;
 import com.careertuner.user.dto.AccountInfoResponse;
 import com.careertuner.user.dto.EmailRegistrationRequest;
+import com.careertuner.user.dto.DeleteAccountRequest;
 import com.careertuner.user.dto.LoginIdRequest;
 import com.careertuner.user.dto.PhoneRequest;
 import com.careertuner.user.dto.SocialLinkUrlResponse;
@@ -37,6 +38,14 @@ public class UserAccountController {
     @GetMapping
     public ApiResponse<AccountInfoResponse> me(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(service.accountInfo(authUser.id()));
+    }
+
+    /** 본인 탈퇴는 도메인 FK를 보존하면서 공개 식별자와 인증·푸시 수단을 제거하는 소프트 삭제다. */
+    @DeleteMapping
+    public ApiResponse<Void> deleteOwnAccount(@AuthenticationPrincipal AuthUser authUser,
+                                               @Valid @RequestBody DeleteAccountRequest request) {
+        service.deleteOwnAccount(authUser.id(), request.password(), request.confirmation());
+        return ApiResponse.ok();
     }
 
     @PostMapping("/login-id")

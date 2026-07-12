@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   Activity,
@@ -7,6 +7,7 @@ import {
   Bot,
   Briefcase,
   Building2,
+  ChevronDown,
   ChevronRight,
   CircleHelp,
   ClipboardCheck,
@@ -28,6 +29,7 @@ import {
   Mail,
   MailCheck,
   MailWarning,
+  Menu,
   Megaphone,
   MessageSquare,
   MessageSquareWarning,
@@ -41,6 +43,7 @@ import {
   Target,
   TrendingUp,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
@@ -49,9 +52,11 @@ import { NotificationBell } from "@/features/notification/components/Notificatio
 import { useAdminPendingCounts, topSeverity, sumCounts, type PendingSeverity } from "@/admin/hooks/useAdminPendingCounts";
 import { useAdminPermissions } from "@/admin/hooks/useAdminPermissions";
 import {
+  ADMIN_ROUTE_POLICIES,
+  adminRoutePolicy,
+  canAccessAdminRoute,
   isAdminRole,
-  permissionGroupsFromCodes,
-  type PermissionGroupCode,
+  type AdminRoutePath,
 } from "@/admin/auth/adminAccess";
 import "./admin-shell.css";
 
@@ -59,15 +64,14 @@ interface NavItem {
   key: string;
   label: string;
   icon: LucideIcon;
-  href: string;
-  permissionGroups?: PermissionGroupCode[];
-  superOnly?: boolean;
+  href: `/${AdminRoutePath}`;
   ct?: string;
 }
 
 interface NavGroup {
   key: string;
   label: string;
+  icon: LucideIcon;
   items: NavItem[];
 }
 
@@ -75,98 +79,99 @@ const NAV_GROUPS: NavGroup[] = [
   {
     key: "overview",
     label: "운영 현황",
+    icon: LayoutDashboard,
     items: [
-      { key: "dashboard", label: "대시보드", icon: LayoutDashboard, href: "/admin" },
       { key: "ops-dashboard", label: "운영 대시보드", icon: Activity, href: "/admin/dashboard" },
       { key: "admin-home", label: "운영 작업함", icon: ListChecks, href: "/admin/home" },
+      { key: "admin-notification-settings", label: "내 알림 설정", icon: MailCheck, href: "/admin/notification-settings" },
     ],
   },
   {
     key: "member",
-    label: "회원/보안 운영",
+    label: "회원·기업",
+    icon: Users,
     items: [
-      { key: "members", label: "회원 관리", icon: Users, href: "/admin/users", permissionGroups: ["MEMBER_ADMIN"] },
-      { key: "blocked-users", label: "차단 관리", icon: ShieldAlert, href: "/admin/users/blocked", permissionGroups: ["MEMBER_ADMIN", "AUDIT_ADMIN"] },
-      { key: "security-ops", label: "보안 운영 센터", icon: ShieldCheck, href: "/admin/security", permissionGroups: ["AUDIT_ADMIN", "POLICY_ADMIN"] },
-      { key: "login-risk-policy", label: "로그인 잠금 정책", icon: ShieldAlert, href: "/admin/security/login-risk", permissionGroups: ["AUDIT_ADMIN", "POLICY_ADMIN"] },
-      { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles", permissionGroups: ["MEMBER_ADMIN"] },
-      { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents", permissionGroups: ["MEMBER_ADMIN"] },
-      // W1: 기업 계정 전환 신청 승인/반려
-      { key: "company-applications", label: "기업 신청 관리", icon: Building2, href: "/admin/company/applications", permissionGroups: ["MEMBER_ADMIN"] },
-      { key: "security-audit", label: "로그인/보안 감사", icon: LockKeyhole, href: "/admin/audit/security", permissionGroups: ["AUDIT_ADMIN"] },
-      { key: "email-audit", label: "이메일 감사", icon: MailCheck, href: "/admin/audit/email", permissionGroups: ["AUDIT_ADMIN"] },
-      { key: "email-audit-log", label: "이메일 발급 감사(전역)", icon: MailWarning, href: "/admin/audit/email-log", permissionGroups: ["AUDIT_ADMIN"] },
-      { key: "activity-logs", label: "활동 로그(전수)", icon: Activity, href: "/admin/audit/activity", permissionGroups: ["AUDIT_ADMIN"] },
+      { key: "members", label: "회원 관리", icon: Users, href: "/admin/users" },
+      { key: "blocked-users", label: "차단 관리", icon: ShieldAlert, href: "/admin/users/blocked" },
+      { key: "profiles", label: "프로필 관리", icon: FileUser, href: "/admin/profiles" },
+      { key: "consents", label: "동의 관리", icon: ClipboardCheck, href: "/admin/consents" },
+      { key: "company-applications", label: "기업 신청 관리", icon: Building2, href: "/admin/company/applications" },
+    ],
+  },
+  {
+    key: "security",
+    label: "보안·감사",
+    icon: ShieldCheck,
+    items: [
+      { key: "security-ops", label: "보안 운영 센터", icon: ShieldCheck, href: "/admin/security" },
+      { key: "login-risk-policy", label: "로그인 잠금 정책", icon: ShieldAlert, href: "/admin/security/login-risk" },
+      { key: "mfa-policy", label: "MFA 정책", icon: ShieldCheck, href: "/admin/security/mfa-policy" },
+      { key: "security-audit", label: "로그인/보안 감사", icon: LockKeyhole, href: "/admin/audit/security" },
+      { key: "email-audit-log", label: "이메일 발급 감사", icon: MailWarning, href: "/admin/audit/email" },
+      { key: "activity-logs", label: "회원 활동 로그", icon: Activity, href: "/admin/audit/activity" },
+      { key: "action-logs", label: "관리자 활동 로그", icon: History, href: "/admin/action-logs" },
+      { key: "logs", label: "시스템 로그", icon: ScrollText, href: "/admin/logs" },
     ],
   },
   {
     key: "ai",
-    label: "AI/분석 운영",
+    label: "AI·분석",
+    icon: Bot,
     items: [
-      { key: "analytics", label: "분석 통계", icon: TrendingUp, href: "/admin/analytics", permissionGroups: ["AI_ADMIN"] },
-      { key: "fit-analysis", label: "적합도 분석", icon: Target, href: "/admin/fit-analysis", permissionGroups: ["AI_ADMIN"] },
-      { key: "application-cases", label: "지원 건 관리", icon: Briefcase, href: "/admin/application-cases", permissionGroups: ["MEMBER_ADMIN", "AI_ADMIN"] },
-      { key: "job-analysis", label: "공고 분석 조회", icon: BarChart3, href: "/admin/job-analysis", permissionGroups: ["AI_ADMIN"] },
-      { key: "company-analysis", label: "기업 분석 조회", icon: Building2, href: "/admin/company-analysis", permissionGroups: ["AI_ADMIN"] },
-      { key: "interviews", label: "면접 모니터링", icon: MessageSquare, href: "/admin/interviews", permissionGroups: ["AI_ADMIN"] },
-      { key: "interview-reports", label: "면접 리포트", icon: ClipboardList, href: "/admin/interview/reports", permissionGroups: ["AI_ADMIN"] },
-      { key: "corrections", label: "첨삭 모니터링", icon: FilePenLine, href: "/admin/corrections", permissionGroups: ["AI_ADMIN"] },
-      { key: "ai-usage", label: "AI 사용량", icon: Gauge, href: "/admin/ai-usage", permissionGroups: ["AI_ADMIN"] },
-      { key: "ai-settings", label: "AI 운영 설정", icon: SlidersHorizontal, href: "/admin/ai-settings", permissionGroups: ["AI_ADMIN"] },
-      { key: "prompts", label: "프롬프트 템플릿", icon: FileText, href: "/admin/prompts", permissionGroups: ["AI_ADMIN"] },
+      { key: "analytics", label: "분석 통계", icon: TrendingUp, href: "/admin/analytics" },
+      { key: "fit-analysis", label: "적합도 분석", icon: Target, href: "/admin/fit-analysis" },
+      { key: "application-cases", label: "지원 건 관리", icon: Briefcase, href: "/admin/application-cases" },
+      { key: "job-analysis", label: "공고 분석 조회", icon: BarChart3, href: "/admin/job-analysis" },
+      { key: "company-analysis", label: "기업 분석 조회", icon: Building2, href: "/admin/company-analysis" },
+      { key: "interviews", label: "면접 모니터링", icon: MessageSquare, href: "/admin/interviews" },
+      { key: "interview-reports", label: "면접 리포트", icon: ClipboardList, href: "/admin/interview/reports" },
+      { key: "corrections", label: "첨삭 모니터링", icon: FilePenLine, href: "/admin/corrections" },
+      { key: "ai-usage", label: "AI 사용량", icon: Gauge, href: "/admin/ai-usage" },
+      { key: "ai-settings", label: "AI 운영 설정", icon: SlidersHorizontal, href: "/admin/ai-settings" },
+      // 프롬프트 템플릿(B 공고/기업)은 읽기 전용 확인 화면이라 메뉴에서 숨김. 라우트(/admin/prompts)는 유지.
+      // { key: "prompts", label: "프롬프트 템플릿", icon: FileText, href: "/admin/prompts" },
     ],
   },
   {
     key: "billing",
-    label: "결제/구독",
+    label: "결제·구독",
+    icon: CreditCard,
     items: [
-      { key: "payments", label: "결제 관리", icon: CreditCard, href: "/admin/payments", permissionGroups: ["BILLING_ADMIN"] },
-      { key: "credits", label: "크레딧 관리", icon: Coins, href: "/admin/credits", permissionGroups: ["BILLING_ADMIN"] },
-      { key: "rewards", label: "리워드/레벨", icon: Gift, href: "/admin/rewards", permissionGroups: ["BILLING_ADMIN"] },
-      { key: "plans", label: "요금제 관리", icon: Package, href: "/admin/plans", permissionGroups: ["BILLING_ADMIN"] },
+      { key: "payments", label: "결제 관리", icon: CreditCard, href: "/admin/payments" },
+      { key: "credits", label: "크레딧 관리", icon: Coins, href: "/admin/credits" },
+      { key: "rewards", label: "리워드·레벨", icon: Gift, href: "/admin/rewards" },
+      { key: "plans", label: "요금제 관리", icon: Package, href: "/admin/plans" },
     ],
   },
   {
     key: "content",
-    label: "콘텐츠/고객지원",
+    label: "콘텐츠·지원",
+    icon: MessageSquare,
     items: [
-      { key: "reports", label: "신고·검수 관리", icon: MessageSquareWarning, href: "/admin/community", permissionGroups: ["CONTENT_ADMIN"] },
-      // W1: 기업 채용공고 등록/수정 검토 큐
-      { key: "job-posting-review", label: "공고 검토", icon: Briefcase, href: "/admin/company/job-postings", permissionGroups: ["CONTENT_ADMIN"] },
-      { key: "ads", label: "광고 관리", icon: Megaphone, href: "/admin/ads", permissionGroups: ["CONTENT_ADMIN"] },
-      { key: "notices", label: "공지사항", icon: Megaphone, href: "/admin/notices", permissionGroups: ["CONTENT_ADMIN"] },
-      { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq", permissionGroups: ["CONTENT_ADMIN"] },
-      { key: "ai-support", label: "AI 상담 운영", icon: Bot, href: "/admin/ai-support", permissionGroups: ["CONTENT_ADMIN", "AI_ADMIN"] },
-      { key: "chatbot-governance", label: "챗봇 거버넌스", icon: Bot, href: "/admin/chatbot-governance", permissionGroups: ["AI_ADMIN"] },
-      { key: "inquiries", label: "문의 관리", icon: Mail, href: "/admin/inquiries", permissionGroups: ["CONTENT_ADMIN"] },
-      { key: "terms", label: "약관 관리", icon: Scale, href: "/admin/terms", permissionGroups: ["CONTENT_ADMIN", "POLICY_ADMIN"] },
-      { key: "notifications", label: "알림 모니터링", icon: Bell, href: "/admin/notifications", permissionGroups: ["CONTENT_ADMIN"] },
-      // 본인 수신 설정이므로 세부 권한 없이 모든 관리자에게 노출한다.
-      { key: "admin-notification-settings", label: "관리자 알림 설정", icon: MailCheck, href: "/admin/notification-settings" },
+      { key: "reports", label: "신고·검수 관리", icon: MessageSquareWarning, href: "/admin/community" },
+      { key: "job-posting-review", label: "공고 검토", icon: Briefcase, href: "/admin/company/job-postings" },
+      { key: "ads", label: "광고 관리", icon: Megaphone, href: "/admin/ads" },
+      { key: "notices", label: "공지사항", icon: Megaphone, href: "/admin/notices" },
+      { key: "faq", label: "FAQ 관리", icon: CircleHelp, href: "/admin/faq" },
+      { key: "ai-support", label: "AI 상담 운영", icon: Bot, href: "/admin/ai-support" },
+      { key: "chatbot-governance", label: "챗봇 거버넌스", icon: Bot, href: "/admin/chatbot-governance" },
+      { key: "inquiries", label: "문의 관리", icon: Mail, href: "/admin/inquiries" },
+      { key: "terms", label: "약관 관리", icon: Scale, href: "/admin/terms" },
+      { key: "notifications", label: "알림 모니터링", icon: Bell, href: "/admin/notifications" },
     ],
   },
   {
     key: "policy",
-    label: "정책/감사",
+    label: "정책·권한",
+    icon: SlidersHorizontal,
     items: [
-      { key: "super-admin", label: "권한 관리", icon: ShieldCheck, href: "/admin/super", permissionGroups: ["POLICY_ADMIN"], superOnly: true },
-      { key: "policies", label: "운영 정책 관리", icon: SlidersHorizontal, href: "/admin/policies", permissionGroups: ["POLICY_ADMIN"], superOnly: true },
-      { key: "runtime-settings", label: "런타임 설정", icon: SlidersHorizontal, href: "/admin/runtime-settings", permissionGroups: ["POLICY_ADMIN"], superOnly: true },
-      { key: "staff-grades", label: "직원 등급/급여", icon: BadgeDollarSign, href: "/admin/staff-grades", permissionGroups: ["POLICY_ADMIN"], superOnly: true },
-      { key: "action-logs", label: "관리자 활동 로그", icon: History, href: "/admin/action-logs", permissionGroups: ["AUDIT_ADMIN", "POLICY_ADMIN"] },
-      { key: "logs", label: "시스템 로그", icon: ScrollText, href: "/admin/logs", permissionGroups: ["AUDIT_ADMIN"] },
+      { key: "super-admin", label: "권한 관리", icon: ShieldCheck, href: "/admin/super" },
+      { key: "policies", label: "운영 정책 관리", icon: SlidersHorizontal, href: "/admin/policies" },
+      { key: "runtime-settings", label: "런타임 설정", icon: SlidersHorizontal, href: "/admin/runtime-settings" },
+      { key: "staff-grades", label: "직원 등급·급여", icon: BadgeDollarSign, href: "/admin/staff-grades" },
     ],
   },
 ];
-
-/** 미처리 큐 숫자 뱃지. count 0이면 렌더하지 않는다. 색은 severity(RED/YELLOW). */
-NAV_GROUPS.find((group) => group.key === "member")?.items.splice(3, 0, {
-  key: "mfa-policy",
-  label: "MFA 정책",
-  icon: ShieldCheck,
-  href: "/admin/security/mfa-policy",
-  permissionGroups: ["AUDIT_ADMIN", "POLICY_ADMIN"],
-});
 
 function PendingBadge({ count, severity }: { count: number; severity: PendingSeverity }) {
   if (count <= 0) return null;
@@ -197,25 +202,117 @@ export default function AdminShell({
   const { user, logout } = useAuth();
   const role = user?.role ?? null;
   const canUseAdmin = isAdminRole(role);
-  const pending = useAdminPendingCounts(canUseAdmin);
   const mePermissions = useAdminPermissions(user?.id ?? null, role, role === "ADMIN");
-  const grantedGroups = mePermissions.status === "ready" && mePermissions.data
-    ? permissionGroupsFromCodes(mePermissions.data.permissions)
-    : new Set<PermissionGroupCode>();
+  const grantedPermissions = mePermissions.status === "ready" && mePermissions.data
+    ? new Set(mePermissions.data.permissions)
+    : new Set<string>();
+  const canReadPending = role === "SUPER_ADMIN" || grantedPermissions.has("CONTENT_READ");
+  const pending = useAdminPendingCounts(canUseAdmin && canReadPending);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [navQuery, setNavQuery] = useState("");
+  const navigationRef = useRef<HTMLElement | null>(null);
+  const mobileNavSearchRef = useRef<HTMLInputElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(() => (
+    NAV_GROUPS.find((group) => group.items.some((item) => item.key === active))?.key ?? "overview"
+  ));
   const handleLogout = async () => {
     await logout();
     navigate("/");
   };
-  const canUseCurrentPage = canUseAdmin && canAccessNavKey(active, role, grantedGroups);
-  const visibleGroups = canUseAdmin
+  const currentRoutePath = location.pathname.replace(/^\/+|\/+$/g, "") as AdminRoutePath;
+  const currentRoutePolicy = Object.prototype.hasOwnProperty.call(ADMIN_ROUTE_POLICIES, currentRoutePath)
+    ? adminRoutePolicy(currentRoutePath)
+    : null;
+  const canUseCurrentPage = canUseAdmin && (
+    currentRoutePolicy
+      ? canAccessAdminRoute(role, currentRoutePolicy, grantedPermissions)
+      : canAccessNavKey(active, role, grantedPermissions)
+  );
+  const accessibleGroups = canUseAdmin
     ? NAV_GROUPS.map((group) => ({
         ...group,
-        items: group.items.filter((item) => canAccessNavItem(item, role, grantedGroups)),
+        items: group.items.filter((item) => canAccessNavItem(item, role, grantedPermissions)),
       })).filter((group) => group.items.length > 0)
     : [];
+  const normalizedNavQuery = navQuery.trim().toLocaleLowerCase("ko-KR");
+  const visibleGroups = normalizedNavQuery
+    ? accessibleGroups.map((group) => {
+        const groupMatches = group.label.toLocaleLowerCase("ko-KR").includes(normalizedNavQuery);
+        return {
+          ...group,
+          items: groupMatches
+            ? group.items
+            : group.items.filter((item) => item.label.toLocaleLowerCase("ko-KR").includes(normalizedNavQuery)),
+        };
+      }).filter((group) => group.items.length > 0)
+    : accessibleGroups;
   const displayName = user?.name?.trim() || user?.email?.trim() || "관리자";
   const displayInitial = displayName.charAt(0).toUpperCase();
   const displayRole = role === "SUPER_ADMIN" ? "최고 관리자" : "관리자";
+
+  const handleNavSearch = (value: string) => {
+    setNavQuery(value);
+  };
+
+  const openMobileNav = () => {
+    if (typeof document !== "undefined" && document.activeElement instanceof HTMLElement) {
+      previousFocusRef.current = document.activeElement;
+    }
+    setMobileNavOpen(true);
+  };
+
+  useEffect(() => {
+    const activeGroup = visibleGroups.find((group) => (
+      group.items.some((item) => item.key === active || location.pathname === item.href)
+    ));
+    if (activeGroup) setExpandedGroup(activeGroup.key);
+    setMobileNavOpen(false);
+    // permission 응답으로 visibleGroups 객체가 매 렌더마다 새로 만들어지므로 경로/active만 구독한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, location.pathname]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) {
+      const previousFocus = previousFocusRef.current;
+      if (previousFocus?.isConnected) previousFocus.focus();
+      previousFocusRef.current = null;
+      return;
+    }
+
+    const focusFrame = window.requestAnimationFrame(() => mobileNavSearchRef.current?.focus());
+    const handleDrawerKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobileNavOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const navigation = navigationRef.current;
+      if (!navigation) return;
+      const focusable = Array.from(navigation.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = document.activeElement;
+      if (event.shiftKey && (activeElement === first || !navigation.contains(activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (activeElement === last || !navigation.contains(activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener("keydown", handleDrawerKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleDrawerKeyDown);
+    };
+  }, [mobileNavOpen]);
 
   // 라우트 boundary가 최종 진입을 막지만, 셸이 다른 곳에서 직접 사용돼도 관리자 chrome/API를 열지 않는다.
   if (!canUseAdmin) {
@@ -230,54 +327,131 @@ export default function AdminShell({
 
   return (
     <div className="adm">
-      <aside className="adm__side">
+      {mobileNavOpen && (
+        <button
+          type="button"
+          className="adm__side-backdrop"
+          aria-label="관리자 메뉴 닫기"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+      <aside
+        ref={navigationRef}
+        id="admin-navigation"
+        className={`adm__side ${mobileNavOpen ? "is-mobile-open" : ""}`}
+        aria-label="관리자 메뉴"
+        role={mobileNavOpen ? "dialog" : undefined}
+        aria-modal={mobileNavOpen ? true : undefined}
+      >
         <div className="adm__logo">
           <span className="adm__logo-icon">CT</span>
           <span className="adm__logo-text">
             CareerTuner <b>Admin</b>
           </span>
+          <button
+            type="button"
+            className="adm__side-close"
+            aria-label="관리자 메뉴 닫기"
+            onClick={() => setMobileNavOpen(false)}
+          >
+            <X />
+          </button>
+        </div>
+
+        <div className="adm__side-search">
+          <Search />
+          <input
+            ref={mobileNavSearchRef}
+            type="search"
+            value={navQuery}
+            aria-label="모바일 관리자 메뉴 검색"
+            placeholder="메뉴 검색..."
+            onChange={(event) => handleNavSearch(event.target.value)}
+          />
         </div>
 
         <nav className="adm__nav">
-          {visibleGroups.map((group) => (
-            <div className="adm__nav-group" key={group.key}>
-              <div className="adm__nav-group-label">{group.label}</div>
-              {group.items.map((item) => {
-                const isActive = item.key === active || location.pathname === item.href;
-                return (
-                  <Link
-                    key={item.key}
-                    to={item.href}
-                    className={`adm__nav-item ${isActive ? "is-active" : ""}`}
-                  >
-                    <item.icon />
-                    <span className="adm__nav-label">{item.label}</span>
-                    {item.key === "reports" ? (
-                      <PendingBadge
-                        count={sumCounts(pending?.reports, pending?.hiddenPosts, pending?.hiddenComments)}
-                        severity={topSeverity(pending?.reports, pending?.hiddenPosts, pending?.hiddenComments)}
-                      />
-                    ) : item.key === "inquiries" ? (
-                      <PendingBadge
-                        count={pending?.tickets?.count ?? 0}
-                        severity={pending?.tickets?.severity ?? "NONE"}
-                      />
-                    ) : (
-                      item.ct && <span className="adm__nav-ct">{item.ct}</span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
+          {visibleGroups.map((group) => {
+            const isExpanded = normalizedNavQuery.length > 0 || expandedGroup === group.key;
+            const panelId = `admin-nav-group-${group.key}`;
+            return (
+              <div className="adm__nav-group" key={group.key}>
+                <button
+                  type="button"
+                  className="adm__nav-group-toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={panelId}
+                  disabled={normalizedNavQuery.length > 0}
+                  title={normalizedNavQuery ? "검색 중에는 일치하는 메뉴 그룹이 모두 펼쳐집니다." : undefined}
+                  onClick={() => setExpandedGroup((current) => current === group.key ? null : group.key)}
+                >
+                  <group.icon />
+                  <span>{group.label}</span>
+                  <span className="adm__nav-group-count" aria-label={`${group.items.length}개 메뉴`}>{group.items.length}</span>
+                  <ChevronDown className={isExpanded ? "is-expanded" : ""} aria-hidden="true" />
+                </button>
+                <div id={panelId} className="adm__nav-group-items" hidden={!isExpanded}>
+                  {group.items.map((item) => {
+                    const isActive = item.key === active || location.pathname === item.href;
+                    return (
+                      <Link
+                        key={item.key}
+                        to={item.href}
+                        className={`adm__nav-item ${isActive ? "is-active" : ""}`}
+                        aria-current={isActive ? "page" : undefined}
+                        onClick={() => setMobileNavOpen(false)}
+                      >
+                        <item.icon />
+                        <span className="adm__nav-label">{item.label}</span>
+                        {item.key === "reports" ? (
+                          <PendingBadge
+                            count={sumCounts(pending?.reports, pending?.hiddenPosts, pending?.hiddenComments)}
+                            severity={topSeverity(pending?.reports, pending?.hiddenPosts, pending?.hiddenComments)}
+                          />
+                        ) : item.key === "inquiries" ? (
+                          <PendingBadge
+                            count={pending?.tickets?.count ?? 0}
+                            severity={pending?.tickets?.severity ?? "NONE"}
+                          />
+                        ) : (
+                          item.ct && <span className="adm__nav-ct">{item.ct}</span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {normalizedNavQuery && visibleGroups.length === 0 && (
+            <div className="adm__nav-empty">일치하는 관리자 메뉴가 없습니다.</div>
+          )}
         </nav>
       </aside>
 
       <div className="adm__main">
         <header className="adm__topbar">
-          <div className="adm__search">
-            <Search />
-            <input type="text" placeholder="검색..." />
+          <div className="adm__topbar-left">
+            <button
+              type="button"
+              className="adm__mobile-menu"
+              aria-label="관리자 메뉴 열기"
+              aria-controls="admin-navigation"
+              aria-expanded={mobileNavOpen}
+              onClick={openMobileNav}
+            >
+              <Menu />
+            </button>
+            <div className="adm__search">
+              <Search />
+              <input
+                type="search"
+                value={navQuery}
+                aria-label="관리자 메뉴 검색"
+                placeholder="메뉴 검색..."
+                onChange={(event) => handleNavSearch(event.target.value)}
+              />
+            </div>
           </div>
           <div className="adm__topbar-right">
             <Link to="/dashboard" className="adm__topbar-link">
@@ -326,15 +500,12 @@ export default function AdminShell({
   );
 }
 
-function canAccessNavKey(key: string, role: string | null | undefined, grantedGroups: Set<PermissionGroupCode>): boolean {
+function canAccessNavKey(key: string, role: string | null | undefined, grantedPermissions: ReadonlySet<string>): boolean {
   const item = NAV_GROUPS.flatMap((group) => group.items).find((candidate) => candidate.key === key);
-  return item ? canAccessNavItem(item, role, grantedGroups) : false;
+  return item ? canAccessNavItem(item, role, grantedPermissions) : false;
 }
 
-function canAccessNavItem(item: NavItem, role: string | null | undefined, grantedGroups: Set<PermissionGroupCode>): boolean {
-  if (role === "SUPER_ADMIN") return true;
-  if (role !== "ADMIN") return false;
-  if (item.superOnly) return false;
-  if (!item.permissionGroups || item.permissionGroups.length === 0) return true;
-  return item.permissionGroups.some((group) => grantedGroups.has(group));
+function canAccessNavItem(item: NavItem, role: string | null | undefined, grantedPermissions: ReadonlySet<string>): boolean {
+  const routePath = item.href.slice(1) as AdminRoutePath;
+  return canAccessAdminRoute(role, adminRoutePolicy(routePath), grantedPermissions);
 }

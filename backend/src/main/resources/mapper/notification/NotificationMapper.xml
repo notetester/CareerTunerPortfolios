@@ -11,6 +11,7 @@
         <result property="targetType"   column="target_type"/>
         <result property="targetId"     column="target_id"/>
         <result property="senderRelation" column="sender_relation"/>
+        <result property="destinationPlatform" column="destination_platform"/>
         <result property="title"        column="title"/>
         <result property="message"      column="message"/>
         <result property="link"         column="link"/>
@@ -19,15 +20,21 @@
         <result property="createdAt"    column="created_at"/>
         <result property="actorName"    column="actor_name"/>
         <result property="actorAvatarUrl" column="actor_avatar_url"/>
+        <result property="actorStatus" column="actor_status"/>
     </resultMap>
 
     <!-- 알림 목록 조회 (최신순, actor JOIN) -->
     <select id="findByUserId" resultMap="notificationResultMap">
         SELECT n.*,
-               a.name AS actor_name
-          FROM notification n
+               a.name AS actor_name,
+               a.status AS actor_status
+         FROM notification n
           LEFT JOIN users a ON n.actor_id = a.id
          WHERE n.user_id = #{userId}
+           AND n.deleted_at IS NULL
+        <if test="platform != null">
+           AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
+        </if>
          ORDER BY n.created_at DESC
          LIMIT #{limit} OFFSET #{offset}
     </select>
@@ -35,25 +42,35 @@
     <!-- 총 알림 수 -->
     <select id="countByUserId" resultType="int">
         SELECT COUNT(*)
-          FROM notification
-         WHERE user_id = #{userId}
+          FROM notification n
+         WHERE n.user_id = #{userId}
+           AND n.deleted_at IS NULL
+        <if test="platform != null">
+           AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
+        </if>
     </select>
 
     <!-- 안읽음 알림 수 -->
     <select id="countUnreadByUserId" resultType="int">
         SELECT COUNT(*)
-          FROM notification
-         WHERE user_id = #{userId}
-           AND is_read = 0
+          FROM notification n
+         WHERE n.user_id = #{userId}
+           AND n.is_read = 0
+           AND n.deleted_at IS NULL
+        <if test="platform != null">
+           AND COALESCE(n.destination_platform, 'ALL') IN ('ALL', #{platform})
+        </if>
     </select>
 
     <!-- 단건 조회 -->
     <select id="findById" resultMap="notificationResultMap">
         SELECT n.*,
-               a.name AS actor_name
+               a.name AS actor_name,
+               a.status AS actor_status
           FROM notification n
           LEFT JOIN users a ON n.actor_id = a.id
          WHERE n.id = #{id}
+           AND n.deleted_at IS NULL
     </select>
 
     <!-- 단건 읽음 처리 -->
@@ -63,6 +80,7 @@
                read_at = NOW()
          WHERE id = #{id}
            AND is_read = 0
+           AND deleted_at IS NULL
     </update>
 
     <!-- 전체 읽음 처리 -->
@@ -72,20 +90,31 @@
                read_at = NOW()
          WHERE user_id = #{userId}
            AND is_read = 0
+           AND deleted_at IS NULL
+        <if test="platform != null">
+           AND COALESCE(destination_platform, 'ALL') IN ('ALL', #{platform})
+        </if>
     </update>
 
     <!-- 단건 삭제 (본인 알림만) -->
-    <delete id="deleteByIdAndUser">
-        DELETE FROM notification
+    <update id="deleteByIdAndUser">
+        UPDATE notification
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE id = #{id}
            AND user_id = #{userId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <!-- 전체 삭제 (본인 알림 전부 비우기) -->
-    <delete id="deleteAllByUser">
-        DELETE FROM notification
+    <update id="deleteAllByUser">
+        UPDATE notification
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE user_id = #{userId}
-    </delete>
+           AND deleted_at IS NULL
+        <if test="platform != null">
+           AND COALESCE(destination_platform, 'ALL') IN ('ALL', #{platform})
+        </if>
+    </update>
 
     <!-- 알림 INSERT -->
     <update id="markTypeAsReadByTarget">
@@ -97,13 +126,17 @@
            AND target_type = #{targetType}
            AND target_id = #{targetId}
            AND is_read = 0
+           AND deleted_at IS NULL
     </update>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO notification (user_id, actor_id, type, target_type, target_id, sender_relation,
-                                  title, message, link)
-        VALUES (#{userId}, #{actorId}, #{type}, #{targetType}, #{targetId}, #{senderRelation},
-                #{title}, #{message}, #{link})
+                                  destination_platform, title, message, link)
+        SELECT recipient.id, #{actorId}, #{type}, #{targetType}, #{targetId}, #{senderRelation},
+               COALESCE(#{destinationPlatform}, 'ALL'), #{title}, #{message}, #{link}
+          FROM users recipient
+         WHERE recipient.id = #{userId}
+           AND recipient.status = 'ACTIVE'
     </insert>
 
     <!-- 발신자 관계 판정용 최소 조회(도메인 간 서비스 의존 없이 알림 도메인 안에서 해결) -->
@@ -116,6 +149,7 @@
           FROM collaboration_friendship
          WHERE user_id = #{userId}
            AND friend_user_id = #{otherUserId}
+           AND deleted_at IS NULL
     </select>
 
 </mapper>

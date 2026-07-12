@@ -10,10 +10,14 @@ public record InterviewSessionResponse(
         String mode,
         LocalDateTime startedAt,
         LocalDateTime endedAt,
+        int totalQuestions,
+        int answeredQuestions,
+        boolean finished,
         Integer totalScore,
         Integer avgScore,
         Integer avgVoiceScore,
         LocalDateTime lastResumedAt,
+        String sourceSnapshot,
         LocalDateTime createdAt) {
 
     public static InterviewSessionResponse from(InterviewSession s) {
@@ -23,10 +27,14 @@ public record InterviewSessionResponse(
                 s.getMode(),
                 s.getStartedAt(),
                 s.getEndedAt(),
+                s.getTotalQuestions() == null ? 0 : s.getTotalQuestions(),
+                s.getAnsweredQuestions() == null ? 0 : s.getAnsweredQuestions(),
+                Boolean.TRUE.equals(s.getFinished()),
                 s.getTotalScore(),
                 s.getAvgAnswerScore(),
                 s.getAvgVoiceScore(),
                 s.getLastResumedAt(),
+                s.getSourceSnapshot(),
                 s.getCreatedAt());
     }
 }

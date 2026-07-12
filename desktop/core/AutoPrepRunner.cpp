@@ -6,10 +6,28 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QTimer>
 #include <QUrl>
 
 AutoPrepRunner::AutoPrepRunner(ApiClient* api, QObject* parent)
-    : QObject(parent), m_api(api) {}
+    : QObject(parent), m_api(api)
+{
+    // 로그아웃·계정/서버 전환은 독립 POST-SSE도 즉시 중단하고 화면 상태를 비운다.
+    connect(m_api, &ApiClient::authenticationIdentityChanged, this, [this]() {
+        const bool preflightPending = m_authPreflightPending;
+        clear();
+        // refresh 실패는 identityChanged 직후 authenticationExpired가 동기 발생한다.
+        // 일반 계정 전환이라면 다음 이벤트 루프에서 이 임시 표식을 폐기한다.
+        m_authPreflightPending = preflightPending;
+        QTimer::singleShot(0, this, [this]() { m_authPreflightPending = false; });
+    });
+    connect(m_api, &ApiClient::authenticationExpired, this, [this](const QString&) {
+        if (!m_authPreflightPending) return;
+        m_authPreflightPending = false;
+        emit errorOccurred(QStringLiteral(
+            "로그인이 만료되었습니다. 다시 로그인한 뒤 AI 자동 준비를 실행해 주세요."));
+    });
+}
 
 QString AutoPrepRunner::partLabel(const QString& key)
 {
@@ -24,10 +42,12 @@ QString AutoPrepRunner::partLabel(const QString& key)
 
 void AutoPrepRunner::intake(const QString& query)
 {
+    const quint64 generation = ++m_intakeGeneration;
     QJsonObject body;
     body["query"] = query;
     m_api->post(QStringLiteral("/api/auto-prep/intake"), body,
-        [this](bool ok, const QJsonValue& data, const QString& msg) {
+        [this, generation](bool ok, const QJsonValue& data, const QString& msg) {
+            if (generation != m_intakeGeneration) return;
             if (!ok) {
                 emit errorOccurred(msg.isEmpty() ? QStringLiteral("요청 해석 실패") : msg);
                 return;
@@ -69,12 +89,15 @@ void AutoPrepRunner::intake(const QString& query)
 
 void AutoPrepRunner::run(const QString& query, int caseId, const QString& mode)
 {
-    if (m_running) return;
+    if (m_running || m_reply) return;
+
+    const quint64 generation = ++m_runGeneration;
 
     m_steps.clear();
     emit stepsChanged();
     m_buffer.clear();
     m_running = true;
+    m_authPreflightPending = true;
     emit runningChanged();
 
     QJsonObject body;
@@ -82,38 +105,85 @@ void AutoPrepRunner::run(const QString& query, int caseId, const QString& mode)
     if (caseId > 0) body["applicationCaseId"] = caseId;
     if (!mode.isEmpty()) body["mode"] = mode;
 
+    // POST-SSE 자체를 401 뒤 재시도하면 동일 AI 작업이 중복 실행될 수 있다. 먼저 일반
+    // ApiClient 요청으로 인증/refresh를 끝낸 다음, 회전된 최신 access token으로 스트림을 딱 한 번 연다.
+    m_api->get(QStringLiteral("/api/auth/me"),
+        [this, generation, body](bool ok, const QJsonValue&, const QString&) {
+            if (generation != m_runGeneration) return;
+            m_authPreflightPending = false;
+            if (!ok || m_api->token().isEmpty()) {
+                m_running = false;
+                emit runningChanged();
+                emit errorOccurred(QStringLiteral(
+                    "로그인 상태를 확인하지 못했습니다. 다시 로그인한 뒤 AI 자동 준비를 실행해 주세요."));
+                return;
+            }
+            startStream(body, generation);
+        });
+}
+
+void AutoPrepRunner::startStream(const QJsonObject& body, quint64 generation)
+{
+    if (generation != m_runGeneration || !m_running || m_reply) return;
+    m_authPreflightPending = false;
+
     QNetworkRequest req{QUrl(m_api->baseUrl() + QStringLiteral("/api/auto-prep/run/stream"))};
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     req.setRawHeader("Accept", "text/event-stream");
     if (!m_api->token().isEmpty())
         req.setRawHeader("Authorization", QByteArray("Bearer ") + m_api->token().toUtf8());
 
-    // ApiClient 의 QNAM 을 빌리지 않고 자체 QNAM — 스트림 수명 관리 분리
-    static QNetworkAccessManager nam;
-    m_reply = nam.post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    // POST-SSE는 자동 재시도하면 AI 작업이 중복 실행될 수 있다. 자체 QNAM을 쓰되
+    // ApiClient의 인증 주체 변경 시 clear()가 세대를 폐기하고 연결을 abort한다.
+    QNetworkReply* reply = m_nam.post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    m_reply = reply;
 
-    connect(m_reply, &QNetworkReply::readyRead, this, [this]() {
-        if (!m_reply) return;
-        m_buffer += m_reply->readAll();
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply, generation]() {
+        if (generation != m_runGeneration || reply != m_reply) return;
+        m_buffer += reply->readAll();
         processBuffer();
     });
-    connect(m_reply, &QNetworkReply::finished, this, [this]() {
-        const bool aborted = !m_reply || m_reply->error() != QNetworkReply::NoError;
-        if (m_reply) { m_reply->deleteLater(); m_reply = nullptr; }
+    connect(reply, &QNetworkReply::finished, this, [this, reply, generation]() {
+        const bool failed = reply->error() != QNetworkReply::NoError;
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (reply == m_reply) m_reply = nullptr;
+        reply->deleteLater();
+        if (generation != m_runGeneration) return;
         if (m_running) {
             m_running = false;
             emit runningChanged();
-            if (aborted)
-                emit errorOccurred(QStringLiteral("실행 스트림이 끊겼습니다"));
+            if (failed) {
+                emit errorOccurred(status == 401
+                    ? QStringLiteral("로그인이 만료되었습니다. 다시 로그인해 주세요.")
+                    : QStringLiteral("실행 스트림이 끊겼습니다"));
+            }
         }
     });
 }
 
 void AutoPrepRunner::cancel()
 {
-    if (m_reply) {
-        m_reply->abort(); // finished 슬롯에서 정리
+    ++m_runGeneration;
+    m_authPreflightPending = false;
+    QNetworkReply* reply = m_reply;
+    m_reply = nullptr;
+    m_buffer.clear();
+    if (reply) reply->abort(); // 폐기된 generation의 finished 슬롯은 오류 토스트를 내지 않는다.
+    if (m_running) {
+        m_running = false;
+        emit runningChanged();
     }
+}
+
+void AutoPrepRunner::clear()
+{
+    ++m_intakeGeneration;
+    cancel();
+    if (!m_steps.isEmpty()) {
+        m_steps.clear();
+        emit stepsChanged();
+    }
+    emit cleared();
 }
 
 void AutoPrepRunner::processBuffer()

@@ -6,13 +6,14 @@ import type { MockRoute, MockContext } from "../../registry";
 import { iso } from "../../registry";
 import type {
   AdminUserRow,
+  AdminUserCreateRequest,
   AdminUserStatus,
   AdminUserDetail,
   AdminUserLoginHistoryRow,
   AdminUserStatusHistoryRow,
   AdminUserConsentRow,
 } from "@/admin/features/users/types";
-import type { AdminUserProfile } from "@/admin/features/profiles/types";
+import type { AdminUserProfile, AdminUserProfileVersion } from "@/admin/features/profiles/types";
 import type { AdminConsentView } from "@/admin/features/consents/types";
 
 // ── 회원 목록(세션 내 in-memory). 상태 변경 시 갱신해 목록·상세에 즉시 반영한다. ──
@@ -577,6 +578,16 @@ const profiles: AdminUserProfile[] = [
 ];
 
 const profileByUser = new Map(profiles.map((profile) => [profile.userId, profile]));
+const profileVersionsByUser = new Map<number, AdminUserProfileVersion[]>(
+  profiles.flatMap((profile, index) => profile.userId == null ? [] : [[profile.userId, [{
+    ...structuredClone(profile),
+    id: 98000 + index,
+    userId: profile.userId,
+    versionNo: 1,
+    source: "MIGRATION",
+    createdAt: profile.updatedAt ?? iso(30),
+  }]]]),
+);
 
 // ── 동의 플랫폼 전체 뷰(/admin/consents). 회원별 동의를 평탄화 + 이메일 결합. ──
 function buildConsentViews(): AdminConsentView[] {
@@ -631,12 +642,106 @@ interface StatusUpdateBody {
   blockedUntil?: string | null;
 }
 
+function softDeleteUser(user: AdminUserRow, reason?: string): AdminUserRow {
+  const previousStatus = user.status;
+  const now = new Date().toISOString();
+  user.status = "DELETED";
+  user.deletedAt = now;
+  user.dormantAt = null;
+  user.blockedReason = null;
+  user.blockedUntil = null;
+  user.statusChangedAt = now;
+  user.statusChangedBy = 1;
+  user.updatedAt = now;
+  const history = statusHistory[user.id] ?? (statusHistory[user.id] = []);
+  history.unshift({
+    id: 800000 + history.length + 1,
+    userId: user.id,
+    actorUserId: 1,
+    previousStatus,
+    newStatus: "DELETED",
+    reason: reason?.trim() || "관리자 소프트 삭제",
+    memo: null,
+    blockedUntil: null,
+    createdAt: now,
+  });
+  return { ...user };
+}
+
 export const adminUsersRoutes: MockRoute[] = [
   // ── 회원 목록(keyword/status/role/limit 필터) ──
   {
     method: "GET",
     pattern: /^\/admin\/users$/,
     handler: (ctx: MockContext) => filterUsers(ctx),
+  },
+
+  // ── 회원 생성: 서버와 동일하게 USER / ACTIVE / FREE로만 생성한다. ──
+  {
+    method: "POST",
+    pattern: /^\/admin\/users$/,
+    handler: (ctx: MockContext): AdminUserRow => {
+      const body = (ctx.body ?? {}) as Partial<AdminUserCreateRequest>;
+      const now = new Date().toISOString();
+      const created: AdminUserRow = {
+        id: Math.max(...users.map((user) => user.id), 9000) + 1,
+        email: String(body.email ?? "").trim().toLowerCase(),
+        name: String(body.name ?? "").trim(),
+        passwordEnabled: true,
+        emailVerified: false,
+        userType: "JOB_SEEKER",
+        role: "USER",
+        status: "ACTIVE",
+        plan: "FREE",
+        credit: 0,
+        lastLoginAt: null,
+        dormantAt: null,
+        blockedReason: null,
+        blockedUntil: null,
+        deletedAt: null,
+        statusChangedAt: now,
+        statusChangedBy: 1,
+        failedLoginCount: 0,
+        lastFailedLoginAt: null,
+        createdAt: now,
+        updatedAt: now,
+        loginSuccessCount: 0,
+        loginFailCount: 0,
+      };
+      users.unshift(created);
+      loginHistory[created.id] = [];
+      statusHistory[created.id] = [];
+      consentsByUser[created.id] = [];
+      return { ...created };
+    },
+  },
+
+  // ── 회원 일괄 소프트 삭제 ──
+  {
+    method: "POST",
+    pattern: /^\/admin\/users\/bulk-delete$/,
+    handler: (ctx: MockContext) => {
+      const body = (ctx.body ?? {}) as { ids?: number[]; params?: { reason?: string } };
+      const ids = Array.isArray(body.ids) ? body.ids : [];
+      let updated = 0;
+      ids.forEach((id) => {
+        const user = findUser(Number(id));
+        if (!user || user.status === "DELETED") return;
+        softDeleteUser(user, body.params?.reason);
+        updated += 1;
+      });
+      return { requested: ids.length, updated, skipped: ids.length - updated };
+    },
+  },
+
+  // ── 회원 단건 소프트 삭제 ──
+  {
+    method: "DELETE",
+    pattern: /^\/admin\/users\/(\d+)$/,
+    handler: (ctx: MockContext): AdminUserRow | null => {
+      const user = findUser(Number(ctx.params[0]));
+      return user ? softDeleteUser(user, ctx.query.get("reason") ?? undefined) : null;
+    },
   },
 
   // ── 회원 전체 로그인 이력(상세 요약보다 많은 건수) ──
@@ -715,6 +820,16 @@ export const adminUsersRoutes: MockRoute[] = [
     handler: (ctx: MockContext): AdminUserProfile => {
       const userId = Number(ctx.params[0]);
       return profileByUser.get(userId) ?? { userId, skills: [], updatedAt: null };
+    },
+  },
+
+  {
+    method: "GET",
+    pattern: /^\/admin\/profiles\/(\d+)\/versions$/,
+    handler: (ctx: MockContext): AdminUserProfileVersion[] => {
+      const userId = Number(ctx.params[0]);
+      const limit = Number(ctx.query.get("limit") ?? 20) || 20;
+      return (profileVersionsByUser.get(userId) ?? []).slice(0, limit);
     },
   },
 

@@ -9,15 +9,19 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.common.security.AuthUser;
+import com.careertuner.billing.policy.RequiresAiCharge;
+import com.careertuner.billing.service.AiChargeRequestSettlementService;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
+import com.careertuner.interview.dto.DispatchInterviewSessionRequest;
 import com.careertuner.interview.dto.GenerateFollowUpsRequest;
 import com.careertuner.interview.dto.GenerateQuestionsRequest;
 import com.careertuner.interview.dto.InterviewAgentStepResponse;
@@ -49,6 +53,8 @@ public class InterviewController {
 
     private final InterviewService interviewService;
     private final InterviewRealtimeService realtimeService;
+    // 사용자 모델 선택(요청 스코프) — 생성 엔드포인트에서만 set, 채점 경로엔 미적용(공정성). 게이트웨이가 읽는다.
+    private final com.careertuner.interview.service.InterviewModelSelectionTrace interviewModelSelectionTrace;
 
     @GetMapping("/sessions")
     public ApiResponse<SessionPageResponse> listSessions(
@@ -73,9 +79,13 @@ public class InterviewController {
     }
 
     @PostMapping("/sessions/{sessionId}/dispatch")
-    public ApiResponse<Void> dispatchToPhone(@AuthenticationPrincipal AuthUser authUser,
-                                             @PathVariable Long sessionId) {
-        interviewService.dispatchToPhone(authUser.id(), sessionId);
+    public ApiResponse<Void> dispatchSession(@AuthenticationPrincipal AuthUser authUser,
+                                             @PathVariable Long sessionId,
+                                             @RequestBody(required = false) DispatchInterviewSessionRequest request) {
+        DispatchInterviewSessionRequest body = request != null
+                ? request
+                : new DispatchInterviewSessionRequest(null);
+        interviewService.dispatchSession(authUser.id(), sessionId, body.targetOrDefault());
         return ApiResponse.ok();
     }
 
@@ -86,11 +96,19 @@ public class InterviewController {
     }
 
     @PostMapping("/sessions/{sessionId}/generate-questions")
+    @RequiresAiCharge("INTERVIEW_QUESTION_GEN")
     public ApiResponse<List<InterviewQuestionResponse>> generateQuestions(@AuthenticationPrincipal AuthUser authUser,
                                                                           @PathVariable Long sessionId,
-                                                                          @RequestBody(required = false) GenerateQuestionsRequest request) {
+                                                                          @RequestHeader(AiChargeRequestSettlementService.ACKNOWLEDGEMENT_HEADER) String operationKey,
+                                                                          @RequestBody(required = false) GenerateQuestionsRequest request,
+                                                                          @RequestParam(required = false) String model) {
         GenerateQuestionsRequest body = request != null ? request : new GenerateQuestionsRequest(null, null);
-        return ApiResponse.ok(interviewService.generateQuestions(authUser.id(), sessionId, body));
+        interviewModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
+        try {
+            return ApiResponse.ok(interviewService.generateQuestions(authUser.id(), sessionId, body, operationKey));
+        } finally {
+            interviewModelSelectionTrace.clear();
+        }
     }
 
     @GetMapping("/sessions/{sessionId}/questions")
@@ -100,23 +118,47 @@ public class InterviewController {
     }
 
     @PostMapping("/questions/{questionId}/model-answer")
+    @RequiresAiCharge("INTERVIEW_MODEL_ANSWER")
     public ApiResponse<ModelAnswerResponse> getModelAnswer(@AuthenticationPrincipal AuthUser authUser,
-                                                           @PathVariable Long questionId) {
-        return ApiResponse.ok(interviewService.getModelAnswer(authUser.id(), questionId));
+                                                           @PathVariable Long questionId,
+                                                           @RequestParam(required = false) String model) {
+        interviewModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
+        try {
+            return ApiResponse.ok(interviewService.getModelAnswer(authUser.id(), questionId));
+        } finally {
+            interviewModelSelectionTrace.clear();
+        }
     }
 
     @PostMapping("/questions/{questionId}/answers")
+    @RequiresAiCharge("INTERVIEW_ANSWER_EVAL")
     public ApiResponse<InterviewAnswerResponse> submitAnswer(@AuthenticationPrincipal AuthUser authUser,
                                                              @PathVariable Long questionId,
                                                              @Valid @RequestBody SubmitAnswerRequest request) {
         return ApiResponse.ok(interviewService.submitAnswer(authUser.id(), questionId, request));
     }
 
+    @DeleteMapping("/answers/{answerId}/media/{kind}")
+    public ApiResponse<Void> deleteAnswerMedia(@AuthenticationPrincipal AuthUser authUser,
+                                               @PathVariable Long answerId,
+                                               @PathVariable String kind) {
+        interviewService.deleteAnswerMedia(authUser.id(), answerId, kind);
+        return ApiResponse.ok();
+    }
+
     @PostMapping("/questions/{questionId}/follow-ups")
+    @RequiresAiCharge("INTERVIEW_FOLLOWUP_GEN")
     public ApiResponse<List<InterviewQuestionResponse>> generateFollowUps(@AuthenticationPrincipal AuthUser authUser,
                                                                           @PathVariable Long questionId,
-                                                                          @RequestBody(required = false) GenerateFollowUpsRequest request) {
-        return ApiResponse.ok(interviewService.generateFollowUps(authUser.id(), questionId, request));
+                                                                          @RequestHeader(AiChargeRequestSettlementService.ACKNOWLEDGEMENT_HEADER) String operationKey,
+                                                                          @RequestBody(required = false) GenerateFollowUpsRequest request,
+                                                                          @RequestParam(required = false) String model) {
+        interviewModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
+        try {
+            return ApiResponse.ok(interviewService.generateFollowUps(authUser.id(), questionId, request, operationKey));
+        } finally {
+            interviewModelSelectionTrace.clear();
+        }
     }
 
     @GetMapping("/sessions/{sessionId}/progress")
@@ -132,6 +174,7 @@ public class InterviewController {
     }
 
     @PostMapping("/sessions/{sessionId}/realtime")
+    @RequiresAiCharge("INTERVIEW_VOICE_SESSION")
     public ApiResponse<RealtimeSessionResponse> createRealtimeSession(@AuthenticationPrincipal AuthUser authUser,
                                                                       @PathVariable Long sessionId,
                                                                       @RequestParam(required = false) @Min(1) @Max(6) Integer questionLimit) {
@@ -139,9 +182,16 @@ public class InterviewController {
     }
 
     @GetMapping("/sessions/{sessionId}/report")
+    @RequiresAiCharge("INTERVIEW_REPORT")
     public ApiResponse<InterviewReportResponse> getReport(@AuthenticationPrincipal AuthUser authUser,
-                                                          @PathVariable Long sessionId) {
-        return ApiResponse.ok(interviewService.getReport(authUser.id(), sessionId));
+                                                          @PathVariable Long sessionId,
+                                                          @RequestParam(required = false) String model) {
+        interviewModelSelectionTrace.set(com.careertuner.ai.common.model.RequestedAiModel.parse(model));
+        try {
+            return ApiResponse.ok(interviewService.getReport(authUser.id(), sessionId));
+        } finally {
+            interviewModelSelectionTrace.clear();
+        }
     }
 
     @GetMapping("/sessions/{sessionId}/review")
@@ -151,6 +201,7 @@ public class InterviewController {
     }
 
     @PostMapping("/sessions/{sessionId}/score-voice")
+    @RequiresAiCharge("INTERVIEW_VOICE_SCORING")
     public ApiResponse<Integer> scoreVoiceTranscript(@AuthenticationPrincipal AuthUser authUser,
                                                      @PathVariable Long sessionId,
                                                      @Valid @RequestBody ScoreVoiceTranscriptRequest request) {

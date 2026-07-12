@@ -61,6 +61,7 @@ class ProfileDocumentImportServiceTest {
         });
         service = new ProfileServiceImpl(
                 profileMapper,
+                mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class),
                 mock(ApplicationCaseMapper.class),
                 consentService,
                 mock(ProfileAiService.class),
@@ -97,6 +98,7 @@ class ProfileDocumentImportServiceTest {
         assertThat(response.truncated()).isFalse();
         ArgumentCaptor<UserProfile> captor = ArgumentCaptor.forClass(UserProfile.class);
         verify(profileMapper).upsert(captor.capture());
+        verify(profileMapper).insertVersionFromCurrent(7L, "DOCUMENT_IMPORT");
         UserProfile saved = captor.getValue();
         assertThat(saved.getResumeText()).contains("Resume body");
         assertThat(saved.getSelfIntro()).isEqualTo("기존 자소서");

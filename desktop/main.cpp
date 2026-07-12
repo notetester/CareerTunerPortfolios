@@ -8,8 +8,10 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QIcon>
+#include <QVariant>
 
 #include "core/ApiClient.h"
+#include "core/AiChargeCoordinator.h"
 #include "core/AuthService.h"
 #include "core/SettingsStore.h"
 #include "core/SseClient.h"
@@ -23,6 +25,7 @@
 #include "core/AdClient.h"
 #include "core/CollaborationClient.h"
 #include "core/CommunityClient.h"
+#include "core/ConsentClient.h"
 #include "core/CameraRecorder.h"
 
 // 앱 아이콘: 리소스 파일 없이 런타임에 그림 (인디고 라운드 + C)
@@ -65,23 +68,37 @@ int main(int argc, char* argv[])
     ApiClient         api;
     api.setBaseUrl(settings.baseUrl());              // 영속화된 서버 주소 반영
     AuthService       auth(&api, &settings);
+    AiChargeCoordinator aiCharge(&api);
     SseClient         sse;
     JobModel          jobs;
     jobs.setApi(&api);
-    InterviewSession  session(&api, &settings);
+    InterviewSession  session(&api, &settings, &aiCharge);
     VoiceRecorder     recorder;
     CameraRecorder    cameraRecorder;
     NotificationPoller poller(&api);
     PlannerClient     planner(&api);
     PlannerOverlayController plannerOverlayController;
     AutoPrepRunner    autoprep(&api);
-    AdClient          ads(&api);
+    AdClient          ads(&api, &settings);
     CollaborationClient collaboration(&api);
     CommunityClient   community(&api);
+    ConsentClient     consent(&api);
 
-    // 설정에서 서버 주소를 바꾸면 즉시 반영
-    QObject::connect(&settings, &SettingsStore::changed, &api,
-        [&api, &settings]() { api.setBaseUrl(settings.baseUrl()); });
+    // 로그인 주체가 바뀌는 즉시 이전 계정의 목록/세션을 비워 stale UI 노출을 막는다.
+    QObject::connect(&api, &ApiClient::authenticationIdentityChanged,
+                     &jobs, &JobModel::clear);
+    QObject::connect(&api, &ApiClient::authenticationIdentityChanged,
+                     &session, &InterviewSession::clear);
+    // 표준 답변 저장 및 리포트 생성 완료 뒤 사이드바 진행률/상태를 서버 기준으로 갱신한다.
+    QObject::connect(&session, &InterviewSession::sidebarRefreshRequested,
+                     &jobs, &JobModel::reload);
+
+    // 서버 변경 시 이전 호스트의 저장·메모리 자격증명을 먼저 폐기한 뒤 새 주소를 반영한다.
+    QObject::connect(&settings, &SettingsStore::baseUrlChanged, &api,
+        [&api, &auth, &settings]() {
+            auth.logout();
+            api.setBaseUrl(settings.baseUrl());
+        });
     QObject::connect(&settings, &SettingsStore::changed, &ads,
         [&ads]() { ads.refresh(); });
 
@@ -89,11 +106,37 @@ int main(int argc, char* argv[])
     QObject::connect(&auth, &AuthService::loggedIn, &poller,
         [&poller](const QString&) { poller.start(); });
     QObject::connect(&auth, &AuthService::loggedIn, &planner,
-        [&planner](const QString&) { planner.start(); });
+        [&planner, &auth, &api](const QString&) {
+            // 같은 reminder id가 서로 다른 서버/DB 계정 사이에서 충돌하지 않게 origin도 포함한다.
+            planner.setAccountScope(api.baseUrl() + QStringLiteral("|") + auth.userEmail());
+            planner.start();
+        });
     QObject::connect(&auth, &AuthService::loggedIn, &collaboration,
         [&collaboration](const QString&) { collaboration.refresh(); });
     QObject::connect(&auth, &AuthService::loggedIn, &ads,
         [&ads](const QString&) { ads.refresh(); });
+    QObject::connect(&auth, &AuthService::loggedIn, &consent,
+        [&consent](const QString&) { consent.refresh(); });
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &consent,
+        [&auth, &consent](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive && !auth.token().isEmpty()) consent.refresh();
+        });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &collaboration,
+        [&collaboration]() { collaboration.clear(); });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &autoprep,
+        [&autoprep]() { autoprep.clear(); });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &poller,
+        [&poller]() { poller.stop(); });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &planner,
+        [&planner]() { planner.stop(); });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &aiCharge,
+        [&aiCharge]() { aiCharge.invalidate(); });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &jobs,
+        [&jobs]() { jobs.clear(); });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &session,
+        [&session]() { session.clear(); });
+    QObject::connect(&auth, &AuthService::aboutToLogout, &consent,
+        [&consent]() { consent.clear(); });
     QObject::connect(&auth, &AuthService::loggedOut, &poller,
         [&poller]() { poller.stop(); });
     QObject::connect(&auth, &AuthService::loggedOut, &planner,
@@ -110,6 +153,7 @@ int main(int argc, char* argv[])
     QQmlContext* ctx = engine.rootContext();
     ctx->setContextProperty("api", &api);
     ctx->setContextProperty("auth", &auth);
+    ctx->setContextProperty("aiCharge", &aiCharge);
     ctx->setContextProperty("appSettings", &settings);
     ctx->setContextProperty("sse", &sse);
     ctx->setContextProperty("jobModel", &jobs);
@@ -123,6 +167,7 @@ int main(int argc, char* argv[])
     ctx->setContextProperty("desktopAds", &ads);
     ctx->setContextProperty("collaboration", &collaboration);
     ctx->setContextProperty("community", &community);
+    ctx->setContextProperty("consentStatus", &consent);
 
     engine.loadFromModule("CareerTuner", "Main");
     if (engine.rootObjects().isEmpty())
@@ -137,12 +182,29 @@ int main(int argc, char* argv[])
     QAction* plannerOverlayAct = trayMenu.addAction("플래너 오버레이 켜기");
     QAction* plannerClickAct = trayMenu.addAction("플래너 클릭 통과 해제");
     QAction* quitAct = trayMenu.addAction("종료");
+    QString trayNotificationType;
+    QString trayNotificationLink;
+    QString trayNotificationTargetType;
+    qint64 trayNotificationTargetId = 0;
     const auto showWindow = [&engine]() {
         if (!engine.rootObjects().isEmpty()) {
             QObject* win = engine.rootObjects().first();
             win->setProperty("visible", true);
             QMetaObject::invokeMethod(win, "requestActivate", Qt::DirectConnection);
         }
+    };
+    const auto activateNotification = [&engine, showWindow](
+            const QString& type, const QString& link,
+            const QString& targetType, qint64 targetId) {
+        showWindow();
+        if (engine.rootObjects().isEmpty()) return;
+        QObject* win = engine.rootObjects().first();
+        QMetaObject::invokeMethod(
+            win, "activateNotification", Qt::QueuedConnection,
+            Q_ARG(QVariant, QVariant(type)),
+            Q_ARG(QVariant, QVariant(link)),
+            Q_ARG(QVariant, QVariant(targetType)),
+            Q_ARG(QVariant, QVariant::fromValue(targetId)));
     };
     QObject::connect(showAct, &QAction::triggered, showWindow);
     QObject::connect(plannerOverlayAct, &QAction::triggered, &plannerOverlayController,
@@ -155,17 +217,40 @@ int main(int argc, char* argv[])
             if (r == QSystemTrayIcon::Trigger || r == QSystemTrayIcon::DoubleClick)
                 showWindow();
         });
-    QObject::connect(&tray, &QSystemTrayIcon::messageClicked, &app, showWindow);
+    QObject::connect(&tray, &QSystemTrayIcon::messageClicked, &app,
+        [showWindow, activateNotification,
+         &trayNotificationType, &trayNotificationLink,
+         &trayNotificationTargetType, &trayNotificationTargetId]() {
+            if (!trayNotificationLink.isEmpty() || !trayNotificationTargetType.isEmpty()) {
+                activateNotification(trayNotificationType, trayNotificationLink,
+                                     trayNotificationTargetType, trayNotificationTargetId);
+            } else {
+                showWindow();
+            }
+            trayNotificationType.clear();
+            trayNotificationLink.clear();
+            trayNotificationTargetType.clear();
+            trayNotificationTargetId = 0;
+        });
     tray.setContextMenu(&trayMenu);
     tray.show();
 
     // 새 알림 → Windows 트레이 토스트 / 작업표시줄 attention (설정에서 각각 끌 수 있음)
     QObject::connect(&poller, &NotificationPoller::notificationArrived, &tray,
-        [&tray, &settings, &engine](const QString&, const QString& title,
-                           const QString& message, const QString&, qint64,
+        [&tray, &settings, &engine,
+         &trayNotificationType, &trayNotificationLink,
+         &trayNotificationTargetType, &trayNotificationTargetId](
+                           const QString& type, const QString& title,
+                           const QString& message, const QString& link,
+                           const QString& targetType, qint64 targetId,
                            bool desktopToast, bool desktopTaskbar) {
-            if (desktopToast && settings.trayNotify())
+            if (desktopToast && settings.trayNotify()) {
+                trayNotificationType = type;
+                trayNotificationLink = link;
+                trayNotificationTargetType = targetType;
+                trayNotificationTargetId = targetId;
                 tray.showMessage(title, message, QSystemTrayIcon::Information, 6000);
+            }
             if (desktopTaskbar && !engine.rootObjects().isEmpty()) {
                 if (auto* window = qobject_cast<QWindow*>(engine.rootObjects().first())) {
                     window->alert(6000);
@@ -173,11 +258,19 @@ int main(int argc, char* argv[])
             }
         });
     QObject::connect(&planner, &PlannerClient::reminderArrived, &tray,
-        [&tray, &settings, &engine, &plannerOverlayController](
+        [&tray, &settings, &engine, &plannerOverlayController,
+         &trayNotificationType, &trayNotificationLink,
+         &trayNotificationTargetType, &trayNotificationTargetId](
             const QString& title, const QString& message,
             bool desktopToast, bool desktopTaskbar, bool desktopSound) {
-            if (desktopToast && settings.trayNotify())
+            if (desktopToast && settings.trayNotify()) {
+                // 일정 알림 클릭이 직전 일반 알림의 대상을 잘못 여는 일을 막는다.
+                trayNotificationType.clear();
+                trayNotificationLink.clear();
+                trayNotificationTargetType.clear();
+                trayNotificationTargetId = 0;
                 tray.showMessage(QStringLiteral("일정 알림: %1").arg(title), message, QSystemTrayIcon::Information, 6000);
+            }
             if (desktopTaskbar && !engine.rootObjects().isEmpty()) {
                 if (auto* window = qobject_cast<QWindow*>(engine.rootObjects().first())) {
                     window->alert(6000);

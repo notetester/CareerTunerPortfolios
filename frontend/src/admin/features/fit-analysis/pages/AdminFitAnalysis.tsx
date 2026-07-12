@@ -32,6 +32,7 @@ import type {
   AdminFitAnalysisMemo,
   AdminGateStats,
 } from "../types/adminFitAnalysis";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 const memoTypeOptions = [
   { value: "GENERAL", label: "일반" },
@@ -77,6 +78,7 @@ function gateBadge(status: string | null): { label: string; cls: string } | null
 }
 
 export default function AdminFitAnalysisPage() {
+  const { canCreate, canUpdate, canDelete } = useAdminDomainAuthorization("AI");
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedAnalysisId = Number(searchParams.get("analysisId"));
   const [items, setItems] = useState<AdminFitAnalysisListItem[]>([]);
@@ -235,6 +237,7 @@ export default function AdminFitAnalysisPage() {
   }
 
   function startEditMemo(memo: AdminFitAnalysisMemo) {
+    if (!canUpdate) return;
     setEditingMemo(memo);
     setMemoType(memo.memoType);
     setMemoContent(memo.content);
@@ -242,6 +245,7 @@ export default function AdminFitAnalysisPage() {
 
   async function submitMemo() {
     if (!detail || !memoContent.trim()) return;
+    if (editingMemo ? !canUpdate : !canCreate) return;
 
     setSavingMemo(true);
     setError(null);
@@ -267,7 +271,7 @@ export default function AdminFitAnalysisPage() {
 
   // gate review workflow: 처리 상태 변경(검토 완료/재분석 요청/대기 되돌리기) 후 상세·목록 갱신.
   async function submitGateReview(reviewStatus: string) {
-    if (!detail) return;
+    if (!canUpdate || !detail) return;
     setSavingMemo(true);
     setError(null);
     try {
@@ -285,7 +289,7 @@ export default function AdminFitAnalysisPage() {
   }
 
   async function removeMemo(memo: AdminFitAnalysisMemo) {
-    if (!detail) return;
+    if (!canDelete || !detail) return;
 
     setSavingMemo(true);
     setError(null);
@@ -558,7 +562,7 @@ export default function AdminFitAnalysisPage() {
                             {detail.gateReviewedAt ? ` · ${formatDateTime(detail.gateReviewedAt)}` : ""}
                           </div>
                         )}
-                        <div className="mt-2 flex flex-wrap gap-2">
+                        {canUpdate && <div className="mt-2 flex flex-wrap gap-2">
                           {detail.gateReviewStatus === "PENDING" && (
                             <>
                               <Button type="button" size="sm" onClick={() => void submitGateReview("RESOLVED")} disabled={savingMemo}>
@@ -574,7 +578,7 @@ export default function AdminFitAnalysisPage() {
                               검토 대기로 되돌리기
                             </Button>
                           )}
-                        </div>
+                        </div>}
                       </div>
                     )}
 
@@ -628,7 +632,7 @@ export default function AdminFitAnalysisPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    {(editingMemo ? canUpdate : canCreate) && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                       <div className="flex flex-col gap-2 sm:flex-row">
                         <select
                           value={memoType}
@@ -657,7 +661,7 @@ export default function AdminFitAnalysisPage() {
                           {editingMemo ? "메모 수정" : "메모 저장"}
                         </Button>
                       </div>
-                    </div>
+                    </div>}
 
                     <div className="space-y-2">
                       {detail.memos.length > 0 ? (
@@ -673,14 +677,14 @@ export default function AdminFitAnalysisPage() {
                                 </div>
                                 <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{memo.content}</p>
                               </div>
-                              <div className="flex shrink-0 gap-1">
-                                <Button type="button" size="sm" variant="outline" onClick={() => startEditMemo(memo)} disabled={savingMemo}>
+                              {(canUpdate || canDelete) && <div className="flex shrink-0 gap-1">
+                                {canUpdate && <Button type="button" size="sm" variant="outline" onClick={() => startEditMemo(memo)} disabled={savingMemo}>
                                   <PenLine className="size-3.5" />
-                                </Button>
-                                <Button type="button" size="sm" variant="outline" onClick={() => removeMemo(memo)} disabled={savingMemo}>
+                                </Button>}
+                                {canDelete && <Button type="button" size="sm" variant="outline" onClick={() => removeMemo(memo)} disabled={savingMemo}>
                                   <Trash2 className="size-3.5 text-red-500" />
-                                </Button>
-                              </div>
+                                </Button>}
+                              </div>}
                             </div>
                           </div>
                         ))

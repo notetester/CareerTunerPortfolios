@@ -4,6 +4,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -19,6 +20,7 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
 import com.careertuner.applicationcase.service.ApplicationCaseService;
+import com.careertuner.jobposting.service.JobPostingUploadLimitPolicy;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.exception.GlobalExceptionHandler;
@@ -32,11 +34,12 @@ import com.careertuner.common.security.AuthUser;
 class ApplicationCaseAnalysisControllerTest {
 
     private final ApplicationCaseService service = mock(ApplicationCaseService.class);
+    private final JobPostingUploadLimitPolicy uploadLimitPolicy = mock(JobPostingUploadLimitPolicy.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new ApplicationCaseController(service))
+        mockMvc = MockMvcBuilders.standaloneSetup(new ApplicationCaseController(service, uploadLimitPolicy))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new HandlerMethodArgumentResolver() {
                     @Override
@@ -83,5 +86,15 @@ class ApplicationCaseAnalysisControllerTest {
         mockMvc.perform(post("/api/application-cases/10/company-analysis").param("provider", "BAD"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_INPUT"));
+    }
+
+    @Test
+    void uploadLimitReturnsCurrentMaxBytes() throws Exception {
+        when(uploadLimitPolicy.currentMaxBytes()).thenReturn(10L * 1024 * 1024);
+
+        mockMvc.perform(get("/api/application-cases/upload-limit"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.maxBytes").value(10L * 1024 * 1024));
     }
 }

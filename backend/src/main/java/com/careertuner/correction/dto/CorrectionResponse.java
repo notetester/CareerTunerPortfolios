@@ -14,6 +14,7 @@ public record CorrectionResponse(
         Long sourceRefId,
         String originalText,
         String improvedText,
+        String sourceSnapshot,
         String summary,
         List<String> issues,
         List<String> changeReasons,
@@ -39,6 +40,7 @@ public record CorrectionResponse(
                 correction.getSourceRefId(),
                 correction.getOriginalText(),
                 correction.getImprovedText(),
+                correction.getSourceSnapshot(),
                 safePayload.summary(),
                 safePayload.issues(),
                 safePayload.changeReasons(),
@@ -60,7 +62,7 @@ public record CorrectionResponse(
         CorrectionResponse base = from(correction, payload);
         return new CorrectionResponse(
                 base.id(), base.applicationCaseId(), base.correctionType(), base.sourceType(), base.sourceRefId(),
-                base.originalText(), base.improvedText(), base.summary(), base.issues(), base.changeReasons(),
+                base.originalText(), base.improvedText(), base.sourceSnapshot(), base.summary(), base.issues(), base.changeReasons(),
                 base.suggestions(), base.status(), base.aiUsageLogId(),
                 chargeResult == null ? null : chargeResult.chargeType().name(),
                 chargeResult == null ? 0 : chargeResult.chargedCredit(),
@@ -73,7 +75,7 @@ public record CorrectionResponse(
     public CorrectionResponse asReplayed() {
         return new CorrectionResponse(
                 id, applicationCaseId, correctionType, sourceType, sourceRefId,
-                originalText, improvedText, summary, issues, changeReasons, suggestions,
+                originalText, improvedText, sourceSnapshot, summary, issues, changeReasons, suggestions,
                 status, aiUsageLogId, chargeType, chargedCredit, totalTokens, remainingCredit,
                 true, createdAt);
     }

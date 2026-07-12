@@ -1,4 +1,4 @@
-import { api } from "@/app/lib/api";
+import { api, apiBlob } from "@/app/lib/api";
 import type {
   PlannerDashboard,
   PlannerMemo,
@@ -56,4 +56,17 @@ export function createStrategyScheduleDraft(fitAnalysisId: number) {
   return api<PlannerStrategyDraft>(`/planner/strategy-drafts/fit-analyses/${fitAnalysisId}`, {
     method: "POST",
   });
+}
+
+/** 플래너 일정을 .ics 파일로 내려받는다(구글/애플/아웃룩 캘린더에 가져오기). 인증 헤더가 필요해 blob 다운로드로 처리. */
+export async function exportPlannerIcs(): Promise<void> {
+  const blob = await apiBlob("/planner/export.ics");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "careertuner-planner.ics";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

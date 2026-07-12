@@ -72,13 +72,19 @@ class ApplicationCaseAutoPipelineServiceTest {
     /** 같은 mock 협력자로 서비스만 다시 구성한다(runtime_setting 스텁 교체용 — 자동 파이프라인 on/off 테스트). */
     private ApplicationCaseAutoPipelineService buildService(
             com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingService) {
-        BAnalysisGenerationService bAnalysisGenerationService = new BAnalysisGenerationService(
+        return buildService(runtimeSettingService, new BAnalysisGenerationService(
                 new BAnalysisProperties(),
                 mock(BLocalLlmClient.class),
                 new BJobSentenceClassifier(),
                 objectMapper,
                 mock(BAnthropicClient.class),
-                mock(OpenAiResponsesClient.class));
+                mock(OpenAiResponsesClient.class)));
+    }
+
+    /** 생성 서비스를 mock 으로 주입하는 변형 — preferred 경로 호출·provenance 기록 배선(P0-1·P1-4) 검증용. */
+    private ApplicationCaseAutoPipelineService buildService(
+            com.careertuner.runtimesetting.service.RuntimeSettingService runtimeSettingService,
+            BAnalysisGenerationService bAnalysisGenerationService) {
         return new ApplicationCaseAutoPipelineService(
                 applicationCaseMapper,
                 initialRunMapper,
@@ -124,6 +130,9 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(fitAnalysisMapper).insertFitAnalysis(fitCaptor.capture());
         assertThat(fitCaptor.getValue().getModel()).isEqualTo("self-rules-v1");
         assertThat(fitCaptor.getValue().getStatus()).isEqualTo("SUCCESS");
+        assertThat(fitCaptor.getValue().getSourceSnapshot())
+                .contains("\"profileVersionId\":401")
+                .contains("\"profileVersionNo\":3");
         verify(fitAnalysisMapper).insertHistory(eq(70L), eq(10L), eq(null), any(), any());
         verify(fitAnalysisMapper, atLeastOnce()).insertConditionMatch(eq(70L), any(), any(), anyInt());
         verify(fitAnalysisMapper, atLeastOnce()).insertLearningTask(any());
@@ -151,6 +160,101 @@ class ApplicationCaseAutoPipelineServiceTest {
     }
 
     @Test
+    void initialRunUsesSelectedProvidersAndRecordsInitialProvenance() {
+        // [P0-1·P1-4] 등록 시 job=CLAUDE·company=OPENAI 를 골랐으면 초기 파이프라인이 preferred 경로로 그 provider 를
+        // 우선 실행하고, 결과 행에 provenance 6컬럼(run_mode=INITIAL)을 기록한다.
+        stubRunnableDraftCase();
+        stubAnalysisInsertCallbacks();
+        BAnalysisGenerationService generation = mock(BAnalysisGenerationService.class);
+        service = buildService(runtimeSettingServiceReturningFallback(), generation);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(profileWithProviders("CLAUDE", "OPENAI"));
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        when(generation.generateJobAnalysisPreferred(any(), anyString(), eq(BAnalysisProvider.CLAUDE)))
+                .thenReturn(new BAnalysisGenerationService.GeneratedJobAnalysis(jobPayload(), null, null,
+                        new BAnalysisGenerationService.AnalysisProvenance(
+                                "CLAUDE", "CLAUDE", "claude-haiku-test", false, "[\"CLAUDE\"]")));
+        when(generation.generateCompanyAnalysisPreferred(any(), anyString(), any(), eq(BAnalysisProvider.OPENAI)))
+                .thenReturn(new BAnalysisGenerationService.GeneratedCompanyAnalysis(companyPayload(), null, null,
+                        new BAnalysisGenerationService.AnalysisProvenance(
+                                "OPENAI", "OPENAI", "gpt-test", false, "[\"OPENAI\"]")));
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        // preferred 경로 호출(자동 체인 미호출).
+        verify(generation).generateJobAnalysisPreferred(any(), anyString(), eq(BAnalysisProvider.CLAUDE));
+        verify(generation, never()).generateJobAnalysis(any(), anyString());
+        verify(generation).generateCompanyAnalysisPreferred(any(), anyString(), any(), eq(BAnalysisProvider.OPENAI));
+        verify(generation, never()).generateCompanyAnalysis(any(), anyString(), any());
+
+        ArgumentCaptor<JobAnalysis> jobCaptor = ArgumentCaptor.forClass(JobAnalysis.class);
+        verify(jobAnalysisMapper).insertJobAnalysis(jobCaptor.capture());
+        JobAnalysis job = jobCaptor.getValue();
+        assertThat(job.getRequestedProvider()).isEqualTo("CLAUDE");
+        assertThat(job.getActualProvider()).isEqualTo("CLAUDE");
+        assertThat(job.getActualModel()).isEqualTo("claude-haiku-test");
+        assertThat(job.getFallbackUsed()).isFalse();
+        assertThat(job.getAttemptPath()).isEqualTo("[\"CLAUDE\"]");
+        assertThat(job.getRunMode()).isEqualTo("INITIAL");
+
+        ArgumentCaptor<CompanyAnalysis> companyCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
+        verify(companyAnalysisMapper).insertCompanyAnalysis(companyCaptor.capture());
+        CompanyAnalysis company = companyCaptor.getValue();
+        assertThat(company.getRequestedProvider()).isEqualTo("OPENAI");
+        assertThat(company.getActualProvider()).isEqualTo("OPENAI");
+        assertThat(company.getActualModel()).isEqualTo("gpt-test");
+        assertThat(company.getFallbackUsed()).isFalse();
+        assertThat(company.getAttemptPath()).isEqualTo("[\"OPENAI\"]");
+        assertThat(company.getRunMode()).isEqualTo("INITIAL");
+    }
+
+    @Test
+    void initialRunWithoutSelectionUsesAutoChainAndRecordsActualProvenance() {
+        // #2(정책 A): 선택이 없으면(프로필 provider NULL) 기존 자동 체인으로 돌되, 자동 체인이 실제 성공 provider·
+        // 모델·attempt_path·fallback_used 를 provenance 로 반환한다. requested_provider 만 NULL(사용자가 특정 모델을
+        // 고르지 않음)이고 actual_provider 등은 채워진다 → AUTO 등록 초기분석도 배지에 실제 모델이 뜬다.
+        // run_mode 는 여전히 INITIAL("초기 실행은 항상 INITIAL" 계약).
+        stubRunnableDraftCase();
+        stubAnalysisInsertCallbacks();
+        BAnalysisGenerationService generation = mock(BAnalysisGenerationService.class);
+        service = buildService(runtimeSettingServiceReturningFallback(), generation);
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        // AUTO 경로 provenance: requested=NULL, actual=실제 성공 provider. 여기선 LOCAL 실패 후 CLAUDE 로 폴백한 예.
+        when(generation.generateJobAnalysis(any(), anyString()))
+                .thenReturn(new BAnalysisGenerationService.GeneratedJobAnalysis(jobPayload(), null, null,
+                        new BAnalysisGenerationService.AnalysisProvenance(
+                                null, "CLAUDE", "claude-haiku-test", true, "[\"LOCAL\",\"CLAUDE\"]")));
+        when(generation.generateCompanyAnalysis(any(), anyString(), any()))
+                .thenReturn(new BAnalysisGenerationService.GeneratedCompanyAnalysis(companyPayload(), null, null,
+                        new BAnalysisGenerationService.AnalysisProvenance(
+                                null, "LOCAL", "self-r1-test", false, "[\"LOCAL\"]")));
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        verify(generation).generateJobAnalysis(any(), anyString());
+        verify(generation, never()).generateJobAnalysisPreferred(any(), anyString(), any());
+        verify(generation).generateCompanyAnalysis(any(), anyString(), any());
+        verify(generation, never()).generateCompanyAnalysisPreferred(any(), anyString(), any(), any());
+
+        ArgumentCaptor<JobAnalysis> jobCaptor = ArgumentCaptor.forClass(JobAnalysis.class);
+        verify(jobAnalysisMapper).insertJobAnalysis(jobCaptor.capture());
+        assertThat(jobCaptor.getValue().getRequestedProvider()).isNull();
+        assertThat(jobCaptor.getValue().getActualProvider()).isEqualTo("CLAUDE");
+        assertThat(jobCaptor.getValue().getActualModel()).isEqualTo("claude-haiku-test");
+        assertThat(jobCaptor.getValue().getFallbackUsed()).isTrue();
+        assertThat(jobCaptor.getValue().getAttemptPath()).isEqualTo("[\"LOCAL\",\"CLAUDE\"]");
+        assertThat(jobCaptor.getValue().getRunMode()).isEqualTo("INITIAL");
+
+        ArgumentCaptor<CompanyAnalysis> companyCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
+        verify(companyAnalysisMapper).insertCompanyAnalysis(companyCaptor.capture());
+        assertThat(companyCaptor.getValue().getRequestedProvider()).isNull();
+        assertThat(companyCaptor.getValue().getActualProvider()).isEqualTo("LOCAL");
+        assertThat(companyCaptor.getValue().getActualModel()).isEqualTo("self-r1-test");
+        assertThat(companyCaptor.getValue().getFallbackUsed()).isFalse();
+        assertThat(companyCaptor.getValue().getRunMode()).isEqualTo("INITIAL");
+    }
+
+    @Test
     void skipsPipelineWhenInitialRunProfileAlreadyClaimed() {
         stubRunnableDraftCase();
         // 프로필은 있으나 다른 실행이 이미 claim/완료 → claimForRun 이 0행. 초기 파이프라인 재진입 금지.
@@ -162,6 +266,24 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
         verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), anyString());
         verify(applicationCaseMapper, never()).markReadyAfterAnalysis(anyLong(), anyLong(), anyString());
+        verify(initialRunMapper, never()).markDone(anyLong(), anyString());
+        verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
+    }
+
+    @Test
+    void skipsPipelineWhenInitialRunProfileAlreadyClosedByReextraction() {
+        // #1 scenario 2(★): 최초 OCR 이 REVIEW_REQUIRED 라 PENDING 이던 프로필을 사용자가 재추출하며 FAILED 로
+        // 닫은 뒤, REVIEW_REQUIRED 공고를 confirm 하면 이 경로가 다시 불린다. 프로필이 이미 FAILED 이므로
+        // claimForRun(state='PENDING' 조건)이 0행 → 초기 자동 분석이 재실행되지 않는다("재추출 후 자동분석 없음" 유지).
+        stubRunnableDraftCase();
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(profile("FAILED"));
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(0);
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        verify(jobAnalysisMapper, never()).insertJobAnalysis(any());
+        verify(companyAnalysisMapper, never()).insertCompanyAnalysis(any());
+        verify(applicationCaseMapper, never()).markAnalysisStarted(anyLong(), anyLong(), anyString());
         verify(initialRunMapper, never()).markDone(anyLong(), anyString());
         verify(initialRunMapper, never()).markFailed(anyLong(), anyString(), anyString());
     }
@@ -203,6 +325,40 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(initialRunMapper).markFailed(eq(10L), eq(claimToken.getValue()), anyString());
         verify(initialRunMapper, never()).markDone(anyLong(), anyString());
         verify(applicationCaseMapper, never()).markReadyAfterAnalysis(anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void truncatesPipelineFailureReasonToInitialRunColumnLength() {
+        // failure_reason 컬럼은 VARCHAR(255) — markFailed 에 넘기는 실패 사유가 255자를 넘으면 Data truncation 으로
+        // markFailed 자체가 throw 되어 프로필이 FAILED 로 못 닫히고 RUNNING 에 고착된다(예: fit 스키마 갭의 긴 SQL 에러).
+        // 따라서 실패 사유는 반드시 255자 이하로 잘라 넘겨야 한다.
+        stubRunnableDraftCase();
+        when(initialRunMapper.findByApplicationCaseId(10L)).thenReturn(pendingProfile());
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        String longMessage = "boom-" + "a".repeat(2000);
+        doThrow(new RuntimeException(longMessage))
+                .when(companyAnalysisService).collectWebEvidence(any(ApplicationCase.class));
+
+        service.runAfterExtractionPass(1L, 10L, 20L, 2, POSTING_TEXT);
+
+        // 정확히 255자 + 앞 255자 원문 보존(단순 ≤255 보다 강하게 잠근다).
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).markFailed(eq(10L), anyString(), reason.capture());
+        assertThat(reason.getValue()).hasSize(255).isEqualTo(longMessage.substring(0, 255));
+    }
+
+    @Test
+    void abandonTruncatesFailureReasonToInitialRunColumnLength() {
+        // abandonInitialRunIfPending 도 동일 컬럼에 쓰므로 255자 이하로 잘라야 한다(markFailed truncation 고착 방지).
+        when(initialRunMapper.claimForRun(eq(10L), anyString())).thenReturn(1);
+        String longReason = "abandon-" + "b".repeat(2000);
+
+        service.abandonInitialRunIfPending(10L, longReason);
+
+        // 정확히 255자 + 앞 255자 원문 보존.
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(initialRunMapper).markFailed(eq(10L), anyString(), reason.capture());
+        assertThat(reason.getValue()).hasSize(255).isEqualTo(longReason.substring(0, 255));
     }
 
     @Test
@@ -347,6 +503,30 @@ class ApplicationCaseAutoPipelineServiceTest {
         return profile("PENDING");
     }
 
+    /** 등록 시 job/company 분석 provider 를 고른 PENDING 프로필(preferred 경로 진입 조건). */
+    private static ApplicationCaseInitialRun profileWithProviders(String jobProvider, String companyProvider) {
+        return ApplicationCaseInitialRun.builder()
+                .applicationCaseId(10L)
+                .state("PENDING")
+                .jobAnalysisProvider(jobProvider)
+                .companyAnalysisProvider(companyProvider)
+                .build();
+    }
+
+    private static OpenAiResponsesClient.JobAnalysisPayload jobPayload() {
+        return new OpenAiResponsesClient.JobAnalysisPayload(
+                "FULL_TIME", "MID", "[\"Java\"]", "[]", "개발 업무", "경력자", "NORMAL",
+                "백엔드 개발자를 위한 공고 분석 요약입니다.", "[]", "[]",
+                new OpenAiResponsesClient.Usage("claude-haiku-test", 1, 1, 2));
+    }
+
+    private static OpenAiResponsesClient.CompanyAnalysisPayload companyPayload() {
+        return new OpenAiResponsesClient.CompanyAnalysisPayload(
+                "기업 요약입니다.", "확인 불가", "IT 서비스", "[]", "면접 준비 포인트",
+                "[]", "[]", "[]", "[]",
+                new OpenAiResponsesClient.Usage("gpt-test", 1, 1, 2));
+    }
+
     private static ApplicationCaseInitialRun profile(String state) {
         return ApplicationCaseInitialRun.builder()
                 .applicationCaseId(10L)
@@ -373,6 +553,8 @@ class ApplicationCaseAutoPipelineServiceTest {
         source.setJobAnalysisId(60L);
         source.setJobPostingId(20L);
         source.setJobPostingRevision(2);
+        source.setProfileVersionId(401L);
+        source.setProfileVersionNo(3);
         source.setCompanyName("Acme");
         source.setJobTitle("Backend Engineer");
         source.setRequiredSkills("[\"Java\",\"Spring Boot\",\"MySQL\",\"Docker\"]");

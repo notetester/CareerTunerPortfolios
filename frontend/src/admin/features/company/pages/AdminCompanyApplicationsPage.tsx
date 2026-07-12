@@ -22,6 +22,7 @@ import {
   listCompanyApplications,
   rejectCompanyApplication,
 } from "../api";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: "PENDING", label: "검토 중" },
@@ -53,6 +54,7 @@ const APPLICATION_COLUMNS: AdminListColumn<CompanyApplication>[] = [
 
 /** 기업 계정 신청 승인/반려 콘솔 — 승인 시 신청자 role 이 COMPANY 로 전환된다. */
 export function AdminCompanyApplicationsPage() {
+  const { canUpdate } = useAdminDomainAuthorization("USER");
   const [statusFilter, setStatusFilter] = useState("PENDING");
   const [rows, setRows] = useState<CompanyApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +89,7 @@ export function AdminCompanyApplicationsPage() {
   }, [load]);
 
   const approve = async (application: CompanyApplication) => {
+    if (!canUpdate) return;
     if (!window.confirm(`'${application.companyName}' 신청을 승인할까요?\n승인 즉시 신청자 계정이 기업(COMPANY) 계정으로 전환됩니다.`)) return;
     setProcessing(true);
     setError(null);
@@ -102,7 +105,7 @@ export function AdminCompanyApplicationsPage() {
   };
 
   const reject = async () => {
-    if (!rejectTarget) return;
+    if (!canUpdate || !rejectTarget) return;
     if (!rejectReason.trim()) {
       setError("반려 사유를 입력해 주세요.");
       return;
@@ -202,7 +205,7 @@ export function AdminCompanyApplicationsPage() {
                           </Badge>
                         </td>
                         <td className="px-2 py-3">
-                          {application.status === "PENDING" && (
+                          {application.status === "PENDING" && canUpdate && (
                             <div className="flex justify-end gap-1.5">
                               <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" disabled={processing} onClick={() => void approve(application)}>
                                 <Check className="size-4" />
@@ -232,7 +235,7 @@ export function AdminCompanyApplicationsPage() {
       </div>
 
       {/* 반려 모달 — 사유 필수 */}
-      {rejectTarget && (
+      {rejectTarget && canUpdate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
             <h2 className="text-base font-semibold text-slate-900">신청 반려 — {rejectTarget.companyName}</h2>

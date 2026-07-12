@@ -29,6 +29,8 @@ public class UserProfile {
     private String resumeText;
     private String selfIntro;
     private String preferences;
+    /** 사용자별 프로필 스냅샷 버전. 저장할 때마다 증가한다. */
+    private Integer versionNo;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

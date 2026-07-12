@@ -49,8 +49,11 @@ const reviews: Record<number, SessionReview> = {
         question: "React에서 상태 관리를 어떻게 설계하나요? Recoil과 Zustand를 비교해 설명해주세요.",
         questionType: "TECH",
         modelAnswer: MODEL_ANSWERS[90021],
+        answerId: 91021,
         answerText:
           "서버 상태는 React Query, 전역 UI 상태는 Zustand로 나눠 관리했습니다. Recoil은 atom 단위 구독이 강점이지만 보일러플레이트가 많아 규모가 작은 프로젝트에서는 Zustand가 더 단순했습니다.",
+        audioUrl: "/api/file/70021/content",
+        videoUrl: null,
         score: 84,
         feedback: "도구 선택 기준이 명확하고 비교가 구체적입니다. 실제 적용 사례의 정량 효과를 덧붙이면 더 좋습니다.",
         improvedAnswer:
@@ -61,8 +64,11 @@ const reviews: Record<number, SessionReview> = {
         question: "REST API 연동 중 발생한 문제와 해결 과정을 말해주세요.",
         questionType: "TECH",
         modelAnswer: MODEL_ANSWERS[90022],
+        answerId: 91022,
         answerText:
           "목록 API가 중복 호출되어 응답이 느려지는 문제가 있었습니다. React Query 캐싱과 중복 제거를 적용해 해결했습니다.",
+        audioUrl: null,
+        videoUrl: "/api/file/70022/content",
         score: 78,
         feedback: "문제-해결 흐름은 좋으나 결과를 수치로 제시하면 설득력이 올라갑니다.",
         improvedAnswer:
@@ -73,7 +79,10 @@ const reviews: Record<number, SessionReview> = {
         question: "팀 프로젝트에서 협업 갈등을 어떻게 풀었나요?",
         questionType: "PERSONALITY",
         modelAnswer: MODEL_ANSWERS[90023],
+        answerId: null,
         answerText: null,
+        audioUrl: null,
+        videoUrl: null,
         score: null,
         feedback: null,
         improvedAnswer: null,
@@ -89,8 +98,11 @@ const reviews: Record<number, SessionReview> = {
         question: "자기소개를 1분 내로 해주세요.",
         questionType: "EXPECTED",
         modelAnswer: DEFAULT_MODEL_ANSWER,
+        answerId: 91011,
         answerText:
           "React 기반 웹 프론트엔드를 개발해 온 신입 지원자입니다. 게시판·대시보드 프로젝트에서 API 연동과 상태 관리를 담당했습니다.",
+        audioUrl: null,
+        videoUrl: null,
         score: 74,
         feedback: "강점은 잘 드러났습니다. 지원 직무와 연결되는 한 문장을 마지막에 덧붙이면 좋습니다.",
         improvedAnswer:
@@ -101,7 +113,10 @@ const reviews: Record<number, SessionReview> = {
         question: "이 회사에 지원한 동기는 무엇인가요?",
         questionType: "EXPECTED",
         modelAnswer: DEFAULT_MODEL_ANSWER,
+        answerId: null,
         answerText: null,
+        audioUrl: null,
+        videoUrl: null,
         score: null,
         feedback: null,
         improvedAnswer: null,
@@ -112,6 +127,17 @@ const reviews: Record<number, SessionReview> = {
 
 function sessionReview(sessionId: number): SessionReview {
   return reviews[sessionId] ?? { sessionId, mode: "JOB", items: [] };
+}
+
+function deleteAnswerMedia(answerId: number, kind: "AUDIO" | "VIDEO"): null {
+  for (const review of Object.values(reviews)) {
+    const item = review.items.find((candidate) => candidate.answerId === answerId);
+    if (!item) continue;
+    if (kind === "AUDIO") item.audioUrl = null;
+    else item.videoUrl = null;
+    break;
+  }
+  return null;
 }
 
 // ───── 외부 키 보유 여부 (GET /interview/media/capabilities) → api<MediaCapabilities> ─────
@@ -181,6 +207,8 @@ const mediaResults: Record<number, MediaAnalysis[]> = {
     {
       id: 71001,
       interviewSessionId: 8002,
+      questionId: null,
+      answerId: null,
       kind: "VOICE",
       transcript: [
         { role: "ai", text: "React에서 상태 관리를 어떻게 설계하나요?" },
@@ -203,6 +231,8 @@ const mediaResults: Record<number, MediaAnalysis[]> = {
     {
       id: 71002,
       interviewSessionId: 8002,
+      questionId: null,
+      answerId: null,
       kind: "AVATAR",
       transcript: [
         { role: "ai", text: "REST API 연동 중 발생한 문제와 해결 과정을 말해주세요." },
@@ -226,6 +256,8 @@ function saveMedia(sessionId: number, req: SaveMediaAnalysisRequest): MediaAnaly
   const saved: MediaAnalysis = {
     id: ++nextMediaId,
     interviewSessionId: sessionId,
+    questionId: req.questionId ?? null,
+    answerId: req.answerId ?? null,
     kind: req.kind,
     transcript: req.transcript,
     metrics: req.metrics,
@@ -257,6 +289,8 @@ export const interviewExtraRoutes: MockRoute[] = [
 
   // 지난 세션 복기 — api<SessionReview>
   { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/review$/, handler: ({ params }) => sessionReview(Number(params[0])) },
+  // 답변·채점은 유지하고 선택한 원본만 삭제한다. 이후 review GET에도 삭제 상태가 유지된다.
+  { method: "DELETE", pattern: /^\/interview\/answers\/(\d+)\/media\/(AUDIO|VIDEO)$/, handler: ({ params }) => deleteAnswerMedia(Number(params[0]), params[1] as "AUDIO" | "VIDEO") },
 
   // 모범답안 생성 — api<{ modelAnswer: string }>
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/model-answer$/, handler: ({ params }) => modelAnswer(Number(params[0])) },

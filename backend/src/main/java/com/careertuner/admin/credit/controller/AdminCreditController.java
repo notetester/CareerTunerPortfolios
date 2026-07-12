@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/credits")
-@RequireAdminPermission({"BILLING_READ", "BILLING_ADMIN"})
+@RequireAdminPermission({"BILLING_READ"})
 @RequiredArgsConstructor
 @Validated
 public class AdminCreditController {
@@ -52,7 +52,7 @@ public class AdminCreditController {
 
     @SitesFinancialMutation
     @PostMapping("/adjust")
-    @RequireAdminPermission({"BILLING_WRITE", "BILLING_ADMIN"})
+    @RequireAdminPermission({"BILLING_UPDATE"})
     public ApiResponse<AdminCreditAdjustResponse> adjust(
             @AuthenticationPrincipal AuthUser authUser,
             @Valid @RequestBody AdminCreditAdjustRequest request

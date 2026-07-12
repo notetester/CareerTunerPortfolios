@@ -22,6 +22,7 @@ import type {
   ProfileAiResponse,
   ProfileCompleteness,
   ProfilePortfolioFile,
+  UserProfileVersion,
 } from "@/app/profile/profileApi";
 import type { ConsentStatus, ConsentView } from "@/app/auth/consentApi";
 
@@ -157,13 +158,34 @@ const demoProfile: UserProfile = {
   selfIntro:
     "사용자가 막힘 없이 흐르는 화면을 만드는 데 집중합니다. 작은 컴포넌트부터 재사용성을 고려해 설계하고, " +
     "코드 리뷰와 스터디 운영을 통해 함께 성장하는 협업을 중요하게 생각합니다.",
+  versionNo: 1,
   updatedAt: iso(2),
 };
+
+let profileVersionSeq = 8100;
+const demoProfileVersions: UserProfileVersion[] = [{
+  ...structuredClone(demoProfile),
+  id: profileVersionSeq,
+  userId: USER_ID,
+  versionNo: 1,
+  source: "MIGRATION",
+  createdAt: demoProfile.updatedAt ?? iso(2),
+}];
 
 // PUT /profile 요청을 반영한다(목이므로 세션 내 메모리에만). 요청에 없는 필드는 기존 값 유지.
 function applyProfileUpdate(body: unknown): UserProfile {
   const patch = (body ?? {}) as Partial<UserProfile>;
-  Object.assign(demoProfile, patch, { updatedAt: new Date().toISOString() });
+  const versionNo = (demoProfile.versionNo ?? 0) + 1;
+  const createdAt = new Date().toISOString();
+  Object.assign(demoProfile, patch, { versionNo, updatedAt: createdAt });
+  demoProfileVersions.unshift({
+    ...structuredClone(demoProfile),
+    id: ++profileVersionSeq,
+    userId: USER_ID,
+    versionNo,
+    source: "MANUAL_SAVE",
+    createdAt,
+  });
   return demoProfile;
 }
 
@@ -224,6 +246,8 @@ const demoAiSummary: ProfileAiResponse = {
   ],
   model: "mock-demo",
   status: "SUCCESS",
+  profileVersionId: profileVersionSeq,
+  profileVersionNo: 1,
 };
 
 const demoAiSkills: ProfileAiResponse = {
@@ -258,6 +282,8 @@ const demoCompleteness: ProfileCompleteness = {
   criteria: demoAiSummary.criteria,
   model: "mock-demo",
   status: "SUCCESS",
+  profileVersionId: profileVersionSeq,
+  profileVersionNo: 1,
 };
 
 // ── 동의(약관/개인정보/AI데이터/이력서분석/마케팅) 상태와 변경 이력. ──
@@ -341,6 +367,8 @@ export const profileRoutes: MockRoute[] = [
   // 프로필 조회/저장
   { method: "GET", pattern: /^\/profile$/, handler: () => demoProfile },
   { method: "PUT", pattern: /^\/profile$/, handler: ({ body }) => applyProfileUpdate(body) },
+  { method: "GET", pattern: /^\/profile\/versions$/, handler: ({ query }) => demoProfileVersions.slice(0, Number(query.get("limit") ?? 20) || 20) },
+  { method: "GET", pattern: /^\/profile\/versions\/(\d+)$/, handler: ({ params }) => demoProfileVersions.find((version) => version.id === Number(params[0])) ?? null },
   { method: "GET", pattern: /^\/profile\/portfolio-files$/, handler: () => demoPortfolioFiles },
   { method: "POST", pattern: /^\/profile\/portfolio-files\/upload$/, handler: ({ body }) => uploadMockPortfolio(body) },
   { method: "POST", pattern: /^\/profile\/portfolio-files\/link$/, handler: () => demoPortfolioFiles },
@@ -348,9 +376,54 @@ export const profileRoutes: MockRoute[] = [
   { method: "GET", pattern: /^\/file\/(\d+)\/content$/, handler: ({ params }) => mockPortfolioContent(params[0]) },
 
   // 프로필 AI 도구
-  { method: "POST", pattern: /^\/profile\/ai\/summary$/, handler: () => demoAiSummary },
-  { method: "POST", pattern: /^\/profile\/ai\/skills$/, handler: () => demoAiSkills },
-  { method: "POST", pattern: /^\/profile\/ai\/completeness$/, handler: () => demoCompleteness },
+  {
+    method: "POST",
+    pattern: /^\/profile\/ai\/summary$/,
+    handler: () => ({
+      ...demoAiSummary,
+      profileVersionId: demoProfileVersions[0]?.id ?? null,
+      profileVersionNo: demoProfileVersions[0]?.versionNo ?? null,
+    }),
+  },
+  {
+    method: "POST",
+    pattern: /^\/profile\/ai\/skills$/,
+    handler: () => ({
+      ...demoAiSkills,
+      profileVersionId: demoProfileVersions[0]?.id ?? null,
+      profileVersionNo: demoProfileVersions[0]?.versionNo ?? null,
+    }),
+  },
+  {
+    method: "POST",
+    pattern: /^\/profile\/ai\/completeness$/,
+    handler: () => ({
+      ...demoCompleteness,
+      profileVersionId: demoProfileVersions[0]?.id ?? null,
+      profileVersionNo: demoProfileVersions[0]?.versionNo ?? null,
+    }),
+  },
+  {
+    method: "GET",
+    pattern: /^\/profile\/ai-analysis$/,
+    handler: () => ({
+      hasAnalysis: true,
+      summary: demoAiSummary.summary,
+      strengths: demoAiSummary.strengths,
+      gaps: demoAiSummary.gaps,
+      recommendations: demoAiSummary.recommendations,
+      extractedSkills: demoAiSkills.extractedSkills,
+      jobFamily: demoAiSummary.jobFamily ?? null,
+      jobFamilyLabel: demoAiSummary.jobFamilyLabel ?? null,
+      completenessScore: demoCompleteness.score,
+      aiScore: demoAiSummary.aiScore ?? null,
+      criteria: demoAiSummary.criteria ?? [],
+      qualityWarnings: demoAiSummary.qualityWarnings ?? [],
+      profileVersionId: demoProfileVersions[0]?.id ?? null,
+      profileVersionNo: demoProfileVersions[0]?.versionNo ?? null,
+      analyzedAt: new Date().toISOString(),
+    }),
+  },
 
   // 동의(설정 > AI 데이터/개인정보 탭)
   { method: "GET", pattern: /^\/consents\/me$/, handler: () => consentStatus },

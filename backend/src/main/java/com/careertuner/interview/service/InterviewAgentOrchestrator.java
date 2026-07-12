@@ -97,8 +97,17 @@ public class InterviewAgentOrchestrator {
                                                  ApplicationCase applicationCase,
                                                  InterviewQuestion question, String answerText,
                                                  String referenceModelAnswer) {
+        return evaluateAnswer(userId, session, applicationCase, question, answerText, referenceModelAnswer, "");
+    }
+
+    /** 질문 생성 당시 적합도 분석 스냅샷까지 고정해 평가하는 경로. */
+    public OrchestratedEvaluation evaluateAnswer(Long userId, InterviewSession session,
+                                                 ApplicationCase applicationCase,
+                                                 InterviewQuestion question, String answerText,
+                                                 String referenceModelAnswer, String fitContext) {
         AgentContext ctx = new AgentContext(userId, session, applicationCase, question, answerText);
         ctx.referenceModelAnswer = referenceModelAnswer;
+        ctx.fitContext = fitContext == null ? "" : fitContext;
 
         // ── 자율 루프: 정책이 다음 액션을 고르고, 더 할 일이 없으면 FINISH ──
         while (ctx.turn < properties.getMaxTurns()) {
@@ -166,14 +175,15 @@ public class InterviewAgentOrchestrator {
         long start = System.currentTimeMillis();
         try {
             InterviewOpenAiClient.AnswerEvaluation eval = evaluator.evaluateAnswer(
-                    ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.ragContext,
+                    ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.evaluationContext(),
                     ctx.referenceModelAnswer);
             usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_EVAL, eval.usage());
             ctx.eval = eval;
             ctx.evaluated = true;
             ctx.finalScore = eval.score();
             logStep(ctx, "EVALUATOR", "evaluate", DONE, "원 채점 " + eval.score() + "점",
-                    detail(Map.of("score", eval.score(), "feedback", nullSafe(eval.feedback()))), elapsed(start));
+                    detail(Map.of("score", eval.score(), "feedback", nullSafe(eval.feedback()),
+                            "fitContextUsed", !ctx.fitContext.isBlank())), elapsed(start));
         } catch (BusinessException ex) {
             usageLog.recordFailure(ctx.userId, ctx.caseId(), FEATURE_EVAL, ex.getMessage());
             // Evaluator 실패는 평가 자체가 불가능하므로 흐름을 끊는다(상위에서 처리).
@@ -210,7 +220,7 @@ public class InterviewAgentOrchestrator {
         ctx.reEvaluated = true;
         try {
             InterviewOpenAiClient.AnswerEvaluation re = evaluator.evaluateAnswer(
-                    ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.ragContext,
+                    ctx.question.getQuestion(), ctx.answerText, ctx.applicationCase, ctx.evaluationContext(),
                     ctx.referenceModelAnswer);
             usageLog.recordSuccess(ctx.userId, ctx.caseId(), FEATURE_EVAL, re.usage());
             int before = ctx.finalScore;
@@ -334,6 +344,8 @@ public class InterviewAgentOrchestrator {
         final String answerText;
         /** 사용자에게 보여준 모범답안(답안지). 있으면 만점 기준으로 채점한다. */
         String referenceModelAnswer;
+        /** 질문 생성 당시 C 적합도 핵심 결과. RAG 검색 결과와 구분해 항상 같은 세션 스냅샷을 쓴다. */
+        String fitContext = "";
 
         int turn = 0;
         int stepNo = 0;
@@ -410,6 +422,16 @@ public class InterviewAgentOrchestrator {
             sb.append("- 현재 최종 점수: ").append(finalScore).append("\n");
             sb.append("- 답변 길이: ").append(answerText == null ? 0 : answerText.trim().length()).append("자");
             return sb.toString();
+        }
+
+        String evaluationContext() {
+            if (fitContext.isBlank()) {
+                return ragContext;
+            }
+            if (ragContext == null || ragContext.isBlank()) {
+                return fitContext;
+            }
+            return fitContext + "\n\n[면접 지식베이스 근거]\n" + ragContext;
         }
     }
 

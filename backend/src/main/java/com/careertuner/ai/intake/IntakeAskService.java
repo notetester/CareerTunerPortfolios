@@ -41,7 +41,7 @@ public class IntakeAskService {
 
     /** 면접 모드 화이트리스트(AutoPrepIntakeService.MODE_OPTIONS 코드 미러 — 버튼 선택 결정적 확정 검증용). */
     private static final Set<String> MODE_CODES =
-            Set.of("BASIC", "JOB", "PERSONALITY", "PRESSURE", "RESUME", "COMPANY");
+            Set.of("BASIC", "JOB", "PERSONALITY", "PRESSURE", "RESUME", "PORTFOLIO", "REAL", "COMPANY");
 
     private final IntakeChatAgent agent;
     private final IntakeSlotTrace trace;

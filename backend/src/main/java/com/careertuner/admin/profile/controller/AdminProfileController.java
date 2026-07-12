@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.profile.dto.UserProfileResponse;
+import com.careertuner.profile.dto.UserProfileVersionResponse;
 import com.careertuner.profile.service.ProfileService;
 import com.careertuner.admin.permission.annotation.RequireAdminPermission;
 
@@ -19,7 +20,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/profiles")
-@RequireAdminPermission({"PROFILE_READ", "MEMBER_ADMIN"})
+@RequireAdminPermission({"USER_READ"})
 @RequiredArgsConstructor
 public class AdminProfileController {
 
@@ -36,5 +37,13 @@ public class AdminProfileController {
     public ApiResponse<UserProfileResponse> profile(@AuthenticationPrincipal AuthUser authUser,
                                                     @PathVariable Long userId) {
         return ApiResponse.ok(service.adminProfile(authUser, userId));
+    }
+
+    @GetMapping("/{userId}/versions")
+    public ApiResponse<List<UserProfileVersionResponse>> versions(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long userId,
+            @RequestParam(defaultValue = "20") int limit) {
+        return ApiResponse.ok(service.adminVersions(authUser, userId, limit));
     }
 }

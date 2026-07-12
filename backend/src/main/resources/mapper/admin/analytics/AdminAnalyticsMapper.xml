@@ -94,22 +94,34 @@
         SELECT COUNT(*)
         FROM users
         WHERE status != 'DELETED'
+          AND deleted_at IS NULL
     </select>
 
     <select id="countActiveUsers" resultType="int">
         SELECT COUNT(*)
         FROM users
         WHERE status = 'ACTIVE'
+          AND deleted_at IS NULL
     </select>
 
     <select id="countApplications" resultType="int">
         SELECT COUNT(*)
-        FROM application_case
+        FROM application_case ac
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <select id="countInterviews" resultType="int">
         SELECT COUNT(*)
-        FROM interview_session
+        FROM interview_session session
+        INNER JOIN application_case ac ON ac.id = session.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE session.deleted_at IS NULL
+          AND ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <select id="sumCreditsUsedThisMonth" resultType="int">
@@ -122,15 +134,20 @@
         SELECT plan AS label, COUNT(*) AS count
         FROM users
         WHERE status != 'DELETED'
+          AND deleted_at IS NULL
         GROUP BY plan
         ORDER BY count DESC, plan
     </select>
 
     <select id="countApplicationsByStatus" resultMap="AdminCountResultMap">
-        SELECT status AS label, COUNT(*) AS count
-        FROM application_case
-        GROUP BY status
-        ORDER BY count DESC, status
+        SELECT ac.status AS label, COUNT(*) AS count
+        FROM application_case ac
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
+        GROUP BY ac.status
+        ORDER BY count DESC, ac.status
     </select>
 
     <select id="findLatestAnalyses" resultMap="AdminAnalysisResultMap">
@@ -154,7 +171,10 @@
         FROM fit_analysis fa
         INNER JOIN application_case ac ON ac.id = fa.application_case_id
         INNER JOIN users ON users.id = ac.user_id
-        WHERE fa.id = (
+        WHERE ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
+          AND fa.id = (
             SELECT MAX(latest_fa.id)
             FROM fit_analysis latest_fa
             WHERE latest_fa.application_case_id = fa.application_case_id
@@ -193,6 +213,9 @@
             INNER JOIN application_case ac ON ac.id = fa.application_case_id
             INNER JOIN users ON users.id = ac.user_id
             WHERE fa.status != 'SUCCESS'
+              AND ac.deleted_at IS NULL
+              AND users.status != 'DELETED'
+              AND users.deleted_at IS NULL
 
             UNION ALL
 
@@ -211,6 +234,8 @@
             FROM career_analysis_run run
             INNER JOIN users ON users.id = run.user_id
             WHERE run.status != 'SUCCESS'
+              AND users.status != 'DELETED'
+              AND users.deleted_at IS NULL
         ) failures
         ORDER BY created_at DESC
         LIMIT 100
@@ -232,6 +257,19 @@
         UPDATE analysis_quality_flag
         SET resolved = 1
         WHERE target_type = #{targetType} AND target_id = #{targetId} AND flag_type = #{flagType}
+          AND (
+              #{targetType} != 'FIT_ANALYSIS'
+              OR EXISTS (
+                  SELECT 1
+                  FROM fit_analysis active_fit
+                  INNER JOIN application_case active_case ON active_case.id = active_fit.application_case_id
+                  INNER JOIN users active_user ON active_user.id = active_case.user_id
+                  WHERE active_fit.id = #{targetId}
+                    AND active_case.deleted_at IS NULL
+                    AND active_user.status != 'DELETED'
+                    AND active_user.deleted_at IS NULL
+              )
+          )
     </update>
 
     <select id="findCareerAnalysisRuns" resultMap="AdminCareerAnalysisRunMap">
@@ -243,17 +281,23 @@
                 SELECT COUNT(*)
                 FROM admin_career_run_memo memo_count_source
                 WHERE memo_count_source.career_analysis_run_id = run.id
+                  AND memo_count_source.deleted_at IS NULL
             ) AS memo_count,
             (
                 SELECT MAX(latest_memo.updated_at)
                 FROM admin_career_run_memo latest_memo
                 WHERE latest_memo.career_analysis_run_id = run.id
+                  AND latest_memo.deleted_at IS NULL
             ) AS latest_memo_at
         FROM career_analysis_run run
         INNER JOIN users ON users.id = run.user_id
-        <if test="userId != null">
-            WHERE run.user_id = #{userId}
-        </if>
+        <where>
+            users.status != 'DELETED'
+            AND users.deleted_at IS NULL
+            <if test="userId != null">
+                AND run.user_id = #{userId}
+            </if>
+        </where>
         ORDER BY run.created_at DESC, run.id DESC
         LIMIT 300
     </select>
@@ -265,6 +309,7 @@
                    fa.status, fa.fit_score AS score, fa.created_at
             FROM fit_analysis fa INNER JOIN application_case ac ON ac.id = fa.application_case_id
             WHERE ac.user_id = #{userId}
+              AND ac.deleted_at IS NULL
             UNION ALL
             SELECT 'LEARNING_TASK' AS event_type, task.id AS ref_id,
                    CONCAT(task.skill, ' 학습 과제: ', task.title) AS summary,
@@ -273,12 +318,20 @@
             INNER JOIN fit_analysis fa ON fa.id = task.fit_analysis_id
             INNER JOIN application_case ac ON ac.id = fa.application_case_id
             WHERE ac.user_id = #{userId}
+              AND ac.deleted_at IS NULL
             UNION ALL
             SELECT run.analysis_type AS event_type, run.id AS ref_id,
                    IF(run.analysis_type = 'DASHBOARD_SUMMARY', '대시보드 요약 생성', '장기 취업 경향 분석') AS summary,
                    run.status, NULL AS score, run.created_at
             FROM career_analysis_run run WHERE run.user_id = #{userId}
         ) timeline
+        WHERE EXISTS (
+            SELECT 1
+            FROM users timeline_user
+            WHERE timeline_user.id = #{userId}
+              AND timeline_user.status != 'DELETED'
+              AND timeline_user.deleted_at IS NULL
+        )
         ORDER BY created_at DESC, ref_id DESC
         LIMIT 200
     </select>
@@ -314,6 +367,8 @@
         FROM career_analysis_run run
         INNER JOIN users ON users.id = run.user_id
         WHERE run.id = #{runId}
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <!-- 실행 이력 운영 메모 (career_analysis_run 단위, admin_fit_analysis_memo 패턴) -->
@@ -322,15 +377,20 @@
             memo.id,
             memo.career_analysis_run_id,
             memo.admin_user_id,
-            users.name AS admin_name,
-            users.email AS admin_email,
+            admin_user.name AS admin_name,
+            admin_user.email AS admin_email,
             memo.memo_type,
             memo.content,
             memo.created_at,
             memo.updated_at
         FROM admin_career_run_memo memo
-        INNER JOIN users ON users.id = memo.admin_user_id
+        INNER JOIN users admin_user ON admin_user.id = memo.admin_user_id
+        INNER JOIN career_analysis_run run ON run.id = memo.career_analysis_run_id
+        INNER JOIN users target_user ON target_user.id = run.user_id
         WHERE memo.career_analysis_run_id = #{runId}
+          AND memo.deleted_at IS NULL
+          AND target_user.status != 'DELETED'
+          AND target_user.deleted_at IS NULL
         ORDER BY memo.updated_at DESC, memo.id DESC
     </select>
 
@@ -339,16 +399,21 @@
             memo.id,
             memo.career_analysis_run_id,
             memo.admin_user_id,
-            users.name AS admin_name,
-            users.email AS admin_email,
+            admin_user.name AS admin_name,
+            admin_user.email AS admin_email,
             memo.memo_type,
             memo.content,
             memo.created_at,
             memo.updated_at
         FROM admin_career_run_memo memo
-        INNER JOIN users ON users.id = memo.admin_user_id
+        INNER JOIN users admin_user ON admin_user.id = memo.admin_user_id
+        INNER JOIN career_analysis_run run ON run.id = memo.career_analysis_run_id
+        INNER JOIN users target_user ON target_user.id = run.user_id
         WHERE memo.id = #{id}
           AND memo.career_analysis_run_id = #{runId}
+          AND memo.deleted_at IS NULL
+          AND target_user.status != 'DELETED'
+          AND target_user.deleted_at IS NULL
     </select>
 
     <insert id="insertMemo" useGeneratedKeys="true" keyProperty="id">
@@ -364,11 +429,30 @@
             content = #{content}
         WHERE id = #{id}
           AND career_analysis_run_id = #{careerAnalysisRunId}
+          AND deleted_at IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM career_analysis_run active_run
+              INNER JOIN users active_user ON active_user.id = active_run.user_id
+              WHERE active_run.id = #{careerAnalysisRunId}
+                AND active_user.status != 'DELETED'
+                AND active_user.deleted_at IS NULL
+          )
     </update>
 
-    <delete id="deleteMemo">
-        DELETE FROM admin_career_run_memo
-        WHERE id = #{id}
-          AND career_analysis_run_id = #{runId}
-    </delete>
+    <update id="deleteMemo">
+        UPDATE admin_career_run_memo
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE id = #{id}
+           AND career_analysis_run_id = #{runId}
+           AND deleted_at IS NULL
+           AND EXISTS (
+               SELECT 1
+               FROM career_analysis_run active_run
+               INNER JOIN users active_user ON active_user.id = active_run.user_id
+               WHERE active_run.id = #{runId}
+                 AND active_user.status != 'DELETED'
+                 AND active_user.deleted_at IS NULL
+           )
+    </update>
 </mapper>

@@ -32,6 +32,7 @@
         <result property="applicationStatus" column="application_status"/>
         <result property="favorite" column="is_favorite"/>
         <result property="applicationUpdatedAt" column="application_updated_at"/>
+        <result property="deadlineDate" column="deadline_date"/>
     </resultMap>
 
     <sql id="FitAnalysisWithApplicationColumns">
@@ -60,6 +61,7 @@
         ac.company_name,
         ac.job_title,
         ac.posting_date,
+        ac.deadline_date,
         ac.status AS application_status,
         ac.is_favorite,
         ac.updated_at AS application_updated_at
@@ -99,6 +101,8 @@
         <result property="jobPostingRevision" column="job_posting_revision"/>
         <result property="jobAnalysisCreatedAt" column="job_analysis_created_at"/>
         <result property="userProfileId" column="user_profile_id"/>
+        <result property="profileVersionId" column="profile_version_id"/>
+        <result property="profileVersionNo" column="profile_version_no"/>
         <result property="profileUpdatedAt" column="profile_updated_at"/>
         <result property="companyName" column="company_name"/>
         <result property="jobTitle" column="job_title"/>
@@ -121,6 +125,7 @@
             certificates AS profileCertificates
         FROM user_profile
         WHERE user_id = #{userId}
+          AND deleted_at IS NULL
     </select>
 
     <!-- 적합도 생성 입력: application_case(B) + 최신 job_analysis(B) + user_profile(A) + 최신 company_analysis(B, 선택)
@@ -132,15 +137,17 @@
             ja.job_posting_revision,
             ja.created_at AS job_analysis_created_at,
             up.id AS user_profile_id,
-            up.updated_at AS profile_updated_at,
+            upv.id AS profile_version_id,
+            upv.version_no AS profile_version_no,
+            COALESCE(upv.created_at, up.updated_at) AS profile_updated_at,
             ac.company_name,
             ac.job_title,
             ja.required_skills,
             ja.preferred_skills,
             ja.duties,
-            up.skills       AS profile_skills,
-            up.certificates AS profile_certificates,
-            up.desired_job,
+            COALESCE(upv.skills, up.skills) AS profile_skills,
+            COALESCE(upv.certificates, up.certificates) AS profile_certificates,
+            COALESCE(upv.desired_job, up.desired_job) AS desired_job,
             ca.company_summary,
             ca.recent_issues,
             ca.interview_points
@@ -148,6 +155,16 @@
         LEFT JOIN job_analysis ja
             ON ja.id = (SELECT MAX(j.id) FROM job_analysis j WHERE j.application_case_id = ac.id)
         LEFT JOIN user_profile up ON up.user_id = ac.user_id
+            AND up.deleted_at IS NULL
+        LEFT JOIN user_profile_version upv
+            ON upv.id = (
+                SELECT latest_profile.id
+                FROM user_profile_version latest_profile
+                WHERE latest_profile.user_id = ac.user_id
+                  AND latest_profile.deleted_at IS NULL
+                ORDER BY latest_profile.version_no DESC, latest_profile.id DESC
+                LIMIT 1
+            )
         LEFT JOIN company_analysis ca
             ON ca.id = (SELECT MAX(c.id) FROM company_analysis c WHERE c.application_case_id = ac.id)
         WHERE ac.id = #{applicationCaseId}

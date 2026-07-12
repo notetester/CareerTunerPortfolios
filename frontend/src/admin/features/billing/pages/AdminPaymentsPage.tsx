@@ -22,6 +22,7 @@ import {
 } from "../api";
 import type { RefundRequestRow } from "@/features/billing/api/refundRequestApi";
 import { toast } from "@/features/notification/components/toast";
+import { useAdminDomainAuthorization } from "@/admin/auth/useAdminAuthorization";
 
 const STATUS_FILTERS = [
   { value: "", label: "전체" },
@@ -49,6 +50,7 @@ const PAYMENT_COLUMNS: AdminListColumn<AdminPaymentRow>[] = [
 ];
 
 export function AdminPaymentsPage() {
+  const { canUpdate } = useAdminDomainAuthorization("BILLING");
   const [rows, setRows] = useState<AdminPaymentRow[]>([]);
   const [summary, setSummary] = useState<AdminPaymentSummary | null>(null);
   const [status, setStatus] = useState("");
@@ -102,6 +104,7 @@ export function AdminPaymentsPage() {
   };
 
   const openReview = (row: RefundRequestRow, approve: boolean) => {
+    if (!canUpdate) return;
     setReviewTarget({ row, approve });
     setReviewReason("");
     setReviewError(null);
@@ -115,7 +118,7 @@ export function AdminPaymentsPage() {
   };
 
   const submitReview = async () => {
-    if (!reviewTarget || !reviewReason.trim()) return;
+    if (!canUpdate || !reviewTarget || !reviewReason.trim()) return;
     const { row, approve } = reviewTarget;
     setReviewingId(row.id);
     setReviewError(null);
@@ -261,10 +264,10 @@ export function AdminPaymentsPage() {
                       {row.reviewedReason && <div className="mt-2 text-xs text-blue-700">처리 사유: {row.reviewedReason}</div>}
                     </td>
                     <td className="px-4 py-3">
-                      {row.status === "REQUESTED" ? <div className="flex min-w-36 gap-2">
+                      {row.status === "REQUESTED" && canUpdate ? <div className="flex min-w-36 gap-2">
                         <Button size="sm" disabled={reviewingId === row.id} onClick={() => openReview(row, true)}>전액 환불</Button>
                         <Button size="sm" variant="outline" disabled={reviewingId === row.id} onClick={() => openReview(row, false)}>환불 불가</Button>
-                      </div> : <Badge className={row.status === "APPROVED" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-700"}>{row.status === "APPROVED" ? "전액 환불" : "환불 불가"}</Badge>}
+                      </div> : <Badge className={row.status === "APPROVED" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-700"}>{row.status === "APPROVED" ? "전액 환불" : row.status === "REQUESTED" ? "검토 중" : "환불 불가"}</Badge>}
                     </td>
                   </tr>
                 ))}
@@ -320,7 +323,7 @@ export function AdminPaymentsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={reviewTarget !== null} onOpenChange={(open) => { if (!open) closeReview(); }}>
+      <Dialog open={canUpdate && reviewTarget !== null} onOpenChange={(open) => { if (!open) closeReview(); }}>
         <DialogContent className="border-border bg-card text-card-foreground sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="text-foreground">

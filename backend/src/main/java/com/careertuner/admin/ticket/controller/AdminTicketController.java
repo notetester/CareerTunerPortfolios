@@ -30,11 +30,11 @@ import com.careertuner.file.service.FileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-/** 문의(티켓) 콘솔. 세부 권한: 콘텐츠/고객지원 관리(CONTENT_MANAGE) 또는 대표 권한(CONTENT_ADMIN). */
+/** 문의(티켓) 콘솔. 콘텐츠 조회·처리와 AI 초안 생성을 행위별로 집행한다. */
 @RestController
 @RequestMapping("/api/admin/tickets")
 @RequiredArgsConstructor
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 public class AdminTicketController {
 
     private final AdminTicketService ticketService;
@@ -54,6 +54,7 @@ public class AdminTicketController {
     }
 
     @PatchMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminTicketDetailResponse> updateTicket(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -62,6 +63,7 @@ public class AdminTicketController {
     }
 
     @PostMapping("/{id}/reply")
+    @RequireAdminPermission({"CONTENT_CREATE"})
     public ApiResponse<AdminTicketDetailResponse> reply(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -71,6 +73,7 @@ public class AdminTicketController {
 
     /** 상담사 AI 어시스트 — 문의 내용 기반 답변 초안 생성(저장하지 않고 반환만). */
     @PostMapping("/{id}/draft")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<AdminTicketDraftResponse> generateDraft(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
@@ -78,6 +81,7 @@ public class AdminTicketController {
     }
 
     @PostMapping("/{id}/member-summary")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<AdminTicketSummaryResponse> generateMemberSummary(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

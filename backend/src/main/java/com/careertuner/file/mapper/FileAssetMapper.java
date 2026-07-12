@@ -1,5 +1,6 @@
 package com.careertuner.file.mapper;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.apache.ibatis.annotations.Mapper;
@@ -16,6 +17,11 @@ public interface FileAssetMapper {
 
     List<FileAsset> findByRef(@Param("refType") String refType, @Param("refId") Long refId);
 
+    /** 회원 탈퇴 시 실제 저장소에서도 제거할 이력서/포트폴리오 원본. */
+    List<FileAsset> findProfileFilesByOwner(@Param("ownerUserId") Long ownerUserId);
+
+    List<FileAsset> findDeletedOwnerProfileFiles(@Param("limit") int limit);
+
     void updateRef(@Param("id") Long id,
                    @Param("refType") String refType,
                    @Param("refId") Long refId);
@@ -26,12 +32,63 @@ public interface FileAssetMapper {
                                     @Param("refType") String refType,
                                     @Param("refId") Long refId);
 
-    int deleteByIdAndOwnerIfUnlinked(@Param("id") Long id,
-                                     @Param("ownerUserId") Long ownerUserId);
+    /** 업로드 시 선언한 용도까지 재검증하며 대기 파일을 도메인 row에 귀속한다. */
+    int claimOwnedPendingFile(@Param("id") Long id,
+                              @Param("ownerUserId") Long ownerUserId,
+                              @Param("expectedKind") String expectedKind,
+                              @Param("expectedRefType") String expectedRefType,
+                              @Param("refId") Long refId);
+
+    int deleteByIdAndOwnerIfPending(@Param("id") Long id,
+                                    @Param("ownerUserId") Long ownerUserId);
+
+    /** 메신저 전송 대기 첨부를 메시지에 원자적으로 귀속한다. */
+    int claimPendingCollaborationAttachment(@Param("id") Long id,
+                                            @Param("ownerUserId") Long ownerUserId,
+                                            @Param("messageId") Long messageId);
+
+    List<FileAsset> findStalePendingCollaborationAttachments(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("limit") int limit);
+
+    int deleteStalePendingCollaborationAttachment(
+            @Param("id") Long id,
+            @Param("ownerUserId") Long ownerUserId,
+            @Param("cutoff") LocalDateTime cutoff);
+
+    List<FileAsset> findStalePendingAutoPrepAttachments(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("limit") int limit);
+
+    int deleteStalePendingAutoPrepAttachment(
+            @Param("id") Long id,
+            @Param("ownerUserId") Long ownerUserId,
+            @Param("cutoff") LocalDateTime cutoff);
+
+    List<FileAsset> findStalePendingInterviewMedia(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("limit") int limit);
+
+    int deleteStalePendingInterviewMedia(
+            @Param("id") Long id,
+            @Param("ownerUserId") Long ownerUserId,
+            @Param("cutoff") LocalDateTime cutoff);
+
+    List<FileAsset> findStaleOrphanedInterviewMedia(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("limit") int limit);
+
+    int deleteStaleOrphanedInterviewMedia(
+            @Param("id") Long id,
+            @Param("ownerUserId") Long ownerUserId,
+            @Param("cutoff") LocalDateTime cutoff);
 
     int deleteByIdAndOwnerAndRef(@Param("id") Long id,
                                  @Param("ownerUserId") Long ownerUserId,
                                  @Param("expectedKind") String expectedKind,
                                  @Param("refType") String refType,
                                  @Param("refId") Long refId);
+
+    int deleteProfileFileByIdAndOwner(@Param("id") Long id,
+                                      @Param("ownerUserId") Long ownerUserId);
 }

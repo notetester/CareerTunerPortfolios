@@ -21,7 +21,7 @@ export interface CorrectionCreateRequest {
   correctionType: CorrectionType;
   applicationCaseId?: number;
   originalText: string;
-  sourceType: "DIRECT_INPUT";
+  sourceType: "DIRECT_INPUT" | "INTERVIEW_ANSWER";
   sourceRefId?: number;
   questionText?: string;
   policyAcknowledgementKey: string;
@@ -38,6 +38,7 @@ export interface CorrectionResponse {
   sourceRefId: number | null;
   originalText: string;
   improvedText: string | null;
+  sourceSnapshot?: string | null;
   summary: string;
   issues: string[];
   changeReasons: string[];
@@ -50,6 +51,18 @@ export interface CorrectionResponse {
   remainingCredit?: number;
   replayed?: boolean;
   createdAt: string | null;
+}
+
+export interface CorrectionInterviewSource {
+  sourceRefId: number;
+  applicationCaseId: number;
+  sessionId: number;
+  questionId: number;
+  questionText: string;
+  originalText: string;
+  score: number | null;
+  feedback: string | null;
+  answeredAt: string | null;
 }
 
 export type CorrectionWarmupStatus =

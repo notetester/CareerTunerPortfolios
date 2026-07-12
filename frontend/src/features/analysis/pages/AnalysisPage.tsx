@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import { Button } from "@/app/components/ui/button";
@@ -591,6 +591,15 @@ export function AnalysisPage() {
           </Card>
 
           {/* 피해야 할 공고 유형 — 반복 부족 역량이 필수인 공고는 보완 전까지 우선순위를 낮춘다. */}
+          <div className={`rounded-xl border border-indigo-200 bg-indigo-50 p-4 ${activeTab !== "recommendation" ? "hidden" : ""}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-bold text-indigo-900">장기 커리어 로드맵</p>
+                <p className="mt-0.5 text-xs text-indigo-700">자격증 실일정·학습 계획·지원 마감을 연 단위로 배치해 플래너에 반영할 수 있습니다.</p>
+              </div>
+              <RouterLink to="/career-roadmap" className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">로드맵 열기</RouterLink>
+            </div>
+          </div>
           <CareerPlanCard hidden={activeTab !== "recommendation"} />
 
           <Card className={`min-w-0 border border-blue-200 bg-blue-50/40 ${activeTab !== "recommendation" ? "hidden" : ""}`}>

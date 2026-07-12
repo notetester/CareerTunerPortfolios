@@ -40,16 +40,27 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     /** 지원 건 + 공고 기반 예상 질문 생성. */
     public GeneratedQuestions generateQuestions(ApplicationCase applicationCase, String postingText,
                                                 String modeLabel, int count) {
+        return generateQuestions(applicationCase, postingText, modeLabel, count, "");
+    }
+
+    /** 지원 건 + A/B/C 정본 컨텍스트 기반 예상 질문 생성. */
+    public GeneratedQuestions generateQuestions(ApplicationCase applicationCase, String postingText,
+                                                String modeLabel, int count, String preparationContext) {
+        String context = preparationContext == null || preparationContext.isBlank()
+                ? ""
+                : "\n" + preparationContext.trim() + "\n";
         String userPrompt = """
                 회사명: %s
                 직무명: %s
                 면접 모드: %s
                 생성할 질문 수: %d
+                %s
 
                 채용공고:
                 %s
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
-                modeLabel, count, postingText == null || postingText.isBlank() ? "(공고문 없음)" : postingText);
+                modeLabel, count, context,
+                postingText == null || postingText.isBlank() ? "(공고문 없음)" : postingText);
 
         InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
                 "interview_questions", questionsSchema(),
@@ -172,10 +183,19 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     /** 원 질문 + 지원자 답변 기반 꼬리 질문 생성. */
     public GeneratedQuestions generateFollowUps(String question, String answerText,
                                                 ApplicationCase applicationCase, int count, boolean pressure) {
+        return generateFollowUps(question, answerText, applicationCase, count, pressure, "");
+    }
+
+    /** 원 질문 + 지원자 답변 + 질문 생성 당시 적합도 스냅샷 기반 꼬리 질문 생성. */
+    public GeneratedQuestions generateFollowUps(String question, String answerText,
+                                                ApplicationCase applicationCase, int count, boolean pressure,
+                                                String fitContext) {
+        String context = fitContext == null || fitContext.isBlank() ? "" : "\n" + fitContext.trim() + "\n";
         String userPrompt = """
                 회사명: %s
                 직무명: %s
                 생성할 꼬리 질문 수: %d
+                %s
 
                 원 질문:
                 %s
@@ -183,7 +203,7 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
                 지원자 답변:
                 %s
                 """.formatted(applicationCase.getCompanyName(), applicationCase.getJobTitle(),
-                count, question, answerText == null || answerText.isBlank() ? "(답변 없음)" : answerText);
+                count, context, question, answerText == null || answerText.isBlank() ? "(답변 없음)" : answerText);
 
         String systemPrompt = pressure
                 ? InterviewPromptCatalog.PRESSURE_FOLLOWUP_SYSTEM_PROMPT
@@ -258,9 +278,17 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
 
     /** 면접 전체 Q&A 기반 종합 리포트 생성. */
     public ReportPayload generateReport(String transcript) {
+        return generateReport(transcript, "");
+    }
+
+    /** 질문 생성 당시 적합도 분석 스냅샷을 포함한 종합 리포트 생성. */
+    public ReportPayload generateReport(String transcript, String fitContext) {
+        String prompt = fitContext == null || fitContext.isBlank()
+                ? transcript
+                : fitContext.trim() + "\n\n" + transcript;
         InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
                 "interview_report", reportSchema(),
-                InterviewPromptCatalog.REPORT_SYSTEM_PROMPT, transcript, modelProperties.getGeneration()));
+                InterviewPromptCatalog.REPORT_SYSTEM_PROMPT, prompt, modelProperties.getGeneration()));
         JsonNode payload = result.payload();
 
         List<ReportCategory> categories = new ArrayList<>();
@@ -310,6 +338,13 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
     public VoiceScoringResult scoreVoiceTranscript(List<String> questions, List<String> modelAnswers,
                                                    String transcriptText,
                                                    String companyName, String jobTitle) {
+        return scoreVoiceTranscript(questions, modelAnswers, transcriptText, companyName, jobTitle, "");
+    }
+
+    /** 질문 생성 당시 적합도 스냅샷을 포함한 음성 면접 채점. */
+    public VoiceScoringResult scoreVoiceTranscript(List<String> questions, List<String> modelAnswers,
+                                                   String transcriptText,
+                                                   String companyName, String jobTitle, String fitContext) {
         StringBuilder qList = new StringBuilder();
         for (int i = 0; i < questions.size(); i++) {
             qList.append(i + 1).append(". ").append(questions.get(i)).append("\n");
@@ -331,12 +366,14 @@ public class InterviewOpenAiClient implements InterviewAnswerEvaluator {
         String userPrompt = """
                 회사명: %s
                 직무명: %s
+                %s
 
                 준비된 질문(number 로 참조):
                 %s
                 대화 트랜스크립트(role: ai=면접관, user=지원자):
                 %s
-                """.formatted(companyName, jobTitle, qList, transcriptText);
+                """.formatted(companyName, jobTitle,
+                fitContext == null || fitContext.isBlank() ? "" : fitContext.trim(), qList, transcriptText);
 
         InterviewLlmGateway.Result result = gateway.complete(new InterviewLlmGateway.Request(
                 "interview_voice_transcript_scoring", voiceScoringSchema(),

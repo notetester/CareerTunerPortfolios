@@ -112,7 +112,7 @@ class NationalQualificationCatalogProviderTest {
     void loadedSnapshotAnswersWithoutNetworkOrServiceKey() {
         // 스냅샷 우선 — 키가 없고 네트워크가 죽어 있어도(Q-Net 장애 등) 종류 판별·라우팅이 동작한다.
         NationalQualificationOfflineCatalog snapshot = new NationalQualificationOfflineCatalog(
-                "cert/national-qualification-catalog-20251231.csv", "20251231", true);
+                "cert/national-qualification-catalog-20251231.csv", "cert/national-tech-jmcd-20260711.csv", "20251231", true);
         NationalQualificationCatalogProvider provider = new NationalQualificationCatalogProvider(
                 "", "http://unused.invalid", Duration.ofSeconds(1), HttpClient.newHttpClient(), snapshot);
 
@@ -126,7 +126,7 @@ class NationalQualificationCatalogProviderTest {
     void unloadableSnapshotFallsBackToLegacyKeyGate() {
         // 스냅샷 로드 실패는 새로운 단일 장애점이 아니다 — 기존 네트워크 경로 규칙(키 없음=degrade)로 복귀.
         NationalQualificationOfflineCatalog broken = new NationalQualificationOfflineCatalog(
-                "cert/does-not-exist.csv", "x", true);
+                "cert/does-not-exist.csv", "cert/national-tech-jmcd-20260711.csv", "x", true);
         NationalQualificationCatalogProvider provider = new NationalQualificationCatalogProvider(
                 "", "http://unused.invalid", Duration.ofSeconds(1), HttpClient.newHttpClient(), broken);
 

@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot/quota-policy")
-@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminChatbotQuotaController {
 
@@ -38,6 +38,7 @@ public class AdminChatbotQuotaController {
     }
 
     @PatchMapping
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<ChatbotQuotaPolicy> update(@AuthenticationPrincipal AuthUser authUser,
                                                   @RequestBody ChatbotQuotaPolicyRequest request) {
         AdminAccess.requireAdmin(authUser);

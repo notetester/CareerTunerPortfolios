@@ -5,8 +5,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.Set;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -61,6 +59,9 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class CommunityPostServiceImpl implements CommunityPostService {
+
+    private static final String DELETED_USER_STATUS = "DELETED";
+    private static final String DELETED_USER_LABEL = "탈퇴한 사용자";
 
     /** 차단 작성자 게시글 톰스톤 문구 (docs/PERSONAL_BLOCK_POLICY.md §4 — silent deny). */
     private static final String BLOCKED_POST_TOMBSTONE = "차단한 사용자의 게시글입니다.";
@@ -170,10 +171,14 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (post.isAnonymous()) {
             return new PostListResponse.AuthorDto(null, "익명", null, true);
         }
+        if (DELETED_USER_STATUS.equals(post.getUserStatus())) {
+            return new PostListResponse.AuthorDto(null, DELETED_USER_LABEL, null, false);
+        }
         DisplayNameResponse dn = resolved.get(new DisplayNameQuery(post.getUserId(), post.getNicknameProfileId()));
         String name = dn != null ? dn.displayName() : post.getUserName();
         Long profileId = dn != null ? dn.nicknameProfileId() : post.getNicknameProfileId();
-        return new PostListResponse.AuthorDto(post.getUserId(), name, profileId, false);
+        Long accountId = dn != null ? dn.accountId() : post.getUserId();
+        return new PostListResponse.AuthorDto(accountId, name, profileId, false);
     }
 
     /**
@@ -429,11 +434,15 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (post.isAnonymous()) {
             return new PostListResponse.AuthorDto(null, "익명", null, true);
         }
+        if (DELETED_USER_STATUS.equals(post.getUserStatus())) {
+            return new PostListResponse.AuthorDto(null, DELETED_USER_LABEL, null, false);
+        }
         DisplayNameResponse dn =
                 nicknameProfileService.resolveDisplayName(post.getUserId(), post.getNicknameProfileId());
         String name = dn != null ? dn.displayName() : post.getUserName();
         Long profileId = dn != null ? dn.nicknameProfileId() : post.getNicknameProfileId();
-        return new PostListResponse.AuthorDto(post.getUserId(), name, profileId, false);
+        Long accountId = dn != null ? dn.accountId() : post.getUserId();
+        return new PostListResponse.AuthorDto(accountId, name, profileId, false);
     }
 
     private static PostListResponse.StatsDto toStatsDto(CommunityPost post) {
@@ -579,12 +588,17 @@ public class CommunityPostServiceImpl implements CommunityPostService {
      */
     private void applyUserTags(Long postId, List<String> tags) {
         // 1. 기존 사용자 태그 usage_count 감소 후 삭제 (수정 시 재반영). AI 태그(is_ai=1)는 건드리지 않는다.
-        for (Long tagId : tagMapper.findUserTagIds(postId)) {
+        List<Long> oldUserTagIds = tagMapper.findUserTagIds(postId);
+        Set<Long> affectedTagIds = new HashSet<>(oldUserTagIds);
+        for (Long tagId : oldUserTagIds) {
             tagMapper.decrementUsageCount(tagId);
         }
         tagMapper.deleteUserPostTags(postId);
 
-        if (tags == null) return;
+        if (tags == null) {
+            affectedTagIds.forEach(tagMapper::reconcileUsageCount);
+            return;
+        }
 
         // 2. 새 사용자 태그 삽입 (마스터 INSERT IGNORE → post_tag is_ai=0). 신규 INSERT(affected==1)일 때만 usage 증가.
         for (String tagName : tags) {
@@ -593,11 +607,13 @@ public class CommunityPostServiceImpl implements CommunityPostService {
             tagMapper.insertTag(trimmed);
             Long tagId = tagMapper.findIdByName(trimmed);
             if (tagId == null) continue;
+            affectedTagIds.add(tagId);
             int affected = tagMapper.insertPostTag(postId, tagId, false);
             if (affected == 1) {
                 tagMapper.incrementUsageCount(tagId);
             }
         }
+        affectedTagIds.forEach(tagMapper::reconcileUsageCount);
     }
 
     /**

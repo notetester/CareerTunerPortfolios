@@ -14,8 +14,22 @@ public record SelfCorrectionInput(
         String targetRole,
         Map<String, Object> jobContext,
         List<String> userProfileFacts,
-        Map<String, Object> constraints
+        Map<String, Object> constraints,
+        Map<String, Object> sourceProvenance
 ) {
+
+    /** 기존 학습/테스트 호출 호환. provenance는 모델 입력이 아니라 저장용이므로 생략 가능하다. */
+    public SelfCorrectionInput(
+            String id,
+            String taskType,
+            String originalText,
+            String targetRole,
+            Map<String, Object> jobContext,
+            List<String> userProfileFacts,
+            Map<String, Object> constraints
+    ) {
+        this(id, taskType, originalText, targetRole, jobContext, userProfileFacts, constraints, Map.of());
+    }
 
     public Map<String, Object> toRequestMap() {
         Map<String, Object> input = new LinkedHashMap<>();
@@ -42,7 +56,8 @@ public record SelfCorrectionInput(
                 command.applicationCase() == null ? "" : safe(command.applicationCase().getJobTitle()),
                 Map.of(),
                 List.of(),
-                defaultConstraints(taskType, original));
+                defaultConstraints(taskType, original),
+                Map.of());
     }
 
     public static Map<String, Object> defaultConstraints(String taskType, String originalText) {

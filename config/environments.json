@@ -39,7 +39,7 @@
     "sites": {
       "description": "Codex Sites 보조 프런트 — AWS 우선, 전체 장애 확인 후 비영속 mock 체험",
       "backendApi": "https://careertuner.kro.kr/api",
-      "frontendWeb": "https://careertuner.career-tuner-4654.chatgpt.site",
+      "frontendWeb": "https://careertuner.careertuner.chatgpt.site",
       "db": "mysql://localhost:3306/team1_db",
       "ollama": "http://localhost:11434",
       "ollamaFallback": ["http://localhost:11434"],

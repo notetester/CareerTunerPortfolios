@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
+import { Browser } from "@capacitor/browser";
+import { useLocation, useNavigate } from "react-router";
 import { AtSign, KeyRound, Link2, MailCheck, Phone, ShieldCheck } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import { requestPasswordReset } from "@/app/auth/authApi";
+import type { SocialProvider } from "@/app/auth/AuthContext";
+import { useOAuthProviderAvailability } from "@/app/auth/useOAuthProviderAvailability";
+import { useOutageFallback } from "@/app/lib/outageFallback";
+import { isNativeApp } from "@/platform/capacitor";
+import { validateAuthorizationUrl, type NativeOAuthProvider } from "@/platform/nativeOAuthCore.mjs";
 import { getAccountInfo, getSocialLinkUrl, requestEmailRegistration, setLoginId, setPhone, unlinkSocial } from "../api/nicknameProfileApi";
 import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 /**
  * 계정 정보 카드 — 로그인 아이디(최초 1회 설정), 전화번호, 연결된 소셜 계정.
@@ -14,6 +23,14 @@ import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
  * 아이디는 설정 후 변경 불가, 전화번호는 언제든 변경 가능(인증은 선택적·스텁).
  */
 export function AccountInfoCard() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { socialOAuthBlocked } = useOutageFallback();
+  const {
+    providers: oauthProviders,
+    loading: oauthProvidersLoading,
+    error: oauthProvidersError,
+  } = useOAuthProviderAvailability();
   const [info, setInfo] = useState<AccountInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +45,7 @@ export function AccountInfoCard() {
   const [savingPhone, setSavingPhone] = useState(false);
   const [socialBusy, setSocialBusy] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<AccountInfo | null> => {
     setLoading(true);
     setError(null);
     try {
@@ -36,8 +53,10 @@ export function AccountInfoCard() {
       setInfo(next);
       setEmailDraft(next.temporaryEmail ? "" : next.email ?? "");
       setPhoneDraft(next.phone ?? "");
+      return next;
     } catch (e) {
       setError(e instanceof Error ? e.message : "계정 정보를 불러오지 못했습니다.");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -48,14 +67,59 @@ export function AccountInfoCard() {
   }, [load]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const linked = params.get("socialLinked");
-    if (linked) {
-      const suffix = params.get("socialMock") ? " mock 계정을 연결했습니다." : " 계정을 연결했습니다.";
-      setMessage(`${PROVIDER_LABELS[linked] ?? linked}${suffix}`);
-      window.history.replaceState(null, "", window.location.pathname);
-    }
+    if (!isNativeApp() || USE_MOCK) return;
+
+    let disposed = false;
+    let removeListener: (() => Promise<void>) | null = null;
+    void Browser.addListener("browserFinished", () => {
+      setSocialBusy(null);
+    }).then((handle) => {
+      if (disposed) {
+        void handle.remove();
+      } else {
+        removeListener = () => handle.remove();
+      }
+    }).catch(() => {
+      // 브라우저 종료 이벤트가 없는 플랫폼에서도 App Link 콜백이 busy 상태를 정리한다.
+    });
+
+    return () => {
+      disposed = true;
+      if (removeListener) void removeListener();
+    };
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const linkedValue = params.get("socialLinked")?.toUpperCase() ?? null;
+    const linked = linkedValue && ["GOOGLE", "KAKAO", "NAVER"].includes(linkedValue)
+      ? linkedValue
+      : null;
+    const linkError = params.get("socialLinkError");
+    if (!linked && !linkError) return;
+
+    let cancelled = false;
+    void load().then((next) => {
+      if (cancelled) return;
+      setSocialBusy(null);
+      if (linked && next?.linkedProviders.includes(linked)) {
+        const suffix = params.get("socialMock") ? " mock 계정을 연결했습니다." : " 계정을 연결했습니다.";
+        setMessage(`${PROVIDER_LABELS[linked] ?? linked}${suffix}`);
+      } else if (linked) {
+        setMessage(null);
+        setError("소셜 계정 연결 결과를 확인하지 못했습니다. 현재 연결 상태를 확인해 주세요.");
+      } else {
+        setMessage(null);
+        setError(linkError === "social_login_cancelled"
+          ? "소셜 계정 연결을 취소했습니다."
+          : "소셜 계정 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      }
+      void navigate("/profile/detail", { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [load, location.search, navigate]);
 
   const submitLoginId = async () => {
     const value = loginIdDraft.trim().toLowerCase();
@@ -139,6 +203,23 @@ export function AccountInfoCard() {
     setMessage(null);
     try {
       const { url } = await getSocialLinkUrl(provider);
+      if (isNativeApp()) {
+        if (USE_MOCK) {
+          const expectedCallback = `/profile/detail?socialLinked=${encodeURIComponent(provider.toUpperCase())}&socialMock=1`;
+          if (url !== expectedCallback) {
+            throw new Error("데모 소셜 계정 연결 결과를 확인할 수 없습니다.");
+          }
+          void navigate(url);
+          return;
+        }
+        const providerId = provider.toLowerCase() as NativeOAuthProvider;
+        const authorizationUrl = validateAuthorizationUrl(providerId, url);
+        if (!authorizationUrl) {
+          throw new Error("소셜 로그인 제공자 주소를 확인할 수 없습니다.");
+        }
+        await Browser.open({ url: authorizationUrl });
+        return;
+      }
       window.location.href = url;
     } catch (e) {
       setError(e instanceof Error ? e.message : "소셜 계정 연결을 시작하지 못했습니다.");
@@ -308,6 +389,8 @@ export function AccountInfoCard() {
           <div className="flex flex-wrap gap-2">
             {["GOOGLE", "KAKAO", "NAVER"].map((provider) => {
               const linked = info?.linkedProviders.includes(provider) ?? false;
+              const availabilityKey = provider.toLowerCase() as SocialProvider;
+              const providerAvailable = oauthProviders[availabilityKey];
               return (
                 <div key={provider} className="flex items-center gap-1 rounded-lg border border-slate-200 bg-card px-2 py-1">
                   <Badge className={linked ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}>
@@ -318,8 +401,9 @@ export function AccountInfoCard() {
                       size="sm"
                       variant="ghost"
                       className="h-7 px-2 text-xs"
-                      disabled={socialBusy === provider}
+                      disabled={socialBusy !== null || socialOAuthBlocked}
                       onClick={() => void unlinkProvider(provider)}
+                      title={socialOAuthBlocked ? "운영 서비스 복구 후 연결을 해제할 수 있습니다." : undefined}
                     >
                       해제
                     </Button>
@@ -328,8 +412,13 @@ export function AccountInfoCard() {
                       size="sm"
                       variant="ghost"
                       className="h-7 px-2 text-xs"
-                      disabled={socialBusy === provider}
+                      disabled={socialBusy !== null || socialOAuthBlocked || oauthProvidersLoading || !providerAvailable}
                       onClick={() => void linkProvider(provider)}
+                      title={socialOAuthBlocked
+                        ? "운영 서비스 복구 후 새 소셜 계정을 연결할 수 있습니다."
+                        : !oauthProvidersLoading && !providerAvailable
+                          ? `${PROVIDER_LABELS[provider] ?? provider} 로그인 설정이 완료되지 않았습니다.`
+                          : undefined}
                     >
                       연결
                     </Button>
@@ -338,6 +427,22 @@ export function AccountInfoCard() {
               );
             })}
           </div>
+          {socialOAuthBlocked && (
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              장애 체험 중에는 소셜 계정 연결을 변경할 수 없습니다.
+            </p>
+          )}
+          {!socialOAuthBlocked && oauthProvidersError && (
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+              소셜 로그인 상태를 확인하지 못해 새 계정 연결을 잠시 사용할 수 없습니다.
+            </p>
+          )}
+          {!socialOAuthBlocked && !oauthProvidersLoading && !oauthProvidersError
+            && ["GOOGLE", "KAKAO", "NAVER"].some((provider) => !oauthProviders[provider.toLowerCase() as SocialProvider]) && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                설정이 완료된 소셜 제공자만 새로 연결할 수 있습니다.
+              </p>
+            )}
           <p className="text-xs text-slate-400">
             남는 로그인 수단이 없으면 해제가 제한됩니다.
           </p>

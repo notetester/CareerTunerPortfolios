@@ -41,4 +41,7 @@ public interface CommunityTagMapper {
 
     /** 해당 게시글의 모든 태그명 조회 (is_ai 무관). */
     List<String> findTagNamesByPostId(@Param("postId") Long postId);
+
+    /** soft delete/복원 후 태그 사용량 캐시를 활성 연결 수와 일치시킨다. */
+    void reconcileUsageCount(@Param("id") Long id);
 }

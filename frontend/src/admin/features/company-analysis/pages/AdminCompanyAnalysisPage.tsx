@@ -16,7 +16,12 @@ import { Card, CardContent } from "@/app/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/app/components/ui/collapsible";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
-import { parseJsonArrayOrText, parseJsonStringArray } from "@/features/applications/types/analysis";
+import {
+  formatAnalysisProvenanceSummary,
+  getCompanySourceTypeLabel,
+  parseJsonArrayOrText,
+  parseJsonStringArray,
+} from "@/features/applications/types/analysis";
 import { VerifiedFactsList } from "@/features/applications/components/VerifiedFactsList";
 import {
   getAdminCompanyAnalyses,
@@ -30,6 +35,7 @@ import type {
   AdminCompanyAnalysisSummaryResponse,
 } from "../types";
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 type BooleanFilter = "all" | "true" | "false";
 
@@ -157,6 +163,7 @@ function formatPostingRevision(row: AdminCompanyAnalysisRow): string {
 }
 
 export function AdminCompanyAnalysisPage() {
+  const { canUpdate } = useAdminDomainAuthorization("AI");
   const [rows, setRows] = useState<AdminCompanyAnalysisRow[]>([]);
   const [summary, setSummary] = useState<AdminCompanyAnalysisSummaryResponse>(EMPTY_SUMMARY);
   const [memos, setMemos] = useState<Record<number, string>>({});
@@ -289,6 +296,7 @@ export function AdminCompanyAnalysisPage() {
   };
 
   const saveMemo = async (analysisId: number) => {
+    if (!canUpdate) return;
     const nextMemo = memos[analysisId] ?? "";
     setSavingMemoId(analysisId);
     setError(null);
@@ -303,6 +311,7 @@ export function AdminCompanyAnalysisPage() {
   };
 
   const saveMetadata = async (analysisId: number) => {
+    if (!canUpdate) return;
     const metadata = metadataForms[analysisId] ?? { sourceType: "", checkedAt: "", refreshRecommendedAt: "" };
     const original = rows.find((row) => row.id === analysisId);
     const nextSourceType = blankToNull(metadata.sourceType);
@@ -480,7 +489,7 @@ export function AdminCompanyAnalysisPage() {
           <EmptyBlock message="검색 조건에 맞는 기업 분석이 없습니다." />
         ) : (
           <>
-            <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)] xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+            <div className="hidden min-w-0 gap-4 lg:grid lg:grid-cols-[minmax(260px,0.55fr)_minmax(0,1fr)]">
               <Card className="min-w-0 overflow-hidden rounded-lg border-slate-200 bg-card">
                 <CardContent className="p-0">
                   <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -490,14 +499,11 @@ export function AdminCompanyAnalysisPage() {
                     </div>
                   </div>
                   <div className="max-h-[720px] overflow-auto">
-                    <table className="w-full min-w-[740px] text-left text-sm">
+                    <table className="w-full text-left text-sm">
                       <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
                         <tr>
                           <th className="px-4 py-3">지원 건</th>
-                          <th className="px-4 py-3">산업</th>
-                          <th className="px-4 py-3">출처</th>
                           <th className="px-4 py-3">상태</th>
-                          <th className="px-4 py-3">갱신 권장</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -517,18 +523,8 @@ export function AdminCompanyAnalysisPage() {
                                 </div>
                               </td>
                               <td className="px-4 py-3 align-top">
-                                <Badge className="max-w-[180px] whitespace-normal border-slate-200 bg-slate-100 text-slate-700">
-                                  {row.industry ?? "미정"}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 align-top text-sm text-slate-600">
-                                <div className="break-words font-semibold text-slate-800">{row.sourceType ?? "-"}</div>
-                                <div className="mt-1 text-xs text-slate-500">출처 {parseJsonStringArray(row.sources).length}개</div>
-                              </td>
-                              <td className="px-4 py-3 align-top">
                                 <QualityBadges row={row} />
                               </td>
-                              <td className="px-4 py-3 align-top text-xs leading-5 text-slate-500">{formatDateTime(row.refreshRecommendedAt)}</td>
                             </tr>
                           );
                         })}
@@ -551,6 +547,7 @@ export function AdminCompanyAnalysisPage() {
                       onSaveMetadata={() => void saveMetadata(selectedRow.id)}
                       savingMemo={savingMemoId === selectedRow.id}
                       savingMetadata={savingMetadataId === selectedRow.id}
+                      canUpdate={canUpdate}
                     />
                   )}
                 </CardContent>
@@ -595,6 +592,7 @@ export function AdminCompanyAnalysisPage() {
                           onSaveMetadata={() => void saveMetadata(row.id)}
                           savingMemo={savingMemoId === row.id}
                           savingMetadata={savingMetadataId === row.id}
+                          canUpdate={canUpdate}
                           compact
                         />
                       )}
@@ -645,7 +643,7 @@ function SummaryCard({
 
 function LoadingBlock() {
   return (
-    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)] xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(260px,0.55fr)_minmax(0,1fr)]">
       <div className="h-96 animate-pulse rounded-lg bg-slate-200" />
       <div className="hidden h-96 animate-pulse rounded-lg bg-slate-200 lg:block" />
     </div>
@@ -694,6 +692,7 @@ function CompanyAnalysisDetail({
   onSaveMetadata,
   savingMemo,
   savingMetadata,
+  canUpdate,
   compact = false,
 }: {
   row: AdminCompanyAnalysisRow;
@@ -705,6 +704,7 @@ function CompanyAnalysisDetail({
   onSaveMetadata: () => void;
   savingMemo: boolean;
   savingMetadata: boolean;
+  canUpdate: boolean;
   compact?: boolean;
 }) {
   return (
@@ -731,22 +731,23 @@ function CompanyAnalysisDetail({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <MetaBlock label="출처 유형" value={row.sourceType ?? "미정"} />
+        <MetaBlock label="출처 유형" value={getCompanySourceTypeLabel(row.sourceType) ?? "미정"} />
         <MetaBlock label="확인 시각" value={formatDateTime(row.checkedAt)} />
         <MetaBlock label="갱신 권장" value={formatDateTime(row.refreshRecommendedAt)} />
         <MetaBlock label="공고 revision" value={formatPostingRevision(row)} />
         <MetaBlock label="확정일" value={row.confirmedAt ? formatDateTime(row.confirmedAt) : "미확정"} />
+        <MetaBlock label="생성 모델" value={formatAnalysisProvenanceSummary(row)} />
       </div>
 
       <TagBlock title="경쟁사" items={parseJsonStringArray(row.competitors)} emptyLabel="경쟁사 미정" />
 
-      <MetadataEditor
+      {canUpdate && <MetadataEditor
         key={row.id}
         metadata={metadata}
         onMetadataChange={onMetadataChange}
         onSaveMetadata={onSaveMetadata}
         saving={savingMetadata}
-      />
+      />}
 
       <div className="grid gap-3">
         <TextBlock title="최근 이슈" value={row.recentIssues} />
@@ -760,7 +761,7 @@ function CompanyAnalysisDetail({
 
       <TagBlock title="출처" items={parseJsonStringArray(row.sources)} emptyLabel="출처 없음" />
 
-      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      {canUpdate ? <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="text-xs font-semibold text-slate-500">운영 메모</div>
         <Textarea
           value={memo}
@@ -774,7 +775,7 @@ function CompanyAnalysisDetail({
             메모 저장
           </Button>
         </div>
-      </div>
+      </div> : <TextBlock title="운영 메모" value={row.adminMemo} />}
     </div>
   );
 }

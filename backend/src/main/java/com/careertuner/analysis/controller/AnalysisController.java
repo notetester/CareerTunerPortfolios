@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.careertuner.analysis.dto.AnalysisSummaryResponse;
 import com.careertuner.analysis.dto.CareerAnalysisRunResponse;
 import com.careertuner.analysis.service.AnalysisService;
+import com.careertuner.billing.policy.RequiresAiCharge;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.domain.ConsentType;
@@ -33,6 +34,7 @@ public class AnalysisController {
 
     // 사용자가 명시적으로 요청한 장기 경향 재분석. AI를 강제로 실행하고 크레딧을 차감한다.
     @PostMapping("/summary/refresh")
+    @RequiresAiCharge("CAREER_TREND")
     public ApiResponse<AnalysisSummaryResponse> refresh(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(analysisService.refreshSummary(authUser.id()));
     }

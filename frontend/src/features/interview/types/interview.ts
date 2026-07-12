@@ -1,7 +1,7 @@
 // 면접 도메인 타입 + UI 상수.
 // 백엔드 interview_session / interview_question / interview_answer 스키마와 1:1로 맞춘다.
 
-import { MessageSquare, Settings2, Users, Zap, FileText, Building2, type LucideIcon } from "lucide-react";
+import { MessageSquare, Settings2, Users, Zap, FileText, Building2, FolderGit2, Timer, type LucideIcon } from "lucide-react";
 
 import type { VisualScoreDetail } from "../hooks/visualAnalysis";
 
@@ -11,6 +11,8 @@ export type InterviewMode =
   | "PERSONALITY" // 인성 면접
   | "PRESSURE" // 압박 면접
   | "RESUME" // 자소서 기반
+  | "PORTFOLIO" // 포트폴리오 기반
+  | "REAL" // 실전 종합
   | "COMPANY"; // 기업 맞춤
 
 export type QuestionType = "EXPECTED" | "TECH" | "PERSONALITY" | "SITUATION" | "FOLLOW_UP";
@@ -24,6 +26,12 @@ export interface InterviewSession {
   mode: InterviewMode;
   startedAt: string | null;
   endedAt: string | null;
+  /** 목록 조회에서 함께 계산되는 전체 질문 수. */
+  totalQuestions: number;
+  /** 답변이 하나 이상 존재하는 질문 수. */
+  answeredQuestions: number;
+  /** 질문이 있고 모든 질문에 답변한 경우에만 true. endedAt 과 독립적이다. */
+  finished: boolean;
   totalScore: number | null;
   /** 답변 점수 평균(목록 조회 계산값). 리포트 미생성으로 totalScore 가 없을 때 카드 점수 폴백용. */
   avgScore: number | null;
@@ -31,6 +39,8 @@ export interface InterviewSession {
   avgVoiceScore: number | null;
   /** 복원(=복습) 마지막 시각. 없으면 복습한 적 없음. */
   lastResumedAt: string | null;
+  /** 질문 생성 시 사용한 A/B/C 원천 provenance JSON. */
+  sourceSnapshot?: string | null;
   createdAt: string;
 }
 
@@ -54,6 +64,8 @@ export interface InterviewAnswer {
   score: number | null;
   feedback: string | null;
   improvedAnswer: string | null;
+  clientSubmissionId?: string | null;
+  submissionStatus?: "PENDING" | "COMPLETED" | "FAILED" | null;
   createdAt: string;
 }
 
@@ -76,6 +88,8 @@ export interface InterviewReportQuestionScore {
   question: string;
   score: number | null;
   feedback: string | null;
+  voiceScore?: number | null;
+  visualScore?: number | null;
 }
 
 // ───── 요청 DTO ─────
@@ -98,8 +112,17 @@ export interface SubmitAnswerRequest {
   answerText: string;
   audioUrl?: string | null;
   videoUrl?: string | null;
+  /** 먼저 업로드한 원본을 답변에 원자적으로 연결한다. URL은 서버가 이 ID로 정규화한다. */
+  audioFileId?: number | null;
+  videoFileId?: number | null;
   /** 사용자에게 보여준 모범답안(답안지). 있으면 채점의 만점 기준으로 함께 보낸다. */
   modelAnswer?: string | null;
+  /** 응답 유실 재시도에도 동일하게 유지하는 UUID 멱등키. */
+  clientSubmissionId?: string | null;
+  /** 모바일 캡처 전달력 점수. 답변과 같은 서버 트랜잭션에서 영속한다. */
+  voiceScore?: number | null;
+  /** 모바일 캡처 비언어 점수. 답변과 같은 서버 트랜잭션에서 영속한다. */
+  visualScore?: number | null;
 }
 
 /** 자율 에이전트 진행 단계 (AI 사고과정 트레이스) */
@@ -210,6 +233,8 @@ export interface MediaCapabilities {
 export interface MediaAnalysis {
   id: number;
   interviewSessionId: number;
+  questionId: number | null;
+  answerId: number | null;
   kind: "VOICE" | "AVATAR";
   transcript: TranscriptLine[] | null;
   metrics: Record<string, unknown> | null;
@@ -221,6 +246,9 @@ export interface MediaAnalysis {
 /** 분석 결과 저장 요청 (POST /sessions/{id}/media-results) */
 export interface SaveMediaAnalysisRequest {
   kind: "VOICE" | "AVATAR";
+  /** 답변 단위 모바일 분석일 때 함께 보낸다. 기존 세션 단위 저장은 둘 다 생략한다. */
+  questionId?: number | null;
+  answerId?: number | null;
   transcript: TranscriptLine[] | null;
   metrics: Record<string, unknown> | null;
   score: number;
@@ -255,10 +283,15 @@ export interface SessionReviewItem {
   question: string;
   questionType: string;
   modelAnswer: string | null;
+  answerId: number | null;
   answerText: string | null;
+  audioUrl: string | null;
+  videoUrl: string | null;
   score: number | null;
   feedback: string | null;
   improvedAnswer: string | null;
+  voiceScore?: number | null;
+  visualScore?: number | null;
 }
 
 /** 최근 면접 기록에서 들어가 보는 세션 복기 응답. */
@@ -294,6 +327,8 @@ export const INTERVIEW_MODES: InterviewModeOption[] = [
   { id: "PERSONALITY", icon: Users, title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", difficulty: "중", recommended: false },
   { id: "PRESSURE", icon: Zap, title: "압박 면접", desc: "꼬리 질문, 반박 질문", difficulty: "상", recommended: false },
   { id: "RESUME", icon: FileText, title: "자소서 기반", desc: "자기소개서 문장을 기반으로 질문", difficulty: "중", recommended: false },
+  { id: "PORTFOLIO", icon: FolderGit2, title: "포트폴리오 기반", desc: "프로젝트 역할·기여·성과를 깊이 검증", difficulty: "상", recommended: false },
+  { id: "REAL", icon: Timer, title: "실전 종합", desc: "제한 시간과 다양한 질문을 섞은 종합 연습", difficulty: "상", recommended: false },
   { id: "COMPANY", icon: Building2, title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", difficulty: "상", recommended: false },
 ];
 

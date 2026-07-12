@@ -3,6 +3,11 @@ import { Loader2, Smartphone, Unplug, Video, Wifi } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/app/components/ui/button";
 import {
+  captureAppLockGeneration,
+  isAppLockGenerationCurrent,
+  useAppLockCleanup,
+} from "@/platform/appLockEvents";
+import {
   closeMicHandoff,
   createMicHandoff,
   fetchIceServers,
@@ -41,6 +46,7 @@ export function RemoteMicConnectCard({
   const teardown = useCallback(
     (notify: boolean) => {
       stopPollRef.current = true;
+      pcRef.current?.getReceivers().forEach((receiver) => receiver.track?.stop());
       pcRef.current?.close();
       pcRef.current = null;
       if (codeRef.current) {
@@ -53,19 +59,32 @@ export function RemoteMicConnectCard({
     [onStream],
   );
 
+  useAppLockCleanup(() => {
+    teardown(true);
+    setPhase("idle");
+    setError("앱 잠금으로 폰 미디어 연결을 종료했습니다.");
+  });
+
   useEffect(() => {
     return () => teardown(false);
   }, [teardown]);
 
   const begin = async () => {
+    const lockGeneration = captureAppLockGeneration();
+    if (lockGeneration === null) return;
     setPhase("pairing");
     setError(null);
     stopPollRef.current = false;
+    const active = () => !stopPollRef.current && isAppLockGenerationCurrent(lockGeneration);
     try {
       const [{ code: newCode }, iceServers] = await Promise.all([
         createMicHandoff(sessionId),
         fetchIceServers(),
       ]);
+      if (!active()) {
+        void closeMicHandoff(newCode).catch(() => undefined);
+        return;
+      }
       codeRef.current = newCode;
       setCode(newCode);
 
@@ -75,9 +94,16 @@ export function RemoteMicConnectCard({
       if (withVideo) pc.addTransceiver("video", { direction: "recvonly" });
       pc.ontrack = (e) => {
         const stream = e.streams[0] ?? new MediaStream([e.track]);
+        if (!active()) {
+          stream.getTracks().forEach((track) => track.stop());
+          e.track.stop();
+          pc.close();
+          return;
+        }
         onStream(stream);
       };
       pc.onconnectionstatechange = () => {
+        if (!active()) return;
         if (pc.connectionState === "connected") setPhase("connected");
         if (pc.connectionState === "failed") {
           setError("연결에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.");
@@ -90,17 +116,23 @@ export function RemoteMicConnectCard({
       };
 
       const offer = await pc.createOffer();
+      if (!active()) { teardown(true); return; }
       await pc.setLocalDescription(offer);
+      if (!active()) { teardown(true); return; }
       await waitIceGatheringComplete(pc);
+      if (!active()) { teardown(true); return; }
       await postMicHandoffOffer(newCode, pc.localDescription?.sdp ?? offer.sdp ?? "");
+      if (!active()) { teardown(true); return; }
       setPhase("waiting");
 
       // 폰의 answer 를 폴링으로 기다린다 (TTL 10분, 1초 간격).
-      for (let i = 0; i < 600 && !stopPollRef.current; i++) {
+      for (let i = 0; i < 600 && active(); i++) {
         const state = await getMicHandoffState(newCode, "desktop");
+        if (!active()) return;
         if (state.answerSdp) {
           setPhase("connecting");
           await pc.setRemoteDescription({ type: "answer", sdp: state.answerSdp });
+          if (!active()) { teardown(true); return; }
           return; // 이후 onconnectionstatechange 가 connected 로 마무리
         }
         await new Promise((r) => setTimeout(r, 1000));
@@ -111,6 +143,7 @@ export function RemoteMicConnectCard({
         teardown(true);
       }
     } catch (err) {
+      if (!active()) return;
       setError(err instanceof Error ? err.message : "폰 마이크 연결에 실패했습니다.");
       setPhase("error");
       teardown(true);

@@ -26,7 +26,7 @@ import com.careertuner.community.moderation.service.AdminTaggingService.BatchSta
 @RestController
 @RequestMapping("/api/admin/ai/tagging")
 @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 public class AdminTaggingController {
 
     private final AdminTaggingService taggingService;
@@ -41,6 +41,7 @@ public class AdminTaggingController {
      * ?force=true  → 이미 COMPLETED인 글도 재태깅
      */
     @PostMapping("/backfill")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<Map<String, Object>> backfill(
             @RequestParam(defaultValue = "false") boolean dryRun,
             @RequestParam(defaultValue = "false") boolean force
@@ -73,6 +74,7 @@ public class AdminTaggingController {
      * ?force=true → 이미 COMPLETED인 글도 재태깅
      */
     @PostMapping("/{postId}")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<Map<String, Object>> tagSingle(
             @PathVariable Long postId,
             @RequestParam(defaultValue = "false") boolean force

@@ -244,6 +244,7 @@
         <foreach collection="itemIds" item="itemId" open="(" separator="," close=")">
             #{itemId}
         </foreach>
+          AND status != 'CANCELED'
         ORDER BY remind_at ASC, id ASC
     </select>
 
@@ -267,13 +268,15 @@
             (#{scheduleItemId}, #{remindAt}, #{offsetMinutes}, #{channelsJson}, #{soundEnabled}, #{vibrationEnabled}, #{status})
     </insert>
 
-    <delete id="deleteRemindersByItem">
-        DELETE psr
-        FROM planner_schedule_reminder psr
+    <update id="cancelRemindersByItem">
+        UPDATE planner_schedule_reminder psr
         INNER JOIN planner_schedule_item psi ON psi.id = psr.schedule_item_id
+        SET psr.status = 'CANCELED',
+            psr.updated_at = CURRENT_TIMESTAMP
         WHERE psr.schedule_item_id = #{itemId}
           AND psi.user_id = #{userId}
-    </delete>
+          AND psr.status != 'CANCELED'
+    </update>
 
     <update id="markReminderSent">
         UPDATE planner_schedule_reminder

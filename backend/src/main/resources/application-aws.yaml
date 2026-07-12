@@ -13,10 +13,21 @@ careertuner:
   app:
     # nginx가 웹과 /api를 같은 HTTPS 도메인에서 제공한다. OAuth 콜백·이메일 링크 조립에 사용된다.
     frontend-url: ${APP_FRONTEND_URL:https://careertuner.kro.kr}
-    sites-frontend-url: ${APP_SITES_FRONTEND_URL:https://careertuner.career-tuner-4654.chatgpt.site}
+    sites-frontend-url: ${APP_SITES_FRONTEND_URL:https://careertuner.careertuner.chatgpt.site}
     api-base-url: ${APP_API_BASE_URL:https://careertuner.kro.kr}
   oauth:
     mock-enabled: ${OAUTH_MOCK_ENABLED:false}
+    google:
+      redirect-uri: ${OAUTH_GOOGLE_REDIRECT_URI:https://careertuner.kro.kr/api/auth/oauth/google/callback}
+    kakao:
+      redirect-uri: ${OAUTH_KAKAO_REDIRECT_URI:https://careertuner.kro.kr/api/auth/oauth/kakao/callback}
+    naver:
+      redirect-uri: ${OAUTH_NAVER_REDIRECT_URI:https://careertuner.kro.kr/api/auth/oauth/naver/callback}
+  toss:
+    payments:
+      # 결제 승인 후 브라우저가 개발용 localhost로 이탈하지 않도록 운영 반환 주소를 고정한다.
+      success-url: ${CAREERTUNER_TOSS_PAYMENTS_SUCCESS_URL:https://careertuner.kro.kr/billing/success}
+      fail-url: ${CAREERTUNER_TOSS_PAYMENTS_FAIL_URL:https://careertuner.kro.kr/billing/fail}
 
 # ─── 자체 LLM 엔드포인트 (2대: F 노트북 + 공유 4090) ──────────────────────────
 # careertuner.kro.kr(AWS) 배포용. AWS 서버가 tailnet 에 조인돼 있어야 아래 Tailscale
@@ -44,8 +55,3 @@ langchain4j:
       base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
       # (신규) 무제한 방지 — 노트북이 연결은 받고 멈추면 이 시간 후 Claude 로 폴백한다.
       timeout: ${CHAT_LLM_OLLAMA_TIMEOUT:60s}
-
-# OAuth redirect-uri 를 별도 호스트로 분리할 때 함께 교체한다(위 careertuner 블록에 병합할 예시).
-#   oauth:
-#     kakao:
-#       redirect-uri: ${OAUTH_KAKAO_REDIRECT_URI:https://careertuner.kro.kr/api/auth/oauth/kakao/callback}

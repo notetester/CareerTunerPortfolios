@@ -10,8 +10,9 @@ import {
 } from "lucide-react";
 import { listApplicationCases } from "@/features/applications/api/applicationCasesApi";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
-import { warmupCorrectionModel } from "@/features/correction/api/correctionApi";
+import { getInterviewAnswerCorrectionSource, warmupCorrectionModel } from "@/features/correction/api/correctionApi";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { CorrectionHistoryList } from "@/features/correction/components/CorrectionHistoryList";
 import { CorrectionResultCard } from "@/features/correction/components/CorrectionResultCard";
 import { useCorrections } from "@/features/correction/hooks/useCorrections";
@@ -19,6 +20,7 @@ import {
   CORRECTION_TABS,
   CORRECTION_TYPE_BY_TAB,
   type CorrectionTab,
+  type CorrectionInterviewSource,
 } from "@/features/correction/types/correction";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
@@ -89,6 +91,9 @@ export function CorrectionPage() {
   const [casesLoading, setCasesLoading] = useState(true);
   const [casesError, setCasesError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [linkedInterviewSource, setLinkedInterviewSource] = useState<CorrectionInterviewSource | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState<string | null>(null);
 
   const requestedTab = searchParams.get("tab") ?? "answer";
   const activeTab: CorrectionTab = CORRECTION_TABS.includes(requestedTab as CorrectionTab)
@@ -98,6 +103,7 @@ export function CorrectionPage() {
   const draft = drafts[activeTab];
 
   const requestedCaseId = parseCaseId(searchParams.get("caseId"));
+  const requestedSourceRefId = parseCaseId(searchParams.get("sourceRefId"));
   const selectedCaseId = useMemo(() => {
     if (requestedCaseId === null) return null;
     if (casesLoading) return requestedCaseId;
@@ -110,18 +116,58 @@ export function CorrectionPage() {
     historyLoading,
     historyError,
     detailLoadingId,
+    deletingId,
     submitting,
     submitError,
     loadHistory,
     selectHistory,
+    remove,
     submit,
   } = useCorrections(CORRECTION_TYPE_BY_TAB[activeTab], selectedCaseId);
+  const [correctionModel, setCorrectionModel] = useState<AiModelChoice>("AUTO");
 
   useEffect(() => {
     void warmupCorrectionModel().catch(() => {
       // 워밍업 실패는 실제 첨삭 요청의 8B → 3B → Haiku → OpenAI 폴백에 맡긴다.
     });
   }, []);
+
+  useEffect(() => {
+    let activeRequest = true;
+    if (activeTab !== "answer" || requestedSourceRefId === null) {
+      setLinkedInterviewSource(null);
+      setSourceLoading(false);
+      setSourceError(null);
+      return () => { activeRequest = false; };
+    }
+
+    setSourceLoading(true);
+    setSourceError(null);
+    void getInterviewAnswerCorrectionSource(requestedSourceRefId)
+      .then((source) => {
+        if (!activeRequest) return;
+        setLinkedInterviewSource(source);
+        setDrafts((current) => ({
+          ...current,
+          answer: { originalText: source.originalText, questionText: source.questionText },
+        }));
+        setSearchParams((current) => {
+          if (current.get("caseId") === String(source.applicationCaseId)) return current;
+          const next = new URLSearchParams(current);
+          next.set("caseId", String(source.applicationCaseId));
+          return next;
+        }, { replace: true });
+      })
+      .catch((error: unknown) => {
+        if (!activeRequest) return;
+        setLinkedInterviewSource(null);
+        setSourceError(error instanceof Error ? error.message : "면접 답변을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (activeRequest) setSourceLoading(false);
+      });
+    return () => { activeRequest = false; };
+  }, [activeTab, requestedSourceRefId, setSearchParams]);
 
   useEffect(() => {
     let activeRequest = true;
@@ -144,7 +190,7 @@ export function CorrectionPage() {
     };
   }, []);
 
-  const updateSearchParam = (key: "tab" | "caseId", value: string | null) => {
+  const updateSearchParam = (key: "tab" | "caseId" | "sourceRefId", value: string | null) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       if (value) next.set(key, value);
@@ -176,13 +222,18 @@ export function CorrectionPage() {
       correctionType: CORRECTION_TYPE_BY_TAB[activeTab],
       applicationCaseId: selectedCaseId ?? undefined,
       originalText,
-      sourceType: "DIRECT_INPUT",
+      sourceType: linkedInterviewSource ? "INTERVIEW_ANSWER" : "DIRECT_INPUT",
+      sourceRefId: linkedInterviewSource?.sourceRefId,
       questionText: active.questionLabel && draft.questionText.trim() ? draft.questionText.trim() : undefined,
-    });
+    }, correctionModel);
   };
 
   const invalidRequestedCase = !casesLoading && requestedCaseId !== null && selectedCaseId === null;
   const visibleError = validationError ?? submitError;
+  const detachInterviewSource = () => {
+    setLinkedInterviewSource(null);
+    updateSearchParam("sourceRefId", null);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -253,7 +304,7 @@ export function CorrectionPage() {
                       rows={3}
                       onChange={(event) => updateDraft("questionText", event.target.value)}
                       placeholder={active.questionPlaceholder}
-                      disabled={submitting}
+                      disabled={submitting || Boolean(linkedInterviewSource) || sourceLoading}
                     />
                     <p className="text-right text-xs text-slate-400">{draft.questionText.length.toLocaleString("ko-KR")} / {QUESTION_TEXT_MAX_LENGTH.toLocaleString("ko-KR")}</p>
                   </div>
@@ -269,13 +320,21 @@ export function CorrectionPage() {
                     onChange={(event) => updateDraft("originalText", event.target.value)}
                     placeholder={active.placeholder}
                     className="min-h-64 resize-y leading-6"
-                    disabled={submitting}
+                    disabled={submitting || Boolean(linkedInterviewSource) || sourceLoading}
                     aria-invalid={Boolean(visibleError)}
                   />
                   <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
                     <span>지원 건을 연결하면 공고와 직무 맥락을 함께 반영합니다.</span>
                     <span className="shrink-0">{draft.originalText.length.toLocaleString("ko-KR")} / {ORIGINAL_TEXT_MAX_LENGTH.toLocaleString("ko-KR")}</span>
                   </div>
+                  {sourceLoading && <p className="text-xs text-blue-700">면접 답변 원문을 불러오는 중입니다.</p>}
+                  {sourceError && <p className="text-xs text-red-600">{sourceError}</p>}
+                  {linkedInterviewSource && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+                      <span>면접 답변 #{linkedInterviewSource.sourceRefId} 원문·평가 맥락을 사용합니다.</span>
+                      <Button type="button" size="sm" variant="outline" onClick={detachInterviewSource}>연결 해제</Button>
+                    </div>
+                  )}
                 </div>
 
                 {visibleError && (
@@ -286,10 +345,13 @@ export function CorrectionPage() {
                   </Alert>
                 )}
 
-                <Button type="button" onClick={() => void handleSubmit()} disabled={submitting || !draft.originalText.trim()}>
-                  {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                  {submitting ? "첨삭 중" : `${active.title} 실행`}
-                </Button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" onClick={() => void handleSubmit()} disabled={submitting || sourceLoading || !draft.originalText.trim()}>
+                    {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                    {submitting ? "첨삭 중" : `${active.title} 실행`}
+                  </Button>
+                  <ModelPicker value={correctionModel} onChange={setCorrectionModel} disabled={submitting} />
+                </div>
               </CardContent>
             </Card>
 
@@ -328,9 +390,11 @@ export function CorrectionPage() {
                   selectedId={selected?.id ?? null}
                   loading={historyLoading}
                   loadingId={detailLoadingId}
+                  deletingId={deletingId}
                   error={historyError}
                   onSelect={(id) => void selectHistory(id)}
                   onRetry={() => void loadHistory()}
+                  onDelete={(id) => void remove(id)}
                 />
               </CardContent>
             </Card>

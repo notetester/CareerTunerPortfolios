@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Real-device development often targets LAN/Tailscale HTTP backends. -->
-    <base-config cleartextTrafficPermitted="true" />
+    <!-- Release/main is HTTPS-only. Debug replaces this resource explicitly. -->
+    <base-config cleartextTrafficPermitted="false" />
 </network-security-config>

@@ -5,10 +5,15 @@
  * 공식 Capacitor 플러그인을 직접 import해 번들 등록과 네이티브 브리지 호출을 보장한다.
  */
 import { App } from "@capacitor/app";
+import { SystemBars, SystemBarsStyle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
-import { isNativeApp } from "./capacitor";
+import { isNativeApp, platformName } from "./capacitor";
+import {
+  consumeNativeOverlayBack,
+  suspendNativeOverlays,
+} from "./nativeOverlayLifecycle";
 
 let initialized = false;
 
@@ -22,9 +27,18 @@ export function syncStatusBarTheme(): void {
   if (!isNativeApp()) return;
   try {
     const dark = isDarkTheme();
-    // Capacitor Style: LIGHT=밝은 배경(어두운 글자), DARK=어두운 배경(밝은 글자).
-    void StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }).catch(() => {});
-    void StatusBar.setBackgroundColor({ color: dark ? "#050506" : "#ffffff" }).catch(() => {}); // 다크 = Linear Modern 딥블랙(데스크탑 v2와 통일)
+    const android = platformName() === "android";
+    // Capacitor 8 SystemBars로 상단 상태바와 하단 내비게이션바를 동일하게 제어한다.
+    // SystemBarsStyle: LIGHT=밝은 배경(어두운 아이콘), DARK=어두운 배경(밝은 아이콘).
+    // Android 15+의 WebView inset 영역은 네이티브 window 배경을 사용하므로 앱 테마와
+    // 무관하게 딥블랙 시스템 chrome을 유지한다. iOS/구형 Android는 웹 테마를 따른다.
+    const systemStyle = android || dark ? SystemBarsStyle.Dark : SystemBarsStyle.Light;
+    const statusStyle = android || dark ? Style.Dark : Style.Light;
+    void SystemBars.setStyle({ style: systemStyle }).catch(() => {
+      // Capacitor 7 이하 업그레이드 과도기 앱에서도 상태바 대비는 보존한다.
+      void StatusBar.setStyle({ style: statusStyle }).catch(() => {});
+    });
+    void StatusBar.setBackgroundColor({ color: android || dark ? "#050506" : "#ffffff" }).catch(() => {});
   } catch {
     /* 상태바는 보조라 실패해도 무시 */
   }
@@ -39,7 +53,8 @@ export function initNativeShell(): void {
   // — 미세팅이면 앱이 항상 platform=WEB 으로 요청해 APP 타겟 광고가 어디서도 노출되지 않는다.
   (globalThis as { __CT_PLATFORM__?: string }).__CT_PLATFORM__ = "APP";
 
-  // 상태바: 웹뷰가 상태바 밑으로 깔리지 않게 오버레이를 끄고, 테마색을 맞춘다.
+  // WebView는 시스템 bar inset 아래에 두고, Android 15+에서 생기는 inset 여백은
+  // styles.xml의 딥블랙 window 배경으로 채운다. 각 화면은 safe-area도 함께 보존한다.
   try {
     void StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {});
   } catch {
@@ -62,9 +77,25 @@ export function initNativeShell(): void {
     /* no-op */
   }
 
-  // 하드웨어 뒤로가기(Android): 갈 곳이 있으면 뒤로, 루트면 앱 종료.
+  // 앱 비활성화(통화·화면 꺼짐·백그라운드): 활성 미디어 오버레이가
+  // 라우트/초안 상태는 유지한 채 카메라·마이크 스트림을 즉시 정리한다.
+  try {
+    void App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive) {
+        suspendNativeOverlays();
+        return;
+      }
+      syncStatusBarTheme();
+    }).catch(() => {});
+  } catch {
+    /* no-op */
+  }
+
+  // 하드웨어 뒤로가기(Android): 최상단 오버레이가 먼저 소비하고,
+  // 오버레이가 없을 때만 브라우저 history 또는 앱 종료로 전달한다.
   try {
     void App.addListener("backButton", ({ canGoBack }) => {
+      if (consumeNativeOverlayBack()) return;
       const goBack = canGoBack ?? (typeof window !== "undefined" && window.history.length > 1);
       if (goBack) {
         window.history.back();

@@ -43,6 +43,7 @@ import type {
   AdminQualityFlag,
   AdminUserTimeline,
 } from "../types/adminAnalytics";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 
 /**
  * 분석 통계 전용 화면(C 담당). `/admin` 랜딩이 요약 카드를 보여준다면, 이 화면은
@@ -113,9 +114,15 @@ const memoTypeTone: Record<string, string> = {
 function RunMemoPanel({
   runId,
   onCountChange,
+  canCreate,
+  canUpdate,
+  canDelete,
 }: {
   runId: number;
   onCountChange: (runId: number, count: number) => void;
+  canCreate: boolean;
+  canUpdate: boolean;
+  canDelete: boolean;
 }) {
   const [memos, setMemos] = useState<AdminCareerRunMemo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,7 +157,7 @@ function RunMemoPanel({
   }, [runId, onCountChange]);
 
   const submit = async () => {
-    if (!content.trim() || saving) return;
+    if (!canCreate || !content.trim() || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -168,13 +175,14 @@ function RunMemoPanel({
   };
 
   const startEdit = (memo: AdminCareerRunMemo) => {
+    if (!canUpdate) return;
     setEditingId(memo.id);
     setEditType(memo.memoType);
     setEditContent(memo.content);
   };
 
   const saveEdit = async (memoId: number) => {
-    if (!editContent.trim() || saving) return;
+    if (!canUpdate || !editContent.trim() || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -192,7 +200,7 @@ function RunMemoPanel({
   };
 
   const remove = async (memoId: number) => {
-    if (saving) return;
+    if (!canDelete || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -217,7 +225,7 @@ function RunMemoPanel({
       {error && <div className="mb-2 text-xs text-red-600">{error}</div>}
 
       {/* 메모 작성 */}
-      <div className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:flex-row sm:items-start">
+      {canCreate && <div className="mb-3 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 sm:flex-row sm:items-start">
         <select
           value={memoType}
           onChange={(event) => setMemoType(event.target.value)}
@@ -238,7 +246,7 @@ function RunMemoPanel({
           {saving ? <Loader2 className="size-4 animate-spin" /> : <MessageSquarePlus className="size-4" />}
           추가
         </Button>
-      </div>
+      </div>}
 
       {/* 메모 목록 */}
       {loading ? (
@@ -251,7 +259,7 @@ function RunMemoPanel({
         <ul className="space-y-2">
           {memos.map((memo) => (
             <li key={memo.id} className="rounded-lg border border-slate-100 bg-card p-2.5">
-              {editingId === memo.id ? (
+              {editingId === memo.id && canUpdate ? (
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
                     <select
@@ -290,24 +298,24 @@ function RunMemoPanel({
                         {memo.adminName} · {formatDateTime(memo.updatedAt)}
                       </span>
                     </div>
-                    <div className="flex shrink-0 gap-1">
-                      <button
+                    {(canUpdate || canDelete) && <div className="flex shrink-0 gap-1">
+                      {canUpdate && <button
                         type="button"
                         onClick={() => startEdit(memo)}
                         className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                         title="수정"
                       >
                         <Pencil className="size-3.5" />
-                      </button>
-                      <button
+                      </button>}
+                      {canDelete && <button
                         type="button"
                         onClick={() => void remove(memo.id)}
                         className="rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                         title="삭제"
                       >
                         <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
+                      </button>}
+                    </div>}
                   </div>
                   <p className="mt-1.5 whitespace-pre-wrap text-sm text-slate-700">{memo.content}</p>
                 </>
@@ -344,6 +352,7 @@ const severityTone: Record<string, string> = {
 };
 
 export function AdminAnalyticsPage() {
+  const { canCreate, canUpdate, canDelete } = useAdminDomainAuthorization("AI");
   const [summary, setSummary] = useState<AdminAnalyticsSummary | null>(null);
   const [runs, setRuns] = useState<AdminCareerAnalysisRun[]>([]);
   const [failures, setFailures] = useState<AdminAnalysisFailure[]>([]);
@@ -447,6 +456,7 @@ export function AdminAnalyticsPage() {
   }, [runs]);
 
   const resolveFlag = async (flag: AdminQualityFlag) => {
+    if (!canUpdate) return;
     await resolveAdminQualityFlag(flag.fitAnalysisId, flag.flagType);
     setQualityFlags((current) => current.filter((item) => !(item.fitAnalysisId === flag.fitAnalysisId && item.flagType === flag.flagType)));
   };
@@ -645,9 +655,9 @@ export function AdminAnalyticsPage() {
                         >
                           적합도 분석 검수 화면 열기
                         </Link>
-                        <button type="button" onClick={() => void resolveFlag(flag)} className="ml-3 inline-flex items-center gap-1 text-xs font-semibold text-green-700 hover:text-green-900">
+                        {canUpdate && <button type="button" onClick={() => void resolveFlag(flag)} className="ml-3 inline-flex items-center gap-1 text-xs font-semibold text-green-700 hover:text-green-900">
                           <CheckCircle2 className="size-3.5" />검수 완료
-                        </button>
+                        </button>}
                       </div>
                     ))
                   ) : (
@@ -835,7 +845,15 @@ export function AdminAnalyticsPage() {
                               </div>
                             </div>
                           )}
-                          {expanded && <RunMemoPanel runId={run.id} onCountChange={handleMemoCountChange} />}
+                          {expanded && (
+                            <RunMemoPanel
+                              runId={run.id}
+                              onCountChange={handleMemoCountChange}
+                              canCreate={canCreate}
+                              canUpdate={canUpdate}
+                              canDelete={canDelete}
+                            />
+                          )}
                         </div>
                       );
                     })

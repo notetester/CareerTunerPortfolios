@@ -28,7 +28,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/job-analysis")
-@RequireAdminPermission({"ANALYSIS_READ", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminJobAnalysisController {
 
@@ -85,7 +85,7 @@ public class AdminJobAnalysisController {
     }
 
     @PatchMapping("/{analysisId}/memo")
-    @RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+    @RequireAdminPermission({"AI_UPDATE"})
     public ApiResponse<Void> updateMemo(@AuthenticationPrincipal AuthUser authUser,
                                         @PathVariable Long analysisId,
                                         @Valid @RequestBody AdminMemoRequest request) {

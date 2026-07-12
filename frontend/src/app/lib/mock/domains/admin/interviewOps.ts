@@ -37,6 +37,7 @@ const sessions: AdminInterviewSessionRow[] = [
     questionCount: 5,
     answeredCount: 5,
     hasReport: true,
+    sourceSnapshot: null,
     adminMemo: null,
   },
   {
@@ -54,6 +55,7 @@ const sessions: AdminInterviewSessionRow[] = [
     questionCount: 6,
     answeredCount: 6,
     hasReport: false,
+    sourceSnapshot: null,
     adminMemo: null,
   },
   {
@@ -71,6 +73,7 @@ const sessions: AdminInterviewSessionRow[] = [
     questionCount: 5,
     answeredCount: 5,
     hasReport: true,
+    sourceSnapshot: null,
     adminMemo: null,
   },
   {
@@ -88,6 +91,7 @@ const sessions: AdminInterviewSessionRow[] = [
     questionCount: 5,
     answeredCount: 2,
     hasReport: false,
+    sourceSnapshot: null,
     adminMemo: null,
   },
   {
@@ -105,6 +109,7 @@ const sessions: AdminInterviewSessionRow[] = [
     questionCount: 4,
     answeredCount: 4,
     hasReport: true,
+    sourceSnapshot: null,
     adminMemo: null,
   },
 ];

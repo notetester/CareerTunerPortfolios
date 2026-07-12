@@ -2,8 +2,9 @@ import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router";
 import {
   ArrowLeft, Send, UploadCloud, X, Paperclip,
-  Clock, CalendarDays, Mail, MessageCircle, Check,
+  Clock, CalendarDays, Mail, MessageCircle, Check, LogIn,
 } from "lucide-react";
+import { useAuth } from "@/app/auth/AuthContext";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import {
@@ -82,6 +83,7 @@ function fmtDate(value?: string) {
 }
 
 export function ContactPage() {
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("");
   const [body, setBody] = useState("");
@@ -111,6 +113,32 @@ export function ContactPage() {
   };
 
   const canSubmit = title.trim() && category && body.trim().length >= 10;
+
+  if (authLoading) {
+    return <div className="ct-page"><div className="ct-faq__empty">로그인 상태를 확인하는 중입니다.</div></div>;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="ct-page">
+        <div className="ct-pagehead">
+          <h1>문의하기</h1>
+          <p>문의 내용과 답변 내역을 안전하게 연결하려면 로그인이 필요합니다.</p>
+        </div>
+        <div className="ct-done">
+          <div className="ct-done__ic"><LogIn /></div>
+          <h3>로그인 후 문의를 접수해 주세요</h3>
+          <p>로그인 뒤 이 화면으로 돌아와 파일 첨부, 답변 확인, 추가 메시지 전송까지 이용할 수 있습니다.</p>
+          <div className="ct-done__actions">
+            <Link to="/support"><button className="ct-act">고객센터로</button></Link>
+            <Link to="/login?returnTo=%2Fsupport%2Fcontact">
+              <button className="av-btn av-btn--ink">로그인하고 문의하기</button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (

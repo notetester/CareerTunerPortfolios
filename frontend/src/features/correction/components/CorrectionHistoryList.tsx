@@ -1,4 +1,4 @@
-import { FileClock, LoaderCircle, RefreshCw } from "lucide-react";
+import { FileClock, LoaderCircle, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/app/components/ui/button";
 import type { CorrectionResponse } from "../types/correction";
 
@@ -7,9 +7,11 @@ interface CorrectionHistoryListProps {
   selectedId: number | null;
   loading: boolean;
   loadingId: number | null;
+  deletingId: number | null;
   error: string | null;
   onSelect: (id: number) => void;
   onRetry: () => void;
+  onDelete: (id: number) => void;
 }
 
 export function CorrectionHistoryList({
@@ -17,9 +19,11 @@ export function CorrectionHistoryList({
   selectedId,
   loading,
   loadingId,
+  deletingId,
   error,
   onSelect,
   onRetry,
+  onDelete,
 }: CorrectionHistoryListProps) {
   if (loading) {
     return (
@@ -57,26 +61,43 @@ export function CorrectionHistoryList({
         const active = selectedId === item.id;
         const detailLoading = loadingId === item.id;
         return (
-          <button
+          <div
             key={item.id}
-            type="button"
-            aria-pressed={active}
-            disabled={detailLoading}
-            onClick={() => onSelect(item.id)}
-            className={`w-full rounded-lg border p-3 text-left transition-colors ${
+            className={`flex items-start gap-1 rounded-lg border p-1 transition-colors ${
               active
                 ? "border-blue-300 bg-blue-50"
                 : "border-slate-200 bg-card hover:border-slate-300 hover:bg-slate-50"
             }`}
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-500">{formatDate(item.createdAt)}</span>
-              {detailLoading && <LoaderCircle className="size-3.5 animate-spin text-blue-600" />}
-            </div>
-            <p className="mt-1 line-clamp-2 break-words text-sm font-semibold leading-5 text-slate-800">
-              {item.summary || item.improvedText || item.originalText}
-            </p>
-          </button>
+            <button
+              type="button"
+              aria-pressed={active}
+              disabled={detailLoading || deletingId === item.id}
+              onClick={() => onSelect(item.id)}
+              className="min-w-0 flex-1 rounded-md p-2 text-left"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-500">{formatDate(item.createdAt)}</span>
+                {detailLoading && <LoaderCircle className="size-3.5 animate-spin text-blue-600" />}
+              </div>
+              <p className="mt-1 line-clamp-2 break-words text-sm font-semibold leading-5 text-slate-800">
+                {item.summary || item.improvedText || item.originalText}
+              </p>
+            </button>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              aria-label="첨삭 기록 삭제"
+              disabled={deletingId !== null}
+              onClick={() => {
+                if (window.confirm("이 첨삭 기록을 삭제하시겠습니까?")) onDelete(item.id);
+              }}
+              className="mt-1 size-9 shrink-0 text-slate-500 hover:text-red-600"
+            >
+              {deletingId === item.id ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            </Button>
+          </div>
         );
       })}
     </div>

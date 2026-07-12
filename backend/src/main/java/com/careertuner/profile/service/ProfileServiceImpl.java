@@ -25,11 +25,13 @@ import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.notification.domain.Notification;
 import com.careertuner.notification.service.NotificationService;
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.profile.ai.ProfileAiResult;
 import com.careertuner.profile.ai.ProfileAiService;
 import com.careertuner.profile.ai.ProfileCriterionScore;
 import com.careertuner.profile.ai.ProfileResumeStructurer;
 import com.careertuner.profile.domain.UserProfile;
+import com.careertuner.profile.domain.UserProfileVersion;
 import com.careertuner.profile.dto.ProfileAiResponse;
 import com.careertuner.profile.dto.ProfileAnalyzeDraft;
 import com.careertuner.profile.dto.ProfileAnalyzeResponse;
@@ -40,15 +42,18 @@ import com.careertuner.profile.dto.ProfileDocumentImportRequest;
 import com.careertuner.profile.dto.ProfileImportResponse;
 import com.careertuner.profile.dto.UserProfileRequest;
 import com.careertuner.profile.dto.UserProfileResponse;
+import com.careertuner.profile.dto.UserProfileVersionResponse;
 import com.careertuner.profile.mapper.ProfileMapper;
 
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ProfileServiceImpl implements ProfileService {
 
     /** import 텍스트 상한 — 프로필 폼 resume 한도(20000)보다 낮게 잡아 파이프라인·AI 토큰 부담 완화. */
@@ -61,6 +66,7 @@ public class ProfileServiceImpl implements ProfileService {
             "PROFILE_COMPLETENESS", "프로필 완성도 진단");
 
     private final ProfileMapper profileMapper;
+    private final com.careertuner.profile.mapper.ProfileAiAnalysisMapper profileAiAnalysisMapper;
     private final ApplicationCaseMapper applicationCaseMapper;
     private final ConsentService consentService;
     private final ProfileAiService profileAiService;
@@ -112,7 +118,26 @@ public class ProfileServiceImpl implements ProfileService {
                 .preferences(json(request.preferences()))
                 .build();
         profileMapper.upsert(profile);
+        profileMapper.insertVersionFromCurrent(userId, "MANUAL_SAVE");
         return toResponse(profileMapper.findByUserId(userId));
+    }
+
+    @Override
+    public List<UserProfileVersionResponse> versions(AuthUser authUser, int limit) {
+        Long userId = requireUser(authUser);
+        return profileMapper.findVersions(userId, safeVersionLimit(limit)).stream()
+                .map(this::toVersionResponse)
+                .toList();
+    }
+
+    @Override
+    public UserProfileVersionResponse version(AuthUser authUser, Long versionId) {
+        Long userId = requireUser(authUser);
+        UserProfileVersion version = profileMapper.findVersion(userId, versionId);
+        if (version == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "프로필 버전을 찾을 수 없습니다.");
+        }
+        return toVersionResponse(version);
     }
 
     @Override
@@ -163,6 +188,7 @@ public class ProfileServiceImpl implements ProfileService {
                     .preferences(cur.getPreferences())
                     .build();
             profileMapper.upsert(profile);
+            profileMapper.insertVersionFromCurrent(userId, "DOCUMENT_IMPORT");
             return toResponse(profileMapper.findByUserId(userId));
         });
         return new ProfileImportResponse(saved, truncated);
@@ -241,23 +267,23 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     @Transactional
-    public ProfileAiResponse summarize(AuthUser authUser) {
-        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_SUMMARY");
-        return toAiResponse(result);
+    public ProfileAiResponse summarize(AuthUser authUser, RequestedAiModel requestedModel) {
+        ProfileEvaluation evaluation = evaluateWithConsent(authUser, "PROFILE_SUMMARY", requestedModel);
+        return toAiResponse(evaluation);
     }
 
     @Override
     @Transactional
-    public ProfileAiResponse extractSkills(AuthUser authUser) {
-        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_SKILL_EXTRACT");
-        return toAiResponse(result);
+    public ProfileAiResponse extractSkills(AuthUser authUser, RequestedAiModel requestedModel) {
+        ProfileEvaluation evaluation = evaluateWithConsent(authUser, "PROFILE_SKILL_EXTRACT", requestedModel);
+        return toAiResponse(evaluation);
     }
 
     @Override
     @Transactional
-    public ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser) {
-        ProfileAiResult result = evaluateWithConsent(authUser, "PROFILE_COMPLETENESS");
-        return toCompletenessResponse(result);
+    public ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser, RequestedAiModel requestedModel) {
+        ProfileEvaluation evaluation = evaluateWithConsent(authUser, "PROFILE_COMPLETENESS", requestedModel);
+        return toCompletenessResponse(evaluation);
     }
 
     @Override
@@ -275,14 +301,36 @@ public class ProfileServiceImpl implements ProfileService {
         return toResponse(findOrEmpty(userId));
     }
 
-    private ProfileAiResult evaluateWithConsent(AuthUser authUser, String featureType) {
+    @Override
+    public List<UserProfileVersionResponse> adminVersions(AuthUser authUser, Long userId, int limit) {
+        requireAdmin(authUser);
+        return profileMapper.findVersions(userId, safeVersionLimit(limit)).stream()
+                .map(this::toVersionResponse)
+                .toList();
+    }
+
+    private ProfileEvaluation evaluateWithConsent(AuthUser authUser, String featureType, RequestedAiModel requestedModel) {
         Long userId = requireUser(authUser);
         requireAiConsent(userId);
         requireResumeAnalysisConsent(userId);
+        profileMapper.insertEmptyIfAbsent(userId);
         UserProfile profile = findOrEmpty(userId);
+        // 현재 DB를 다시 읽지 않고, 평가가 실제로 사용할 객체를 불변 스냅샷으로 고정한다.
+        // 이 사이 다른 요청이 프로필을 저장해도 응답/저장 분석의 provenance는 이 버전을 유지한다.
+        profileMapper.insertVersionSnapshot(profile, "AI_ANALYSIS");
+        UserProfileVersion analyzedVersion = profileMapper.findVersionByNo(userId, profile.getVersionNo());
+        if (analyzedVersion == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "프로필 분석 기준 버전을 보존하지 못했습니다.");
+        }
         profile.setPortfolioEvidence(profilePortfolioService.evidenceText(userId));
-        ProfileAiResult result = profileAiService.evaluate(profile, featureType);
+        // 모델 선택은 어느 provider 가 요약·강점·보완점 텍스트를 쓰는가만 바꾼다(점수 계산 로직은 provider 공통).
+        ProfileAiResult result = profileAiService.evaluate(profile, featureType, requestedModel);
         recordAi(userId, result);
+        // 성공 산출물을 영속한다(feature 별 최신 1행) — 사용자 조회 + C 적합도 입력 창구.
+        // 실패해도 분석 응답 자체는 막지 않는다(best-effort persist).
+        if ("SUCCESS".equals(result.status())) {
+            persistAiAnalysis(userId, featureType, result, analyzedVersion.getId());
+        }
         // 스펙(프로필) 분석이 성공하면 사용자에게 완료 알림을 남긴다.
         if ("SUCCESS".equals(result.status())) {
             notificationService.notify(Notification.builder()
@@ -297,7 +345,7 @@ public class ProfileServiceImpl implements ProfileService {
                     .link("/profile")
                     .build());
         }
-        return result;
+        return new ProfileEvaluation(result, analyzedVersion.getId(), analyzedVersion.getVersionNo());
     }
 
     private UserProfile findOrEmpty(Long userId) {
@@ -305,7 +353,8 @@ public class ProfileServiceImpl implements ProfileService {
         return profile != null ? profile : UserProfile.builder().userId(userId).build();
     }
 
-    private ProfileAiResponse toAiResponse(ProfileAiResult result) {
+    private ProfileAiResponse toAiResponse(ProfileEvaluation evaluation) {
+        ProfileAiResult result = evaluation.result();
         return new ProfileAiResponse(
                 result.featureType(),
                 result.summary(),
@@ -322,10 +371,13 @@ public class ProfileServiceImpl implements ProfileService {
                 result.aiScore(),
                 result.qualityPenalty(),
                 result.qualityWarnings(),
-                result.qualityRecommendations());
+                result.qualityRecommendations(),
+                evaluation.profileVersionId(),
+                evaluation.profileVersionNo());
     }
 
-    private ProfileCompletenessResponse toCompletenessResponse(ProfileAiResult result) {
+    private ProfileCompletenessResponse toCompletenessResponse(ProfileEvaluation evaluation) {
+        ProfileAiResult result = evaluation.result();
         List<String> completed = result.criteria().stream()
                 .filter(row -> row.rawScore() >= 70)
                 .map(row -> row.criterion().label())
@@ -347,7 +399,9 @@ public class ProfileServiceImpl implements ProfileService {
                 result.aiScore(),
                 result.qualityPenalty(),
                 result.qualityWarnings(),
-                result.qualityRecommendations());
+                result.qualityRecommendations(),
+                evaluation.profileVersionId(),
+                evaluation.profileVersionNo());
     }
 
     private List<ProfileCriterionScoreResponse> criteria(List<ProfileCriterionScore> criteria) {
@@ -361,6 +415,132 @@ public class ProfileServiceImpl implements ProfileService {
                         row.evidence(),
                         row.improvement()))
                 .toList();
+    }
+
+    /** 성공 산출물을 feature 별 최신 1행으로 저장(JSON 컬럼 직렬화). 직렬화 실패는 무시(분석 자체는 성공). */
+    private void persistAiAnalysis(Long userId, String featureType, ProfileAiResult result, Long profileVersionId) {
+        try {
+            profileAiAnalysisMapper.upsert(com.careertuner.profile.domain.ProfileAiAnalysis.builder()
+                    .userId(userId)
+                    .profileVersionId(profileVersionId)
+                    .featureType(featureType)
+                    .summary(result.summary())
+                    .strengths(toJson(result.strengths()))
+                    .gaps(toJson(result.gaps()))
+                    .recommendations(toJson(result.recommendations()))
+                    .extractedSkills(toJson(result.extractedSkills()))
+                    .criteria(toJson(result.criteria()))
+                    .jobFamily(result.jobFamily() == null ? null : result.jobFamily().name())
+                    .completenessScore(result.completenessScore())
+                    .aiScore(result.aiScore())
+                    .qualityWarnings(toJson(result.qualityWarnings()))
+                    .model(result.usage() == null ? null : result.usage().model())
+                    .status(result.status())
+                    .build());
+        } catch (RuntimeException e) {
+            log.debug("profile ai analysis persist failed: userId={} feature={} err={}",
+                    userId, featureType, e.getClass().getSimpleName());
+        }
+    }
+
+    private String toJson(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    @Override
+    public com.careertuner.profile.dto.ProfileAiAnalysisResponse aiAnalysis(AuthUser authUser) {
+        Long userId = requireUser(authUser);
+        List<com.careertuner.profile.domain.ProfileAiAnalysis> rows = profileAiAnalysisMapper.findByUserId(userId);
+        if (rows == null || rows.isEmpty()) {
+            return com.careertuner.profile.dto.ProfileAiAnalysisResponse.empty();
+        }
+        // 요약(강점/약점/summary)과 완성도(점수/항목)를 feature 별로 합쳐 하나의 뷰로 제공.
+        // 각 필드는 그 값을 가진 feature 우선 + summary 폴백(요약만 실행한 사용자도 점수/경고가 보이도록).
+        com.careertuner.profile.domain.ProfileAiAnalysis summaryRow = pick(rows, "PROFILE_SUMMARY");
+        com.careertuner.profile.domain.ProfileAiAnalysis completenessRow = pick(rows, "PROFILE_COMPLETENESS");
+        com.careertuner.profile.domain.ProfileAiAnalysis skillRow = pick(rows, "PROFILE_SKILL_EXTRACT");
+        com.careertuner.profile.domain.ProfileAiAnalysis primary = summaryRow != null ? summaryRow : rows.get(0);
+        com.careertuner.profile.domain.ProfileAiAnalysis criteriaSource = completenessRow != null ? completenessRow : summaryRow;
+        com.careertuner.profile.domain.ProfileAiAnalysis scoreSource = completenessRow != null ? completenessRow : summaryRow;
+        UserProfileVersion analyzedVersion = primary.getProfileVersionId() == null
+                ? null
+                : profileMapper.findVersion(userId, primary.getProfileVersionId());
+        String jobFamily = primary.getJobFamily() != null ? primary.getJobFamily()
+                : (completenessRow == null ? null : completenessRow.getJobFamily());
+        return new com.careertuner.profile.dto.ProfileAiAnalysisResponse(
+                true,
+                summaryRow == null ? null : summaryRow.getSummary(),
+                jsonToList(summaryRow, com.careertuner.profile.domain.ProfileAiAnalysis::getStrengths),
+                jsonToList(summaryRow, com.careertuner.profile.domain.ProfileAiAnalysis::getGaps),
+                jsonToList(summaryRow, com.careertuner.profile.domain.ProfileAiAnalysis::getRecommendations),
+                jsonToList(skillRow != null ? skillRow : summaryRow,
+                        com.careertuner.profile.domain.ProfileAiAnalysis::getExtractedSkills),
+                jobFamily,
+                jobFamilyLabel(jobFamily),
+                scoreSource == null ? null : scoreSource.getCompletenessScore(),
+                summaryRow == null ? null : summaryRow.getAiScore(),
+                criteriaFromJson(criteriaSource),
+                // 품질 경고는 요약 분석 우선(요약 탭에 표시되므로) — 없으면 최신 행.
+                jsonToList(summaryRow != null ? summaryRow : primary,
+                        com.careertuner.profile.domain.ProfileAiAnalysis::getQualityWarnings),
+                primary.getProfileVersionId(),
+                analyzedVersion == null ? null : analyzedVersion.getVersionNo(),
+                primary.getUpdatedAt() == null ? null : primary.getUpdatedAt().toString());
+    }
+
+    /** enum 이름 → 표시 라벨(잘못된/미상 값이면 null, valueOf 예외 삼킴). */
+    private static String jobFamilyLabel(String jobFamilyName) {
+        if (jobFamilyName == null || jobFamilyName.isBlank()) {
+            return null;
+        }
+        try {
+            return com.careertuner.profile.ai.JobFamily.valueOf(jobFamilyName).label();
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static com.careertuner.profile.domain.ProfileAiAnalysis pick(
+            List<com.careertuner.profile.domain.ProfileAiAnalysis> rows, String featureType) {
+        return rows.stream().filter(row -> featureType.equals(row.getFeatureType())).findFirst().orElse(null);
+    }
+
+    private List<String> jsonToList(com.careertuner.profile.domain.ProfileAiAnalysis row,
+                                    java.util.function.Function<com.careertuner.profile.domain.ProfileAiAnalysis, String> getter) {
+        if (row == null) {
+            return List.of();
+        }
+        String json = getter.apply(row);
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            List<String> list = objectMapper.readValue(json,
+                    new tools.jackson.core.type.TypeReference<List<String>>() { });
+            return list == null ? List.of() : list;
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    private List<ProfileCriterionScoreResponse> criteriaFromJson(com.careertuner.profile.domain.ProfileAiAnalysis row) {
+        if (row == null || row.getCriteria() == null || row.getCriteria().isBlank()) {
+            return List.of();
+        }
+        try {
+            List<ProfileCriterionScore> criteria = objectMapper.readValue(row.getCriteria(),
+                    new tools.jackson.core.type.TypeReference<List<ProfileCriterionScore>>() { });
+            return criteria == null ? List.of() : criteria(criteria);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
     }
 
     private void recordAi(Long userId, ProfileAiResult result) {
@@ -393,7 +573,26 @@ public class ProfileServiceImpl implements ProfileService {
         return new UserProfileResponse(p.getId(), p.getUserId(), p.getDesiredJob(), p.getDesiredIndustry(),
                 object(p.getEducation()), object(p.getCareer()), object(p.getProjects()), object(p.getSkills()),
                 object(p.getCertificates()), object(p.getLanguages()), object(p.getPortfolioLinks()),
-                p.getResumeText(), p.getSelfIntro(), object(p.getPreferences()), p.getUpdatedAt());
+                p.getResumeText(), p.getSelfIntro(), object(p.getPreferences()), p.getVersionNo(), p.getUpdatedAt());
+    }
+
+    private UserProfileVersionResponse toVersionResponse(UserProfileVersion p) {
+        return new UserProfileVersionResponse(
+                p.getId(), p.getUserId(), p.getVersionNo(), p.getDesiredJob(), p.getDesiredIndustry(),
+                object(p.getEducation()), object(p.getCareer()), object(p.getProjects()), object(p.getSkills()),
+                object(p.getCertificates()), object(p.getLanguages()), object(p.getPortfolioLinks()),
+                p.getResumeText(), p.getSelfIntro(), object(p.getPreferences()), p.getSource(), p.getCreatedAt());
+    }
+
+    private int safeVersionLimit(int limit) {
+        return Math.max(1, Math.min(limit, 100));
+    }
+
+    private record ProfileEvaluation(
+            ProfileAiResult result,
+            Long profileVersionId,
+            Integer profileVersionNo
+    ) {
     }
 
     private Object object(String json) {

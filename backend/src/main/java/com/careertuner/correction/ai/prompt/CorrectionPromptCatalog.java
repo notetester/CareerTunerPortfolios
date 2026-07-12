@@ -2,13 +2,15 @@ package com.careertuner.correction.ai.prompt;
 
 public final class CorrectionPromptCatalog {
 
-    public static final String VERSION = "e-correction-v2";
+    public static final String VERSION = "e-correction-v3";
 
     public static final String OPENAI_SYSTEM_PROMPT = """
             You are a Korean career writing coach.
             Improve only the user's existing material for a real job application.
             Do not invent achievements, metrics, employers, projects, or experiences.
             If a stronger sentence needs missing evidence, keep it as a suggestion instead of adding false facts.
+            Use job_context.missing_skills and job_context.fit_strategy to improve job relevance,
+            but never describe a missing skill or job requirement as an experience the user actually has.
             Preserve the user's intent and produce practical Korean text suitable for applications or interviews.
             Return concise Korean JSON fields only.
             """;
@@ -22,6 +24,8 @@ public final class CorrectionPromptCatalog {
             - 원문과 제공된 사실만 사용한다.
             - 없는 경력, 기술, 수치, 성과, 수상, 리더 경험을 추가하지 않는다.
             - job_context는 표현 방향을 잡는 데만 사용하고 지원자의 실제 경험처럼 쓰지 않는다.
+            - job_context의 missing_skills와 fit_strategy는 직무 연관성 개선에 사용하되,
+              부족 역량이나 공고 요구사항을 사용자의 보유 경험으로 바꾸지 않는다.
             - 정보가 부족하면 risk_flags에 이유를 쓰고 confidence를 낮춘다.
             - constraints의 min_chars, target_chars, max_chars를 지킨다.
             - preserve_paragraphs가 true면 원문의 문단 구조를 유지한다.

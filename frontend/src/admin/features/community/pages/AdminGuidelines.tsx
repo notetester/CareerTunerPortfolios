@@ -3,6 +3,7 @@ import {
   BookOpen, Eye, Check, X, Plus, ChevronUp, ChevronDown, CalendarClock, Save,
 } from "lucide-react";
 import AdminShell from "../../../components/AdminShell";
+import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization";
 import {
   getGuidelines, createGuideline, updateGuideline, publishGuideline,
   type AdminGuidelineResponse, type GuidelineRule, type GuidelineParams,
@@ -37,6 +38,7 @@ function parseOr<T>(json: string | null | undefined, fallback: T): T {
 }
 
 export default function AdminGuidelines() {
+  const { canCreate, canUpdate } = useAdminDomainAuthorization("CONTENT");
   const [versions, setVersions] = useState<AdminGuidelineResponse[]>([]);
   const [editId, setEditId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,7 @@ export default function AdminGuidelines() {
   };
 
   const handleSave = async () => {
-    if (saving) return;
+    if (saving || (editId ? !canUpdate : !canCreate)) return;
     setSaving(true);
     try {
       const data = {
@@ -131,7 +133,7 @@ export default function AdminGuidelines() {
   };
 
   const handlePublish = async () => {
-    if (!editId || saving) return;
+    if (!canUpdate || !editId || saving) return;
     setSaving(true);
     try {
       await updateGuideline(editId, {
@@ -170,6 +172,31 @@ export default function AdminGuidelines() {
   if (loading) return (
     <AdminShell active="reports" breadcrumb="콘텐츠 관리" title="커뮤니티 가이드라인" icon={BookOpen} desc="커뮤니티 운영 정책 문서 관리">
       <div className="age-loading">불러오는 중...</div>
+    </AdminShell>
+  );
+
+  const canEditGuideline = editId ? canUpdate : canCreate;
+  if (!canEditGuideline) return (
+    <AdminShell
+      active="terms"
+      breadcrumb="약관 관리"
+      title="커뮤니티 가이드라인"
+      icon={BookOpen}
+      desc="운영 중인 커뮤니티 가이드라인 버전을 확인합니다."
+    >
+      <section className="rounded-xl border border-slate-200 bg-card p-6">
+        <h2 className="text-base font-bold text-slate-900">가이드라인 편집 권한이 없습니다.</h2>
+        <p className="mt-2 text-sm text-slate-500">
+          {editId ? "현재 초안을 수정하려면 콘텐츠 수정 권한이 필요합니다." : "새 가이드라인 버전을 만들려면 콘텐츠 생성 권한이 필요합니다."}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
+          {versions.map((version) => (
+            <span key={version.id} className="rounded-full border border-slate-200 px-3 py-1.5">
+              {version.versionLabel} · {version.status}
+            </span>
+          ))}
+        </div>
+      </section>
     </AdminShell>
   );
 
@@ -370,9 +397,9 @@ export default function AdminGuidelines() {
           <button className="age-btn" onClick={handleSave} disabled={saving}>
             <Save />{saving ? "저장 중..." : "임시저장"}
           </button>
-          <button className="age-btn age-btn--ink" onClick={handlePublish} disabled={saving || !editId}>
+          {canUpdate && <button className="age-btn age-btn--ink" onClick={handlePublish} disabled={saving || !editId}>
             <CalendarClock />{when === "예약" ? "게시 예약" : "게시"}
-          </button>
+          </button>}
         </div>
       </div>
 

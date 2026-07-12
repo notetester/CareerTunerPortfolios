@@ -39,6 +39,7 @@ public class PrivateCertRegistrationProvider {
     private static final int PER_PAGE = 5;
 
     private final String serviceKey;
+    private final CertificateAliasCatalog aliasCatalog;
     private final String odcloudBaseUrl;
     private final String uddi;
     private final String snapshot;
@@ -49,6 +50,7 @@ public class PrivateCertRegistrationProvider {
     @Autowired
     public PrivateCertRegistrationProvider(
             @Value("${careertuner.certificate.data-go-kr.service-key:}") String serviceKey,
+            CertificateAliasCatalog aliasCatalog,
             @Value("${careertuner.certificate.data-go-kr.odcloud-base-url:https://api.odcloud.kr/api}")
             String odcloudBaseUrl,
             @Value("${careertuner.certificate.data-go-kr.private-cert-uddi:uddi:fadae7c0-8b78-400d-9581-d4003721de76}")
@@ -56,15 +58,17 @@ public class PrivateCertRegistrationProvider {
             @Value("${careertuner.certificate.data-go-kr.private-cert-snapshot:20251231}") String snapshot,
             @Value("${careertuner.certificate.data-go-kr.timeout-seconds:15}") long timeoutSeconds,
             ObjectMapper objectMapper) {
-        this(serviceKey, odcloudBaseUrl, uddi, snapshot,
+        this(serviceKey, aliasCatalog, odcloudBaseUrl, uddi, snapshot,
                 Duration.ofSeconds(timeoutSeconds <= 0 ? 15 : timeoutSeconds), objectMapper,
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
     }
 
-    /** 테스트/구성용 생성자. */
-    PrivateCertRegistrationProvider(String serviceKey, String odcloudBaseUrl, String uddi, String snapshot,
+    /** 테스트/구성용 생성자. aliasCatalog null 이면 별칭 폴백 없이 동작. */
+    PrivateCertRegistrationProvider(String serviceKey, CertificateAliasCatalog aliasCatalog,
+                                    String odcloudBaseUrl, String uddi, String snapshot,
                                     Duration timeout, ObjectMapper objectMapper, HttpClient httpClient) {
         this.serviceKey = serviceKey;
+        this.aliasCatalog = aliasCatalog;
         this.odcloudBaseUrl = odcloudBaseUrl;
         this.uddi = uddi;
         this.snapshot = snapshot;
@@ -98,7 +102,19 @@ public class PrivateCertRegistrationProvider {
                 log.debug("odcloud private-cert non-200: query={} status={}", certName, response.statusCode());
                 return degraded(PrivateCertRegistrationStatus.UPSTREAM_UNAVAILABLE, certName);
             }
-            return parse(response.body(), certName);
+            PrivateCertRegistrationEvidence evidence = parse(response.body(), certName);
+            if (evidence.status() == PrivateCertRegistrationStatus.NOT_FOUND && aliasCatalog != null) {
+                // 통용 약어(SQLD 등)는 공식 등록명(SQL 등)과 달라 정상 조회에서도 0건이 된다 — 검증된 별칭으로 1회 재조회.
+                // 재조회 결과는 등록명 정규화 일치 행만 채택한다(LIKE 과매칭으로 다른 기관 자격 오귀속 방지).
+                String official = aliasCatalog.officialNameFor(certName).orElse(null);
+                if (official != null && !QnetXmlSupport.norm(official).equals(QnetXmlSupport.norm(certName.trim()))) {
+                    PrivateCertRegistrationEvidence resolved = lookupExact(official, certName);
+                    if (resolved != null) {
+                        return resolved;
+                    }
+                }
+            }
+            return evidence;
         } catch (Exception e) {
             // URL 에 serviceKey 가 들어가므로 예외 메시지(전체 URL 포함 가능)는 로깅하지 않는다 — 타입만.
             log.debug("odcloud private-cert lookup failed: query={} err={}", certName, e.getClass().getSimpleName());
@@ -152,6 +168,70 @@ public class PrivateCertRegistrationProvider {
         }
         return new PrivateCertRegistrationEvidence(status, query, matchCount, snapshot,
                 SOURCE_NAME, SOURCE_URL, List.copyOf(matches));
+    }
+
+    /** 별칭 해석 후 공식 등록명으로 재조회 — 등록명 정규화 일치 행만 채택. 실패/무일치는 null(원 결과 유지). */
+    private PrivateCertRegistrationEvidence lookupExact(String officialName, String originalQuery) {
+        try {
+            String cond = enc("cond[자격명::LIKE]");
+            // 별칭 재조회는 공식명이 흔한 부분문자열('SQL' 등)일 수 있어 정확명 행이 첫 페이지 밖으로 밀릴 수 있다 —
+            // 여유 있게 받아 정규화 일치 행을 놓치지 않는다(perPage 5 → 20).
+            String url = odcloudBaseUrl + "/15075600/v1/" + uddi
+                    + "?page=1&perPage=20&returnType=JSON"
+                    + "&" + cond + "=" + enc(officialName.trim())
+                    + "&serviceKey=" + serviceKey;
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().build();
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                return null;
+            }
+            PrivateCertRegistrationEvidence parsed = parse(response.body(), originalQuery);
+            List<Match> exact = parsed.matches().stream()
+                    .filter(match -> QnetXmlSupport.nameMatches(match.name(), officialName))
+                    .toList();
+            if (exact.isEmpty()) {
+                return null;
+            }
+            boolean anyActive = exact.stream().anyMatch(match ->
+                    match.currentStatus() != null && !match.currentStatus().contains("폐지")
+                            && !match.currentStatus().contains("취소"));
+            return new PrivateCertRegistrationEvidence(
+                    anyActive ? PrivateCertRegistrationStatus.REGISTERED_ACTIVE
+                              : PrivateCertRegistrationStatus.ABOLISHED_OR_CANCELLED,
+                    originalQuery, exact.size(), snapshot, SOURCE_NAME, SOURCE_URL, List.copyOf(exact));
+        } catch (Exception e) {
+            log.debug("odcloud alias lookup failed: err={}", e.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    /**
+     * 사용자 대면 검색 — 목록과 함께 <b>조회 상태를 보존</b>해 반환한다. 상태를 버리고 빈 목록만 주면
+     * 런타임 실패(UPSTREAM_UNAVAILABLE)와 정상 0건(NOT_FOUND)을 호출부가 구분하지 못해 '오류'가 '부재'로
+     * 표시되므로(오류≠부재), {@link PrivateCertRegistrationEvidence}(status+matches)를 그대로 넘긴다.
+     */
+    public PrivateCertRegistrationEvidence search(String query, int limit) {
+        if (!enabled() || query == null || query.isBlank()) {
+            return degraded(PrivateCertRegistrationStatus.UPSTREAM_UNAVAILABLE, query);
+        }
+        try {
+            String cond = enc("cond[자격명::LIKE]");
+            String url = odcloudBaseUrl + "/15075600/v1/" + uddi
+                    + "?page=1&perPage=" + Math.max(1, Math.min(20, limit)) + "&returnType=JSON"
+                    + "&" + cond + "=" + enc(query.trim())
+                    + "&serviceKey=" + serviceKey;
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(timeout).GET().build();
+            HttpResponse<String> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() != 200) {
+                return degraded(PrivateCertRegistrationStatus.UPSTREAM_UNAVAILABLE, query);
+            }
+            return parse(response.body(), query);
+        } catch (Exception e) {
+            log.debug("odcloud private-cert search failed: err={}", e.getClass().getSimpleName());
+            return degraded(PrivateCertRegistrationStatus.UPSTREAM_UNAVAILABLE, query);
+        }
     }
 
     private PrivateCertRegistrationEvidence degraded(PrivateCertRegistrationStatus status, String query) {

@@ -128,8 +128,8 @@ function ApplicationCard({
   );
 
   return (
-    <Card className="h-full border-slate-200 bg-card transition-shadow hover:shadow-md">
-      <CardContent className="flex h-full flex-col gap-4 p-5">
+    <Card className="h-full min-w-0 border-slate-200 bg-card transition-shadow hover:shadow-md">
+      <CardContent className="flex h-full min-w-0 flex-col gap-4 p-5">
         <div className="flex items-start justify-between gap-3">
           {isTrash ? (
             <div className="min-w-0 flex-1">{title}</div>
@@ -238,12 +238,13 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
   const [searchParams] = useSearchParams();
   const tabIntent = searchParams.get("tab");
   const detailSection = tabIntent === "fit" || tabIntent === "strategy" || tabIntent === "learning" ? "fit" : "overview";
-  const { loading: authLoading, isAuthenticated } = useAuth();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
   const isTrash = mode === "trash";
   const [includeArchived, setIncludeArchived] = useState(false);
   const { applicationCases, setApplicationCases, loading, error, refresh } = useApplicationCases(
     isAuthenticated,
     isTrash ? { view: "DELETED" } : includeArchived,
+    user?.id ?? null,
   );
   const applicationCaseIds = useMemo(
     () => applicationCases.map((item) => item.id),
@@ -399,7 +400,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
             { label: isTrash ? "삭제함" : "전체", value: summary.total, icon: isTrash ? Trash2 : Briefcase },
             { label: "준비중", value: summary.ready, icon: FileText },
@@ -529,7 +530,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
         )}
 
         {loading ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="h-44 animate-pulse rounded-lg bg-slate-200" />
             ))}
@@ -557,11 +558,11 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {!isTrash && (
               <button
                 type="button"
-                className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-slate-300 bg-card p-6 text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                className="flex min-h-44 min-w-0 w-full flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-slate-300 bg-card p-6 text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
                 onClick={() => navigate("/applications/new")}
               >
                 <Plus className="size-7" />

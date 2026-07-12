@@ -28,6 +28,7 @@ public class ConversationSummaryRow {
     private Long peerUserId;
     private String peerName;
     private String peerEmail;
+    private String peerStatus;
     private LocalDateTime updatedAt;
     private Long latestMessageId;
     private String latestKind;

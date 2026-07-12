@@ -16,14 +16,14 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     @Override
     @Transactional(readOnly = true)
-    public AdminDashboardOverviewResponse getOverview() {
+    public AdminDashboardOverviewResponse getOverview(boolean includeUserMetrics, boolean includeAiMetrics) {
         return new AdminDashboardOverviewResponse(
-                adminDashboardMapper.countUsers(),
-                adminDashboardMapper.countActiveUsers(),
-                adminDashboardMapper.countApplications(),
-                adminDashboardMapper.countFitAnalyses(),
-                adminDashboardMapper.countInterviewSessions(),
-                adminDashboardMapper.countAiCallsThisMonth(),
-                adminDashboardMapper.countReviewRequiredAnalyses());
+                includeUserMetrics ? adminDashboardMapper.countUsers() : 0,
+                includeUserMetrics ? adminDashboardMapper.countActiveUsers() : 0,
+                includeUserMetrics ? adminDashboardMapper.countApplications() : 0,
+                includeAiMetrics ? adminDashboardMapper.countFitAnalyses() : 0,
+                includeAiMetrics ? adminDashboardMapper.countInterviewSessions() : 0,
+                includeAiMetrics ? adminDashboardMapper.countAiCallsThisMonth() : 0,
+                includeAiMetrics ? adminDashboardMapper.countReviewRequiredAnalyses() : 0);
     }
 }

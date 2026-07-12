@@ -9,12 +9,14 @@ import { Label } from "../components/ui/label";
 import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import {
   diagnoseProfileCompleteness,
   deleteProfilePortfolioFile,
   downloadProfilePortfolioFile,
   extractProfileSkills,
   getProfile,
+  getProfileVersions,
   draftHasStructuredFields,
   importProfileDocument,
   listProfilePortfolioFiles,
@@ -23,6 +25,7 @@ import {
   saveProfile,
   startProfileAnalyze,
   summarizeProfile,
+  getProfileAiAnalysis,
   uploadProfileFile,
   uploadProfilePortfolioFile,
   type ProfileAiResponse,
@@ -31,6 +34,7 @@ import {
   type ProfileImportTarget,
   type ProfilePortfolioFile,
   type UserProfile,
+  type UserProfileVersion,
 } from "../profile/profileApi";
 import { draftPickFromCounts } from "../profile/profileDraftMerge";
 import type { ConsentStatus } from "../auth/consentApi";
@@ -231,6 +235,8 @@ export function ProfilePage() {
   const [activeTab, setActiveTab] = useState<ProfileTab>(() => normalizeProfileTab(searchParams.get("tab")));
   const [activeAiView, setActiveAiView] = useState<AiToolType>("summary");
   const [aiLoading, setAiLoading] = useState<AiToolType | null>(null);
+  // 프로필 AI(요약/스킬/완성도) 모델 선택. 기본 AUTO — 배경 자동 진단 호출엔 적용하지 않고 버튼 실행에만 쓴다.
+  const [profileAiModel, setProfileAiModel] = useState<AiModelChoice>("AUTO");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [summaryResult, setSummaryResult] = useState<ProfileAiResponse | null>(null);
@@ -242,6 +248,7 @@ export function ProfilePage() {
   const [analyzeStatus, setAnalyzeStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [portfolioFiles, setPortfolioFiles] = useState<ProfilePortfolioFile[]>([]);
+  const [profileVersions, setProfileVersions] = useState<UserProfileVersion[]>([]);
   const [portfolioUploading, setPortfolioUploading] = useState(false);
   const [portfolioDeletingId, setPortfolioDeletingId] = useState<number | null>(null);
   const resumeFileRef = useRef<HTMLInputElement>(null);
@@ -261,13 +268,15 @@ export function ProfilePage() {
     setLoading(true);
     setError(null);
     try {
-      const [profile, linkedPortfolioFiles] = await Promise.all([
+      const [profile, linkedPortfolioFiles, versions] = await Promise.all([
         getProfile(),
         listProfilePortfolioFiles(),
+        getProfileVersions(),
       ]);
       const nextForm = toForm(profile);
       setForm(nextForm);
       setPortfolioFiles(linkedPortfolioFiles);
+      setProfileVersions(versions);
       setSavedSnapshot(serializeProfileForm(nextForm));
     } catch (err) {
       setError(err instanceof Error ? err.message : "프로필을 불러오지 못했습니다.");
@@ -283,8 +292,41 @@ export function ProfilePage() {
   useEffect(() => {
     if (loading || !profileAiAllowed || initialCompletenessRequested.current) return;
     initialCompletenessRequested.current = true;
-    void diagnoseProfileCompleteness().then(setCompleteness).catch(() => setCompleteness(null));
+    void diagnoseProfileCompleteness()
+      .then(async (result) => {
+        const versions = await getProfileVersions();
+        setProfileVersions(versions);
+        setCompleteness(result);
+      })
+      .catch(() => setCompleteness(null));
   }, [loading, profileAiAllowed]);
+
+  // 저장된 프로필 AI 분석을 불러와 화면에 시드한다(새로고침 후에도 최근 분석이 보이도록).
+  useEffect(() => {
+    if (loading) return;
+    void getProfileAiAnalysis()
+      .then((saved) => {
+        if (!saved.hasAnalysis) return;
+        setSummaryResult((prev) => prev ?? {
+          featureType: "PROFILE_SUMMARY",
+          summary: saved.summary ?? "",
+          extractedSkills: saved.extractedSkills ?? [],
+          strengths: saved.strengths ?? [],
+          gaps: saved.gaps ?? [],
+          recommendations: saved.recommendations ?? [],
+          completenessScore: saved.completenessScore ?? 0,
+          jobFamily: saved.jobFamily ?? undefined,
+          jobFamilyLabel: saved.jobFamilyLabel ?? undefined,
+          criteria: saved.criteria ?? undefined,
+          status: "SUCCESS",
+          aiScore: saved.aiScore ?? undefined,
+          qualityWarnings: saved.qualityWarnings ?? [],
+          profileVersionId: saved.profileVersionId,
+          profileVersionNo: saved.profileVersionNo,
+        });
+      })
+      .catch(() => { /* 저장분 없음/조회 실패는 조용히 무시 — 기존 온디맨드 분석 흐름 유지 */ });
+  }, [loading]);
 
   useEffect(() => {
     setActiveTab(normalizeProfileTab(searchParams.get("tab")));
@@ -329,6 +371,7 @@ export function ProfilePage() {
         return false;
       }
       await saveProfile(toRequest(form));
+      setProfileVersions(await getProfileVersions());
       setSavedSnapshot(serializeProfileForm(form));
       const nextCompleteness = profileAiAllowed ? await diagnoseProfileCompleteness().catch(() => null) : null;
       setCompleteness(nextCompleteness);
@@ -399,13 +442,22 @@ export function ProfilePage() {
     setMessage(null);
     try {
       if (type === "summary") {
-        setSummaryResult(await summarizeProfile());
+        const result = await summarizeProfile(profileAiModel);
+        const versions = await getProfileVersions();
+        setProfileVersions(versions);
+        setSummaryResult(result);
         setMessage("프로필 핵심 요약을 생성했습니다. AI 결과 탭에서 확인해 주세요.");
       } else if (type === "skills") {
-        setSkillsResult(await extractProfileSkills());
+        const result = await extractProfileSkills(profileAiModel);
+        const versions = await getProfileVersions();
+        setProfileVersions(versions);
+        setSkillsResult(result);
         setMessage("이력에서 직무 역량 키워드를 추출했습니다. AI 결과 탭에서 확인해 주세요.");
       } else {
-        setCompleteness(await diagnoseProfileCompleteness());
+        const result = await diagnoseProfileCompleteness(profileAiModel);
+        const versions = await getProfileVersions();
+        setProfileVersions(versions);
+        setCompleteness(result);
         setMessage("프로필 완성도와 보완 우선순위를 진단했습니다. AI 결과 탭에서 확인해 주세요.");
       }
     } catch (err) {
@@ -697,6 +749,10 @@ export function ProfilePage() {
                   icon={<CheckCircle2 className="size-4" />}
                   onClick={() => void runAi("completeness", { saveBeforeRun: isDirty })}
                 />
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs text-slate-500">AI 모델</span>
+                  <ModelPicker value={profileAiModel} onChange={setProfileAiModel} disabled={!!aiLoading || !profileAiAllowed} />
+                </div>
               </CardContent>
             </Card>
           </aside>
@@ -1111,6 +1167,15 @@ export function ProfilePage() {
                     <CardTitle className="text-base">AI 분석 결과</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-5">
+                    <ProfileVersionHistory
+                      versions={profileVersions}
+                      analyzedVersionNo={
+                        summaryResult?.profileVersionNo
+                        ?? skillsResult?.profileVersionNo
+                        ?? completeness?.profileVersionNo
+                        ?? null
+                      }
+                    />
                     <div className="grid gap-2 md:grid-cols-3">
                       {(["summary", "skills", "completeness"] as AiToolType[]).map((type) => (
                         <button
@@ -1152,6 +1217,77 @@ export function ProfilePage() {
       </div>
     </div>
   );
+}
+
+function ProfileVersionHistory({
+  versions,
+  analyzedVersionNo,
+}: {
+  versions: UserProfileVersion[];
+  analyzedVersionNo: number | null;
+}) {
+  return (
+    <section className="rounded-lg border border-border bg-muted/40 p-4" aria-label="프로필 버전 이력">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-foreground">분석 기준 프로필 버전</div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            저장할 때마다 입력 스냅샷을 보존합니다. AI 결과가 어떤 프로필을 사용했는지 아래에서 대조할 수 있습니다.
+          </p>
+        </div>
+        <Badge variant="outline" className="bg-background text-foreground">
+          {analyzedVersionNo ? `최근 결과 v${analyzedVersionNo}` : versions[0] ? `현재 v${versions[0].versionNo}` : "저장 이력 없음"}
+        </Badge>
+      </div>
+      {versions.length > 0 ? (
+        <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+          {versions.map((version) => (
+            <details key={version.id} className="rounded-md border border-border bg-background px-3 py-2">
+              <summary className="cursor-pointer text-sm font-semibold text-foreground">
+                v{version.versionNo} · {profileVersionSourceLabel(version.source)} · {formatProfileVersionDate(version.createdAt)}
+                {analyzedVersionNo === version.versionNo ? " · 분석 사용" : ""}
+              </summary>
+              <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-xs leading-5 text-foreground">
+                {JSON.stringify({
+                  desiredJob: version.desiredJob ?? null,
+                  desiredIndustry: version.desiredIndustry ?? null,
+                  education: version.education ?? null,
+                  career: version.career ?? null,
+                  projects: version.projects ?? null,
+                  skills: version.skills ?? null,
+                  certificates: version.certificates ?? null,
+                  languages: version.languages ?? null,
+                  portfolioLinks: version.portfolioLinks ?? null,
+                  resumeText: version.resumeText ?? null,
+                  selfIntro: version.selfIntro ?? null,
+                  preferences: version.preferences ?? null,
+                }, null, 2)}
+              </pre>
+            </details>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-dashed border-border bg-background px-3 py-4 text-center text-sm text-muted-foreground">
+          프로필을 처음 저장하면 v1 스냅샷이 생성됩니다.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function profileVersionSourceLabel(source: string): string {
+  if (source === "MANUAL_SAVE") return "직접 저장";
+  if (source === "DOCUMENT_IMPORT") return "문서 가져오기";
+  if (source === "AI_ANALYSIS") return "분석 전 기준 생성";
+  if (source === "MIGRATION") return "기존 프로필 이관";
+  return source;
+}
+
+function formatProfileVersionDate(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
 function AiToolButton({

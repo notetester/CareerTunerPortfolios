@@ -5,14 +5,14 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { Award, BarChart3, CheckCircle2, CreditCard, Loader2, ReceiptText, RotateCcw, Zap } from "lucide-react";
+import { ArrowUpRight, Award, BarChart3, CheckCircle2, CreditCard, Lightbulb, Loader2, ReceiptText, RotateCcw, Zap } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
 import { useOutageFallback } from "../lib/outageFallback";
 import {
-  cancelSubscription, getCreditProducts, getMonthlyUsage, getMyBilling, getMyPayments, getPlans,
+  cancelSubscription, getCreditProducts, getMonthlyUsage, getMyBilling, getMyPayments, getPlanRecommendation, getPlans,
   subscribe,
-  type CreditProduct, type MyBilling, type Payment, type SubscriptionPlan, type UsageRow,
+  type CreditProduct, type MyBilling, type Payment, type PlanRecommendation, type SubscriptionPlan, type UsageRow,
 } from "@/features/billing/api/billingApi";
 import { cancelTossPayment, readyTossPayment } from "@/features/billing/api/paymentApi";
 import { requestTossCardPayment } from "@/features/billing/api/tossPaymentSdk";
@@ -76,6 +76,7 @@ export function BillingPage() {
   const [products, setProducts] = useState<CreditProduct[]>([]);
   const [billing, setBilling] = useState<MyBilling | null>(null);
   const [usage, setUsage] = useState<UsageRow[]>([]);
+  const [recommendation, setRecommendation] = useState<PlanRecommendation | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [refundRequests, setRefundRequests] = useState<RefundRequestRow[]>([]);
   const [refundPayment, setRefundPayment] = useState<Payment | null>(null);
@@ -114,6 +115,11 @@ export function BillingPage() {
     setBilling(me);
     setUsage(u);
     setPayments(pay);
+    try {
+      setRecommendation(await getPlanRecommendation());
+    } catch {
+      setRecommendation(null);
+    }
     try {
       setRefundRequests(await getMyRefundRequests());
     } catch {
@@ -459,7 +465,51 @@ export function BillingPage() {
             </div>
           </TabsContent>
 
-          <TabsContent value="usage" className="mt-5">
+          <TabsContent value="usage" className="mt-5 space-y-4">
+            {recommendation && (
+              <Card
+                className={`border-2 ${
+                  recommendation.recommendation === "UPGRADE_PLAN"
+                    ? "border-blue-300 bg-blue-50/60"
+                    : recommendation.recommendation === "BUY_CREDITS"
+                      ? "border-amber-300 bg-amber-50/60"
+                      : "border-slate-200 bg-card"
+                }`}
+              >
+                <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <Lightbulb
+                      className={`mt-0.5 size-5 shrink-0 ${
+                        recommendation.recommendation === "BUY_CREDITS" ? "text-amber-500" : "text-blue-600"
+                      }`}
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-black text-slate-900">AI 활용 계획 추천</span>
+                        <Badge className="bg-slate-100 text-slate-600">사용량 기반 · 규칙</Badge>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-700">{recommendation.headline}</p>
+                      <p className="mt-1 text-xs text-slate-500">{recommendation.reasons.join(" · ")}</p>
+                    </div>
+                  </div>
+                  {recommendation.recommendation === "UPGRADE_PLAN" && recommendation.recommendedPlan && (
+                    <Button className="shrink-0 bg-primary" onClick={() => setSearchParams({ tab: "plans" })}>
+                      {recommendation.recommendedPlan.name} 요금제 보기
+                      <ArrowUpRight className="size-4" />
+                    </Button>
+                  )}
+                  {recommendation.recommendation === "BUY_CREDITS" && recommendation.recommendedCreditPack && (
+                    <Button
+                      className="shrink-0 bg-amber-600 text-white hover:bg-amber-600"
+                      onClick={() => setSearchParams({ tab: "credits" })}
+                    >
+                      {recommendation.recommendedCreditPack.name} 충전
+                      <ArrowUpRight className="size-4" />
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
             <div className="grid gap-4 lg:grid-cols-3">
               <Card className="border border-slate-200 bg-card lg:col-span-2">
                 <CardHeader>

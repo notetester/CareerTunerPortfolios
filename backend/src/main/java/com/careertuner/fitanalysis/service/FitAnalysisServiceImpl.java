@@ -10,6 +10,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.applicationcase.service.AiUsageLogService;
@@ -27,6 +28,7 @@ import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 import com.careertuner.fitanalysis.certificate.CertificateEvidenceService;
 import com.careertuner.fitanalysis.certificate.CertificateNeedGate;
 import com.careertuner.fitanalysis.dto.CareerCertificateStrategyResponse;
+import com.careertuner.fitanalysis.dto.CareerRoadmapResponse;
 import com.careertuner.fitanalysis.dto.CertificateEvidenceResponse;
 import com.careertuner.fitanalysis.dto.CertificateEvidenceSnapshot;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
@@ -53,6 +55,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     private static final int MOCK_CREDIT = 2;
 
     private final FitAnalysisMapper fitAnalysisMapper;
+    private final com.careertuner.profile.mapper.ProfileAiAnalysisMapper profileAiAnalysisMapper;
     private final FitAnalysisAiService fitAnalysisAiService;
     private final EvidenceGateService evidenceGateService;
     private final NotificationService notificationService;
@@ -80,7 +83,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
     }
 
     @Override
-    public FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy) {
+    public FitAnalysisDetailResponse generate(Long userId, Long applicationCaseId, boolean certificateStrategy,
+                                              RequestedAiModel requestedModel) {
         // 외부 I/O(AI 호출·자격증 근거 조회)는 트랜잭션 밖에서 수행한다 — DB 커넥션을 물지 않아, Q-Net 등 외부 장애가
         // 커넥션 풀을 고갈시켜 무관한 조회까지 막는 일이 없다. DB 쓰기만 아래 transactionTemplate 로 짧게 감싼다.
         FitAnalysisGenerationSource source = fitAnalysisMapper.findGenerationSource(userId, applicationCaseId);
@@ -98,10 +102,12 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 parseList(source.getProfileCertificates()),
                 source.getDesiredJob(),
                 composeCompanyContext(source),
-                certificateStrategy);
+                certificateStrategy,
+                composeProfileInsight(userId, source.getProfileVersionId()));
 
         FitAnalysisResult previous = fitAnalysisMapper.findLatestByUserIdAndApplicationCaseId(userId, applicationCaseId);
-        FitAnalysisAiResult ai = fitAnalysisAiService.generate(command);
+        // 사용자가 고른 모델 tier 부터 시작하는 폴백(AUTO=현행). 판단값은 규칙엔진 소유라 모델 무관 불변, 설명만 가변.
+        FitAnalysisAiResult ai = fitAnalysisAiService.generate(command, requestedModel);
         // 신뢰도는 AI 판단이 아니라 입력 상태 기반의 결정적 계산이라 mock/실 AI 모두 동일하게 산정된다.
         FitAnalysisConfidence confidence = FitAnalysisConfidence.evaluate(command);
         // review-first evidence gate: AI 호출 + 기존 E1 grounding guard '이후'의 결정론 후처리 안전층.
@@ -266,6 +272,47 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
      * B(company_analysis) 기업 맥락을 설명 생성 프롬프트용 텍스트로 조립한다. 세 항목이 모두 비면 {@code null}
      * (프롬프트에 기업 맥락 섹션이 붙지 않고 공고 기반으로 degrade). 판단값 계산엔 쓰이지 않는다(뉴로-심볼릭 불변식).
      */
+    /**
+     * A(profile_ai_analysis)의 프로필 요약 분석을 fit 설명용 참고 텍스트로 조립한다. 없으면 null(프로필 AI 분석
+     * 미실행). 요약·강점·보완점만 담고, 판단값 계산엔 쓰지 않는다(companyContext 와 동일 격리). 실패는 null degrade.
+     */
+    private String composeProfileInsight(Long userId, Long profileVersionId) {
+        try {
+            com.careertuner.profile.domain.ProfileAiAnalysis row =
+                    profileAiAnalysisMapper.findByUserIdAndFeature(userId, "PROFILE_SUMMARY");
+            // 현재 비교 입력과 같은 불변 프로필 버전에서 생성한 요약만 사용한다.
+            // 프로필 수정 뒤 재분석하지 않은 오래된 A 산출물이 최신 스펙 설명에 섞이는 것을 막는다.
+            if (row == null || profileVersionId == null
+                    || !profileVersionId.equals(row.getProfileVersionId())) {
+                return null;
+            }
+            StringBuilder sb = new StringBuilder();
+            if (row.getSummary() != null && !row.getSummary().isBlank()) {
+                sb.append("- 요약: ").append(row.getSummary().trim()).append('\n');
+            }
+            appendJsonListLine(sb, "강점", row.getStrengths());
+            appendJsonListLine(sb, "보완점", row.getGaps());
+            return sb.isEmpty() ? null : sb.toString().trim();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private void appendJsonListLine(StringBuilder sb, String label, String json) {
+        if (json == null || json.isBlank()) {
+            return;
+        }
+        try {
+            List<String> items = objectMapper.readValue(json,
+                    new tools.jackson.core.type.TypeReference<List<String>>() { });
+            if (items != null && !items.isEmpty()) {
+                sb.append("- ").append(label).append(": ").append(String.join(", ", items)).append('\n');
+            }
+        } catch (RuntimeException ignored) {
+            // JSON 파싱 실패 시 해당 줄만 생략(전체 insight 는 계속).
+        }
+    }
+
     private static String composeCompanyContext(FitAnalysisGenerationSource source) {
         StringBuilder sb = new StringBuilder();
         appendContextLine(sb, "회사 요약", source.getCompanySummary());
@@ -312,6 +359,175 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 .toList();
         return new CareerCertificateStrategyResponse(desiredJob, strengths, candidates,
                 "자격증은 보조 전략입니다. 실무 프로젝트·배포 경험 보완이 우선이며, 시험 일정은 공식 출처(Q-Net 등) 확인 후 계획하세요.");
+    }
+
+
+    /**
+     * 장기 커리어 로드맵 — 결정론 생성(LLM 미관여). 트랜잭션 없음: 자격증 근거 수집이 외부 I/O 라
+     * 커넥션 점유 금지 원칙(외부 I/O 는 트랜잭션 밖)을 따른다(DB 는 읽기 2회뿐).
+     *
+     * <p>날짜 소스는 둘뿐: ①확인된 실일정(자격증 회차 = 공식/사전공고, 지원건 마감 = 사용자 입력)
+     * ②월 단위 학습 계획 블록(planningBlock=true 로 구분 — 확정 일정처럼 표시 금지). 반복 부족역량은
+     * 사용자의 지원건별 최신 적합도 분석(missing_skills)을 빈도 집계한 것이다.
+     */
+    @Override
+    public CareerRoadmapResponse careerRoadmap(Long userId, int months) {
+        int horizon = Math.max(3, Math.min(24, months));
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+        java.time.LocalDate horizonEnd = today.plusMonths(horizon);
+        CareerProfileSource profile = fitAnalysisMapper.findCareerProfile(userId);
+        String desiredJob = profile == null ? null : profile.getDesiredJob();
+        if (desiredJob == null || desiredJob.isBlank()) {
+            return new CareerRoadmapResponse(null, horizon, nowKstString(), List.of(),
+                    List.of("프로필에 희망 직무를 등록하면 직군 기준 장기 로드맵을 생성합니다."));
+        }
+
+        List<CareerRoadmapResponse.RoadmapItem> items = new java.util.ArrayList<>();
+        List<String> notes = new java.util.ArrayList<>();
+
+        // ① 지원건 마감(사용자 실데이터) — 기간 내 미래 마감만.
+        List<FitAnalysisResult> latest = fitAnalysisMapper.findLatestByUserId(userId);
+        for (FitAnalysisResult fit : latest) {
+            java.time.LocalDate deadline = fit.getDeadlineDate();
+            if (deadline != null && !deadline.isBefore(today) && !deadline.isAfter(horizonEnd)) {
+                items.add(new CareerRoadmapResponse.RoadmapItem("APPLICATION_DEADLINE",
+                        (fit.getCompanyName() == null ? "지원 건" : fit.getCompanyName()) + " 서류 마감",
+                        deadline.toString(), null, null,
+                        fit.getJobTitle() == null ? null : fit.getJobTitle() + " · 적합도 "
+                                + (fit.getFitScore() == null ? "-" : fit.getFitScore()) + "점",
+                        "내 지원 건", false));
+            }
+        }
+
+        // ② 자격증 후보(카탈로그 − 보유)의 확인된 회차 — 근거 조회는 CertificateEvidenceService 재사용.
+        Set<String> heldLower = new HashSet<>();
+        for (String cert : parseList(profile.getProfileCertificates())) {
+            if (cert != null && !cert.isBlank()) {
+                heldLower.add(cert.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        List<String> candidates = CertificateCareerCatalog.candidatesFor(desiredJob).stream()
+                .filter(name -> !heldLower.contains(name.toLowerCase(Locale.ROOT)))
+                .limit(3)
+                .toList();
+        List<CertificateEvidenceResponse> evidences = certificateEvidenceService.collect(candidates);
+        boolean anyUnverified = false;
+        boolean anyOfficialNoSchedule = false;
+        for (CertificateEvidenceResponse evidence : evidences == null ? List.<CertificateEvidenceResponse>of() : evidences) {
+            boolean preannounced = "PREANNOUNCED".equals(evidence.scheduleStatus());
+            boolean verified = "VERIFIED_CURRENT".equals(evidence.scheduleStatus());
+            if (!verified && !preannounced) {
+                // 공식 확인된 미편성(OFFICIAL_NO_SCHEDULE)과 '확인 못함'을 구분해 노트를 정확히 낸다(확인된 사실 격하 금지).
+                if ("OFFICIAL_NO_SCHEDULE".equals(evidence.scheduleStatus())) {
+                    anyOfficialNoSchedule = true;
+                } else {
+                    anyUnverified = true; // 확인 안 된 자격증은 날짜 없이 노트로만(임의 일정 금지).
+                }
+                continue;
+            }
+            String caveat = preannounced ? " (사전공고 기준 - 최종 공고 확인 필요)" : "";
+            int picked = 0;
+            Set<java.time.LocalDate> seenExamDates = new HashSet<>(); // 같은 회차의 접수 변형(정기/빈자리) 행 중복 제거
+            for (var round : evidence.scheduleRounds()) {
+                java.time.LocalDate exam = parseYmd(round.docExam());
+                if (exam == null || exam.isBefore(today) || exam.isAfter(horizonEnd)) {
+                    continue;
+                }
+                if (!seenExamDates.add(exam)) {
+                    continue; // 동일 시험일 회차는 이미 배치됨(접수 기간 변형만 다른 행).
+                }
+                if (picked >= 2) {
+                    break; // 자격증당 다가오는 회차 최대 2개(로드맵 과밀 방지).
+                }
+                picked++;
+                java.time.LocalDate regStart = parseYmd(round.docRegStart());
+                java.time.LocalDate regEnd = parseYmd(round.docRegEnd());
+                // 접수 시작이 지났어도 마감이 남았으면 '접수 진행 중'으로 표시(오늘 시작) — 진행 중인 접수를 통째로 누락하지 않는다.
+                boolean regUpcoming = regStart != null && !regStart.isBefore(today);
+                boolean regOngoing = regStart != null && regStart.isBefore(today)
+                        && regEnd != null && !regEnd.isBefore(today);
+                if (regUpcoming || regOngoing) {
+                    java.time.LocalDate shownStart = regOngoing ? today : regStart;
+                    items.add(new CareerRoadmapResponse.RoadmapItem("CERT_REGISTRATION",
+                            evidence.certName() + " 원서접수" + (regOngoing ? "(진행 중)" : ""), shownStart.toString(),
+                            regEnd == null ? null : regEnd.toString(), evidence.certName(),
+                            (round.round() == null ? "" : round.round()) + caveat, evidence.sourceName(), false));
+                }
+                items.add(new CareerRoadmapResponse.RoadmapItem("CERT_EXAM",
+                        evidence.certName() + " 필기시험", exam.toString(), null, evidence.certName(),
+                        (round.round() == null ? "" : round.round()) + caveat, evidence.sourceName(), false));
+                java.time.LocalDate prac = parseYmd(round.pracExamStart());
+                if (prac != null && !prac.isBefore(today) && !prac.isAfter(horizonEnd)) {
+                    items.add(new CareerRoadmapResponse.RoadmapItem("CERT_PRACTICAL",
+                            evidence.certName() + " 실기시험", prac.toString(), null, evidence.certName(),
+                            (round.round() == null ? "" : round.round()) + caveat, evidence.sourceName(), false));
+                }
+            }
+        }
+        if (anyUnverified) {
+            notes.add("일부 후보 자격증은 공식 일정을 확인하지 못해 날짜 없이 제외했습니다 - 주관기관 공식 페이지를 확인하세요.");
+        }
+        if (anyOfficialNoSchedule) {
+            notes.add("일부 후보 자격증은 공식 확인 결과 올해 시행일정이 편성되지 않았습니다(미편성 확인).");
+        }
+
+        // ③ 반복 부족역량 상위 3 → 월 단위 학습 블록(계획 제안). 다음 달부터 순차 2개월씩.
+        Map<String, Integer> gapCount = new LinkedHashMap<>();
+        for (FitAnalysisResult fit : latest) {
+            for (String skill : parseList(fit.getMissingSkills())) {
+                if (skill != null && !skill.isBlank()) {
+                    gapCount.merge(skill.trim(), 1, Integer::sum);
+                }
+            }
+        }
+        List<String> topGaps = gapCount.entrySet().stream()
+                .sorted((a, b) -> b.getValue() - a.getValue())
+                .limit(3)
+                .map(Map.Entry::getKey)
+                .toList();
+        java.time.LocalDate blockStart = today.plusMonths(1).withDayOfMonth(1);
+        for (String skill : topGaps) {
+            if (blockStart.isAfter(horizonEnd)) {
+                break;
+            }
+            // 로드맵 기간을 넘지 않게 종료일 clamp(기간 밖으로 삐져나가는 계획 블록 방지).
+            java.time.LocalDate blockEnd = blockStart.plusMonths(2).minusDays(1);
+            if (blockEnd.isAfter(horizonEnd)) {
+                blockEnd = horizonEnd;
+            }
+            items.add(new CareerRoadmapResponse.RoadmapItem("SKILL_LEARNING",
+                    skill + " 집중 학습", blockStart.toString(), blockEnd.toString(), null,
+                    "최근 적합도 분석에서 " + gapCount.get(skill) + "회 부족 역량으로 나온 스킬 - 월 단위 학습 계획 제안",
+                    null, true));
+            blockStart = blockStart.plusMonths(2);
+        }
+        if (!topGaps.isEmpty()) {
+            notes.add("학습 블록은 월 단위 '계획 제안'입니다(확정 일정 아님) - 플래너에 반영 후 자유롭게 조정하세요.");
+        }
+        if (latest.isEmpty()) {
+            notes.add("적합도 분석 이력이 없어 반복 부족역량 기반 학습 블록은 생성하지 못했습니다 - 지원 건을 분석하면 로드맵이 풍부해집니다.");
+        }
+        notes.add("자격증 일정은 공식 확인(공공데이터 통합 조회)·공단 사전공고에 근거한 실일정만 포함합니다.");
+
+        items.sort(java.util.Comparator.comparing(CareerRoadmapResponse.RoadmapItem::startDate));
+        return new CareerRoadmapResponse(desiredJob, horizon, nowKstString(),
+                List.copyOf(items), List.copyOf(notes));
+    }
+
+    private static String nowKstString() {
+        return java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    }
+
+    private static java.time.LocalDate parseYmd(String yyyymmdd) {
+        if (yyyymmdd == null || yyyymmdd.length() != 8) {
+            return null;
+        }
+        try {
+            return java.time.LocalDate.of(Integer.parseInt(yyyymmdd.substring(0, 4)),
+                    Integer.parseInt(yyyymmdd.substring(4, 6)), Integer.parseInt(yyyymmdd.substring(6, 8)));
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /**
@@ -367,6 +583,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         snapshot.put("jobPostingRevision", source.getJobPostingRevision());
         snapshot.put("jobAnalysisCreatedAt", source.getJobAnalysisCreatedAt());
         snapshot.put("userProfileId", source.getUserProfileId());
+        snapshot.put("profileVersionId", source.getProfileVersionId());
+        snapshot.put("profileVersionNo", source.getProfileVersionNo());
         snapshot.put("profileUpdatedAt", source.getProfileUpdatedAt());
         snapshot.put("requiredSkills", parseList(source.getRequiredSkills()));
         snapshot.put("preferredSkills", parseList(source.getPreferredSkills()));

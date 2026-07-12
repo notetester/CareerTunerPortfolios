@@ -41,9 +41,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build web dist (기본 모드 — 상대경로 /api)
+      - name: Build web dist + verified App Links metadata
         working-directory: frontend
-        run: npm run build
+        env:
+          # 공개 인증서 지문이다. Repository variable이 비어 있거나 형식이 틀리면 배포 빌드를 중단한다.
+          ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS: ${{ vars.ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS }}
+          # Apple Team ID는 공개 식별자다. 미설정이면 iOS 연결을 거부하는 빈 AASA를 배포한다.
+          IOS_APP_LINK_TEAM_IDS: ${{ vars.IOS_APP_LINK_TEAM_IDS }}
+        run: npm run build:verified-app-links
 
       - name: Check dist for obvious secrets
         run: |
@@ -53,6 +58,8 @@ jobs:
             exit 1
           fi
           test -f frontend/dist/index.html
+          test -f frontend/dist/.well-known/assetlinks.json
+          test -f frontend/dist/.well-known/apple-app-site-association
 
       - name: Verify deploy secrets are configured
         env:
@@ -81,6 +88,15 @@ jobs:
           strip_components: 2   # frontend/dist/ 접두어 제거 → 스테이징에 dist 내용물만
           rm: true              # 이전 스테이징 잔여(구 해시 에셋) 제거
 
+      - name: Copy AASA Nginx guard
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: ".github/scripts/ensure_aasa_nginx_location.py"
+          target: "~/careertuner"
+
       - name: Swap into nginx root
         uses: appleboy/ssh-action@v1.2.5
         with:
@@ -91,12 +107,77 @@ jobs:
             set -e
             STAGING="$HOME/careertuner/web-staging"
             test -f "$STAGING/index.html" || { echo "::error::스테이징에 index.html 없음"; exit 1; }
-            # nginx root 탐지 — sites-enabled 의 첫 root 지시자. 오탐 방지로 기존 index.html 존재까지 확인.
-            ROOT=$(grep -RhoP '^\s*root\s+\K[^;]+' /etc/nginx/sites-enabled/ 2>/dev/null | head -1 | xargs)
-            if [ -z "$ROOT" ] || [ ! -f "$ROOT/index.html" ]; then
-              echo "::error::nginx root 미확인(ROOT='$ROOT') — /etc/nginx/sites-enabled 수동 확인 필요"
+            test -f "$STAGING/.well-known/assetlinks.json" || { echo "::error::스테이징에 assetlinks.json 없음"; exit 1; }
+            test -f "$STAGING/.well-known/apple-app-site-association" || { echo "::error::스테이징에 AASA 없음"; exit 1; }
+            # AASA는 Team ID 등록 전 deny-all 문서도 Apple 규약에 맞는 JSON MIME으로 제공한다.
+            # hostname을 가진 TLS server block이 하나로 결정될 때만 exact location을 멱등 설치하고,
+            # 같은 server block의 root를 사용한다. 다른 site의 첫 root를 고르는 오탐을 허용하지 않는다.
+            NGINX_CONFIGS=$(sudo grep -RlsE 'server_name[^;]*careertuner\.kro\.kr' \
+              /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true)
+            if [ -z "$NGINX_CONFIGS" ]; then
+              echo "::error::careertuner.kro.kr nginx server 설정을 찾지 못했습니다."
               exit 1
             fi
+            # shellcheck disable=SC2086 -- 파일 목록은 grep이 반환한 고정 nginx 경로이며 Python이 다시 검증한다.
+            AASA_SETUP=$(sudo python3 "$HOME/careertuner/.github/scripts/ensure_aasa_nginx_location.py" \
+              --hostname careertuner.kro.kr $NGINX_CONFIGS)
+            echo "$AASA_SETUP"
+            ROOT=$(printf '%s\n' "$AASA_SETUP" | sed -n 's/^CAREERTUNER_ROOT=//p')
+            if [ -z "$ROOT" ] || [ ! -f "$ROOT/index.html" ]; then
+              echo "::error::careertuner TLS server root 미확인(ROOT='$ROOT')"
+              exit 1
+            fi
+            # Apple Team ID가 등록된 뒤에는 extensionless AASA의 JSON MIME을 전체 교체 전에 검증한다.
+            # Team ID가 없으면 details:[] deny-all 파일을 게시하되 MIME/본문 계약은 동일하게 검증한다.
+            AASA_REL=".well-known/apple-app-site-association"
+            AASA_LIVE="$ROOT/$AASA_REL"
+            AASA_BACKUP=$(mktemp)
+            AASA_HEADERS=$(mktemp)
+            AASA_BODY=$(mktemp)
+            AASA_EXISTED=0
+            AASA_PROBE_COMMITTED=0
+            cleanup_aasa_probe() {
+              status=$?
+              if [ "$AASA_PROBE_COMMITTED" -ne 1 ]; then
+                if [ "$AASA_EXISTED" -eq 1 ]; then
+                  sudo install -D -m 0644 "$AASA_BACKUP" "$AASA_LIVE"
+                else
+                  sudo rm -f "$AASA_LIVE"
+                fi
+              fi
+              rm -f "$AASA_BACKUP" "$AASA_HEADERS" "$AASA_BODY"
+              trap - EXIT
+              exit "$status"
+            }
+            if sudo test -f "$AASA_LIVE"; then
+              if ! sudo cat "$AASA_LIVE" > "$AASA_BACKUP"; then
+                echo "::error::기존 AASA 백업 실패 — live 파일은 수정하지 않았습니다."
+                rm -f "$AASA_BACKUP" "$AASA_HEADERS" "$AASA_BODY"
+                exit 1
+              fi
+              AASA_EXISTED=1
+            fi
+            trap cleanup_aasa_probe EXIT
+            sudo install -D -m 0644 "$STAGING/$AASA_REL" "$AASA_LIVE"
+            AASA_PROBE_URL="https://careertuner.kro.kr/.well-known/apple-app-site-association?deploy-probe=$(date +%s)-$$"
+            if ! curl -fsS --retry 2 --retry-delay 1 -D "$AASA_HEADERS" \
+              --resolve 'careertuner.kro.kr:443:127.0.0.1' \
+              -H 'Cache-Control: no-cache' "$AASA_PROBE_URL" \
+              -o "$AASA_BODY" \
+              || ! grep -Eq '^HTTP/[^ ]+ 200' "$AASA_HEADERS" \
+              || ! grep -Eiq '^content-type:[[:space:]]*application/json([[:space:]]*;|[[:space:]]*$)' "$AASA_HEADERS" \
+              || ! cmp "$STAGING/$AASA_REL" "$AASA_BODY"; then
+              echo "::error::AASA origin MIME 사전 검증 실패 — 전체 웹 배포 전 기존 AASA를 원복합니다."
+              sed -n '1,20p' "$AASA_HEADERS" || true
+              sha256sum "$STAGING/$AASA_REL" "$AASA_BODY" || true
+              echo "활성 nginx server 블록에 아래 exact location을 검토 후 수동 추가해야 합니다:"
+              echo "location = /.well-known/apple-app-site-association {"
+              echo "  default_type application/json;"
+              echo "  try_files \$uri =404;"
+              echo "}"
+              exit 1
+            fi
+            echo "AASA origin MIME preflight OK"
             # 롤백용 백업(최근 3개 유지)
             sudo tar -czf "$HOME/careertuner/web-backup-$(date +%Y%m%d%H%M%S).tar.gz" -C "$ROOT" .
             ls -t "$HOME"/careertuner/web-backup-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
@@ -104,4 +185,24 @@ jobs:
             sudo rsync -a --delete "$STAGING"/ "$ROOT"/
             echo "deployed to $ROOT"
             # 헬스체크 — index 서빙 확인(실패해도 백업 tar 로 수동 롤백 가능)
-            curl -fsS -o /dev/null http://localhost/ && echo "web OK"
+            curl -fsS -o /dev/null http://localhost/
+            echo "web OK"
+            AASA_PROBE_COMMITTED=1
+            rm -f "$AASA_BACKUP" "$AASA_HEADERS" "$AASA_BODY"
+            trap - EXIT
+
+      - name: Verify public App Links metadata deployment
+        run: |
+          curl -fsS --retry 5 --retry-delay 2 -D /tmp/assetlinks.headers \
+            https://careertuner.kro.kr/.well-known/assetlinks.json \
+            -o /tmp/assetlinks.deployed.json
+          grep -Eq '^HTTP/[^ ]+ 200' /tmp/assetlinks.headers
+          grep -Eiq '^content-type:[[:space:]]*application/json' /tmp/assetlinks.headers
+          cmp frontend/dist/.well-known/assetlinks.json /tmp/assetlinks.deployed.json
+          curl -fsS --retry 5 --retry-delay 2 -D /tmp/aasa.headers \
+            -H 'Cache-Control: no-cache' \
+            "https://careertuner.kro.kr/.well-known/apple-app-site-association?deploy-verify=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            -o /tmp/aasa.deployed.json
+          grep -Eq '^HTTP/[^ ]+ 200' /tmp/aasa.headers
+          grep -Eiq '^content-type:[[:space:]]*application/json' /tmp/aasa.headers
+          cmp frontend/dist/.well-known/apple-app-site-association /tmp/aasa.deployed.json

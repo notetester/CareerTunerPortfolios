@@ -22,5 +22,7 @@ public class AdminInterviewSessionRow {
     private Integer questionCount;
     private Integer answeredCount;
     private Boolean hasReport;
+    /** 질문 생성 시 사용한 A/B/C 원천 provenance(JSON). */
+    private String sourceSnapshot;
     private String adminMemo;
 }

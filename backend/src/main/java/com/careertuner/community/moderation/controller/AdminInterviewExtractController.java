@@ -26,7 +26,7 @@ import com.careertuner.community.moderation.service.AdminInterviewExtractService
 @RestController
 @RequestMapping("/api/admin/ai/interview-extract")
 @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-@RequireAdminPermission({"AI_OPERATION_MANAGE", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 public class AdminInterviewExtractController {
 
     private final AdminInterviewExtractService extractService;
@@ -41,6 +41,7 @@ public class AdminInterviewExtractController {
      * ?force=true  → 이미 COMPLETED인 글도 재추출
      */
     @PostMapping("/backfill")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<Map<String, Object>> backfill(
             @RequestParam(defaultValue = "false") boolean dryRun,
             @RequestParam(defaultValue = "false") boolean force
@@ -73,6 +74,7 @@ public class AdminInterviewExtractController {
      * ?force=true → 이미 COMPLETED인 글도 재추출
      */
     @PostMapping("/{postId}")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<Map<String, Object>> extractSingle(
             @PathVariable Long postId,
             @RequestParam(defaultValue = "false") boolean force

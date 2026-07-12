@@ -36,7 +36,7 @@ import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 관리자/직원 등급·급여 관리. 급여(base_salary)는 민감정보이므로 전 엔드포인트 SUPER_ADMIN 전용.
+ * 관리자/직원 등급·급여 관리. 급여(base_salary)는 민감정보이므로 최고 관리자에게만 공개한다.
  * 변경은 old/new 스냅샷으로 admin_staff_grade_history 에 감사.
  */
 @Service

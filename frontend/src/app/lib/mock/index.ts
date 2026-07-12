@@ -15,15 +15,17 @@ import {
   demoCareerPlan,
   demoApplicationCases,
   demoCareerCertificateStrategy,
+  demoCareerRoadmap,
   demoFitAnalyses,
   findFitByApplicationCase,
   findFitHistoryByApplicationCase,
+  searchDemoCertificates,
 } from "./data";
 import { findJobPosting, findJobAnalysis, findCompanyAnalysis } from "./domains/applications";
 import {
   demoInterviewSessions, findSessionQuestions, findReport, progress, agentSteps,
   createSession, generateQuestions, submitAnswer as submitInterviewAnswer, followUps,
-  realtimeSession, fileAsset,
+  realtimeSession, fileAsset, deleteFileAsset,
 } from "./domains/interview";
 import {
   communityPostPage, demoHotPosts, findCommunityPost, communityCommentsFor, demoPublishedGuideline,
@@ -33,8 +35,8 @@ import {
   demoAdminNotifications,
 } from "./domains/f-area";
 
-import type { FitAnalysisDetail } from "@/features/analysis/types/fitAnalysis";
-import { canAccessMockApi } from "@/admin/auth/adminAccess";
+import type { FitAnalysisDetail, FitAnalysisHistoryEntry } from "@/features/analysis/types/fitAnalysis";
+import { ADMIN_PERMISSION_CODES, canAccessMockApi } from "@/admin/auth/adminAccess";
 import { getOutageFallbackSnapshot } from "../outageFallback";
 
 import type { MockRoute } from "./registry";
@@ -71,13 +73,26 @@ let demoJobPostingFallbackSetting = {
   source: "DEFAULT",
 };
 
+// 공고 업로드 한도 — 관리자 GET/PATCH 와 사용자 GET(/application-cases/upload-limit)이 이 상태를 공유한다.
+const UPLOAD_LIMIT_MB = 1024 * 1024;
+let demoUploadLimitBytes = 10 * UPLOAD_LIMIT_MB; // 백엔드 기본 10MB
+let demoUploadLimitSource = "PROPERTIES";
+function demoUploadLimitSetting() {
+  return {
+    maxBytes: demoUploadLimitBytes,
+    minBytes: 1 * UPLOAD_LIMIT_MB,
+    maxAllowedBytes: 20 * UPLOAD_LIMIT_MB,
+    source: demoUploadLimitSource,
+  };
+}
+
 const demoAdminUser = {
   ...demoUser,
   id: 9101,
   email: "admin@careertuner.dev",
   name: "한관리",
   role: "ADMIN",
-  permissionGroups: ["MEMBER_ADMIN", "AI_ADMIN", "BILLING_ADMIN", "CONTENT_ADMIN", "AUDIT_ADMIN"],
+  permissions: ADMIN_PERMISSION_CODES.filter((code) => !code.startsWith("ADMIN_PERMISSION_")),
 };
 let mockSessionUser = demoUser;
 const MOCK_ROLE_KEY = "careertuner.mock.role";
@@ -105,8 +120,12 @@ function getMockSession() {
   return getOutageFallbackSnapshot().mode === "static-demo" ? mockSessionUser : demoUser;
 }
 
-export function canResolveMockRequest(rawPath: string): boolean {
-  return canAccessMockApi(rawPath, getMockSession().role);
+export function canResolveMockRequest(rawPath: string, method = "GET", body?: unknown): boolean {
+  const session = getMockSession();
+  const permissions = "permissions" in session && Array.isArray(session.permissions)
+    ? new Set<string>(session.permissions)
+    : new Set<string>();
+  return canAccessMockApi(rawPath, session.role, permissions, method, body);
 }
 
 // ── C: 적합도 분석 mock 세션 상태 ──
@@ -115,20 +134,22 @@ export function canResolveMockRequest(rawPath: string): boolean {
 // 사본을 만들어 이 Map 에 보관하고(세션 내 유지), GET 미존재는 null(레지스트리의 기존 not-found 패턴 —
 // 상태코드/에러 메커니즘이 없고 useApplicationFitAnalysis 가 null 을 '분석 미실행 안내'로 처리한다).
 const generatedFitAnalyses = new Map<number, FitAnalysisDetail>();
+const generatedFitHistory = new Map<number, FitAnalysisHistoryEntry[]>();
 let nextGeneratedFitAnalysisId = 251; // 정적 201·202(학습 과제 id 2011~/2021~ 대역)와 충돌하지 않는 대역
 
 function findAnyFitByApplicationCase(applicationCaseId: number): FitAnalysisDetail | undefined {
-  return findFitByApplicationCase(applicationCaseId) ?? generatedFitAnalyses.get(applicationCaseId);
+  return generatedFitAnalyses.get(applicationCaseId) ?? findFitByApplicationCase(applicationCaseId);
 }
 
-function buildGeneratedFitAnalysis(applicationCaseId: number): FitAnalysisDetail {
-  const template = demoFitAnalyses[0];
+function buildGeneratedFitAnalysis(applicationCaseId: number, requestedModel: string): FitAnalysisDetail {
+  const template = findAnyFitByApplicationCase(applicationCaseId) ?? demoFitAnalyses[0];
   const applicationCase = demoApplicationCases.find((item) => item.id === applicationCaseId);
   const id = nextGeneratedFitAnalysisId++;
   return {
     ...template,
     id,
     applicationCaseId,
+    model: requestedModel === "AUTO" ? "mock-demo" : `mock-demo:${requestedModel}`,
     createdAt: new Date().toISOString(),
     application: {
       id: applicationCaseId,
@@ -172,6 +193,11 @@ const coreRoutes: MockRoute[] = [
   { method: "POST", pattern: /^\/auth\/register$/, handler: ok(demoTokenResponse) },
   { method: "GET", pattern: /^\/auth\/me$/, handler: () => getMockSession() },
   { method: "POST", pattern: /^\/auth\/logout$/, handler: () => { setMockSession(demoUser); return null; } },
+  {
+    method: "GET",
+    pattern: /^\/auth\/oauth\/providers$/,
+    handler: () => ({ google: true, kakao: true, naver: true }),
+  },
 
   {
     method: "GET",
@@ -190,6 +216,29 @@ const coreRoutes: MockRoute[] = [
         source: "DATABASE",
       };
       return demoJobPostingFallbackSetting;
+    },
+  },
+  // 공고 업로드 한도 — 사용자 GET + 관리자 GET/PATCH 가 같은 상태(demoUploadLimitBytes)를 공유한다.
+  {
+    method: "GET",
+    pattern: /^\/application-cases\/upload-limit$/,
+    handler: () => ({ maxBytes: demoUploadLimitBytes }),
+  },
+  {
+    method: "GET",
+    pattern: /^\/admin\/ai-settings\/upload-size$/,
+    handler: () => demoUploadLimitSetting(),
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/admin\/ai-settings\/upload-size$/,
+    handler: ({ body }) => {
+      const request = body as { maxBytes?: number };
+      if (typeof request?.maxBytes === "number") {
+        demoUploadLimitBytes = Math.max(1 * UPLOAD_LIMIT_MB, Math.min(20 * UPLOAD_LIMIT_MB, request.maxBytes));
+        demoUploadLimitSource = "DATABASE";
+      }
+      return demoUploadLimitSetting();
     },
   },
 
@@ -351,7 +400,7 @@ const coreRoutes: MockRoute[] = [
       return { sessions: demoInterviewSessions, total: demoInterviewSessions.length, page: 0, size, hasNext: false };
     },
   },
-  { method: "POST", pattern: /^\/interview\/sessions$/, handler: ({ body }) => createSession(body as { applicationCaseId: number; mode: "BASIC" | "JOB" | "PERSONALITY" | "PRESSURE" | "RESUME" | "COMPANY" }) },
+  { method: "POST", pattern: /^\/interview\/sessions$/, handler: ({ body }) => createSession(body as { applicationCaseId: number; mode: "BASIC" | "JOB" | "PERSONALITY" | "PRESSURE" | "RESUME" | "PORTFOLIO" | "REAL" | "COMPANY" }) },
   { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/questions$/, handler: ({ params }) => findSessionQuestions(Number(params[0])) },
   { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/generate-questions$/, handler: ({ params }) => generateQuestions(Number(params[0])) },
   { method: "GET", pattern: /^\/interview\/sessions\/(\d+)\/progress$/, handler: ({ params }) => progress(Number(params[0])) },
@@ -360,13 +409,34 @@ const coreRoutes: MockRoute[] = [
   { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/realtime$/, handler: () => realtimeSession() },
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/answers$/, handler: ({ params, body }) => submitInterviewAnswer(Number(params[0]), body as { answerText: string }) },
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/follow-ups$/, handler: ({ params }) => followUps(Number(params[0])) },
-  { method: "POST", pattern: /^\/file\/upload$/, handler: () => fileAsset() },
-  { method: "DELETE", pattern: /^\/file\/(\d+)$/, handler: () => null },
+  { method: "POST", pattern: /^\/file\/upload$/, handler: ({ body }) => fileAsset(body) },
+  { method: "DELETE", pattern: /^\/file\/(\d+)$/, handler: ({ params }) => { deleteFileAsset(Number(params[0])); return null; } },
 
   // ── C: 적합도 분석 ──
-  { method: "GET", pattern: /^\/fit-analyses$/, handler: () => [...demoFitAnalyses, ...generatedFitAnalyses.values()] },
+  {
+    method: "GET",
+    pattern: /^\/fit-analyses$/,
+    handler: () => [
+      ...generatedFitAnalyses.values(),
+      ...demoFitAnalyses.filter((analysis) => !generatedFitAnalyses.has(analysis.applicationCaseId)),
+    ],
+  },
   // 장기 커리어 자격증 전략(사용자 단위, 현재 지원 건과 분리)
   { method: "GET", pattern: /^\/fit-analyses\/career-certificate-strategy$/, handler: ok(demoCareerCertificateStrategy) },
+  // 외부 일정/공공데이터 장애 시에도 로드맵·자격증 검색 시연은 mock fixture로 독립 동작한다.
+  {
+    method: "GET",
+    pattern: /^\/fit-analyses\/career-roadmap$/,
+    handler: ({ query }) => ({
+      ...demoCareerRoadmap,
+      horizonMonths: Number(query.get("months") ?? demoCareerRoadmap.horizonMonths),
+    }),
+  },
+  {
+    method: "GET",
+    pattern: /^\/certificates\/search$/,
+    handler: ({ query }) => searchDemoCertificates(query.get("q") ?? ""),
+  },
   {
     // 미존재 지원 건은 null(분석 미실행) — 다른 회사 분석을 fallback 으로 보여주지 않는다.
     method: "GET",
@@ -377,18 +447,33 @@ const coreRoutes: MockRoute[] = [
     // 재분석 히스토리(점수·역량 변화 추적)
     method: "GET",
     pattern: /^\/fit-analyses\/application-cases\/(\d+)\/history$/,
-    handler: ({ params }) => findFitHistoryByApplicationCase(Number(params[0])),
+    handler: ({ params }) => [
+      ...(generatedFitHistory.get(Number(params[0])) ?? []),
+      ...findFitHistoryByApplicationCase(Number(params[0])),
+    ],
   },
   {
-    // 생성/재분석. 데모 데이터에 없는 지원 건은 그 건의 회사 정보로 치환한 사본을 생성해 세션 내 유지한다.
+    // 생성/재분석. 선택 모델·새 분석 ID·히스토리를 세션 내 유지해 실제 재분석 UX와 같은 계약으로 보인다.
     method: "POST",
     pattern: /^\/fit-analyses\/application-cases\/(\d+)$/,
-    handler: ({ params }) => {
+    handler: ({ params, query }) => {
       const applicationCaseId = Number(params[0]);
-      const existing = findAnyFitByApplicationCase(applicationCaseId);
-      if (existing) return existing;
-      const generated = buildGeneratedFitAnalysis(applicationCaseId);
+      const previous = findAnyFitByApplicationCase(applicationCaseId);
+      const requestedModel = query.get("model")?.toUpperCase() || "AUTO";
+      const generated = buildGeneratedFitAnalysis(applicationCaseId, requestedModel);
       generatedFitAnalyses.set(applicationCaseId, generated);
+      generatedFitHistory.set(applicationCaseId, [{
+        id: generated.id,
+        fitScore: generated.fitScore,
+        previousScore: previous?.fitScore ?? null,
+        scoreDelta: generated.fitScore != null && previous?.fitScore != null ? generated.fitScore - previous.fitScore : null,
+        gainedSkills: [],
+        resolvedGaps: [],
+        newGaps: [],
+        model: generated.model,
+        status: generated.status,
+        createdAt: generated.createdAt,
+      }, ...(generatedFitHistory.get(applicationCaseId) ?? [])]);
       return generated;
     },
   },
@@ -490,15 +575,7 @@ export async function resolveMock(
   rawPath: string,
   options: RequestInit,
 ): Promise<unknown | typeof MOCK_UNHANDLED | typeof MOCK_FORBIDDEN> {
-  if (!canResolveMockRequest(rawPath)) return MOCK_FORBIDDEN;
   const method = (options.method ?? "GET").toUpperCase();
-  const [path, queryString = ""] = rawPath.split("?");
-  const query = new URLSearchParams(queryString);
-  const route = routes.find((r) => r.method === method && r.pattern.test(path));
-  if (!route) return MOCK_UNHANDLED;
-
-  const match = route.pattern.exec(path);
-  const params = match ? match.slice(1) : [];
   let body: unknown = options.body;
   if (typeof options.body === "string") {
     try {
@@ -507,6 +584,14 @@ export async function resolveMock(
       body = options.body;
     }
   }
+  if (!canResolveMockRequest(rawPath, method, body)) return MOCK_FORBIDDEN;
+  const [path, queryString = ""] = rawPath.split("?");
+  const query = new URLSearchParams(queryString);
+  const route = routes.find((r) => r.method === method && r.pattern.test(path));
+  if (!route) return MOCK_UNHANDLED;
+
+  const match = route.pattern.exec(path);
+  const params = match ? match.slice(1) : [];
   await new Promise((resolve) => setTimeout(resolve, 220));
   return route.handler({ method, path, query, params, body });
 }

@@ -21,6 +21,7 @@ interface CorrectionDetailDialogProps {
   onOpenChange: (open: boolean) => void;
   onRetry: () => void;
   onSaveMemo: (memo: string | null) => Promise<void>;
+  canUpdate: boolean;
 }
 
 export function CorrectionDetailDialog({
@@ -31,11 +32,13 @@ export function CorrectionDetailDialog({
   onOpenChange,
   onRetry,
   onSaveMemo,
+  canUpdate,
 }: CorrectionDetailDialogProps) {
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [memoError, setMemoError] = useState<string | null>(null);
   const result = useMemo(() => parseCorrectionResult(detail?.resultJson ?? null), [detail?.resultJson]);
+  const provenance = useMemo(() => parseCorrectionProvenance(detail?.sourceSnapshot ?? null), [detail?.sourceSnapshot]);
 
   useEffect(() => {
     setMemo(detail?.adminMemo ?? "");
@@ -48,7 +51,7 @@ export function CorrectionDetailDialog({
   };
 
   const saveMemo = async () => {
-    if (!detail || saving) return;
+    if (!canUpdate || !detail || saving) return;
     setSaving(true);
     setMemoError(null);
     try {
@@ -98,6 +101,20 @@ export function CorrectionDetailDialog({
               <TextPanel title="개선문" text={detail.improvedText || "개선문이 기록되지 않았습니다."} className="bg-emerald-50/60 dark:bg-emerald-950/20" />
             </div>
 
+            {provenance && (
+              <section className="rounded-lg border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900 dark:bg-violet-950/20">
+                <h3 className="text-sm font-bold text-violet-900 dark:text-violet-200">입력 출처</h3>
+                <p className="mt-2 text-sm text-violet-800 dark:text-violet-300">
+                  {provenance.fitAnalysisId ? `적합도 분석 #${provenance.fitAnalysisId}` : "적합도 분석 미사용"}
+                  {provenance.answerId ? ` · 면접 답변 #${provenance.answerId}` : ""}
+                  {provenance.requestedModel ? ` · 요청 모델 ${provenance.requestedModel}` : ""}
+                </p>
+                {provenance.missingSkills.length > 0 && (
+                  <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">반영한 부족 역량: {provenance.missingSkills.join(", ")}</p>
+                )}
+              </section>
+            )}
+
             {result.summary && (
               <section className="rounded-lg border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900 dark:bg-blue-950/20">
                 <h3 className="flex items-center gap-2 text-sm font-bold"><ListChecks className="size-4 text-blue-600" />첨삭 요약</h3>
@@ -118,7 +135,7 @@ export function CorrectionDetailDialog({
               </section>
             )}
 
-            <section>
+            {canUpdate ? <section>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <label htmlFor="correction-admin-memo" className="text-sm font-bold">운영 메모</label>
                 <span className="text-xs text-muted-foreground">{memo.length}/2000</span>
@@ -133,15 +150,22 @@ export function CorrectionDetailDialog({
                 className="min-h-28 resize-y"
               />
               {memoError && <p className="mt-2 text-sm text-red-600">{memoError}</p>}
-            </section>
+            </section> : detail.adminMemo && (
+              <section>
+                <h3 className="text-sm font-bold">운영 메모</h3>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{detail.adminMemo}</p>
+              </section>
+            )}
           </div>
         )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => close(false)} disabled={saving}>닫기</Button>
-          <Button onClick={() => void saveMemo()} disabled={!detail || loading || !!error || saving || !memoChanged}>
-            {saving ? "저장 중..." : "메모 저장"}
-          </Button>
+          {canUpdate && (
+            <Button onClick={() => void saveMemo()} disabled={!detail || loading || !!error || saving || !memoChanged}>
+              {saving ? "저장 중..." : "메모 저장"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -188,6 +212,31 @@ function parseCorrectionResult(raw: string | null): ParsedCorrectionResult {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+interface CorrectionProvenance {
+  fitAnalysisId: number | null;
+  answerId: number | null;
+  requestedModel: string | null;
+  missingSkills: string[];
+}
+
+function parseCorrectionProvenance(raw: string | null): CorrectionProvenance | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (!isRecord(value)) return null;
+    const fit = isRecord(value.fitAnalysis) ? value.fitAnalysis : null;
+    const interview = isRecord(value.interviewAnswer) ? value.interviewAnswer : null;
+    return {
+      fitAnalysisId: typeof fit?.fitAnalysisId === "number" ? fit.fitAnalysisId : null,
+      answerId: typeof interview?.answerId === "number" ? interview.answerId : null,
+      requestedModel: typeof value.requestedModel === "string" ? value.requestedModel : null,
+      missingSkills: stringArray(fit?.missingSkills),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

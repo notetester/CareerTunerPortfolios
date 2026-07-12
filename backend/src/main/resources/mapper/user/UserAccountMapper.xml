@@ -9,12 +9,12 @@
         SELECT * FROM users WHERE id = #{id}
     </select>
 
-    <select id="findLinkedProviders" resultType="string">
-        SELECT provider FROM user_social WHERE user_id = #{userId} ORDER BY provider
+    <select id="findByIdForUpdate" resultType="com.careertuner.user.domain.User">
+        SELECT * FROM users WHERE id = #{id} FOR UPDATE
     </select>
 
-    <select id="countLinkedProviders" resultType="int">
-        SELECT COUNT(*) FROM user_social WHERE user_id = #{userId}
+    <select id="findLinkedProviders" resultType="string">
+        SELECT provider FROM user_social WHERE user_id = #{userId} ORDER BY provider
     </select>
 
     <select id="countByLoginId" resultType="int">
@@ -42,15 +42,303 @@
            SET login_id = #{loginId}
          WHERE id = #{userId}
            AND login_id IS NULL
+           AND status = 'ACTIVE'
     </update>
 
     <update id="updatePhone">
-        UPDATE users SET phone = #{phone} WHERE id = #{userId}
+        UPDATE users
+           SET phone = #{phone}
+         WHERE id = #{userId}
+           AND status = 'ACTIVE'
     </update>
 
     <delete id="deleteSocial">
         DELETE FROM user_social
         WHERE user_id = #{userId} AND provider = #{provider}
+    </delete>
+
+    <update id="anonymizeAndSoftDeleteOwnAccount">
+        UPDATE users
+           SET status = 'DELETED',
+               email = NULL,
+               login_id = NULL,
+               phone = NULL,
+               phone_verified = 0,
+               password = NULL,
+               password_enabled = 0,
+               name = '탈퇴한 사용자',
+               email_verified = 0,
+               deleted_at = COALESCE(deleted_at, NOW()),
+               status_changed_at = NOW(),
+               status_changed_by = NULL,
+               blocked_reason = NULL,
+               blocked_until = NULL
+         WHERE id = #{userId}
+           AND status &lt;&gt; 'DELETED'
+    </update>
+
+    <!-- 소셜/푸시/OTP는 인증·전송용 일시 데이터이므로 탈퇴 트랜잭션 안에서 즉시 제거한다. -->
+    <delete id="deleteAllSocialLinks">
+        DELETE FROM user_social WHERE user_id = #{userId}
+    </delete>
+
+    <delete id="deleteAllPushSubscriptions">
+        DELETE FROM push_subscription WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 과거 이메일 인증 행은 감사/FK를 보존하되 토큰과 이메일을 재사용할 수 없도록 익명화·만료한다. -->
+    <update id="expireAllEmailVerifications">
+        UPDATE email_verification
+           SET email = CONCAT('deleted-', id, '@invalid.local'),
+               used = 1,
+               used_at = COALESCE(used_at, NOW()),
+               expired_at = LEAST(expired_at, NOW())
+         WHERE user_id = #{userId}
+    </update>
+
+    <delete id="deleteAllSmsOtpCodes">
+        DELETE FROM sms_otp_code WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 개인정보 삭제 요청은 FK/감사 행을 보존하되 프로필 원문과 구조화 스펙을 남기지 않는다. -->
+    <update id="scrubUserProfile">
+        UPDATE user_profile
+           SET desired_job = NULL,
+               desired_industry = NULL,
+               education = NULL,
+               career = NULL,
+               projects = NULL,
+               skills = NULL,
+               certificates = NULL,
+               languages = NULL,
+               portfolio_links = NULL,
+               resume_text = NULL,
+               self_intro = NULL,
+               preferences = NULL,
+               deleted_at = COALESCE(deleted_at, NOW()),
+               updated_at = NOW()
+         WHERE user_id = #{userId}
+    </update>
+
+    <update id="scrubUserProfileVersions">
+        UPDATE user_profile_version
+           SET desired_job = NULL,
+               desired_industry = NULL,
+               education = NULL,
+               career = NULL,
+               projects = NULL,
+               skills = NULL,
+               certificates = NULL,
+               languages = NULL,
+               portfolio_links = NULL,
+               resume_text = NULL,
+               self_intro = NULL,
+               preferences = NULL,
+               deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+    </update>
+
+    <update id="scrubProfileAiAnalyses">
+        UPDATE profile_ai_analysis
+           SET summary = NULL,
+               strengths = JSON_ARRAY(),
+               gaps = JSON_ARRAY(),
+               recommendations = JSON_ARRAY(),
+               extracted_skills = JSON_ARRAY(),
+               criteria = JSON_ARRAY(),
+               job_family = NULL,
+               completeness_score = NULL,
+               ai_score = NULL,
+               quality_warnings = JSON_ARRAY(),
+               status = 'DELETED',
+               deleted_at = COALESCE(deleted_at, NOW()),
+               updated_at = NOW()
+         WHERE user_id = #{userId}
+    </update>
+
+    <update id="scrubResumeDetail">
+        UPDATE user_resume_detail
+           SET education_json = NULL,
+               career_json = NULL,
+               certificate_json = NULL,
+               language_json = NULL,
+               award_json = NULL,
+               activity_json = NULL,
+               skill_json = NULL,
+               portfolio_json = NULL,
+               desired_condition_json = NULL,
+               deleted_at = COALESCE(deleted_at, NOW()),
+               updated_at = NOW()
+         WHERE user_id = #{userId}
+    </update>
+
+    <update id="scrubCorrectionRequests">
+        UPDATE correction_request
+           SET original_text = '',
+               improved_text = NULL,
+               result_json = NULL,
+               source_snapshot = NULL,
+               admin_memo = NULL,
+               status = 'DELETED',
+               deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+    </update>
+
+    <!-- 작성 이력의 FK는 그대로 두고 공개 표시 계층만 비활성·비식별화한다. -->
+    <update id="hideAndAnonymizeNicknameProfiles">
+        UPDATE user_nickname_profile
+           SET nickname = CONCAT('deleted-', LEFT(SHA2(CONCAT('careertuner-deleted-profile:', id), 256), 22)),
+               avatar_file_id = NULL,
+               bio = NULL,
+               is_default = 0,
+               status = 'HIDDEN'
+         WHERE user_id = #{userId}
+    </update>
+
+    <update id="anonymizeChatProfiles">
+        UPDATE user_chat_profile
+           SET nickname = '탈퇴한 사용자',
+               avatar_url = NULL,
+               description = NULL,
+               is_default = 0
+         WHERE user_id = #{userId}
+    </update>
+
+    <update id="clearConversationNicknameProfiles">
+        UPDATE conversation_member_profile
+           SET nickname_profile_id = NULL,
+               anonymous = 0,
+               updated_at = NOW()
+         WHERE user_id = #{userId}
+    </update>
+
+    <!-- 탈퇴 계정은 채팅 참여·알림 fan-out 대상에서 즉시 빠지되 메시지와 멤버 FK는 보존한다. -->
+    <update id="deactivateConversationMemberships">
+        UPDATE collaboration_conversation_member
+           SET status = 'LEFT',
+               room_nickname = NULL,
+               room_profile_file_id = NULL,
+               muted = 1,
+               left_at = COALESCE(left_at, NOW())
+         WHERE user_id = #{userId}
+           AND status = 'ACTIVE'
+    </update>
+
+    <update id="cancelPendingFriendRequests">
+        UPDATE collaboration_friend_request
+           SET status = 'CANCELED',
+               responded_at = COALESCE(responded_at, NOW()),
+               updated_at = NOW()
+         WHERE (requester_id = #{userId} OR receiver_id = #{userId})
+           AND status = 'PENDING'
+    </update>
+
+    <update id="cancelPendingConversationInvites">
+        UPDATE collaboration_conversation_invite
+           SET status = 'CANCELED',
+               responded_at = COALESCE(responded_at, NOW()),
+               updated_at = NOW()
+         WHERE (inviter_id = #{userId} OR invitee_id = #{userId})
+           AND status = 'PENDING'
+    </update>
+
+    <!-- 관계·개인 보관·알림 데이터는 탈퇴 뒤에도 FK/감사 이력을 보존하되 활성 조회에서는 제외한다. -->
+    <update id="softDeleteFriendships">
+        UPDATE collaboration_friendship
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE (user_id = #{userId} OR friend_user_id = #{userId})
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="softDeleteConversationGrants">
+        UPDATE collaboration_conversation_permission
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="softDeleteConversationInviteAllows">
+        UPDATE collaboration_conversation_invite_allow
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="softDeleteNotifications">
+        UPDATE notification
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="softDeleteCommunitySubscriptions">
+        UPDATE post_subscription
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="softDeleteCommentSubscriptions">
+        UPDATE comment_subscription
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="softDeletePostScraps">
+        UPDATE post_scrap
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="reconcilePostScrapCountsForUser">
+        UPDATE community_post post
+        JOIN (SELECT DISTINCT post_id FROM post_scrap WHERE user_id = #{userId} AND post_id IS NOT NULL) affected
+          ON affected.post_id = post.id
+           SET post.scrap_count = (
+               SELECT COUNT(*) FROM post_scrap scrap
+                WHERE scrap.post_id = post.id AND scrap.deleted_at IS NULL
+           )
+    </update>
+
+    <update id="softDeletePostReactions">
+        UPDATE post_reaction
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="reconcilePostReactionCountsForUser">
+        UPDATE community_post post
+        JOIN (SELECT DISTINCT post_id FROM post_reaction WHERE user_id = #{userId}) affected
+          ON affected.post_id = post.id
+           SET post.like_count = (SELECT COUNT(*) FROM post_reaction r WHERE r.post_id = post.id AND r.reaction_type = 'LIKE' AND r.deleted_at IS NULL),
+               post.dislike_count = (SELECT COUNT(*) FROM post_reaction r WHERE r.post_id = post.id AND r.reaction_type = 'DISLIKE' AND r.deleted_at IS NULL),
+               post.recommend_count = (SELECT COUNT(*) FROM post_reaction r WHERE r.post_id = post.id AND r.reaction_type = 'RECOMMEND' AND r.deleted_at IS NULL),
+               post.disrecommend_count = (SELECT COUNT(*) FROM post_reaction r WHERE r.post_id = post.id AND r.reaction_type = 'DISRECOMMEND' AND r.deleted_at IS NULL),
+               post.bookmark_count = (SELECT COUNT(*) FROM post_reaction r WHERE r.post_id = post.id AND r.reaction_type = 'BOOKMARK' AND r.deleted_at IS NULL)
+    </update>
+
+    <update id="softDeleteCommentReactions">
+        UPDATE comment_reaction
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
+
+    <update id="reconcileCommentReactionCountsForUser">
+        UPDATE community_comment comment
+        JOIN (SELECT DISTINCT comment_id FROM comment_reaction WHERE user_id = #{userId}) affected
+          ON affected.comment_id = comment.id
+           SET comment.like_count = (SELECT COUNT(*) FROM comment_reaction r WHERE r.comment_id = comment.id AND r.reaction_type = 'LIKE' AND r.deleted_at IS NULL),
+               comment.dislike_count = (SELECT COUNT(*) FROM comment_reaction r WHERE r.comment_id = comment.id AND r.reaction_type = 'DISLIKE' AND r.deleted_at IS NULL),
+               comment.recommend_count = (SELECT COUNT(*) FROM comment_reaction r WHERE r.comment_id = comment.id AND r.reaction_type = 'RECOMMEND' AND r.deleted_at IS NULL),
+               comment.disrecommend_count = (SELECT COUNT(*) FROM comment_reaction r WHERE r.comment_id = comment.id AND r.reaction_type = 'DISRECOMMEND' AND r.deleted_at IS NULL)
+    </update>
+
+    <delete id="deleteDesktopPresence">
+        DELETE FROM user_desktop_presence WHERE user_id = #{userId}
     </delete>
 
     <!-- ── 이력서 상세 스펙 ── -->
@@ -71,7 +359,7 @@
     </resultMap>
 
     <select id="findResumeDetail" resultMap="resumeDetailMap">
-        SELECT * FROM user_resume_detail WHERE user_id = #{userId}
+        SELECT * FROM user_resume_detail WHERE user_id = #{userId} AND deleted_at IS NULL
     </select>
 
     <insert id="upsertResumeDetail" parameterType="com.careertuner.user.domain.UserResumeDetail">
@@ -93,6 +381,7 @@
             skill_json = VALUES(skill_json),
             portfolio_json = VALUES(portfolio_json),
             desired_condition_json = VALUES(desired_condition_json),
+            deleted_at = NULL,
             updated_at = NOW()
     </insert>
 

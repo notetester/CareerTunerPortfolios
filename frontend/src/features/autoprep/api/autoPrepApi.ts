@@ -1,18 +1,20 @@
-import { api, createOutageMutationUncertainError } from "@/app/lib/api";
-import { apiBase } from "@/app/lib/apiBase";
+import { api, apiRaw, createOutageMutationUncertainError } from "@/app/lib/api";
 import {
   activateOutageFallbackIfConfirmed,
   isNetworkOutageError,
   isOutageFallbackActive,
   isOutageStatus,
 } from "@/app/lib/outageFallback";
-import { getAccessToken } from "@/app/lib/tokenStore";
 import type {
   AutoPrepIntakeResponse,
   AutoPrepRequest,
   PrepAttachedFile,
   PrepEvent,
 } from "../types/autoPrep";
+import {
+  discardPendingAutoPrepFiles,
+  trackPendingAutoPrepUpload,
+} from "@/app/lib/pendingAutoPrepFiles";
 
 // SSE 는 ApiResponse envelope 를 안 타므로 api() 래퍼를 못 쓴다 → fetch 직접 + 토큰 수동 첨부.
 // 베이스 URL 은 apiBase() 단일 소스를 사용한다(런타임 오버라이드 반영).
@@ -30,7 +32,8 @@ export function uploadAttachment(file: File) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("kind", "ATTACHMENT");
-  return api<PrepAttachedFile>("/file/upload", { method: "POST", body: fd });
+  fd.append("refType", "AUTO_PREP_PENDING");
+  return trackPendingAutoPrepUpload(api<PrepAttachedFile>("/file/upload", { method: "POST", body: fd }));
 }
 
 /** SSE 실행. plan/part-start/substep/part-done/done 이벤트를 on 콜백으로 흘려보낸다. */
@@ -41,21 +44,25 @@ export async function runStream(
 ): Promise<void> {
   if (isOutageFallbackActive()) {
     await runOutageDemoStream(req, on, signal);
+    if (req.attachmentFileIds?.length) {
+      await discardPendingAutoPrepFiles(req.attachmentFileIds);
+    }
     return;
   }
 
   try {
-    const token = getAccessToken();
-    const res = await fetch(`${apiBase()}/auto-prep/run/stream`, {
+    let completed = false;
+    const rawResponse = await apiRaw("/auto-prep/run/stream", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(req),
       signal,
     });
+    const res = rawResponse.response;
+    try {
     if (isOutageStatus(res.status) && await activateOutageFallbackIfConfirmed()) {
       throw createOutageMutationUncertainError();
     }
@@ -68,14 +75,29 @@ export async function runStream(
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
+      rawResponse.assertSessionCurrent();
       buffer += decoder.decode(value, { stream: true });
       let sep: number;
       while ((sep = buffer.indexOf("\n\n")) >= 0) {
-        const raw = buffer.slice(0, sep);
+        const rawEvent = buffer.slice(0, sep);
         buffer = buffer.slice(sep + 2);
-        const evt = parseEvent(raw);
-        if (evt) on(evt);
+        const evt = parseEvent(rawEvent);
+        if (evt) {
+          // 계정 전환과 같은 이벤트 루프에서 도착한 마지막 조각도 UI에 반영하지 않는다.
+          rawResponse.assertSessionCurrent();
+          on(evt);
+          if (evt.type === "done") completed = true;
+        }
       }
+    }
+    if (completed) {
+      // 첨부는 실행 입력으로만 쓰이며 산출물의 영속 참조가 아니다. 정상 완료 뒤 즉시 회수한다.
+      if (req.attachmentFileIds?.length) {
+        await discardPendingAutoPrepFiles(req.attachmentFileIds);
+      }
+    }
+    } finally {
+      rawResponse.dispose();
     }
   } catch (error) {
     if (isNetworkOutageError(error) && await activateOutageFallbackIfConfirmed()) {

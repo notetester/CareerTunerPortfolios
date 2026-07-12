@@ -85,6 +85,13 @@ class CareerTunerApplicationTests {
         mockMvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.openapi").exists());
+
+        mockMvc.perform(get("/api/auth/oauth/providers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.google").isBoolean())
+                .andExpect(jsonPath("$.data.kakao").isBoolean())
+                .andExpect(jsonPath("$.data.naver").isBoolean());
     }
 
     @Test

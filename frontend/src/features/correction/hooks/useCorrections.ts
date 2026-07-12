@@ -4,7 +4,8 @@ import {
   notifyAndAcknowledgeAiCharge,
   toastAiChargeCompleted,
 } from "@/features/billing/api/aiChargePreviewApi";
-import { createCorrection, getCorrection, listCorrections } from "../api/correctionApi";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
+import { createCorrection, deleteCorrection, getCorrection, listCorrections } from "../api/correctionApi";
 import type {
   CorrectionResponse,
   CorrectionSubmitRequest,
@@ -27,6 +28,7 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [detailLoadingId, setDetailLoadingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const historyRequestId = useRef(0);
@@ -70,7 +72,7 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
     void loadHistory();
   }, [loadHistory]);
 
-  const submit = useCallback(async (request: CorrectionSubmitRequest) => {
+  const submit = useCallback(async (request: CorrectionSubmitRequest, model: AiModelChoice = "AUTO") => {
     if (submittingRef.current) return null;
     const requestId = ++submitRequestId.current;
     const requestScope = scopeKeyRef.current;
@@ -86,7 +88,7 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
         ...request,
         policyAcknowledgementKey: acknowledged.policyAcknowledgementKey,
         requestKey,
-      });
+      }, model);
       clearPendingRequest(requestScope, requestKey);
       if (!result.replayed) {
         toastAiChargeCompleted(acknowledged.preview, result);
@@ -129,16 +131,35 @@ export function useCorrections(correctionType: CorrectionType, applicationCaseId
     }
   }, []);
 
+  const remove = useCallback(async (id: number) => {
+    if (deletingId !== null) return false;
+    setDeletingId(id);
+    setSubmitError(null);
+    try {
+      await deleteCorrection(id);
+      setHistory((current) => current.filter((item) => item.id !== id));
+      setSelected((current) => current?.id === id ? null : current);
+      return true;
+    } catch (error) {
+      setSubmitError(errorMessage(error, "첨삭 기록을 삭제하지 못했습니다."));
+      return false;
+    } finally {
+      setDeletingId(null);
+    }
+  }, [deletingId]);
+
   return {
     history,
     selected,
     historyLoading,
     historyError,
     detailLoadingId,
+    deletingId,
     submitting,
     submitError,
     loadHistory,
     selectHistory,
+    remove,
     submit,
   };
 }

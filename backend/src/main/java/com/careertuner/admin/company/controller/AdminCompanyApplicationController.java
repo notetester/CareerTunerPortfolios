@@ -24,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 /** 기업 신청 승인/반려 콘솔 API. */
 @RestController
 @RequestMapping("/api/admin/company/applications")
-@RequireAdminPermission({"MEMBER_ADMIN"})
+@RequireAdminPermission({"USER_READ"})
 @RequiredArgsConstructor
 public class AdminCompanyApplicationController {
 
@@ -39,6 +39,7 @@ public class AdminCompanyApplicationController {
     }
 
     @PostMapping("/{id}/approve")
+    @RequireAdminPermission({"USER_UPDATE"})
     public ApiResponse<CompanyApplicationResponse> approve(@AuthenticationPrincipal AuthUser authUser,
                                                            @PathVariable Long id) {
         AdminAccess.requireAdmin(authUser);
@@ -46,6 +47,7 @@ public class AdminCompanyApplicationController {
     }
 
     @PostMapping("/{id}/reject")
+    @RequireAdminPermission({"USER_UPDATE"})
     public ApiResponse<CompanyApplicationResponse> reject(@AuthenticationPrincipal AuthUser authUser,
                                                           @PathVariable Long id,
                                                           @RequestBody AdminRejectRequest request) {

@@ -28,7 +28,7 @@ import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/admin/application-cases")
-@RequireAdminPermission({"USER_READ", "ANALYSIS_READ", "MEMBER_ADMIN", "AI_ADMIN"})
+@RequireAdminPermission({"USER_READ"})
 @RequiredArgsConstructor
 public class AdminApplicationCaseController {
 
@@ -105,7 +105,7 @@ public class AdminApplicationCaseController {
     }
 
     @PatchMapping("/{id}/status")
-    @RequireAdminPermission({"USER_STATUS_WRITE", "AI_OPERATION_MANAGE", "MEMBER_ADMIN", "AI_ADMIN"})
+    @RequireAdminPermission({"USER_UPDATE"})
     public ApiResponse<AdminApplicationCaseRow> updateStatus(@AuthenticationPrincipal AuthUser authUser,
                                                              @PathVariable Long id,
                                                              @Valid @RequestBody AdminStatusUpdateRequest request) {

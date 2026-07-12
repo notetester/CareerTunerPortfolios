@@ -33,7 +33,9 @@
                r.top_similarity AS similarity,
                r.handoff        AS handoff
           FROM chatbot_response_log r
-          LEFT JOIN faq f ON f.id = r.matched_faq_id
+          LEFT JOIN faq f
+            ON f.id = r.matched_faq_id
+           AND f.deleted_at IS NULL
          WHERE r.faq_referenced = 1
            AND r.created_at &gt;= #{from}
            AND r.created_at &lt; #{toExclusive}

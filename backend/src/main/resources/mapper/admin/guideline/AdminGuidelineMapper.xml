@@ -22,16 +22,18 @@
 
   <select id="findAll" resultMap="guidelineResult">
     SELECT * FROM community_guideline
+    WHERE deleted_at IS NULL
     ORDER BY created_at DESC
   </select>
 
   <select id="findById" resultMap="guidelineResult">
-    SELECT * FROM community_guideline WHERE id = #{id}
+    SELECT * FROM community_guideline WHERE id = #{id} AND deleted_at IS NULL
   </select>
 
   <select id="findPublished" resultMap="guidelineResult">
     SELECT * FROM community_guideline
     WHERE status = 'PUBLISHED'
+      AND deleted_at IS NULL
     ORDER BY published_at DESC
     LIMIT 1
   </select>
@@ -64,11 +66,16 @@
       scheduled_at = #{scheduledAt}
       <if test="setPublishedAt">, published_at = NOW()</if>
     WHERE id = #{id}
+      AND deleted_at IS NULL
   </update>
 
-  <delete id="delete">
-    DELETE FROM community_guideline WHERE id = #{id}
-  </delete>
+  <update id="delete">
+    UPDATE community_guideline
+       SET deleted_at = COALESCE(deleted_at, NOW()),
+           status = 'DELETED'
+     WHERE id = #{id}
+       AND deleted_at IS NULL
+  </update>
 
   <select id="lastInsertId" resultType="java.lang.Long">
     SELECT LAST_INSERT_ID()

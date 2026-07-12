@@ -12,6 +12,11 @@ CommunityClient::CommunityClient(ApiClient* api, QObject* parent)
 
 void CommunityClient::clear()
 {
+    ++m_postsRequestGeneration;
+    ++m_detailRequestGeneration;
+    m_postsLoading = false;
+    m_mutationLoading = false;
+    m_detailPendingRequests = 0;
     m_posts.clear();
     m_comments.clear();
     m_currentPost.clear();
@@ -20,6 +25,7 @@ void CommunityClient::clear()
     m_page = 0;
     m_total = 0;
     m_currentPostId = -1;
+    updateLoading();
     emit postsChanged();
     emit filterChanged();
     emit currentPostChanged();
@@ -42,11 +48,22 @@ void CommunityClient::loadPosts(const QString& category, const QString& keyword,
         path += QStringLiteral("&keyword=%1")
                     .arg(QString::fromUtf8(QUrl::toPercentEncoding(m_keyword)));
 
-    setLoading(true);
+    m_postsLoading = true;
+    updateLoading();
+    const quint64 requestGeneration = ++m_postsRequestGeneration;
+    const QString requestedCategory = m_category;
+    const QString requestedKeyword = m_keyword;
     const int requestedPage = m_page;
-    m_api->get(path, [this, requestedPage](bool ok, const QJsonValue& data, const QString& message) {
-        setLoading(false);
-        if (requestedPage != m_page) return; // 필터가 바뀐 뒤 도착한 늦은 응답은 무시
+    m_api->get(path, [this, requestGeneration, requestedCategory, requestedKeyword, requestedPage]
+        (bool ok, const QJsonValue& data, const QString& message) {
+        if (requestGeneration != m_postsRequestGeneration
+            || requestedCategory != m_category
+            || requestedKeyword != m_keyword
+            || requestedPage != m_page) {
+            return; // 필터/검색어/page가 바뀐 뒤 도착한 늦은 응답은 상태를 건드리지 않는다
+        }
+        m_postsLoading = false;
+        updateLoading();
         if (!ok) {
             emit errorOccurred(message.isEmpty() ? QStringLiteral("게시글을 불러오지 못했습니다") : message);
             return;
@@ -78,11 +95,13 @@ void CommunityClient::openPost(qint64 postId)
     emit currentPostChanged();
     emit commentsChanged();
 
-    setLoading(true);
+    const quint64 detailGeneration = ++m_detailRequestGeneration;
+    m_detailPendingRequests = 2;
+    updateLoading();
     m_api->get(QStringLiteral("/api/community/posts/%1").arg(postId),
-        [this, postId](bool ok, const QJsonValue& data, const QString& message) {
-            setLoading(false);
-            if (postId != m_currentPostId) return;
+        [this, postId, detailGeneration](bool ok, const QJsonValue& data, const QString& message) {
+            if (detailGeneration != m_detailRequestGeneration || postId != m_currentPostId) return;
+            finishDetailRequest(detailGeneration, postId);
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("게시글을 불러오지 못했습니다") : message);
                 return;
@@ -95,6 +114,9 @@ void CommunityClient::openPost(qint64 postId)
 
 void CommunityClient::closePost()
 {
+    ++m_detailRequestGeneration;
+    m_detailPendingRequests = 0;
+    updateLoading();
     m_currentPostId = -1;
     m_currentPost.clear();
     m_comments.clear();
@@ -189,10 +211,12 @@ void CommunityClient::createPost(const QString& category, const QString& title,
     body["anonymous"] = anonymous;
     body["tags"] = QJsonArray();
 
-    setLoading(true);
+    m_mutationLoading = true;
+    updateLoading();
     m_api->post(QStringLiteral("/api/community/posts"), body,
         [this](bool ok, const QJsonValue& data, const QString& message) {
-            setLoading(false);
+            m_mutationLoading = false;
+            updateLoading();
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("글을 등록하지 못했습니다") : message);
                 return;
@@ -212,11 +236,25 @@ void CommunityClient::setLoading(bool loading)
     emit loadingChanged();
 }
 
+void CommunityClient::updateLoading()
+{
+    setLoading(m_postsLoading || m_mutationLoading || m_detailPendingRequests > 0);
+}
+
+void CommunityClient::finishDetailRequest(quint64 generation, qint64 postId)
+{
+    if (generation != m_detailRequestGeneration || postId != m_currentPostId) return;
+    if (m_detailPendingRequests > 0) --m_detailPendingRequests;
+    updateLoading();
+}
+
 void CommunityClient::loadComments(qint64 postId)
 {
+    const quint64 detailGeneration = m_detailRequestGeneration;
     m_api->get(QStringLiteral("/api/community/posts/%1/comments").arg(postId),
-        [this, postId](bool ok, const QJsonValue& data, const QString& message) {
-            if (postId != m_currentPostId) return;
+        [this, postId, detailGeneration](bool ok, const QJsonValue& data, const QString& message) {
+            if (detailGeneration != m_detailRequestGeneration || postId != m_currentPostId) return;
+            finishDetailRequest(detailGeneration, postId);
             if (!ok) {
                 emit errorOccurred(message.isEmpty() ? QStringLiteral("댓글을 불러오지 못했습니다") : message);
                 return;

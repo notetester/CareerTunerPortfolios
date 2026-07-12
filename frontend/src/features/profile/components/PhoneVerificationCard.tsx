@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ConfirmationResult } from "firebase/auth";
 import { CheckCircle2, Loader2, Phone, ShieldCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import {
+  getPhoneAuthConfig,
   getPhoneStatus,
   requestPhoneOtp,
+  verifyPhoneFirebase,
   verifyPhoneOtp,
+  type PhoneAuthConfig,
   type PhoneStatus,
 } from "../api/phoneVerificationApi";
+import {
+  firebaseAuthErrorMessage,
+  resetFirebaseRecaptcha,
+  sendFirebaseOtp,
+  toE164Kr,
+} from "../lib/firebasePhoneAuth";
+
+// invisible reCAPTCHA 를 붙일 컨테이너 id.
+const RECAPTCHA_CONTAINER_ID = "ct-phone-recaptcha";
 
 /**
  * 전화번호 SMS OTP 인증 카드.
@@ -21,6 +34,8 @@ import {
 export function PhoneVerificationCard() {
   const [status, setStatus] = useState<PhoneStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
+  const [authConfig, setAuthConfig] = useState<PhoneAuthConfig | null>(null);
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
 
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -47,6 +62,12 @@ export function PhoneVerificationCard() {
       // 상태 조회 실패는 치명적이지 않다 — 인증 흐름 자체는 계속 시도할 수 있게 둔다.
     } finally {
       setLoadingStatus(false);
+    }
+    try {
+      // 인증 흐름(firebase | otp) 판정. 실패 시 기존 OTP 흐름으로 취급한다.
+      setAuthConfig(await getPhoneAuthConfig());
+    } catch {
+      setAuthConfig({ provider: "otp", firebase: null });
     }
     // phone 은 초기값 채움 용도이므로 의존성에서 제외한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,7 +99,76 @@ export function PhoneVerificationCard() {
     };
   }, [cooldown]);
 
+  const isFirebase = authConfig?.provider === "firebase" && authConfig.firebase != null;
+
+  // ── Firebase 흐름: 발송·코드검증을 프런트 SDK 가 수행, ID 토큰만 백엔드 검증 ──
+
+  const handleRequestFirebase = async () => {
+    const value = phone.trim();
+    if (!value || !authConfig?.firebase) {
+      setError("전화번호를 입력해 주세요.");
+      return;
+    }
+    setRequesting(true);
+    setError(null);
+    setMessage(null);
+    setDevCode(null);
+    try {
+      resetFirebaseRecaptcha(RECAPTCHA_CONTAINER_ID);
+      const confirmation = await sendFirebaseOtp(
+        authConfig.firebase,
+        toE164Kr(value),
+        RECAPTCHA_CONTAINER_ID,
+      );
+      confirmationRef.current = confirmation;
+      setCodeSent(true);
+      setProvider("firebase");
+      setRealSending(true);
+      // 재발송 쿨다운은 Firebase 가 서버측에서 관리한다 — 프런트 카운트다운은 두지 않는다.
+      setMessage("인증번호를 문자로 발송했습니다. 문자를 확인해 주세요.");
+    } catch (e) {
+      resetFirebaseRecaptcha(RECAPTCHA_CONTAINER_ID);
+      setError(firebaseAuthErrorMessage(e));
+    } finally {
+      setRequesting(false);
+    }
+  };
+
+  const handleVerifyFirebase = async () => {
+    const value = code.trim();
+    const confirmation = confirmationRef.current;
+    if (!value) {
+      setError("인증번호를 입력해 주세요.");
+      return;
+    }
+    if (!confirmation) {
+      setError("먼저 인증번호를 요청해 주세요.");
+      return;
+    }
+    setVerifying(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const credential = await confirmation.confirm(value);
+      const idToken = await credential.user.getIdToken();
+      const result = await verifyPhoneFirebase(idToken);
+      if (result.verified) {
+        setStatus({ phone: result.phone, phoneVerified: true });
+        setCodeSent(false);
+        setCode("");
+        confirmationRef.current = null;
+        resetFirebaseRecaptcha(RECAPTCHA_CONTAINER_ID);
+        setMessage("전화번호 인증이 완료되었습니다.");
+      }
+    } catch (e) {
+      setError(firebaseAuthErrorMessage(e));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleRequest = async () => {
+    if (isFirebase) return handleRequestFirebase();
     const value = phone.trim();
     if (!value) {
       setError("전화번호를 입력해 주세요.");
@@ -110,6 +200,7 @@ export function PhoneVerificationCard() {
   };
 
   const handleVerify = async () => {
+    if (isFirebase) return handleVerifyFirebase();
     const value = code.trim();
     if (!value) {
       setError("인증번호를 입력해 주세요.");
@@ -146,6 +237,8 @@ export function PhoneVerificationCard() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
+        {/* Firebase invisible reCAPTCHA 앵커 — 화면에 보이지 않지만 발송 시점에 DOM 에 있어야 한다. */}
+        {isFirebase && <div id={RECAPTCHA_CONTAINER_ID} />}
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
         )}
@@ -243,9 +336,10 @@ export function PhoneVerificationCard() {
                     maxLength={6}
                     disabled={verifying}
                   />
+                  {/* 테마가 green 팔레트를 회색조로 재매핑해 활성 버튼이 비활성처럼 보였다 — 발송 버튼과 같은 blue 로 통일 */}
                   <Button
                     size="sm"
-                    className="bg-green-600 text-white hover:bg-green-700"
+                    className="bg-blue-600 text-white hover:bg-blue-700"
                     onClick={() => void handleVerify()}
                     disabled={verifying || code.trim().length === 0}
                   >
@@ -263,7 +357,9 @@ export function PhoneVerificationCard() {
             )}
 
             <p className="text-xs text-slate-400">
-              실제 SMS 제공자 키가 설정되면 실 문자로 발송되고, 키가 없으면 데모 모드로 화면에 인증번호가 표시됩니다.
+              {isFirebase
+                ? "입력하신 번호로 실제 인증 문자가 발송됩니다. 수신한 6자리 인증번호를 입력해 주세요."
+                : "실제 SMS 제공자 키가 설정되면 실 문자로 발송되고, 키가 없으면 데모 모드로 화면에 인증번호가 표시됩니다."}
             </p>
           </>
         )}

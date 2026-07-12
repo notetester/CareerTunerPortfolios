@@ -24,13 +24,13 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 관리자 광고 관리 콘솔. 세부 권한: 콘텐츠 관리(CONTENT_MANAGE) 또는 대표 권한(CONTENT_ADMIN).
+ * 관리자 광고 관리 콘솔. 콘텐츠 CRUD 권한을 행위별로 집행한다.
  * 노출/클릭 통계는 응답 DTO 의 impressionCount/clickCount/ctr 로 함께 제공한다.
  */
 @RestController
 @RequestMapping("/api/admin/ads")
 @RequiredArgsConstructor
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 public class AdminAdController {
 
     private final AdminAdService adminAdService;
@@ -51,12 +51,14 @@ public class AdminAdController {
     }
 
     @PostMapping
+    @RequireAdminPermission({"CONTENT_CREATE"})
     public ApiResponse<AdminAdResponse> create(@AuthenticationPrincipal AuthUser authUser,
                                                @Valid @RequestBody AdminAdRequest request) {
         return ApiResponse.ok(adminAdService.create(authUser, request));
     }
 
     @PutMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminAdResponse> update(@AuthenticationPrincipal AuthUser authUser,
                                                @PathVariable Long id,
                                                @Valid @RequestBody AdminAdRequest request) {
@@ -64,6 +66,7 @@ public class AdminAdController {
     }
 
     @PostMapping("/{id}/toggle-active")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminAdResponse> toggleActive(@AuthenticationPrincipal AuthUser authUser,
                                                      @PathVariable Long id,
                                                      @RequestParam boolean active) {
@@ -71,6 +74,7 @@ public class AdminAdController {
     }
 
     @DeleteMapping("/{id}")
+    @RequireAdminPermission({"CONTENT_DELETE"})
     public ApiResponse<Void> delete(@AuthenticationPrincipal AuthUser authUser,
                                     @PathVariable Long id) {
         adminAdService.delete(authUser, id);

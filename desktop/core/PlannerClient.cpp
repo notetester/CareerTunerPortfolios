@@ -3,6 +3,7 @@
 #include "SettingsStore.h"
 
 #include <QDateTime>
+#include <QCryptographicHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSettings>
@@ -28,6 +29,16 @@ PlannerClient::PlannerClient(ApiClient* api, QObject* parent)
 {
     m_timer.setInterval(60 * 1000);
     connect(&m_timer, &QTimer::timeout, this, &PlannerClient::refreshNow);
+}
+
+void PlannerClient::setAccountScope(const QString& accountScope)
+{
+    const QString normalized = accountScope.trimmed().toCaseFolded();
+    if (normalized == m_accountScope) return;
+    if (!m_accountScope.isEmpty()) storeFiredReminderIds();
+    ++m_refreshGeneration;
+    m_accountScope = normalized;
+    m_firedReminderIds.clear();
     loadFiredReminderIds();
 }
 
@@ -41,6 +52,7 @@ void PlannerClient::start()
 
 void PlannerClient::stop()
 {
+    ++m_refreshGeneration;
     m_timer.stop();
     setActive(false);
     m_items.clear();
@@ -51,7 +63,10 @@ void PlannerClient::stop()
 void PlannerClient::refreshNow()
 {
     if (!m_api || !m_active) return;
-    m_api->get(dashboardRangePath(), [this](bool ok, const QJsonValue& data, const QString& message) {
+    const quint64 generation = ++m_refreshGeneration;
+    const QString accountScope = m_accountScope;
+    m_api->get(dashboardRangePath(), [this, generation, accountScope](bool ok, const QJsonValue& data, const QString& message) {
+        if (!m_active || generation != m_refreshGeneration || accountScope != m_accountScope) return;
         if (!ok) {
             setStatusText(message.isEmpty() ? QStringLiteral("플래너를 불러오지 못했습니다") : message);
             return;
@@ -76,8 +91,9 @@ void PlannerClient::setStatusText(const QString& text)
 
 void PlannerClient::loadFiredReminderIds()
 {
+    if (m_accountScope.isEmpty()) return;
     auto settings = SettingsStore::createSettings();
-    const QStringList raw = settings->value(QStringLiteral("planner/firedReminderIds")).toStringList();
+    const QStringList raw = settings->value(firedReminderSettingsKey()).toStringList();
     for (const QString& value : raw) {
         bool ok = false;
         const qint64 id = value.toLongLong(&ok);
@@ -87,6 +103,7 @@ void PlannerClient::loadFiredReminderIds()
 
 void PlannerClient::storeFiredReminderIds() const
 {
+    if (m_accountScope.isEmpty()) return;
     QStringList raw;
     int count = 0;
     for (qint64 id : m_firedReminderIds) {
@@ -94,7 +111,15 @@ void PlannerClient::storeFiredReminderIds() const
         if (++count >= 200) break;
     }
     auto settings = SettingsStore::createSettings();
-    settings->setValue(QStringLiteral("planner/firedReminderIds"), raw);
+    settings->setValue(firedReminderSettingsKey(), raw);
+}
+
+QString PlannerClient::firedReminderSettingsKey() const
+{
+    const QByteArray digest = QCryptographicHash::hash(
+        m_accountScope.toUtf8(), QCryptographicHash::Sha256).toHex().left(24);
+    return QStringLiteral("planner/accounts/%1/firedReminderIds")
+        .arg(QString::fromLatin1(digest));
 }
 
 void PlannerClient::applyDashboard(const QJsonObject& dashboard)

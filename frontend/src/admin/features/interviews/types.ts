@@ -21,6 +21,8 @@ export interface AdminInterviewSessionRow {
   answeredCount: number;
   /** interview_session.report 존재 여부 — 리포트 운영 화면 필터/뱃지용. */
   hasReport: boolean | null;
+  /** 질문 생성에 사용한 A/B/C 원천 provenance JSON. */
+  sourceSnapshot: string | null;
   adminMemo: string | null;
 }
 

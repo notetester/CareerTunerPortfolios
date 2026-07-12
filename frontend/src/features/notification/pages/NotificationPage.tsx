@@ -11,7 +11,7 @@ const PAGE_SIZE = 6;
 
 export default function NotificationPage() {
   const {
-    notifications, unreadCount, loading, error,
+    accountId, notifications, unreadCount, loading, error,
     filter, setFilter, filtered,
     fetchNotifications, markAsRead, markAllAsRead,
     deleteNotification, deleteAll,
@@ -20,8 +20,8 @@ export default function NotificationPage() {
   const [limit, setLimit] = useState(PAGE_SIZE);
 
   useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+    if (accountId != null) void fetchNotifications();
+  }, [accountId, fetchNotifications]);
 
   const list = filtered();
   const shown = list.slice(0, limit);

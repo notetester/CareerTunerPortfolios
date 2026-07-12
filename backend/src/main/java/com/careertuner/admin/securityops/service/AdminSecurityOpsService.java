@@ -261,7 +261,7 @@ public class AdminSecurityOpsService {
 
     @Transactional(readOnly = true)
     public SecurityAppealPolicyRow appealPolicy(AuthUser authUser) {
-        AdminAccess.requireSuperAdmin(authUser);
+        AdminAccess.requireAdmin(authUser);
         SecurityAppealPolicyRow policy = mapper.findAppealPolicy();
         if (policy == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "이의제기 정책을 찾을 수 없습니다.");
@@ -271,7 +271,7 @@ public class AdminSecurityOpsService {
 
     @Transactional
     public SecurityAppealPolicyRow updateAppealPolicy(AuthUser authUser, SecurityAppealPolicyRequest request) {
-        AdminAccess.requireSuperAdmin(authUser);
+        AdminAccess.requireAdmin(authUser);
         SecurityAppealPolicyRow before = appealPolicy(authUser);
         mapper.updateAppealPolicy(defaultString(request.displayName(), before.displayName()),
                 request.enabled() == null ? before.enabled() : request.enabled(),

@@ -63,9 +63,18 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
   const contentRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    fetchPostDetail(postId);
-    fetchComments(postId);
-    communityApi.getAiTags(postId).then(setAiTags);
+    let cancelled = false;
+    setAiTags(null);
+    void fetchPostDetail(postId);
+    void fetchComments(postId);
+    void communityApi.getAiTags(postId).then((tags) => {
+      if (!cancelled) setAiTags(tags);
+    }).catch(() => {
+      if (!cancelled) setAiTags(null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [postId, fetchPostDetail, fetchComments]);
 
   // AI 이미지 검열에서 블러 대상으로 판정된 본문 이미지만 블러 + 사유 + 클릭하여 보기.
@@ -180,7 +189,7 @@ export function PostDetailView({ postId, onBack, onEdit }: PostDetailViewProps) 
     );
   }
 
-  if (!d) {
+  if (!d || d.id !== postId) {
     // 404 는 삭제·숨김·없는 글을 구분하지 않는다(백엔드가 모두 NOT_FOUND). 오래된 알림 링크가 주로 여기로 온다.
     return (
       <div className="cv-page">

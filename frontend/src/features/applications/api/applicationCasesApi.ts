@@ -20,6 +20,17 @@ export interface CreateApplicationCaseFromJobPostingRequest {
   extractedText?: string | null;
   sourceType?: ApplicationSourceType;
   favorite?: boolean;
+  // 등록 시 사용자가 고른 초기 분석 provider(생략=기본 자동 체인). JSON 등록(TEXT/URL)은 OCR 이 없어 분석만 고른다.
+  jobAnalysisProvider?: string | null;
+  companyAnalysisProvider?: string | null;
+}
+
+/** 파일 업로드 등록의 초기 모델 선택(OCR + 공고·기업 분석). 생략된 값은 백엔드 기본 체인을 쓴다. */
+export interface UploadApplicationCaseModelSelection {
+  favorite?: boolean;
+  ocrProvider?: string | null;
+  jobAnalysisProvider?: string | null;
+  companyAnalysisProvider?: string | null;
 }
 
 export interface CreateApplicationCaseFromJobPostingResponse {
@@ -51,6 +62,12 @@ export function getApplicationCase(id: number): Promise<ApplicationCase> {
   return api<ApplicationCase>(`/application-cases/${id}`, { method: "GET" });
 }
 
+/** 현재 공고 업로드 한도(관리자 설정 반영) 바이트. 사용자 사전 검증·표기를 서버 값에 맞추는 데 쓴다. */
+export async function getJobPostingUploadLimit(): Promise<number> {
+  const result = await api<{ maxBytes: number }>("/application-cases/upload-limit", { method: "GET" });
+  return result.maxBytes;
+}
+
 export function createApplicationCase(request: CreateApplicationCaseRequest): Promise<ApplicationCase> {
   return api<ApplicationCase>("/application-cases", {
     method: "POST",
@@ -70,12 +87,22 @@ export function createApplicationCaseFromJobPosting(
 export function uploadApplicationCaseFromJobPosting(
   file: File,
   sourceType: Extract<ApplicationSourceType, "PDF" | "IMAGE">,
-  favorite = false,
+  selection: UploadApplicationCaseModelSelection = {},
 ): Promise<CreateApplicationCaseFromJobPostingResponse> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("sourceType", sourceType);
-  formData.append("favorite", String(favorite));
+  formData.append("favorite", String(selection.favorite ?? false));
+  // 선택값만 전송한다 — 생략하면 백엔드가 OCR/분석 모두 기본 자동 체인을 쓴다.
+  if (selection.ocrProvider) {
+    formData.append("ocrProvider", selection.ocrProvider);
+  }
+  if (selection.jobAnalysisProvider) {
+    formData.append("jobAnalysisProvider", selection.jobAnalysisProvider);
+  }
+  if (selection.companyAnalysisProvider) {
+    formData.append("companyAnalysisProvider", selection.companyAnalysisProvider);
+  }
 
   return api<CreateApplicationCaseFromJobPostingResponse>("/application-cases/from-job-posting/upload", {
     method: "POST",

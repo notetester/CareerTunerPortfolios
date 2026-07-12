@@ -19,8 +19,9 @@
                    WHEN EXISTS (
                        SELECT 1
                          FROM collaboration_friendship f
-                        WHERE f.user_id = #{viewerId}
-                          AND f.friend_user_id = u.id
+                         WHERE f.user_id = #{viewerId}
+                           AND f.friend_user_id = u.id
+                           AND f.deleted_at IS NULL
                    ) THEN 'FRIEND'
                    WHEN EXISTS (
                        SELECT 1
@@ -54,25 +55,29 @@
           FROM collaboration_friendship
          WHERE user_id = #{userId}
            AND friend_user_id = #{friendUserId}
+           AND deleted_at IS NULL
     </select>
 
     <select id="findFriends" resultType="com.careertuner.collaboration.domain.FriendRow">
         SELECT f.friend_user_id AS user_id,
                u.name,
                u.email,
+               u.status AS user_status,
                f.created_at
           FROM collaboration_friendship f
           JOIN users u ON u.id = f.friend_user_id
          WHERE f.user_id = #{userId}
+           AND f.deleted_at IS NULL
            AND u.status = 'ACTIVE'
          ORDER BY u.name ASC, f.created_at DESC
     </select>
 
-    <delete id="deleteFriendshipBoth">
-        DELETE FROM collaboration_friendship
+    <update id="deleteFriendshipBoth">
+        UPDATE collaboration_friendship
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE (user_id = #{userId} AND friend_user_id = #{friendUserId})
             OR (user_id = #{friendUserId} AND friend_user_id = #{userId})
-    </delete>
+    </update>
 
     <select id="findPendingRequest" resultType="com.careertuner.collaboration.domain.FriendRequest">
         SELECT *
@@ -98,9 +103,11 @@
                rq.id AS requester_id,
                rq.name AS requester_name,
                rq.email AS requester_email,
+               rq.status AS requester_status,
                rc.id AS receiver_id,
                rc.name AS receiver_name,
-               rc.email AS receiver_email
+               rc.email AS receiver_email,
+               rc.status AS receiver_status
           FROM collaboration_friend_request r
           JOIN users rq ON rq.id = r.requester_id
           JOIN users rc ON rc.id = r.receiver_id
@@ -115,9 +122,11 @@
                rq.id AS requester_id,
                rq.name AS requester_name,
                rq.email AS requester_email,
+               rq.status AS requester_status,
                rc.id AS receiver_id,
                rc.name AS receiver_name,
-               rc.email AS receiver_email
+               rc.email AS receiver_email,
+               rc.status AS receiver_status
           FROM collaboration_friend_request r
           JOIN users rq ON rq.id = r.requester_id
           JOIN users rc ON rc.id = r.receiver_id
@@ -134,9 +143,11 @@
                rq.id AS requester_id,
                rq.name AS requester_name,
                rq.email AS requester_email,
+               rq.status AS requester_status,
                rc.id AS receiver_id,
                rc.name AS receiver_name,
-               rc.email AS receiver_email
+               rc.email AS receiver_email,
+               rc.status AS receiver_status
           FROM collaboration_friend_request r
           JOIN users rq ON rq.id = r.requester_id
           JOIN users rc ON rc.id = r.receiver_id
@@ -159,8 +170,11 @@
     </update>
 
     <insert id="insertFriendship">
-        INSERT IGNORE INTO collaboration_friendship (user_id, friend_user_id, created_by)
+        INSERT INTO collaboration_friendship (user_id, friend_user_id, created_by)
         VALUES (#{userId}, #{friendUserId}, #{createdBy})
+        ON DUPLICATE KEY UPDATE
+            created_by = VALUES(created_by),
+            deleted_at = NULL
     </insert>
 
     <select id="findDirectConversation" resultType="long">
@@ -242,6 +256,7 @@
           FROM collaboration_conversation_member
          WHERE conversation_id = #{conversationId}
            AND user_id = #{userId}
+           AND deleted_at IS NULL
            AND status = 'ACTIVE'
     </select>
 
@@ -291,6 +306,7 @@
         peer.user_id AS peer_user_id,
         peer_user.name AS peer_name,
         peer_user.email AS peer_email,
+        peer_user.status AS peer_status,
         c.updated_at,
         lm.id AS latest_message_id,
         lm.kind AS latest_kind,
@@ -376,6 +392,7 @@
         SELECT m.*,
                u.name AS sender_name,
                u.email AS sender_email,
+               u.status AS sender_status,
                cm.anonymous AS sender_anonymous,
                cm.room_nickname AS sender_room_nickname,
                cmp.nickname_profile_id AS sender_nickname_profile_id
@@ -394,6 +411,7 @@
               SELECT m.*,
                      u.name AS sender_name,
                      u.email AS sender_email,
+                     u.status AS sender_status,
                      cm.anonymous AS sender_anonymous,
                      cm.room_nickname AS sender_room_nickname,
                      cmp.nickname_profile_id AS sender_nickname_profile_id
@@ -630,19 +648,23 @@
             can_invite = VALUES(can_invite),
             can_edit_room = VALUES(can_edit_room),
             can_manage_members = VALUES(can_manage_members),
-            granted_by = VALUES(granted_by)
+            granted_by = VALUES(granted_by),
+            deleted_at = NULL
     </insert>
 
-    <delete id="deletePermission">
-        DELETE FROM collaboration_conversation_permission
+    <update id="deletePermission">
+        UPDATE collaboration_conversation_permission
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE conversation_id = #{conversationId}
            AND user_id = #{userId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <sql id="memberDetailColumns">
         cm.user_id,
         u.name,
         u.email,
+        u.status AS user_status,
         cm.role,
         cm.status,
         cm.anonymous,
@@ -663,9 +685,11 @@
         LEFT JOIN collaboration_conversation_permission p
           ON p.conversation_id = cm.conversation_id
          AND p.user_id = cm.user_id
+         AND p.deleted_at IS NULL
         LEFT JOIN collaboration_conversation_ban b
           ON b.conversation_id = cm.conversation_id
          AND b.user_id = cm.user_id
+         AND b.deleted_at IS NULL
     </sql>
 
     <select id="findMemberDetails" resultType="com.careertuner.collaboration.domain.ConversationMemberDetailRow">
@@ -693,6 +717,8 @@
           FROM collaboration_conversation_ban
          WHERE conversation_id = #{conversationId}
            AND user_id = #{userId}
+           AND deleted_at IS NULL
+           AND deleted_at IS NULL
     </select>
 
     <insert id="insertBan">
@@ -700,25 +726,30 @@
         VALUES (#{conversationId}, #{userId}, #{bannedBy}, #{reason})
         ON DUPLICATE KEY UPDATE
             banned_by = VALUES(banned_by),
-            reason = VALUES(reason)
+            reason = VALUES(reason),
+            deleted_at = NULL
     </insert>
 
-    <delete id="deleteBan">
-        DELETE FROM collaboration_conversation_ban
+    <update id="deleteBan">
+        UPDATE collaboration_conversation_ban
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE conversation_id = #{conversationId}
            AND user_id = #{userId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <select id="findBans" resultType="com.careertuner.collaboration.domain.ConversationBanRow">
         SELECT b.user_id,
                u.name,
                u.email,
+               u.status AS user_status,
                b.banned_by,
                b.reason,
                b.created_at
           FROM collaboration_conversation_ban b
-          JOIN users u ON u.id = b.user_id
+         JOIN users u ON u.id = b.user_id
          WHERE b.conversation_id = #{conversationId}
+           AND b.deleted_at IS NULL
          ORDER BY b.created_at DESC, b.id DESC
     </select>
 
@@ -730,20 +761,27 @@
     </select>
 
     <select id="findInviteAllowUserIds" resultType="long">
-        SELECT user_id
-          FROM collaboration_conversation_invite_allow
-         WHERE conversation_id = #{conversationId}
-         ORDER BY user_id ASC
+        SELECT allow.user_id
+          FROM collaboration_conversation_invite_allow allow
+          JOIN users u ON u.id = allow.user_id AND u.status = 'ACTIVE'
+         WHERE allow.conversation_id = #{conversationId}
+           AND allow.deleted_at IS NULL
+         ORDER BY allow.user_id ASC
     </select>
 
-    <delete id="deleteInviteAllowAll">
-        DELETE FROM collaboration_conversation_invite_allow
+    <update id="deleteInviteAllowAll">
+        UPDATE collaboration_conversation_invite_allow
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE conversation_id = #{conversationId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <insert id="insertInviteAllow">
-        INSERT IGNORE INTO collaboration_conversation_invite_allow (conversation_id, user_id, granted_by)
+        INSERT INTO collaboration_conversation_invite_allow (conversation_id, user_id, granted_by)
         VALUES (#{conversationId}, #{userId}, #{grantedBy})
+        ON DUPLICATE KEY UPDATE
+            granted_by = VALUES(granted_by),
+            deleted_at = NULL
     </insert>
 
     <insert id="insertAudit">
@@ -757,8 +795,10 @@
                a.conversation_id,
                a.actor_id,
                actor.name AS actor_name,
+               actor.status AS actor_status,
                a.target_user_id,
                target.name AS target_name,
+               target.status AS target_status,
                a.action,
                a.detail,
                a.created_at

@@ -98,17 +98,20 @@
             SELECT COUNT(*)
             FROM admin_fit_analysis_memo memo_count_source
             WHERE memo_count_source.fit_analysis_id = fa.id
+              AND memo_count_source.deleted_at IS NULL
         ) AS memo_count,
         (
             SELECT MAX(latest_memo.updated_at)
             FROM admin_fit_analysis_memo latest_memo
             WHERE latest_memo.fit_analysis_id = fa.id
+              AND latest_memo.deleted_at IS NULL
         ) AS latest_memo_at,
         EXISTS (
             SELECT 1
             FROM admin_fit_analysis_memo reanalysis_memo
             WHERE reanalysis_memo.fit_analysis_id = fa.id
               AND reanalysis_memo.memo_type = 'REANALYSIS'
+              AND reanalysis_memo.deleted_at IS NULL
         ) AS reanalysis_requested,
         gr.gate_status,
         gr.needs_human_review AS gate_needs_human_review,
@@ -127,6 +130,10 @@
       query 는 공백 제거 후 비어 있으면 무시(기업명/직무/회원명/이메일 부분일치).
     -->
     <sql id="AdminFitAnalysisFilters">
+        <!-- 사용자/지원 건 soft-delete tombstone은 운영 목록·검색에서 기본 제외한다. -->
+        AND ac.deleted_at IS NULL
+        AND users.status != 'DELETED'
+        AND users.deleted_at IS NULL
         <if test="c.reviewRequiredOnly">
             AND gr.gate_status = 'REVIEW_REQUIRED'
         </if>
@@ -156,6 +163,7 @@
             AND EXISTS (
                 SELECT 1 FROM admin_fit_analysis_memo memo_filter
                 WHERE memo_filter.fit_analysis_id = fa.id
+                  AND memo_filter.deleted_at IS NULL
             )
         </if>
         <if test="c.reanalysisOnly">
@@ -163,6 +171,7 @@
                 SELECT 1 FROM admin_fit_analysis_memo reanalysis_filter
                 WHERE reanalysis_filter.fit_analysis_id = fa.id
                   AND reanalysis_filter.memo_type = 'REANALYSIS'
+                  AND reanalysis_filter.deleted_at IS NULL
             )
         </if>
     </sql>
@@ -177,8 +186,6 @@
         LEFT JOIN users reviewer ON reviewer.id = gr.reviewed_by
         <where>
             <include refid="AdminFitAnalysisFilters"/>
-            <!-- 사용자가 삭제(soft delete)한 지원 건의 분석은 관리자 지원건 목록과 동일하게 제외 -->
-            AND ac.deleted_at IS NULL
         </where>
         ORDER BY fa.created_at DESC, fa.id DESC
         LIMIT #{c.size} OFFSET #{c.offset}
@@ -192,8 +199,6 @@
         LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
         <where>
             <include refid="AdminFitAnalysisFilters"/>
-            <!-- 사용자가 삭제(soft delete)한 지원 건의 분석은 관리자 지원건 목록과 동일하게 제외 -->
-            AND ac.deleted_at IS NULL
         </where>
     </select>
 
@@ -206,6 +211,9 @@
         LEFT JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
         LEFT JOIN users reviewer ON reviewer.id = gr.reviewed_by
         WHERE fa.id = #{id}
+          AND ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <!-- gate 통계: 전체 gate 행의 분포 관측용 최소 컬럼 조회(조인 없음, 집계는 서비스에서). -->
@@ -216,6 +224,12 @@
             gr.max_severity,
             gr.gate_reasons_json
         FROM fit_analysis_gate_result gr
+        INNER JOIN fit_analysis fa ON fa.id = gr.fit_analysis_id
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <!-- gate review workflow: 운영자 처리 상태 갱신(REVIEW_REQUIRED gate 가 있는 분석만 대상). -->
@@ -225,6 +239,16 @@
             reviewed_by = #{adminUserId},
             reviewed_at = CURRENT_TIMESTAMP
         WHERE fit_analysis_id = #{fitAnalysisId}
+          AND EXISTS (
+              SELECT 1
+              FROM fit_analysis active_fit
+              INNER JOIN application_case active_case ON active_case.id = active_fit.application_case_id
+              INNER JOIN users active_user ON active_user.id = active_case.user_id
+              WHERE active_fit.id = #{fitAnalysisId}
+                AND active_case.deleted_at IS NULL
+                AND active_user.status != 'DELETED'
+                AND active_user.deleted_at IS NULL
+          )
     </update>
 
     <select id="findMemosByFitAnalysisId" resultMap="AdminFitAnalysisMemoResultMap">
@@ -232,15 +256,22 @@
             memo.id,
             memo.fit_analysis_id,
             memo.admin_user_id,
-            users.name AS admin_name,
-            users.email AS admin_email,
+            admin_user.name AS admin_name,
+            admin_user.email AS admin_email,
             memo.memo_type,
             memo.content,
             memo.created_at,
             memo.updated_at
         FROM admin_fit_analysis_memo memo
-        INNER JOIN users ON users.id = memo.admin_user_id
+        INNER JOIN users admin_user ON admin_user.id = memo.admin_user_id
+        INNER JOIN fit_analysis fa ON fa.id = memo.fit_analysis_id
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users target_user ON target_user.id = ac.user_id
         WHERE memo.fit_analysis_id = #{fitAnalysisId}
+          AND memo.deleted_at IS NULL
+          AND ac.deleted_at IS NULL
+          AND target_user.status != 'DELETED'
+          AND target_user.deleted_at IS NULL
         ORDER BY memo.updated_at DESC, memo.id DESC
     </select>
 
@@ -249,16 +280,23 @@
             memo.id,
             memo.fit_analysis_id,
             memo.admin_user_id,
-            users.name AS admin_name,
-            users.email AS admin_email,
+            admin_user.name AS admin_name,
+            admin_user.email AS admin_email,
             memo.memo_type,
             memo.content,
             memo.created_at,
             memo.updated_at
         FROM admin_fit_analysis_memo memo
-        INNER JOIN users ON users.id = memo.admin_user_id
+        INNER JOIN users admin_user ON admin_user.id = memo.admin_user_id
+        INNER JOIN fit_analysis fa ON fa.id = memo.fit_analysis_id
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users target_user ON target_user.id = ac.user_id
         WHERE memo.id = #{id}
           AND memo.fit_analysis_id = #{fitAnalysisId}
+          AND memo.deleted_at IS NULL
+          AND ac.deleted_at IS NULL
+          AND target_user.status != 'DELETED'
+          AND target_user.deleted_at IS NULL
     </select>
 
     <insert id="insertMemo" useGeneratedKeys="true" keyProperty="id">
@@ -274,11 +312,34 @@
             content = #{content}
         WHERE id = #{id}
           AND fit_analysis_id = #{fitAnalysisId}
+          AND deleted_at IS NULL
+          AND EXISTS (
+              SELECT 1
+              FROM fit_analysis active_fit
+              INNER JOIN application_case active_case ON active_case.id = active_fit.application_case_id
+              INNER JOIN users active_user ON active_user.id = active_case.user_id
+              WHERE active_fit.id = #{fitAnalysisId}
+                AND active_case.deleted_at IS NULL
+                AND active_user.status != 'DELETED'
+                AND active_user.deleted_at IS NULL
+          )
     </update>
 
-    <delete id="deleteMemo">
-        DELETE FROM admin_fit_analysis_memo
-        WHERE id = #{id}
-          AND fit_analysis_id = #{fitAnalysisId}
-    </delete>
+    <update id="deleteMemo">
+        UPDATE admin_fit_analysis_memo
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE id = #{id}
+           AND fit_analysis_id = #{fitAnalysisId}
+           AND deleted_at IS NULL
+           AND EXISTS (
+               SELECT 1
+               FROM fit_analysis active_fit
+               INNER JOIN application_case active_case ON active_case.id = active_fit.application_case_id
+               INNER JOIN users active_user ON active_user.id = active_case.user_id
+               WHERE active_fit.id = #{fitAnalysisId}
+                 AND active_case.deleted_at IS NULL
+                 AND active_user.status != 'DELETED'
+                 AND active_user.deleted_at IS NULL
+           )
+    </update>
 </mapper>

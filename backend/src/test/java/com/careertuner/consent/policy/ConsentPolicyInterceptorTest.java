@@ -63,6 +63,16 @@ class ConsentPolicyInterceptorTest {
     }
 
     @Test
+    void blocksPersonalizedChatbotWhenRequiredConsentWasWithdrawn() throws Exception {
+        when(consentService.hasRequiredConsents(7L)).thenReturn(false);
+
+        assertThatThrownBy(() -> interceptor.preHandle(
+                request("POST", "/api/chatbot/ask"), new MockHttpServletResponse(), handler("normal")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.CONSENT_REQUIRED);
+    }
+
+    @Test
     void blocksAnnotatedAiFeatureWhenAiConsentIsMissing() throws Exception {
         when(consentService.hasRequiredConsents(7L)).thenReturn(true);
         when(consentService.hasCurrentConsent(7L, ConsentType.AI_DATA)).thenReturn(false);

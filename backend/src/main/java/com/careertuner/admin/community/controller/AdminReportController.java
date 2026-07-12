@@ -21,11 +21,11 @@ import com.careertuner.common.web.ApiResponse;
 
 import lombok.RequiredArgsConstructor;
 
-/** 신고 콘솔. 세부 권한: 콘텐츠/고객지원 관리(CONTENT_MANAGE) 또는 대표 권한(CONTENT_ADMIN). */
+/** 신고 콘솔. 콘텐츠 조회·처리 권한을 행위별로 집행한다. */
 @RestController
 @RequestMapping("/api/admin/community/reports")
 @RequiredArgsConstructor
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN"})
+@RequireAdminPermission({"CONTENT_READ"})
 public class AdminReportController {
 
     private final AdminReportService reportService;
@@ -45,6 +45,7 @@ public class AdminReportController {
     }
 
     @PostMapping("/{id}/action")
+    @RequireAdminPermission({"CONTENT_UPDATE", "CONTENT_DELETE"})
     public ApiResponse<AdminReportDetailResponse> takeAction(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id,
@@ -54,6 +55,7 @@ public class AdminReportController {
 
     /** 종결(기각/취소) 신고 재활성화 — PENDING 복원. */
     @PostMapping("/{id}/reactivate")
+    @RequireAdminPermission({"CONTENT_UPDATE"})
     public ApiResponse<AdminReportDetailResponse> reactivate(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {
@@ -61,6 +63,7 @@ public class AdminReportController {
     }
 
     @PostMapping("/{id}/reclassify")
+    @RequireAdminPermission({"AI_CREATE"})
     public ApiResponse<AdminReportDetailResponse> reclassify(
             @AuthenticationPrincipal AuthUser authUser,
             @PathVariable Long id) {

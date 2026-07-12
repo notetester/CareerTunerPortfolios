@@ -47,10 +47,10 @@ public interface AdminLegalMapper {
     void publishVersion(@Param("id") Long id,
                         @Param("effectiveDate") LocalDateTime effectiveDate);
 
-    /** 버전 삭제 (DRAFT 만 호출). 조항은 FK CASCADE 로 함께 삭제. */
+    /** 버전 소프트 삭제 (DRAFT 만 호출). */
     void deleteVersion(@Param("id") Long id);
 
-    /** 버전의 조항 전체 삭제 (저장 시 통째 교체용). */
+    /** 버전의 기존 조항 전체 소프트 삭제 (저장 시 새 스냅샷 삽입 전 호출). */
     void deleteClausesByVersionId(@Param("versionId") Long versionId);
 
     /** 조항 일괄 INSERT. */

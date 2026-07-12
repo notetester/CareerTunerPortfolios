@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.careertuner.admin.common.grid.ExportColumn;
 import com.careertuner.admin.common.grid.ExportFormat;
 import com.careertuner.admin.common.grid.GridExporter;
+import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.admin.staffgrade.domain.AdminStaffGradeHistory;
 import com.careertuner.admin.staffgrade.dto.AdminStaffCandidate;
 import com.careertuner.admin.staffgrade.dto.AdminStaffGradeImportApplyRequest;
@@ -35,10 +36,10 @@ import com.careertuner.common.web.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-/** 관리자/직원 등급·급여 콘솔(SUPER_ADMIN 전용). 편집·이력·Excel 내보내기/업로드. */
+/** 관리자/직원 등급·급여 콘솔. 편집·이력·Excel 내보내기/업로드. */
 @RestController
 @RequestMapping("/api/admin/staff-grades")
-@RequireAdminPermission({"POLICY_ADMIN"})
+@RequireAdminPermission({"POLICY_READ"})
 @RequiredArgsConstructor
 @Validated
 public class AdminStaffGradeController {
@@ -66,30 +67,36 @@ public class AdminStaffGradeController {
                                                    @RequestParam(required = false) String department,
                                                    @RequestParam(defaultValue = "1") int page,
                                                    @RequestParam(defaultValue = "20") int size) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.grades(authUser, keyword, department, page, size));
     }
 
     @GetMapping("/candidates")
     public ApiResponse<List<AdminStaffCandidate>> candidates(@AuthenticationPrincipal AuthUser authUser) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.candidates(authUser));
     }
 
     @GetMapping("/{userId}")
     public ApiResponse<AdminStaffGradeRow> grade(@AuthenticationPrincipal AuthUser authUser,
                                                  @PathVariable Long userId) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.grade(authUser, userId));
     }
 
     @PutMapping("/{userId}")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<AdminStaffGradeRow> upsert(@AuthenticationPrincipal AuthUser authUser,
                                                   @PathVariable Long userId,
                                                   @Valid @RequestBody AdminStaffGradeUpsertRequest req) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.upsert(authUser, userId, req));
     }
 
     @GetMapping("/{userId}/history")
     public ApiResponse<List<AdminStaffGradeHistory>> history(@AuthenticationPrincipal AuthUser authUser,
                                                              @PathVariable Long userId) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.history(authUser, userId));
     }
 
@@ -98,19 +105,24 @@ public class AdminStaffGradeController {
                                          @RequestParam(required = false) String keyword,
                                          @RequestParam(required = false) String department,
                                          @RequestParam(defaultValue = "excel") String format) {
+        AdminAccess.requireSuperAdmin(authUser);
         List<AdminStaffGradeRow> rows = service.exportRows(authUser, keyword, department);
         return GridExporter.download("careertuner-staff-grades", ExportFormat.parse(format), EXPORT_COLUMNS, rows);
     }
 
     @PostMapping(value = "/import/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @RequireAdminPermission({"POLICY_READ"})
     public ApiResponse<AdminStaffGradeImportPreview> previewImport(@AuthenticationPrincipal AuthUser authUser,
                                                                    @RequestParam("file") MultipartFile file) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.previewImport(authUser, file));
     }
 
     @PostMapping("/import/apply")
+    @RequireAdminPermission({"POLICY_UPDATE"})
     public ApiResponse<AdminStaffGradeImportResult> applyImport(@AuthenticationPrincipal AuthUser authUser,
                                                                 @Valid @RequestBody AdminStaffGradeImportApplyRequest req) {
+        AdminAccess.requireSuperAdmin(authUser);
         return ApiResponse.ok(service.applyImport(authUser, req));
     }
 }

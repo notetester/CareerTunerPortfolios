@@ -8,7 +8,7 @@ package com.careertuner.sms;
  */
 public interface SmsProvider {
 
-    /** 이 제공자 식별자(mock/twilio/aligo/naver-sens). */
+    /** 이 제공자 식별자(mock/aligo). */
     String name();
 
     /** 실제 문자 발송이 일어나는 제공자인지 여부. Mock 은 false. */

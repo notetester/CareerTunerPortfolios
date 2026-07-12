@@ -25,8 +25,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>한계(기존 API 경로와 동일): 한국산업인력공단 시행 종목만 담겨 있어 타 기관 시행 국가자격
  * (예: 대한상공회의소 컴퓨터활용능력)은 목록에 없다 → 민간 등록정보 경로로 넘어가 NOT_FOUND 가 될 수 있다.
- * 스냅샷 이후 신설된 국가자격도 마찬가지다(연 1회 수준 변동). CSV 에는 jmCd 가 없어 entry 의 jmCd 는 null 이다
- * (jmCd 는 일정 조회 파라미터가 아닌 내부 메타데이터라 기능 손실 없음 — {@link NationalQualificationCatalogEntry}).
+ * 스냅샷 이후 신설된 국가자격도 마찬가지다(연 1회 수준 변동). 국가기술자격(T)의 jmCd 는 별도 매핑 리소스
+ * (취득자 현황·공개문제 API 교차 + Q-Net 웹 검증 산출물)에서 채워지며, 매핑이 없는 종목은 jmCd=null 로 남아
+ * 종목별 일정 조회만 레거시 경로로 degrade 한다(판별 기능 무영향).
  *
  * <p>리소스 로드 실패 시 {@link #available()} 이 false 가 되고 provider 가 기존 네트워크 경로로 동작한다
  * (스냅샷은 최적화이지 새로운 단일 장애점이 아니다).
@@ -45,10 +46,12 @@ public class NationalQualificationOfflineCatalog {
     public NationalQualificationOfflineCatalog(
             @Value("${careertuner.certificate.catalog-snapshot.resource:cert/national-qualification-catalog-20251231.csv}")
             String resourcePath,
+            @Value("${careertuner.certificate.catalog-snapshot.jmcd-resource:cert/national-tech-jmcd-20260711.csv}")
+            String jmCdResourcePath,
             @Value("${careertuner.certificate.catalog-snapshot.label:20251231}") String snapshotLabel,
             @Value("${careertuner.certificate.catalog-snapshot.enabled:true}") boolean enabled) {
         this.sourceName = "한국산업인력공단 국가자격 종목 목록(오프라인 스냅샷 " + snapshotLabel + ")";
-        this.byNormalizedName = enabled ? load(resourcePath) : Map.of();
+        this.byNormalizedName = enabled ? load(resourcePath, jmCdResourcePath) : Map.of();
         warnIfStale(snapshotLabel);
     }
 
@@ -92,6 +95,20 @@ public class NationalQualificationOfflineCatalog {
                 NationalQualificationCatalogStatus.FOUND, certName, entry, sourceName, sourceUrl);
     }
 
+    /** 사용자 대면 검색용 부분일치(정규화 contains) — 스냅샷 미로드 시 빈 목록. */
+    public java.util.List<NationalQualificationCatalogEntry> search(String query, int limit) {
+        if (query == null || query.isBlank() || !available()) {
+            return java.util.List.of();
+        }
+        String needle = QnetXmlSupport.norm(query);
+        return byNormalizedName.entrySet().stream()
+                .filter(entry -> entry.getKey().contains(needle))
+                .map(Map.Entry::getValue)
+                .sorted(java.util.Comparator.comparing(NationalQualificationCatalogEntry::certName))
+                .limit(Math.max(1, Math.min(30, limit)))
+                .toList();
+    }
+
     /** 스냅샷 헤더 고정값 — 오인코딩(CP949 등)·다른 파일 오배치를 로드 시점에 즉시 걸러낸다. */
     static final String EXPECTED_HEADER = "자격구분코드,자격구분명,계열명,종목명";
     /**
@@ -101,7 +118,10 @@ public class NationalQualificationOfflineCatalog {
      */
     static final int MIN_ENTRIES = 500;
 
-    private static Map<String, NationalQualificationCatalogEntry> load(String resourcePath) {
+    private static Map<String, NationalQualificationCatalogEntry> load(String resourcePath, String jmCdResourcePath) {
+        // jmCd 매핑(종목명→코드, 국가기술자격 한정)은 선택 리소스 — 없거나 파손이어도 카탈로그 자체는 동작
+        // (jmCd 는 통합 일정 API 종목별 조회에만 쓰이고, 없으면 해당 종목만 일정 조회가 레거시 경로로 degrade).
+        Map<String, String> jmCdByName = loadJmCdMapping(jmCdResourcePath);
         Map<String, NationalQualificationCatalogEntry> map = new LinkedHashMap<>();
         int skipped = 0;
         int duplicated = 0;
@@ -135,8 +155,9 @@ public class NationalQualificationOfflineCatalog {
                         continue;
                     }
                     String certName = parts[3].trim();
+                    String jmCd = jmCdByName.get(QnetXmlSupport.norm(certName));
                     if (map.putIfAbsent(QnetXmlSupport.norm(certName), new NationalQualificationCatalogEntry(
-                            null, certName, parts[0].trim(), parts[1].trim(), parts[2].trim(), null, null)) != null) {
+                            jmCd, certName, parts[0].trim(), parts[1].trim(), parts[2].trim(), null, null)) != null) {
                         duplicated++; // 정규화 후 동일 종목명 — 뒤 행 폐기(현 스냅샷 중복 0 검증, 교체 시 감지용)
                     }
                 }
@@ -154,7 +175,66 @@ public class NationalQualificationOfflineCatalog {
                     map.size(), MIN_ENTRIES);
             return Map.of();
         }
-        log.info("national catalog snapshot loaded: {} entries from {}", map.size(), resourcePath);
+        long withJmCd = map.values().stream().filter(e -> e.jmCd() != null).count();
+        log.info("national catalog snapshot loaded: {} entries ({} with jmCd) from {}",
+                map.size(), withJmCd, resourcePath);
+        return Map.copyOf(map);
+    }
+
+    /**
+     * 국가기술자격 jmCd 매핑(CSV: 종목명,jmCd) 로드 — 취득자 현황/공개문제 API 교차 + Q-Net 웹 검증 산출물.
+     * 선택 리소스: 실패해도 빈 맵(카탈로그 판별 기능 무영향). 컴퓨터시스템기사 등 canonical 미확정 종목은 미포함.
+     */
+    private static Map<String, String> loadJmCdMapping(String resourcePath) {
+        Map<String, String> map = new LinkedHashMap<>();
+        try (InputStream in = NationalQualificationOfflineCatalog.class.getClassLoader()
+                .getResourceAsStream(resourcePath)) {
+            if (in == null) {
+                log.info("national tech jmCd mapping resource missing: {} — 종목별 일정 조회는 레거시 경로", resourcePath);
+                return Map.of();
+            }
+            CharsetDecoder decoder = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT);
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, decoder))) {
+                String header = reader.readLine();
+                if (header == null || !"종목명,jmCd".equals(header.replace("\uFEFF", "").trim())) {
+                    log.warn("national tech jmCd mapping header mismatch: {} — 무시", resourcePath);
+                    return Map.of();
+                }
+                String line;
+                int skipped = 0;
+                java.util.Set<String> conflicted = new java.util.HashSet<>();
+                while ((line = reader.readLine()) != null) {
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    String[] parts = line.split(",", 2);
+                    if (parts.length != 2 || parts[0].isBlank() || !parts[1].trim().matches("\\d{4}")) {
+                        skipped++;
+                        continue;
+                    }
+                    String key = QnetXmlSupport.norm(parts[0]);
+                    String jmCd = parts[1].trim();
+                    String prev = map.putIfAbsent(key, jmCd);
+                    if (prev != null && !prev.equals(jmCd)) {
+                        // 같은 종목명에 다른 코드 — 어느 쪽도 믿을 수 없다. 채택하면 다른 종목 일정 오귀속 위험이므로
+                        // 해당 종목만 매핑에서 제외(레거시 경로로 degrade)하고 경고.
+                        conflicted.add(key);
+                    }
+                }
+                for (String key : conflicted) {
+                    map.remove(key);
+                }
+                if (skipped > 0 || !conflicted.isEmpty()) {
+                    log.warn("national tech jmCd mapping anomalies: skipped={} conflicted={} ({})",
+                            skipped, conflicted.size(), resourcePath);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("national tech jmCd mapping load failed: {} — 무시", e.getClass().getSimpleName());
+            return Map.of();
+        }
         return Map.copyOf(map);
     }
 }

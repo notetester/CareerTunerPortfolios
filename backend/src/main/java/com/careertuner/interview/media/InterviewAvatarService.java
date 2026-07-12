@@ -18,6 +18,8 @@ import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.mapper.InterviewMapper;
+import com.careertuner.interview.service.InterviewAiUsageLogService;
+import com.careertuner.interview.service.InterviewOpenAiClient;
 import com.careertuner.interview.media.dto.AvatarSessionResponse;
 
 import tools.jackson.core.JacksonException;
@@ -39,14 +41,17 @@ public class InterviewAvatarService {
 
     private final InterviewAvatarProperties properties;
     private final InterviewMapper interviewMapper;
+    private final InterviewAiUsageLogService usageLogService;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
     public InterviewAvatarService(InterviewAvatarProperties properties,
                                   InterviewMapper interviewMapper,
+                                  InterviewAiUsageLogService usageLogService,
                                   ObjectMapper objectMapper) {
         this.properties = properties;
         this.interviewMapper = interviewMapper;
+        this.usageLogService = usageLogService;
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
@@ -78,6 +83,11 @@ public class InterviewAvatarService {
         if (sessionToken.isBlank()) {
             throw new BusinessException(ErrorCode.INTERNAL_ERROR, "LiveAvatar 세션 토큰 발급에 실패했습니다.");
         }
+        usageLogService.recordSuccess(
+                userId,
+                session.getApplicationCaseId(),
+                "INTERVIEW_AVATAR_SESSION",
+                new InterviewOpenAiClient.Usage("heygen-liveavatar", 0, 0, 0));
         return new AvatarSessionResponse(
                 data.path("session_id").asText(null),
                 sessionToken,

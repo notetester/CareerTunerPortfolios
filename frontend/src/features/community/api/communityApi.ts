@@ -15,7 +15,7 @@ interface BackendPost {
   title: string;
   content: string;
   tags: string[];
-  author: { id: number; name: string; nicknameProfileId?: number | null; isAnonymous: boolean };
+  author: { id: number | null; name: string; nicknameProfileId?: number | null; isAnonymous: boolean };
   stats: {
     viewCount: number; commentCount: number;
     likeCount: number; dislikeCount?: number;
@@ -206,6 +206,12 @@ export async function deletePost(id: number) {
 }
 
 export async function adminUpdatePostStatus(id: number, status: "PUBLISHED" | "HIDDEN" | "DELETED", reason?: string) {
+  if (status === "DELETED") {
+    return api<void>(`/admin/community/posts/${id}`, {
+      method: "DELETE",
+      body: JSON.stringify({ status, reason }),
+    });
+  }
   return api<void>(`/admin/community/posts/${id}/status`, {
     method: "PATCH",
     body: JSON.stringify({ status, reason }),

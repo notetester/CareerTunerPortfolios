@@ -9,11 +9,8 @@ import { isApplicationCaseExtractionActive, isApplicationCaseExtractionReviewReq
 import { shouldDisableSaveForReview } from "../utils/jobPostingConfirm";
 import type { JobPosting, JobPostingRequest } from "../types/jobPosting";
 import { formatKoreaDateTime } from "../utils/dateFormat";
-import {
-  JOB_POSTING_IMAGE_ACCEPT,
-  JOB_POSTING_MAX_FILE_SIZE_LABEL,
-  validateJobPostingFile,
-} from "../utils/jobPostingUpload";
+import { JOB_POSTING_IMAGE_ACCEPT, validateJobPostingFile } from "../utils/jobPostingUpload";
+import { useJobPostingUploadLimit } from "../hooks/useJobPostingUploadLimit";
 import { ApplicationExtractionBadge } from "./ApplicationExtractionBadge";
 import { OcrRetryButton } from "./OcrRetryButton";
 
@@ -84,6 +81,7 @@ export function JobPostingPanel({
   onRetryExtraction,
   onReviewExtraction,
 }: JobPostingPanelProps) {
+  const { maxBytes: uploadMaxBytes, label: uploadLimitLabel, loading: uploadLimitLoading } = useJobPostingUploadLimit();
   const initialText = useMemo(
     () => jobPosting?.extractedText ?? jobPosting?.originalText ?? "",
     [jobPosting],
@@ -137,7 +135,7 @@ export function JobPostingPanel({
       return;
     }
 
-    const validationError = validateJobPostingFile(sourceType, nextFile);
+    const validationError = validateJobPostingFile(sourceType, nextFile, uploadMaxBytes);
     if (validationError) {
       event.currentTarget.value = "";
       setFile(null);
@@ -186,7 +184,7 @@ export function JobPostingPanel({
       setLocalError("업로드할 파일을 선택해 주세요.");
       return;
     }
-    const validationError = validateJobPostingFile(sourceType, file);
+    const validationError = validateJobPostingFile(sourceType, file, uploadMaxBytes);
     if (validationError) {
       setLocalError(validationError);
       return;
@@ -239,12 +237,19 @@ export function JobPostingPanel({
                 업로드 및 추출
               </Button>
             )}
-            {extraction?.status === "FAILED" && onRetryExtraction && (
+            {/* 실패 복구뿐 아니라 성공한 파일 공고도 다른 OCR 모델로 다시 뽑을 수 있다(#3). URL/TEXT 는
+                OcrRetryButton 이 내부에서 숨긴다. 재추출 성공 시 새 revision 이 저장되고 기존 분석은 stale 처리된다. */}
+            {(extraction?.status === "FAILED" || extraction?.status === "SUCCEEDED") && onRetryExtraction && (
               <OcrRetryButton
                 sourceType={extraction.sourceType}
                 retrying={retryingExtraction}
                 onRetry={(provider) => void onRetryExtraction(provider)}
-                className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                label={extraction.status === "FAILED" ? "다시 추출" : "다른 모델로 재추출"}
+                className={
+                  extraction.status === "FAILED"
+                    ? "border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                    : undefined
+                }
               />
             )}
             {extractionReviewRequired && onReviewExtraction && (
@@ -362,11 +367,18 @@ export function JobPostingPanel({
                     accept={sourceType === "PDF" ? "application/pdf" : JOB_POSTING_IMAGE_ACCEPT}
                     onChange={handleFileChange}
                     className="bg-card"
+                    disabled={uploadLimitLoading}
                   />
                 </div>
                 <div className="space-y-1 text-xs text-slate-500">
                   <div className="font-semibold text-slate-600">추출 방식</div>
-                  <p>파일은 {JOB_POSTING_MAX_FILE_SIZE_LABEL} 이하만 업로드할 수 있습니다.</p>
+                  <p>
+                    {uploadLimitLoading
+                      ? "업로드 한도를 확인하고 있습니다."
+                      : uploadLimitLabel
+                        ? `파일은 ${uploadLimitLabel} 이하만 업로드할 수 있습니다.`
+                        : "파일 크기는 업로드 시 서버에서 확인합니다."}
+                  </p>
                   <p>텍스트 PDF는 서버에서 바로 추출합니다.</p>
                   <p>이미지와 스캔 PDF는 자체 OCR로 텍스트를 추출하며 완료까지 시간이 걸릴 수 있습니다.</p>
                 </div>

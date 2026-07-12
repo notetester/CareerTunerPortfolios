@@ -17,6 +17,7 @@
     <select id="findAll" resultMap="faqResult">
         SELECT id, category, question, answer, is_published, sort_order, created_at, updated_at
           FROM faq
+         WHERE deleted_at IS NULL
          ORDER BY sort_order, id
     </select>
 
@@ -24,6 +25,7 @@
         SELECT id, category, question, answer, is_published, sort_order, created_at, updated_at
           FROM faq
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyColumn="id">
@@ -44,11 +46,16 @@
                sort_order   = #{sortOrder},
                updated_at   = CURRENT_TIMESTAMP
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </update>
 
-    <delete id="delete">
-        DELETE FROM faq
+    <update id="delete">
+        UPDATE faq
+           SET deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP),
+               is_published = 0,
+               updated_at = CURRENT_TIMESTAMP
          WHERE id = #{id}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
 </mapper>

@@ -15,6 +15,7 @@ import type {
 } from "../types/analysis";
 import {
   formatJsonArrayForTextarea,
+  getCompanySourceTypeLabel,
   isCompanyAnalysisRefreshDue,
   parseAiInferenceRows,
   parseJsonStringArray,
@@ -28,6 +29,7 @@ import type { ApplicationSourceType } from "../types/applicationCase";
 import { formatKoreaDateTime } from "../utils/dateFormat";
 import { AnalysisFailureNotice } from "./AnalysisFailureNotice";
 import { AnalysisReanalyzeButton } from "./AnalysisReanalyzeButton";
+import { AnalysisProvenanceBadge } from "./AnalysisProvenanceBadge";
 import { AnalysisStructuredText } from "./AnalysisStructuredText";
 import { StructuredRowsEditor, type StructuredRowsEditorField } from "./StructuredRowsEditor";
 import { VerifiedFactsList } from "./VerifiedFactsList";
@@ -200,7 +202,7 @@ export function CompanyAnalysisPanel({
 
   const sourceMetadata = analysis
     ? [
-        { label: "출처 유형", value: analysis.sourceType },
+        { label: "출처 유형", value: getCompanySourceTypeLabel(analysis.sourceType) },
         { label: "확인 시각", value: analysis.checkedAt ? formatKoreaDateTime(analysis.checkedAt) : null },
         {
           label: "갱신 권장",
@@ -249,11 +251,14 @@ export function CompanyAnalysisPanel({
               )}
             </CardTitle>
             {analysis ? (
-              <p className="mt-1 text-xs text-slate-500">
-                최근 분석: {formatKoreaDateTime(analysis.createdAt)}
-                {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
-                {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
-              </p>
+              <>
+                <p className="mt-1 text-xs text-slate-500">
+                  최근 분석: {formatKoreaDateTime(analysis.createdAt)}
+                  {analysis.jobPostingRevision ? ` · 공고 rev ${analysis.jobPostingRevision}` : ""}
+                  {analysis.confirmedAt ? ` · 확정 ${formatKoreaDateTime(analysis.confirmedAt)}` : ""}
+                </p>
+                <AnalysisProvenanceBadge source={analysis} className="mt-1.5" />
+              </>
             ) : (
               <p className="mt-1 text-xs text-slate-500">분석 결과 없음</p>
             )}

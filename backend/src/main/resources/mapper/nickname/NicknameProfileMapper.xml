@@ -77,7 +77,7 @@
 
     <!-- 표시명 벌크 해석: 계정명(users.name) 폴백 -->
     <select id="findAccountNames" resultType="com.careertuner.nickname.domain.AccountNameRow">
-        SELECT id AS userId, name AS name
+        SELECT id AS userId, name AS name, status AS status
           FROM users
          WHERE id IN
         <foreach collection="userIds" item="uid" open="(" separator="," close=")">
@@ -163,6 +163,10 @@
 
     <select id="findAccountName" resultType="string">
         SELECT name FROM users WHERE id = #{userId}
+    </select>
+
+    <select id="findAccountStatus" resultType="string">
+        SELECT status FROM users WHERE id = #{userId}
     </select>
 
 </mapper>

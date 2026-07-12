@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.admin.common.AdminAccess;
 import com.careertuner.admin.settings.dto.ModerationExport;
 import com.careertuner.admin.settings.dto.RuntimeSettingExport;
 import com.careertuner.admin.settings.dto.SettingsExport;
@@ -17,6 +18,7 @@ import com.careertuner.admin.settings.dto.SettingsImportResult;
 import com.careertuner.community.moderation.domain.ModerationSetting;
 import com.careertuner.community.moderation.domain.Strictness;
 import com.careertuner.community.moderation.service.ModerationSettingService;
+import com.careertuner.common.security.AuthUser;
 import com.careertuner.runtimesetting.domain.RuntimeSetting;
 import com.careertuner.runtimesetting.service.RuntimeSettingService;
 
@@ -43,7 +45,8 @@ public class SettingsExportService {
     private final ModerationSettingService moderationSettingService;
 
     /** 요청 섹션만 채운 export 봉투 반환(sections 비면 전체). */
-    public SettingsExport export(Set<String> sections) {
+    public SettingsExport export(AuthUser authUser, Set<String> sections) {
+        AdminAccess.requireSuperAdmin(authUser);
         boolean all = sections == null || sections.isEmpty();
 
         List<RuntimeSettingExport> runtime = null;
@@ -73,7 +76,9 @@ public class SettingsExportService {
 
     /** import 적용(upsert). null 섹션은 건너뛰고, 항목 단위로 적용/스킵을 집계한다. */
     @Transactional
-    public SettingsImportResult importSettings(SettingsExport data, Long actorId) {
+    public SettingsImportResult importSettings(AuthUser authUser, SettingsExport data) {
+        AdminAccess.requireSuperAdmin(authUser);
+        Long actorId = authUser.id();
         List<SettingsImportResult.Section> sections = new ArrayList<>();
         int totalApplied = 0;
         int totalSkipped = 0;

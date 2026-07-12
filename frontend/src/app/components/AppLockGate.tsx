@@ -3,13 +3,16 @@ import { Lock, Fingerprint, Delete } from "lucide-react";
 import {
   AUTOLOCK_GRACE, biometricAvailable, biometricEnabled, hasPin, tryBiometric, verifyPin,
 } from "@/platform/applock";
+import { emitAppLockState } from "@/platform/appLockEvents";
 
 /**
  * 앱 잠금 게이트 — PIN 이 설정돼 있으면 앱 실행/장기 백그라운드 복귀 시 잠금 화면을 덮는다.
  * 잠긴 동안 콘텐츠는 보이지 않으며 PIN(또는 생체)으로만 해제된다.
  */
 export function AppLockGate({ children }: { children: ReactNode }) {
-  const [locked, setLocked] = useState<boolean>(() => hasPin());
+  const initiallyLocked = useRef(hasPin()).current;
+  const [locked, setLocked] = useState<boolean>(initiallyLocked);
+  const [childrenActivated, setChildrenActivated] = useState(!initiallyLocked);
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -17,7 +20,11 @@ export function AppLockGate({ children }: { children: ReactNode }) {
 
   const attemptBiometric = useCallback(async () => {
     if (biometricAvailable() && biometricEnabled()) {
-      if (await tryBiometric()) setLocked(false);
+      if (await tryBiometric()) {
+        // React가 잠금/해제를 한 번에 배치해도 외부 세대 상태가 잠긴 채 남지 않게 동기화한다.
+        emitAppLockState(false);
+        setLocked(false);
+      }
     }
   }, []);
 
@@ -26,12 +33,19 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    emitAppLockState(locked);
+    if (!locked) setChildrenActivated(true);
+  }, [locked]);
+
   // 백그라운드 복귀 시 grace 초과면 재잠금.
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         hiddenAt.current = Date.now();
       } else if (hasPin() && hiddenAt.current && Date.now() - hiddenAt.current > AUTOLOCK_GRACE) {
+        // 비동기 미디어 작업이 React effect보다 먼저 재개되지 않도록 동기적으로 세대를 닫는다.
+        emitAppLockState(true);
         setLocked(true);
         setPin("");
         void attemptBiometric();
@@ -46,6 +60,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     const ok = await verifyPin(value);
     setChecking(false);
     if (ok) {
+      emitAppLockState(false);
       setLocked(false);
       setPin("");
       setError(false);
@@ -66,11 +81,14 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     }
   };
 
-  if (!locked) return <>{children}</>;
-
   return (
     <>
-      {children}
+      {childrenActivated && (
+        <div className={locked ? "hidden" : "contents"} aria-hidden={locked || undefined}>
+          {children}
+        </div>
+      )}
+      {locked && (
       <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 px-6 text-white backdrop-blur">
         <div className="flex size-16 items-center justify-center rounded-2xl bg-card/10">
           <Lock className="size-8" />
@@ -113,6 +131,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
           잠금 해제
         </button>
       </div>
+      )}
     </>
   );
 }

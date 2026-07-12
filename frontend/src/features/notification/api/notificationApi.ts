@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import { isNativeApp } from "@/platform/capacitor";
 import type { Notification, NotificationType, SenderRelation } from "../types/notification";
 import { TYPE_TO_CATEGORY } from "../types/notification";
 import type { NotificationRulePreference } from "../types/preferences";
@@ -15,9 +16,9 @@ interface BackendNotification {
   read: boolean;
   createdAt: string;
   actor?: {
-    id: number;
+    id: number | null;
     name: string;
-    avatarUrl?: string;
+    avatarUrl?: string | null;
   };
 }
 
@@ -41,17 +42,22 @@ function toNotification(n: BackendNotification): Notification {
     targetType: n.targetType,
     targetId: n.targetId,
     senderRelation: n.senderRelation as SenderRelation | undefined,
-    actorId: n.actor?.id,
+    actorId: n.actor?.id ?? null,
     actorName: n.actor?.name,
     isRead: n.read,
     createdAt: n.createdAt,
   };
 }
 
+function destinationQuery(separator: "?" | "&"): string {
+  const platform = isNativeApp() ? "MOBILE" : "WEB";
+  return `${separator}platform=${platform}`;
+}
+
 /** 알림 목록 */
 export async function getNotifications(page = 0, size = 20): Promise<Notification[]> {
   const res = await api<NotificationPageResponse>(
-    `/notifications?page=${page}&size=${size}`,
+    `/notifications?page=${page}&size=${size}${destinationQuery("&")}`,
     {},
   );
   return res.notifications.map(toNotification);
@@ -59,7 +65,7 @@ export async function getNotifications(page = 0, size = 20): Promise<Notificatio
 
 /** 안 읽은 알림 수 */
 export async function getUnreadCount(): Promise<number> {
-  return api<number>("/notifications/unread-count", {});
+  return api<number>(`/notifications/unread-count${destinationQuery("?")}`, {});
 }
 
 /** 읽음 처리 */
@@ -69,7 +75,7 @@ export async function markAsRead(id: number): Promise<void> {
 
 /** 전체 읽음 */
 export async function markAllAsRead(): Promise<void> {
-  await api<void>("/notifications/read-all", { method: "POST" });
+  await api<void>(`/notifications/read-all${destinationQuery("?")}`, { method: "POST" });
 }
 
 /** 알림 단건 삭제 */
@@ -79,7 +85,7 @@ export async function deleteNotification(id: number): Promise<void> {
 
 /** 알림 전체 삭제(비우기) */
 export async function deleteAllNotifications(): Promise<void> {
-  await api<void>("/notifications", { method: "DELETE" });
+  await api<void>(`/notifications${destinationQuery("?")}`, { method: "DELETE" });
 }
 
 // ───── 알림 설정 ─────

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth, type SocialProvider } from "@/app/auth/AuthContext";
+import { useOAuthProviderAvailability } from "@/app/auth/useOAuthProviderAvailability";
 import { useConsent } from "@/app/auth/ConsentContext";
 import { subscriptionFallbackPlans, toDisplayPlans } from "@/features/billing/utils/subscriptionDisplay";
 import { enablePush } from "@/platform/push";
@@ -89,6 +90,11 @@ export function OnboardingFlow() {
   const nav = useNavigate();
   const { isAuthenticated, login, socialLogin } = useAuth();
   const { socialOAuthBlocked } = useOutageFallback();
+  const {
+    providers: oauthProviders,
+    loading: oauthProvidersLoading,
+    error: oauthProvidersError,
+  } = useOAuthProviderAvailability();
   const { save: saveConsents } = useConsent();
   const hasPendingResume = readPendingOnboardingConsents() !== null;
   const resumeStep = new URLSearchParams(window.location.search).get("obResume") === "billing"
@@ -109,7 +115,6 @@ export function OnboardingFlow() {
     resumeAnalysis: false,
     marketing: false,
   });
-
   const requiredOk = consents.terms && consents.privacy;
   const allOk = Object.values(consents).every(Boolean);
   const toggleConsent = (k: ConsentKey) => setConsents((c) => ({ ...c, [k]: !c[k] }));
@@ -158,6 +163,8 @@ export function OnboardingFlow() {
       .then(() => {
         if (cancelled) return;
         clearOnboardingResume();
+        // 같은 OnboardingFlow 인스턴스가 유지된 경우 useState 초기값은 login이므로 명시적으로 전환한다.
+        setStep("billing");
         setResuming(false);
       })
       .catch(() => {
@@ -174,11 +181,22 @@ export function OnboardingFlow() {
     if (!requiredOk || busy) return;
     setBusy(true);
     setErr("");
+    let resumePrepared = false;
     try {
+      if (USE_MOCK) {
+        // 독립 데모는 운영 세션을 만들지 않는다. mock 동의 저장만 검증하고 다음 단계로 진행한다.
+        await saveConsents(consentRequest());
+        setStep("billing");
+        return;
+      }
       if (!PREVIEW) {
+        // 인증 상태가 바뀌면 Root가 잠시 OnboardingFlow를 언마운트한다.
+        // 로그인 전에 복귀 URL과 동의를 저장해 새 인스턴스가 billing 단계에서 이어받게 한다.
+        saveOnboardingResume(consentRequest());
+        nav(onboardingReturnTo(), { replace: true });
+        resumePrepared = true;
         const result = await login(email.trim() || "demo@careertuner.dev", pw || "demo1234");
         if (result.mfaRequired && result.challengeToken) {
-          saveOnboardingResume(consentRequest());
           nav(
             `/auth/mfa?challengeToken=${encodeURIComponent(result.challengeToken)}&returnTo=${encodeURIComponent(onboardingReturnTo())}`,
             { replace: true },
@@ -186,31 +204,42 @@ export function OnboardingFlow() {
           return;
         }
         if (!result.token) throw new Error("로그인 토큰이 없습니다.");
-        saveOnboardingResume(consentRequest());
-        try {
-          await saveConsents(consentRequest());
-          clearOnboardingResume();
-        } catch {
-          setResumeError("로그인은 완료했지만 약관 동의를 저장하지 못했습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.");
-          return;
-        }
+        return;
       }
       setStep("billing");
     } catch {
+      if (resumePrepared) {
+        clearOnboardingResume();
+        nav("/?ob", { replace: true });
+      }
       setErr("로그인에 실패했어요. 다시 시도해 주세요.");
     } finally {
       setBusy(false);
     }
   };
 
-  const doSocialLogin = (provider: SocialProvider) => {
+  const doSocialLogin = async (provider: SocialProvider) => {
     if (!requiredOk || busy) return;
     if (USE_MOCK || PREVIEW) {
       void doLogin();
       return;
     }
+    if (
+      socialOAuthBlocked
+      || oauthProvidersLoading
+      || !oauthProviders[provider]
+    ) return;
     saveOnboardingResume(consentRequest());
-    socialLogin(provider);
+    setBusy(true);
+    setErr("");
+    try {
+      await socialLogin(provider);
+    } catch (error) {
+      clearOnboardingResume();
+      setErr(error instanceof Error ? error.message : "소셜 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const askPush = async () => {
@@ -289,13 +318,32 @@ export function OnboardingFlow() {
 
             <div className="ob-social">
               {PROVIDERS.map((p) => (
-                <button key={p.id} className={`ob-soc s-${p.cls}`} onClick={() => doSocialLogin(p.id)} disabled={busy || !requiredOk || socialOAuthBlocked}>
+                <button
+                  key={p.id}
+                  className={`ob-soc s-${p.cls}`}
+                  onClick={() => void doSocialLogin(p.id)}
+                  disabled={busy || !requiredOk || socialOAuthBlocked || (!(USE_MOCK || PREVIEW) && (oauthProvidersLoading || !oauthProviders[p.id]))}
+                  title={!(USE_MOCK || PREVIEW) && !oauthProvidersLoading && !oauthProviders[p.id]
+                    ? `${p.label} 로그인 설정이 완료되지 않았습니다.`
+                    : undefined}
+                >
                   <span className="ob-soc-ic">{p.icon}</span>
                   <span className="ob-soc-tx">{p.label}로 계속하기</span>
                 </button>
               ))}
             </div>
+            {err && !emailOpen && <div className="ob-err">{err}</div>}
             {socialOAuthBlocked && <p className="ob-hint">장애 체험 중에는 소셜 로그인을 사용할 수 없어요.</p>}
+            {!(USE_MOCK || PREVIEW) && !socialOAuthBlocked && oauthProvidersLoading && (
+              <p className="ob-hint">소셜 로그인 설정을 확인하고 있어요.</p>
+            )}
+            {!(USE_MOCK || PREVIEW) && !socialOAuthBlocked && !oauthProvidersLoading && oauthProvidersError && (
+              <p className="ob-hint">소셜 로그인 상태를 확인하지 못했어요. 이메일 로그인을 이용해 주세요.</p>
+            )}
+            {!(USE_MOCK || PREVIEW) && !socialOAuthBlocked && !oauthProvidersLoading && !oauthProvidersError
+              && PROVIDERS.some((provider) => !oauthProviders[provider.id]) && (
+                <p className="ob-hint">설정이 완료된 소셜 로그인만 사용할 수 있어요.</p>
+              )}
 
             <div className="ob-or"><span>또는</span></div>
 

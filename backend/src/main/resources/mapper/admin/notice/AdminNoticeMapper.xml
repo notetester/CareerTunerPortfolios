@@ -22,6 +22,7 @@
         SELECT id, title, content, category, status, is_pinned, thumbnail_url,
                view_count, scheduled_at, published_at, created_at, updated_at
           FROM notice
+         WHERE deleted_at IS NULL
          ORDER BY is_pinned DESC, created_at DESC
     </select>
 
@@ -30,6 +31,7 @@
                view_count, scheduled_at, published_at, created_at, updated_at
           FROM notice
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyColumn="id">
@@ -59,11 +61,16 @@
                updated_at   = CURRENT_TIMESTAMP
                <if test="setPublishedAt">, published_at = CURRENT_TIMESTAMP</if>
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </update>
 
-    <delete id="delete">
-        DELETE FROM notice
+    <update id="delete">
+        UPDATE notice
+           SET deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP),
+               status = 'DELETED',
+               updated_at = CURRENT_TIMESTAMP
          WHERE id = #{id}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
 </mapper>

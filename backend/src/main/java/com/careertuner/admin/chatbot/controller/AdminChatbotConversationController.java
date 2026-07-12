@@ -27,7 +27,7 @@ import lombok.RequiredArgsConstructor;
  */
 @RestController
 @RequestMapping("/api/admin/chatbot/conversations")
-@RequireAdminPermission({"CONTENT_MANAGE", "CONTENT_ADMIN", "AI_OPERATION_MANAGE", "AI_ADMIN"})
+@RequireAdminPermission({"AI_READ"})
 @RequiredArgsConstructor
 public class AdminChatbotConversationController {
 
@@ -47,6 +47,7 @@ public class AdminChatbotConversationController {
     }
 
     @DeleteMapping("/{conversationId}")
+    @RequireAdminPermission({"AI_DELETE"})
     public ApiResponse<Void> delete(@AuthenticationPrincipal AuthUser authUser,
                                     @PathVariable Long conversationId) {
         AdminAccess.requireAdmin(authUser);

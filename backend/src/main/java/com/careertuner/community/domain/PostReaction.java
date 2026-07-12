@@ -25,4 +25,5 @@ public class PostReaction {
 
     // JOIN으로 가져오는 반응자 이름 (반응자 목록용)
     private String userName;
+    private String userStatus;
 }
