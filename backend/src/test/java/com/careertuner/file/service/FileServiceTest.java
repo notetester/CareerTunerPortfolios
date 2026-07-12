@@ -237,6 +237,36 @@ class FileServiceTest {
         verify(storage).delete("7/file-11");
     }
 
+    @Test
+    void accountDeletionRemovesOnlyProfileOriginalsFromDatabaseAndStorage() {
+        FileAsset resume = asset(41L, 7L, null, null, "RESUME");
+        FileAsset portfolio = asset(42L, 7L, "USER_PROFILE_PORTFOLIO", 5001L, "PORTFOLIO");
+        when(mapper.findProfileFilesByOwner(7L)).thenReturn(List.of(resume, portfolio));
+        when(mapper.deleteProfileFileByIdAndOwner(41L, 7L)).thenReturn(1);
+        when(mapper.deleteProfileFileByIdAndOwner(42L, 7L)).thenReturn(1);
+
+        int deleted = service.deleteOwnedProfileFiles(7L);
+
+        org.assertj.core.api.Assertions.assertThat(deleted).isEqualTo(2);
+        verify(storage).delete("7/file-41");
+        verify(storage).delete("7/file-42");
+    }
+
+    @Test
+    void legacyDeletedAccountCleanupRechecksOwnerAndKindAtDeleteTime() {
+        FileAsset deletable = asset(43L, 7L, null, null, "RESUME");
+        FileAsset changed = asset(44L, 8L, null, null, "PORTFOLIO");
+        when(mapper.findDeletedOwnerProfileFiles(100)).thenReturn(List.of(deletable, changed));
+        when(mapper.deleteProfileFileByIdAndOwner(43L, 7L)).thenReturn(1);
+        when(mapper.deleteProfileFileByIdAndOwner(44L, 8L)).thenReturn(0);
+
+        int deleted = service.cleanupDeletedAccountProfileFiles(1000);
+
+        org.assertj.core.api.Assertions.assertThat(deleted).isEqualTo(1);
+        verify(storage).delete("7/file-43");
+        verify(storage, never()).delete("8/file-44");
+    }
+
     private static FileAsset asset(Long id, Long ownerId, String refType, Long refId, String kind) {
         return FileAsset.builder()
                 .id(id)

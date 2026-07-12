@@ -84,7 +84,7 @@ public class IntakeTools {
                 + " · " + nonBlank(match.jobTitle(), "(직무 미정)") + "\" 로 정했어요.";
     }
 
-    @Tool("면접 모드(BASIC/JOB/PERSONALITY/PRESSURE/RESUME/COMPANY)는 사용자가 화면의 모드 칩에서 직접 고른다. "
+    @Tool("면접 모드(BASIC/JOB/PERSONALITY/PRESSURE/RESUME/PORTFOLIO/REAL/COMPANY)는 사용자가 화면의 모드 칩에서 직접 고른다. "
             + "이 도구는 모드를 확정하지 않으며, 모드가 필요하면 호출해 사용자에게 칩으로 고르도록 안내만 한다.")
     public String chooseMode(@P("무시됨 — 모드는 칩(selectedModeCode)으로만 확정한다") String code) {
         // 발견①(mode 결정성): mode 는 6개 고정 enum 의 닫힌 선택지라 자유텍스트 이해가 불필요하다. 모델(qwen3)이

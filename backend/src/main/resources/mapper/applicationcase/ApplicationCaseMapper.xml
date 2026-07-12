@@ -111,11 +111,6 @@
           AND status = 'ANALYZING'
     </update>
 
-    <delete id="deleteApplicationCase">
-        DELETE FROM application_case
-        WHERE id = #{id} AND user_id = #{userId}
-    </delete>
-
     <update id="softDeleteApplicationCase">
         UPDATE application_case
         SET deleted_at = CURRENT_TIMESTAMP

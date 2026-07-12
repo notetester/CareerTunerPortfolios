@@ -10,8 +10,6 @@ import com.careertuner.companyanalysis.domain.CompanyAnalysis;
 @Mapper
 public interface CompanyAnalysisMapper {
 
-    void deleteCompanyAnalysesByCaseId(@Param("applicationCaseId") Long applicationCaseId);
-
     void insertCompanyAnalysis(CompanyAnalysis companyAnalysis);
 
     CompanyAnalysis findLatestCompanyAnalysisByCaseId(@Param("applicationCaseId") Long applicationCaseId);

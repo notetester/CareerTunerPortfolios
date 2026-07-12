@@ -45,7 +45,7 @@ public interface PlannerMapper {
 
     void insertReminder(PlannerScheduleReminder reminder);
 
-    int deleteRemindersByItem(@Param("userId") Long userId, @Param("itemId") Long itemId);
+    int cancelRemindersByItem(@Param("userId") Long userId, @Param("itemId") Long itemId);
 
     int markReminderSent(@Param("reminderId") Long reminderId);
 

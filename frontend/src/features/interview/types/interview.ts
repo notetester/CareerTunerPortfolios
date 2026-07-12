@@ -1,7 +1,7 @@
 // 면접 도메인 타입 + UI 상수.
 // 백엔드 interview_session / interview_question / interview_answer 스키마와 1:1로 맞춘다.
 
-import { MessageSquare, Settings2, Users, Zap, FileText, Building2, type LucideIcon } from "lucide-react";
+import { MessageSquare, Settings2, Users, Zap, FileText, Building2, FolderGit2, Timer, type LucideIcon } from "lucide-react";
 
 import type { VisualScoreDetail } from "../hooks/visualAnalysis";
 
@@ -11,6 +11,8 @@ export type InterviewMode =
   | "PERSONALITY" // 인성 면접
   | "PRESSURE" // 압박 면접
   | "RESUME" // 자소서 기반
+  | "PORTFOLIO" // 포트폴리오 기반
+  | "REAL" // 실전 종합
   | "COMPANY"; // 기업 맞춤
 
 export type QuestionType = "EXPECTED" | "TECH" | "PERSONALITY" | "SITUATION" | "FOLLOW_UP";
@@ -37,6 +39,8 @@ export interface InterviewSession {
   avgVoiceScore: number | null;
   /** 복원(=복습) 마지막 시각. 없으면 복습한 적 없음. */
   lastResumedAt: string | null;
+  /** 질문 생성 시 사용한 A/B/C 원천 provenance JSON. */
+  sourceSnapshot?: string | null;
   createdAt: string;
 }
 
@@ -323,6 +327,8 @@ export const INTERVIEW_MODES: InterviewModeOption[] = [
   { id: "PERSONALITY", icon: Users, title: "인성 면접", desc: "협업, 갈등, 책임감, 태도", difficulty: "중", recommended: false },
   { id: "PRESSURE", icon: Zap, title: "압박 면접", desc: "꼬리 질문, 반박 질문", difficulty: "상", recommended: false },
   { id: "RESUME", icon: FileText, title: "자소서 기반", desc: "자기소개서 문장을 기반으로 질문", difficulty: "중", recommended: false },
+  { id: "PORTFOLIO", icon: FolderGit2, title: "포트폴리오 기반", desc: "프로젝트 역할·기여·성과를 깊이 검증", difficulty: "상", recommended: false },
+  { id: "REAL", icon: Timer, title: "실전 종합", desc: "제한 시간과 다양한 질문을 섞은 종합 연습", difficulty: "상", recommended: false },
   { id: "COMPANY", icon: Building2, title: "기업 맞춤", desc: "기업 현황과 공고 기반 질문", difficulty: "상", recommended: false },
 ];
 

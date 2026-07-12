@@ -3,6 +3,8 @@ param(
     [string] $MingwBin = "C:\Qt\Tools\mingw1310_64\bin",
     [string] $BuildDir = "build-release-qt6111",
     [string] $Version = "",
+    [string] $CMakePath = "",
+    [string] $Generator = "",
     [switch] $NoBuild,
     [switch] $SkipInstaller,
     [switch] $SkipPortable
@@ -19,6 +21,7 @@ $ExePath = Join-Path $BuildPath "CareerTunerDesktop.exe"
 $StagedExe = Join-Path $StageDir "CareerTunerDesktop.exe"
 $Windeployqt = Join-Path $QtPrefix "bin\windeployqt.exe"
 $Compiler = Join-Path $MingwBin "g++.exe"
+$MingwMake = Join-Path $MingwBin "mingw32-make.exe"
 
 function Assert-LastExitCode {
     param([string] $Step)
@@ -27,11 +30,84 @@ function Assert-LastExitCode {
     }
 }
 
+function Get-CMakeExecutable {
+    param([string] $ExplicitPath)
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        if (-not (Test-Path -LiteralPath $ExplicitPath)) {
+            throw "CMake executable not found: $ExplicitPath"
+        }
+        return (Resolve-Path -LiteralPath $ExplicitPath).Path
+    }
+    $command = Get-Command cmake -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "CMake\bin\cmake.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\CMake\bin\cmake.exe")
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+    throw "CMake was not found in PATH or standard install locations. Pass -CMakePath explicitly."
+}
+
+function Get-BuildGenerator {
+    param([string] $ExplicitGenerator)
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitGenerator)) {
+        return $ExplicitGenerator
+    }
+    $ninja = Get-Command ninja -ErrorAction SilentlyContinue
+    if ($ninja -or (Test-Path -LiteralPath (Join-Path $MingwBin "ninja.exe"))) {
+        return "Ninja"
+    }
+    if (Test-Path -LiteralPath $MingwMake) {
+        return "MinGW Makefiles"
+    }
+    throw "Neither Ninja nor mingw32-make was found. Install Ninja or provide MinGW make in -MingwBin."
+}
+
 if (-not (Test-Path $Windeployqt)) {
     throw "windeployqt not found: $Windeployqt"
 }
 if (-not (Test-Path $Compiler)) {
     throw "MinGW compiler not found: $Compiler"
+}
+
+$CMakeExecutable = Get-CMakeExecutable $CMakePath
+$ResolvedGenerator = Get-BuildGenerator $Generator
+
+# 같은 build 폴더는 CMake generator를 바꿀 수 없다. 기존 캐시와 현재 탐지 결과가 다르면
+# 사용자의 기존 산출물을 지우지 않고 generator별 형제 폴더로 전환한다.
+$CachePath = Join-Path $BuildPath "CMakeCache.txt"
+if (Test-Path -LiteralPath $CachePath) {
+    $cache = Get-Content -LiteralPath $CachePath -Raw
+    if ($cache -match "(?m)^CMAKE_GENERATOR:INTERNAL=(.+)$") {
+        $CachedGenerator = $Matches[1].Trim()
+        if ($CachedGenerator -ne $ResolvedGenerator) {
+            $GeneratorSlug = ($ResolvedGenerator -replace '[^A-Za-z0-9]+', '-').Trim('-').ToLowerInvariant()
+            $BuildPath = Join-Path $DesktopDir "$BuildDir-$GeneratorSlug"
+            $DistRoot = Join-Path $BuildPath "dist"
+            $StageDir = Join-Path $DistRoot "CareerTunerDesktop"
+            $PackageDir = Join-Path $DistRoot "packages"
+            $ExePath = Join-Path $BuildPath "CareerTunerDesktop.exe"
+            $StagedExe = Join-Path $StageDir "CareerTunerDesktop.exe"
+            Write-Warning "CMake generator changed ($CachedGenerator -> $ResolvedGenerator). Preserving the existing build and using: $BuildPath"
+
+            $AlternateCache = Join-Path $BuildPath "CMakeCache.txt"
+            if (Test-Path -LiteralPath $AlternateCache) {
+                $alternate = Get-Content -LiteralPath $AlternateCache -Raw
+                if ($alternate -match "(?m)^CMAKE_GENERATOR:INTERNAL=(.+)$") {
+                    $AlternateGenerator = $Matches[1].Trim()
+                    if ($AlternateGenerator -ne $ResolvedGenerator) {
+                        throw "Generator-specific build directory has an incompatible CMake cache: $AlternateCache"
+                    }
+                }
+            }
+        }
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
@@ -46,13 +122,13 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 $env:PATH = "$MingwBin;$QtPrefix\bin;$env:PATH"
 
 if (-not $NoBuild) {
-    cmake -S $DesktopDir -B $BuildPath -G Ninja `
+    & $CMakeExecutable -S $DesktopDir -B $BuildPath -G $ResolvedGenerator `
         "-DCMAKE_PREFIX_PATH=$QtPrefix" `
         "-DCMAKE_CXX_COMPILER=$Compiler" `
         -DCMAKE_DISABLE_FIND_PACKAGE_WrapVulkanHeaders=ON `
         -DCMAKE_BUILD_TYPE=Release
     Assert-LastExitCode "cmake configure"
-    cmake --build $BuildPath --config Release
+    & $CMakeExecutable --build $BuildPath --config Release
     Assert-LastExitCode "cmake build"
 }
 
@@ -163,6 +239,8 @@ $manifest = [ordered]@{
     gitCommit = (git -C $DesktopDir rev-parse HEAD)
     builtAt = (Get-Date).ToString("o")
     qtPrefix = $QtPrefix
+    cmake = $CMakeExecutable
+    generator = $ResolvedGenerator
     stageDir = $StageDir
     stagedFileCount = $files.Count
     stagedSizeBytes = [int64] $stageBytes

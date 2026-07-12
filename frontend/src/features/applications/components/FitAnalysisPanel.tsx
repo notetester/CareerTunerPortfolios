@@ -188,6 +188,8 @@ interface SourceSnapshot {
   jobAnalysisId: number | null;
   jobPostingRevision: number | null;
   jobAnalysisCreatedAt: string | null;
+  profileVersionId?: number | null;
+  profileVersionNo?: number | null;
   profileUpdatedAt: string | null;
   requiredSkills?: string[];
   profileSkills?: string[];
@@ -201,6 +203,12 @@ function SourceSnapshotViewer({ snapshot }: { snapshot: string | null }) {
   const rows = [
     { label: "공고 분석", value: parsed.jobAnalysisId != null ? `#${parsed.jobAnalysisId} (공고 v${parsed.jobPostingRevision ?? 1})` : "분석 전" },
     { label: "공고 분석 시점", value: formatSnapshotTime(parsed.jobAnalysisCreatedAt) },
+    {
+      label: "프로필 스냅샷",
+      value: parsed.profileVersionId != null
+        ? `#${parsed.profileVersionId}${parsed.profileVersionNo != null ? ` (v${parsed.profileVersionNo})` : ""}`
+        : "버전 기록 전 데이터",
+    },
     { label: "프로필 갱신 시점", value: formatSnapshotTime(parsed.profileUpdatedAt) },
     { label: "비교 입력", value: `요구 역량 ${parsed.requiredSkills?.length ?? 0}개 · 보유 기술 ${parsed.profileSkills?.length ?? 0}개` },
   ];

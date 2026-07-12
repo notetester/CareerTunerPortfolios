@@ -913,6 +913,7 @@ public class PostModerationService {
     public void applyAiTags(Long postId, List<String> tags) {
         // 1. 기존 AI 태그의 usage_count 감소
         List<Long> oldAiTagIds = tagMapper.findAiTagIds(postId);
+        Set<Long> affectedTagIds = new LinkedHashSet<>(oldAiTagIds);
         for (Long tagId : oldAiTagIds) {
             tagMapper.decrementUsageCount(tagId);
         }
@@ -929,6 +930,7 @@ public class PostModerationService {
             tagMapper.insertTag(trimmed); // INSERT IGNORE
             Long tagId = tagMapper.findIdByName(trimmed);
             if (tagId == null) continue;
+            affectedTagIds.add(tagId);
 
             // 신규 INSERT(affected==1)일 때만 usage_count 증가. 동시 태깅으로 이미
             // 같은 (post_id, tag_id) 행이 있으면 ON DUPLICATE KEY UPDATE(affected!=1)라
@@ -938,6 +940,9 @@ public class PostModerationService {
                 tagMapper.incrementUsageCount(tagId);
             }
         }
+
+        // soft delete 행 복원(affected=2)과 AI/사용자 태그 전환까지 포함해 캐시를 활성 연결 수로 대사한다.
+        affectedTagIds.forEach(tagMapper::reconcileUsageCount);
 
         // 4. tags_json 캐시 갱신 (사용자 태그 + AI 태그 전체)
         List<String> allTags = tagMapper.findTagNamesByPostId(postId);

@@ -9,16 +9,15 @@ import lombok.Setter;
  * SMS OTP 인증 설정. {@code careertuner.sms} 접두사로 바인딩된다.
  *
  * <p>{@code provider} 기본값은 {@code mock} 이며 env {@code SMS_PROVIDER} 로 교체한다.
- * 선택한 실 제공자의 키가 채워져 있으면 실 발송, 비어 있으면 Mock 제공자로 폴백한다
- * ({@link com.careertuner.sms.SmsProviderRouter} 가 판정). Toss 결제 설정의
- * {@code configured()} 토글 패턴을 그대로 따른다.</p>
+ * 개발/데모는 {@code mock}, 운영 실발송은 구현된 {@code aligo}를 선택한다.
+ * 잘못된 실 제공자 설정은 {@link com.careertuner.sms.SmsProviderRouter}가 거부한다.</p>
  */
 @Getter
 @Setter
 @ConfigurationProperties(prefix = "careertuner.sms")
 public class SmsProperties {
 
-    /** mock | twilio | aligo | naver-sens | firebase */
+    /** 지원 목록: mock | aligo | firebase */
     private String provider = "mock";
 
     /** OTP 코드 유효 시간(초). */
@@ -33,9 +32,7 @@ public class SmsProperties {
     /** 발신번호(제공자에 따라 사전 등록된 번호여야 함). */
     private String senderPhone = "";
 
-    private final Twilio twilio = new Twilio();
     private final Aligo aligo = new Aligo();
-    private final NaverSens naverSens = new NaverSens();
     private final Firebase firebase = new Firebase();
 
     /** 요청된 provider 값을 정규화한다(대소문자·언더스코어 허용). */
@@ -48,20 +45,6 @@ public class SmsProperties {
 
     @Getter
     @Setter
-    public static class Twilio {
-        private String accountSid = "";
-        private String authToken = "";
-        /** Messaging Service SID 또는 발신번호. */
-        private String from = "";
-        private String baseUrl = "https://api.twilio.com/2010-04-01";
-
-        public boolean configured() {
-            return isNotBlank(accountSid) && isNotBlank(authToken) && isNotBlank(from);
-        }
-    }
-
-    @Getter
-    @Setter
     public static class Aligo {
         private String apiKey = "";
         private String userId = "";
@@ -70,21 +53,6 @@ public class SmsProperties {
 
         public boolean configured() {
             return isNotBlank(apiKey) && isNotBlank(userId) && isNotBlank(sender);
-        }
-    }
-
-    @Getter
-    @Setter
-    public static class NaverSens {
-        private String accessKey = "";
-        private String secretKey = "";
-        private String serviceId = "";
-        private String from = "";
-        private String baseUrl = "https://sens.apigw.ntruss.com";
-
-        public boolean configured() {
-            return isNotBlank(accessKey) && isNotBlank(secretKey)
-                    && isNotBlank(serviceId) && isNotBlank(from);
         }
     }
 

@@ -107,7 +107,14 @@ public class AutoPrepOrchestrator {
                 emitter.complete();
             } catch (RuntimeException ex) {
                 log.warn("AutoPrep 스트림 실패: {}", ex.getMessage());
-                emitter.completeWithError(ex);
+                // 클라이언트 계약에 있는 terminal error 이벤트를 먼저 보낸다. 내부 예외/원문은 노출하지 않는다.
+                // 이미 연결이 끊겨 전송할 수 없을 때만 completeWithError로 종료한다.
+                try {
+                    send(emitter, "error", Map.of("message", "자동 준비를 완료하지 못했습니다. 다시 시도해 주세요."));
+                    emitter.complete();
+                } catch (RuntimeException sendFailure) {
+                    emitter.completeWithError(ex);
+                }
             }
         });
         return emitter;

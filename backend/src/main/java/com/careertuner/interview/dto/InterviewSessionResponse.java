@@ -17,6 +17,7 @@ public record InterviewSessionResponse(
         Integer avgScore,
         Integer avgVoiceScore,
         LocalDateTime lastResumedAt,
+        String sourceSnapshot,
         LocalDateTime createdAt) {
 
     public static InterviewSessionResponse from(InterviewSession s) {
@@ -33,6 +34,7 @@ public record InterviewSessionResponse(
                 s.getAvgAnswerScore(),
                 s.getAvgVoiceScore(),
                 s.getLastResumedAt(),
+                s.getSourceSnapshot(),
                 s.getCreatedAt());
     }
 }

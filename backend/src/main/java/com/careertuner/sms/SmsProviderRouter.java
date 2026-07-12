@@ -2,16 +2,14 @@ package com.careertuner.sms;
 
 import org.springframework.stereotype.Component;
 
-import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.PostConstruct;
 
 /**
  * 설정된 SMS 제공자를 선택한다.
  *
- * <p>{@code careertuner.sms.provider} 로 지정한 실 제공자의 키가 모두 채워져 있으면 그 제공자를,
- * 그렇지 않으면 {@link MockSmsProvider} 로 폴백한다. 이 폴백 덕분에 실 키 없이도
- * 발송→코드입력→검증 데모가 완결된다.</p>
+ * <p>{@code mock}은 개발/데모에서 명시적으로 선택하고, 운영 실발송은 구현된 {@code aligo}만 사용한다.
+ * 실 제공자 오타·미구현 provider·키 누락을 Mock 성공으로 위장하지 않고 설정 오류로 중단한다.</p>
  */
-@Slf4j
 @Component
 public class SmsProviderRouter {
 
@@ -27,36 +25,32 @@ public class SmsProviderRouter {
         this.aligoProvider = aligoProvider;
     }
 
-    /** 현재 설정에 맞는 활성 제공자를 반환한다. 실 제공자 키가 없으면 Mock. */
+    /** 잘못된 운영 설정을 첫 OTP 요청이 아니라 애플리케이션 시작 단계에서 차단한다. */
+    @PostConstruct
+    void validateConfiguration() {
+        configuredProvider();
+    }
+
+    /** 현재 설정에 맞는 활성 제공자를 반환한다. 지원하지 않거나 불완전한 실 설정은 fail-fast 한다. */
     public SmsProvider resolve() {
+        return configuredProvider();
+    }
+
+    private SmsProvider configuredProvider() {
         String provider = properties.normalizedProvider();
-        switch (provider) {
+        return switch (provider) {
             case "aligo" -> {
                 if (properties.getAligo().configured()) {
-                    return aligoProvider;
+                    yield aligoProvider;
                 }
-                log.warn("SMS provider=aligo 지정됐지만 키 미설정 → Mock 폴백");
+                throw new IllegalStateException(
+                        "SMS_PROVIDER=aligo 이지만 SMS_ALIGO_API_KEY/USER_ID/SENDER 설정이 완전하지 않습니다.");
             }
-            case "twilio" -> {
-                if (properties.getTwilio().configured()) {
-                    // Twilio 실 구현 추가 시 여기에서 반환. 현재는 미구현이라 Mock 폴백.
-                    log.warn("SMS provider=twilio 는 아직 실 구현이 없어 Mock 으로 발송합니다.");
-                } else {
-                    log.warn("SMS provider=twilio 지정됐지만 키 미설정 → Mock 폴백");
-                }
-            }
-            case "naver-sens" -> {
-                if (properties.getNaverSens().configured()) {
-                    log.warn("SMS provider=naver-sens 는 아직 실 구현이 없어 Mock 으로 발송합니다.");
-                } else {
-                    log.warn("SMS provider=naver-sens 지정됐지만 키 미설정 → Mock 폴백");
-                }
-            }
-            case "mock" -> {
-                // 명시적 Mock — 로그 없이 폴백.
-            }
-            default -> log.warn("알 수 없는 SMS provider='{}' → Mock 폴백", provider);
-        }
-        return mockProvider;
+            case "mock" -> mockProvider;
+            case "twilio", "naver-sens" -> throw new IllegalStateException(
+                    "SMS provider=" + provider + " 는 현재 지원하지 않습니다. mock 또는 aligo를 사용하세요.");
+            default -> throw new IllegalStateException(
+                    "알 수 없는 SMS provider='" + provider + "' 입니다. mock 또는 aligo를 사용하세요.");
+        };
     }
 }

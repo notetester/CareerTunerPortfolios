@@ -32,7 +32,7 @@ public interface PrivacyMapper {
 
     void updateBlock(UserBlock block);
 
-    void deleteBlock(@Param("id") Long id);
+    void softDeleteBlock(@Param("id") Long id);
 
     /** 뷰어가 차단한 계정 중 authorIds 에 포함된 것 — 콘텐츠 목록 필터용 벌크 조회. */
     List<UserBlock> findBlocksAmong(@Param("userId") Long userId, @Param("targetIds") Set<Long> targetIds);
@@ -47,9 +47,9 @@ public interface PrivacyMapper {
 
     void insertIpBlock(UserIpBlock block);
 
-    void deleteIpBlock(@Param("id") Long id, @Param("userId") Long userId);
+    void softDeleteIpBlock(@Param("id") Long id, @Param("userId") Long userId);
 
-    void deleteIpBlocksBySource(@Param("userId") Long userId, @Param("sourceUserId") Long sourceUserId);
+    void softDeleteIpBlocksBySource(@Param("userId") Long userId, @Param("sourceUserId") Long sourceUserId);
 
     /** 대상 계정의 최근 성공 로그인 IP 를 해시해 반환(없으면 null). 원본 IP 는 매퍼 밖으로 나가지 않는다. */
     String findLatestLoginIpHash(@Param("userId") Long userId, @Param("salt") String salt);
@@ -74,7 +74,7 @@ public interface PrivacyMapper {
 
     void updateConversationBlock(ConversationBlock block);
 
-    void deleteConversationBlock(@Param("id") Long id);
+    void softDeleteConversationBlock(@Param("id") Long id);
 
     /** 뷰어가 차단한 방 중 특정 사용자가 활성 멤버인 방의 차단 행들. */
     List<ConversationBlock> findConversationBlocksWhereMember(@Param("userId") Long userId, @Param("memberId") Long memberId);

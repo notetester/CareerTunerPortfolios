@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/app/auth/AuthContext";
+import { ConsentGate } from "@/app/auth/ConsentGate";
+import { useConsent } from "@/app/auth/ConsentContext";
 import { subscribeCreditBalanceChanged } from "@/app/lib/creditBalanceEvents";
 import { Button } from "@/app/components/ui/button";
 import { Badge } from "@/app/components/ui/badge";
@@ -627,6 +629,7 @@ function MemberHome({ summary, loading, error, fallbackName, onRetry, onSummaryR
 export function HomePage() {
   const navigate = useNavigate();
   const { user, loading: authLoading, isAuthenticated } = useAuth();
+  const { status: consentStatus } = useConsent();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
@@ -637,7 +640,7 @@ export function HomePage() {
   }), []);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || consentStatus?.aiDataAgreed !== true) {
       setSummary(null);
       setDashboardLoading(false);
       setDashboardError(null);
@@ -664,7 +667,7 @@ export function HomePage() {
     return () => {
       ignore = true;
     };
-  }, [isAuthenticated, reloadToken]);
+  }, [consentStatus?.aiDataAgreed, isAuthenticated, reloadToken]);
 
   if (authLoading) {
     return (
@@ -685,15 +688,17 @@ export function HomePage() {
     const memberHomeLoading = dashboardLoading || (!summary && !dashboardError);
 
     return (
-      <MemberHome
-        summary={summary}
-        loading={memberHomeLoading}
-        error={dashboardError}
-        fallbackName={user?.name ?? "지원자"}
-        onRetry={() => setReloadToken((value) => value + 1)}
-        onSummaryRefreshed={(data) => setSummary(data)}
-        onTodosChange={(todos) => setSummary((previous) => (previous ? { ...previous, todos } : previous))}
-      />
+      <ConsentGate requirements={["AI_DATA"]}>
+        <MemberHome
+          summary={summary}
+          loading={memberHomeLoading}
+          error={dashboardError}
+          fallbackName={user?.name ?? "지원자"}
+          onRetry={() => setReloadToken((value) => value + 1)}
+          onSummaryRefreshed={(data) => setSummary(data)}
+          onTodosChange={(todos) => setSummary((previous) => (previous ? { ...previous, todos } : previous))}
+        />
+      </ConsentGate>
     );
   }
 

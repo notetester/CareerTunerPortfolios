@@ -11,14 +11,34 @@
     </insert>
 
     <select id="findAll" resultType="com.careertuner.interview.domain.InterviewTrainingSample">
-        SELECT * FROM interview_training_sample ORDER BY id DESC LIMIT #{limit}
+        SELECT sample.*
+        FROM interview_training_sample sample
+        LEFT JOIN interview_session session ON session.id = sample.interview_session_id
+        LEFT JOIN application_case ac ON ac.id = session.application_case_id
+        WHERE sample.deleted_at IS NULL
+          AND (sample.interview_session_id IS NULL
+               OR (session.deleted_at IS NULL AND ac.deleted_at IS NULL))
+        ORDER BY sample.id DESC
+        LIMIT #{limit}
     </select>
 
     <select id="count" resultType="long">
-        SELECT COUNT(*) FROM interview_training_sample
+        SELECT COUNT(*)
+        FROM interview_training_sample sample
+        LEFT JOIN interview_session session ON session.id = sample.interview_session_id
+        LEFT JOIN application_case ac ON ac.id = session.application_case_id
+        WHERE sample.deleted_at IS NULL
+          AND (sample.interview_session_id IS NULL
+               OR (session.deleted_at IS NULL AND ac.deleted_at IS NULL))
     </select>
 
     <select id="averageScore" resultType="java.lang.Double">
-        SELECT AVG(score) FROM interview_training_sample
+        SELECT AVG(sample.score)
+        FROM interview_training_sample sample
+        LEFT JOIN interview_session session ON session.id = sample.interview_session_id
+        LEFT JOIN application_case ac ON ac.id = session.application_case_id
+        WHERE sample.deleted_at IS NULL
+          AND (sample.interview_session_id IS NULL
+               OR (session.deleted_at IS NULL AND ac.deleted_at IS NULL))
     </select>
 </mapper>

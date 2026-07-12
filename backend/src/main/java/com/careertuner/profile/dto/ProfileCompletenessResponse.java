@@ -15,6 +15,8 @@ public record ProfileCompletenessResponse(
         int aiScore,
         int qualityPenalty,
         List<String> qualityWarnings,
-        List<String> qualityRecommendations
+        List<String> qualityRecommendations,
+        Long profileVersionId,
+        Integer profileVersionNo
 ) {
 }

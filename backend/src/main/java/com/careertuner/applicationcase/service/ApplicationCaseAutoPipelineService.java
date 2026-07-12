@@ -613,6 +613,8 @@ public class ApplicationCaseAutoPipelineService {
         snapshot.put("jobPostingRevision", source.getJobPostingRevision());
         snapshot.put("jobAnalysisCreatedAt", source.getJobAnalysisCreatedAt());
         snapshot.put("userProfileId", source.getUserProfileId());
+        snapshot.put("profileVersionId", source.getProfileVersionId());
+        snapshot.put("profileVersionNo", source.getProfileVersionNo());
         snapshot.put("profileUpdatedAt", source.getProfileUpdatedAt());
         snapshot.put("requiredSkills", parseList(source.getRequiredSkills()));
         snapshot.put("preferredSkills", parseList(source.getPreferredSkills()));

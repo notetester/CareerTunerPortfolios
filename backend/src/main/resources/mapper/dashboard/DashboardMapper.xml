@@ -229,6 +229,7 @@
         SELECT id, type, title, message, link, is_read, created_at
         FROM notification
         WHERE user_id = #{userId}
+          AND deleted_at IS NULL
         ORDER BY created_at DESC, id DESC
         LIMIT 3
     </select>
@@ -357,6 +358,7 @@
         SELECT id, user_id, derived_key, task, time_label, done, completed_at, created_at, updated_at
         FROM dashboard_todo
         WHERE user_id = #{userId}
+          AND deleted_at IS NULL
         ORDER BY created_at, id
     </select>
 
@@ -374,6 +376,7 @@
         WHERE id = #{todoId}
           AND user_id = #{userId}
           AND derived_key IS NULL
+          AND deleted_at IS NULL
     </update>
 
     <!-- 파생 할 일 완료 오버라이드 upsert (user_id + derived_key 유니크 키 기준). -->
@@ -385,13 +388,16 @@
             task = VALUES(task),
             time_label = VALUES(time_label),
             done = VALUES(done),
-            completed_at = VALUES(completed_at)
+            completed_at = VALUES(completed_at),
+            deleted_at = NULL
     </insert>
 
-    <delete id="deleteTodo">
-        DELETE FROM dashboard_todo
+    <update id="deleteTodo">
+        UPDATE dashboard_todo
+        SET deleted_at = COALESCE(deleted_at, NOW())
         WHERE id = #{todoId}
           AND user_id = #{userId}
           AND derived_key IS NULL
-    </delete>
+          AND deleted_at IS NULL
+    </update>
 </mapper>

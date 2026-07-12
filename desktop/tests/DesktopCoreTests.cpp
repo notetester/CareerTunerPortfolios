@@ -1393,6 +1393,19 @@ private slots:
         QVERIFY(planner.contains("color: Theme.darkMode"));
         QVERIFY(planner.contains("Qt.rgba(0.985, 0.985, 0.99, 0.96)"));
 
+        const QByteArray home = readQml(QStringLiteral("HomeView.qml"));
+        for (const QByteArray& cPath : {
+                 QByteArray("/dashboard"), QByteArray("/analysis"),
+                 QByteArray("/career-roadmap"), QByteArray("/certificates")}) {
+            QVERIFY2(home.contains(cPath), cPath.constData());
+        }
+        QVERIFY(home.contains("Qt.openUrlExternally(appSettings.webAppUrl + path)"));
+        QVERIFY(home.contains("path: \"/correction\""));
+        QVERIFY(home.contains("path: \"/billing\""));
+        QVERIFY(home.contains("path: \"/community\""));
+        QVERIFY(home.contains("path: \"/support\""));
+        QVERIFY(home.contains("Accessible.name: modelData.label + \" 웹 화면 열기\""));
+
         const QByteArray collaboration = readQml(QStringLiteral("CollaborationPage.qml"));
         QVERIFY(collaboration.contains("온라인 제한 서버 공유"));
         QVERIFY(collaboration.contains("서버를 통해 전달되며 소유자 데스크톱이 온라인일 때만"));
@@ -2864,6 +2877,23 @@ private slots:
         PlannerOverlayController controller;
         QVERIFY(!controller.enabled());
         QVERIFY(!controller.alwaysOnTop());
+    }
+
+    void windowsPackagingDetectsCmakeAndFallsBackToMinGwMake()
+    {
+        QFile script(QStringLiteral(CAREERTUNER_DESKTOP_SOURCE_DIR "/scripts/package-windows.ps1"));
+        QVERIFY(script.open(QIODevice::ReadOnly));
+        const QByteArray source = script.readAll();
+        QVERIFY(source.contains("function Get-CMakeExecutable"));
+        QVERIFY(source.contains("CMake\\bin\\cmake.exe"));
+        QVERIFY(source.contains("function Get-BuildGenerator"));
+        QVERIFY(source.contains("MinGW Makefiles"));
+        QVERIFY(source.contains("mingw32-make.exe"));
+        QVERIFY(source.contains("CMAKE_GENERATOR:INTERNAL="));
+        QVERIFY(source.contains("$BuildDir-$GeneratorSlug"));
+        QVERIFY(source.contains("Preserving the existing build"));
+        QVERIFY(source.contains("& $CMakeExecutable -S"));
+        QVERIFY(source.contains("& $CMakeExecutable --build"));
     }
 
 private:

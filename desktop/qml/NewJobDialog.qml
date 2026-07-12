@@ -171,6 +171,8 @@ Dialog {
                         { label: "인성 면접", desc: "가치관·협업·조직 적합성", value: "PERSONALITY" },
                         { label: "압박 면접", desc: "꼬리질문·반박 대응 훈련", value: "PRESSURE" },
                         { label: "자소서 기반 면접", desc: "이력서·자기소개서 경험 검증", value: "RESUME" },
+                        { label: "포트폴리오 기반 면접", desc: "프로젝트 기여·성과·기술 선택 검증", value: "PORTFOLIO" },
+                        { label: "실전 종합 면접", desc: "제한 시간 안에 다양한 질문을 종합 연습", value: "REAL" },
                         { label: "기업 맞춤 면접", desc: "기업·산업 맥락과 지원동기 중심", value: "COMPANY" }
                     ]
                     delegate: Rectangle {

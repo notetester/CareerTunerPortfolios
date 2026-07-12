@@ -17,17 +17,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class RouteConfirmStore {
 
-    private final Map<Long, Boolean> pending = new ConcurrentHashMap<>();
+    private final Map<Long, String> pending = new ConcurrentHashMap<>();
 
     /** 확인 응답을 띄울 때 대기 표시. */
-    public void markPending(Long conversationId) {
+    public void markPending(Long conversationId, String originalQuestion) {
         if (conversationId != null) {
-            pending.put(conversationId, Boolean.TRUE);
+            pending.put(conversationId, originalQuestion == null ? "" : originalQuestion);
         }
     }
 
-    /** 대기 중이면 true 를 돌려주고 즉시 소비(1턴 한정). 대기 아니면 false. */
-    public boolean consumePending(Long conversationId) {
-        return conversationId != null && pending.remove(conversationId) != null;
+    /** 대기 중이면 최초 발화를 돌려주고 즉시 소비한다. 대기 아니면 null. */
+    public String consumePendingQuestion(Long conversationId) {
+        return conversationId == null ? null : pending.remove(conversationId);
     }
 }

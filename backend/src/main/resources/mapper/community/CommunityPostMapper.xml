@@ -15,6 +15,7 @@
                SELECT 1 FROM user_block ub
                 WHERE ub.user_id = #{viewerId}
                   AND ub.blocked_user_id = cp.user_id
+                  AND ub.deleted_at IS NULL
                   AND COALESCE(
                         CASE WHEN cp.is_anonymous = 1
                              THEN JSON_UNQUOTE(JSON_EXTRACT(ub.flags_json, '$."content.post.anonymous"')) END,
@@ -177,6 +178,7 @@
           FROM post_reaction pr
           JOIN community_post cp ON cp.id = pr.post_id
          WHERE pr.user_id = #{userId}
+           AND pr.deleted_at IS NULL
            AND cp.status = 'PUBLISHED'
          GROUP BY cp.category
          ORDER BY MAX(pr.created_at) DESC
@@ -293,6 +295,7 @@
     <select id="findInterviewReviewByPostId" resultType="com.careertuner.community.domain.CommunityInterviewReview">
         SELECT * FROM community_interview_review
          WHERE post_id = #{postId}
+           AND deleted_at IS NULL
     </select>
 
     <!-- 면접후기 확장 데이터 upsert (1쿼리) -->
@@ -308,14 +311,17 @@
             difficulty      = VALUES(difficulty),
             interview_date  = VALUES(interview_date),
             result_status   = VALUES(result_status),
-            questions_json  = VALUES(questions_json)
+            questions_json  = VALUES(questions_json),
+            deleted_at      = NULL
     </insert>
 
     <!-- 면접후기 확장 데이터 삭제 -->
-    <delete id="deleteInterviewReview">
-        DELETE FROM community_interview_review
+    <update id="deleteInterviewReview">
+        UPDATE community_interview_review
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE post_id = #{postId}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <!-- 태깅 배치 대상 게시글 ID 목록 -->
     <select id="findPostIdsForTagging" resultType="java.lang.Long">
@@ -392,6 +398,7 @@
         UPDATE community_interview_review
            SET ai_extracted_questions = #{aiExtractedQuestions}
          WHERE post_id = #{postId}
+           AND deleted_at IS NULL
     </update>
 
     <!-- 면접 질문 추출 중복 방지: source 기준 InterviewKnowledge 삭제 -->

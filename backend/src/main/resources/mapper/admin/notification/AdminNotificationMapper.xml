@@ -29,16 +29,17 @@
                n.created_at
           FROM notification n
           LEFT JOIN users u ON u.id = n.user_id
+         WHERE n.deleted_at IS NULL
          ORDER BY n.created_at DESC
          LIMIT #{limit}
     </select>
 
     <select id="countAll" resultType="long">
-        SELECT COUNT(*) FROM notification
+        SELECT COUNT(*) FROM notification WHERE deleted_at IS NULL
     </select>
 
     <select id="countRead" resultType="long">
-        SELECT COUNT(*) FROM notification WHERE is_read = 1
+        SELECT COUNT(*) FROM notification WHERE is_read = 1 AND deleted_at IS NULL
     </select>
 
     <select id="countByType" resultType="java.util.Map">
@@ -46,6 +47,7 @@
                COUNT(*)                                     AS sent,
                SUM(CASE WHEN is_read = 1 THEN 1 ELSE 0 END) AS `read`
           FROM notification
+         WHERE deleted_at IS NULL
          GROUP BY type
     </select>
 
@@ -54,6 +56,7 @@
                COUNT(*)                            AS cnt
           FROM notification
          WHERE created_at >= CURDATE() - INTERVAL 6 DAY
+           AND deleted_at IS NULL
          GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
     </select>
 

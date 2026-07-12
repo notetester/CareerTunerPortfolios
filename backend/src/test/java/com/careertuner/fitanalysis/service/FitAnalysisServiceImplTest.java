@@ -15,11 +15,14 @@ import static org.mockito.Mockito.when;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.careertuner.fitanalysis.ai.MockFitAnalysisAiService;
+import com.careertuner.fitanalysis.ai.FitAnalysisAiCommand;
+import com.careertuner.fitanalysis.ai.FitAnalysisAiService;
 import com.careertuner.fitanalysis.certificate.CertificateEvidenceService;
 import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
@@ -27,6 +30,8 @@ import com.careertuner.fitanalysis.domain.FitAnalysisResult;
 import com.careertuner.fitanalysis.dto.CareerRoadmapResponse;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
 import com.careertuner.notification.service.NotificationService;
+import com.careertuner.profile.domain.ProfileAiAnalysis;
+import com.careertuner.profile.mapper.ProfileAiAnalysisMapper;
 
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
@@ -35,6 +40,96 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 class FitAnalysisServiceImplTest {
+
+    @Test
+    void generatePinsProfileVersionAndRejectsStaleProfileAiInsight() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        ProfileAiAnalysisMapper profileAiMapper = mock(ProfileAiAnalysisMapper.class);
+        AtomicReference<FitAnalysisAiCommand> capturedCommand = new AtomicReference<>();
+        FitAnalysisAiService aiService = command -> {
+            capturedCommand.set(command);
+            return new MockFitAnalysisAiService().generate(command);
+        };
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(
+                mapper, profileAiMapper, aiService, new EvidenceGateService(), mock(NotificationService.class),
+                new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class),
+                mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisGenerationSource source = source();
+        source.setProfileVersionId(401L);
+        source.setProfileVersionNo(3);
+        AtomicReference<FitAnalysisResult> inserted = new AtomicReference<>();
+        when(mapper.findGenerationSource(1L, 20L)).thenReturn(source);
+        when(mapper.findLatestByUserIdAndApplicationCaseId(1L, 20L)).thenAnswer(invocation -> inserted.get());
+        when(profileAiMapper.findByUserIdAndFeature(1L, "PROFILE_SUMMARY")).thenReturn(ProfileAiAnalysis.builder()
+                .userId(1L)
+                .profileVersionId(400L)
+                .featureType("PROFILE_SUMMARY")
+                .summary("이전 프로필 요약")
+                .strengths("[\"React\"]")
+                .gaps("[\"AWS\"]")
+                .build());
+        doAnswer(invocation -> {
+            FitAnalysisResult row = invocation.getArgument(0);
+            row.setId(11L);
+            row.setCreatedAt(LocalDateTime.of(2026, 7, 12, 10, 0));
+            inserted.set(row);
+            return null;
+        }).when(mapper).insertFitAnalysis(any(FitAnalysisResult.class));
+        when(mapper.findLearningTasksByFitAnalysisId(11L)).thenReturn(List.of());
+
+        service.generate(1L, 20L);
+
+        assertThat(capturedCommand.get().profileInsight()).isNull();
+        ArgumentCaptor<FitAnalysisResult> persisted = ArgumentCaptor.forClass(FitAnalysisResult.class);
+        verify(mapper).insertFitAnalysis(persisted.capture());
+        assertThat(persisted.getValue().getSourceSnapshot())
+                .contains("\"profileVersionId\":401")
+                .contains("\"profileVersionNo\":3");
+    }
+
+    @Test
+    void generateUsesProfileAiInsightOnlyForTheSameProfileVersion() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        ProfileAiAnalysisMapper profileAiMapper = mock(ProfileAiAnalysisMapper.class);
+        AtomicReference<FitAnalysisAiCommand> capturedCommand = new AtomicReference<>();
+        FitAnalysisAiService aiService = command -> {
+            capturedCommand.set(command);
+            return new MockFitAnalysisAiService().generate(command);
+        };
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(
+                mapper, profileAiMapper, aiService, new EvidenceGateService(), mock(NotificationService.class),
+                new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class),
+                mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisGenerationSource source = source();
+        source.setProfileVersionId(401L);
+        source.setProfileVersionNo(3);
+        AtomicReference<FitAnalysisResult> inserted = new AtomicReference<>();
+        when(mapper.findGenerationSource(1L, 20L)).thenReturn(source);
+        when(mapper.findLatestByUserIdAndApplicationCaseId(1L, 20L)).thenAnswer(invocation -> inserted.get());
+        when(profileAiMapper.findByUserIdAndFeature(1L, "PROFILE_SUMMARY")).thenReturn(ProfileAiAnalysis.builder()
+                .userId(1L)
+                .profileVersionId(401L)
+                .featureType("PROFILE_SUMMARY")
+                .summary("현재 프로필 요약")
+                .strengths("[\"React\"]")
+                .gaps("[\"AWS\"]")
+                .build());
+        doAnswer(invocation -> {
+            FitAnalysisResult row = invocation.getArgument(0);
+            row.setId(12L);
+            row.setCreatedAt(LocalDateTime.of(2026, 7, 12, 10, 0));
+            inserted.set(row);
+            return null;
+        }).when(mapper).insertFitAnalysis(any(FitAnalysisResult.class));
+        when(mapper.findLearningTasksByFitAnalysisId(12L)).thenReturn(List.of());
+
+        service.generate(1L, 20L);
+
+        assertThat(capturedCommand.get().profileInsight())
+                .contains("현재 프로필 요약")
+                .contains("강점: React")
+                .contains("보완점: AWS");
+    }
 
     @Test
     void generatePersistsHistoryAndNormalizedConditionMatches() {
@@ -161,6 +256,8 @@ class FitAnalysisServiceImplTest {
         source.setJobPostingRevision(2);
         source.setJobAnalysisCreatedAt(LocalDateTime.of(2026, 6, 10, 10, 0));
         source.setUserProfileId(40L);
+        source.setProfileVersionId(401L);
+        source.setProfileVersionNo(3);
         source.setProfileUpdatedAt(LocalDateTime.of(2026, 6, 11, 10, 0));
         source.setCompanyName("테스트기업");
         source.setJobTitle("프론트엔드 개발자");

@@ -10,8 +10,6 @@ import com.careertuner.jobposting.domain.JobPosting;
 @Mapper
 public interface JobPostingMapper {
 
-    void deleteJobPostingsByCaseId(@Param("applicationCaseId") Long applicationCaseId);
-
     int nextRevisionForCase(@Param("applicationCaseId") Long applicationCaseId);
 
     void insertJobPosting(JobPosting jobPosting);

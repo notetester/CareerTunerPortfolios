@@ -35,6 +35,8 @@ public class AutoPrepIntakeService {
             new ModeOption("PERSONALITY", "인성 면접"),
             new ModeOption("PRESSURE", "압박 면접"),
             new ModeOption("RESUME", "자소서 기반"),
+            new ModeOption("PORTFOLIO", "포트폴리오 기반"),
+            new ModeOption("REAL", "실전 종합"),
             new ModeOption("COMPANY", "기업 맞춤"));
 
     private final AutoPrepPlanner planner;
@@ -121,6 +123,8 @@ public class AutoPrepIntakeService {
             case "PERSONALITY" -> "인성 면접";
             case "PRESSURE" -> "압박 면접";
             case "RESUME" -> "자소서 기반 면접";
+            case "PORTFOLIO" -> "포트폴리오 기반 면접";
+            case "REAL" -> "실전 종합 면접";
             case "COMPANY" -> "기업 맞춤 면접";
             default -> "기본 면접";
         };

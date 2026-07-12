@@ -17,6 +17,7 @@ const corrections: CorrectionResponse[] = [
     sourceRefId: null,
     originalText: "고객의 요구사항을 정리하고 팀원들과 협업해 프로젝트를 완료했습니다.",
     improvedText: "고객 인터뷰 5건에서 핵심 요구사항을 정리하고 우선순위를 합의해, 팀 일정 내 프로젝트를 완료했습니다.",
+    sourceSnapshot: JSON.stringify({ fitAnalysis: { fitAnalysisId: 5101, missingSkills: ["대규모 트래픽 경험"], strategy: "API 성능 개선 근거를 강조" }, requestedModel: "AUTO", actualModel: "mock-correction" }),
     summary: "역할과 행동을 구체화하고 협업 결과가 드러나도록 개선했습니다.",
     issues: ["본인의 역할이 추상적입니다.", "성과를 확인할 기준이 부족합니다."],
     changeReasons: ["고객 인터뷰 횟수와 우선순위 합의 과정을 추가했습니다."],
@@ -54,9 +55,24 @@ export const correctionRoutes: MockRoute[] = [
     },
   },
   {
+    method: "GET",
+    pattern: /^\/corrections\/sources\/interview-answers\/(\d+)$/,
+    handler: ({ params }) => ({
+      sourceRefId: Number(params[0]),
+      applicationCaseId: 101,
+      sessionId: 801,
+      questionId: 8101,
+      questionText: "협업 갈등을 해결한 경험을 설명해 주세요.",
+      originalText: "일정 기준에 대한 의견 차이를 대화로 조율해 마감일을 지켰습니다.",
+      score: 72,
+      feedback: "본인의 행동과 합의 기준을 더 구체적으로 설명해 주세요.",
+      answeredAt: iso(0),
+    }),
+  },
+  {
     method: "POST",
     pattern: /^\/corrections$/,
-    handler: ({ body }) => {
+    handler: ({ body, query }) => {
       const request = body as CorrectionCreateRequest;
       if (!request.policyAcknowledgementKey) {
         throw new Error("차감 정책 확인키가 필요합니다.");
@@ -77,6 +93,13 @@ export const correctionRoutes: MockRoute[] = [
         sourceRefId: request.sourceRefId ?? null,
         originalText,
         improvedText: improveText(originalText),
+        sourceSnapshot: JSON.stringify({
+          contextVersion: "e-correction-context-v1",
+          fitAnalysis: request.applicationCaseId ? { fitAnalysisId: 5101, missingSkills: ["대규모 트래픽 경험"], strategy: "근거 중심 표현" } : undefined,
+          interviewAnswer: request.sourceRefId ? { answerId: request.sourceRefId } : undefined,
+          requestedModel: query.get("model") ?? "AUTO",
+          actualModel: `mock-demo:${query.get("model") ?? "AUTO"}`,
+        }),
         summary: "핵심 행동과 결과가 먼저 보이도록 문장을 정리했습니다.",
         issues: ["역할과 성과가 한 문장에 섞여 있었습니다."],
         changeReasons: ["행동과 결과를 분리하고 능동형 표현으로 바꿨습니다."],
@@ -90,6 +113,16 @@ export const correctionRoutes: MockRoute[] = [
       corrections.unshift(result);
       correctionsByRequestKey.set(request.requestKey, result);
       return result;
+    },
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/corrections\/(\d+)$/,
+    handler: ({ params }) => {
+      const index = corrections.findIndex((item) => item.id === Number(params[0]));
+      if (index < 0) throw new Error("첨삭 기록을 찾을 수 없습니다.");
+      corrections.splice(index, 1);
+      return null;
     },
   },
   {

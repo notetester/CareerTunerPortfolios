@@ -92,7 +92,6 @@ class ApplicationCaseServiceImplTest {
         service.delete(1L, 10L);
 
         verify(applicationCaseMapper).softDeleteApplicationCase(10L, 1L);
-        verify(applicationCaseMapper, never()).deleteApplicationCase(10L, 1L);
     }
 
     @Test
@@ -215,7 +214,6 @@ class ApplicationCaseServiceImplTest {
                 new JobPostingRequest("updated posting", null, null, "TEXT"));
 
         ArgumentCaptor<JobPosting> postingCaptor = ArgumentCaptor.forClass(JobPosting.class);
-        verify(jobPostingMapper, never()).deleteJobPostingsByCaseId(10L);
         verify(jobPostingMapper).insertJobPosting(postingCaptor.capture());
         JobPosting savedPosting = postingCaptor.getValue();
         assertThat(savedPosting.getRevision()).isEqualTo(2);
@@ -1061,7 +1059,6 @@ class ApplicationCaseServiceImplTest {
         assertThat(response.id()).isEqualTo(20L);
         assertThat(response.evidence()).isEqualTo("[{\"field\":\"requiredSkills\",\"quote\":\"Java Spring REST API\"}]");
         assertThat(response.ambiguousConditions()).isEqualTo("[{\"condition\":\"experience is not explicit\",\"assumption\":\"junior\"}]");
-        verify(jobAnalysisMapper, never()).deleteJobAnalysesByCaseId(10L);
         verify(jobAnalysisMapper).insertJobAnalysis(any(JobAnalysis.class));
         verify(statusService).markAnalyzingExclusive(1L, 10L, "DRAFT");
         InOrder successOrder = inOrder(statusService, usageLogService);
@@ -1171,7 +1168,6 @@ class ApplicationCaseServiceImplTest {
         service.createJobAnalysis(1L, 10L);
 
         ArgumentCaptor<JobAnalysis> analysisCaptor = ArgumentCaptor.forClass(JobAnalysis.class);
-        verify(jobAnalysisMapper, never()).deleteJobAnalysesByCaseId(10L);
         verify(jobAnalysisMapper).insertJobAnalysis(analysisCaptor.capture());
         assertThat(analysisCaptor.getValue().getJobPostingId()).isEqualTo(30L);
         assertThat(analysisCaptor.getValue().getJobPostingRevision()).isEqualTo(2);
@@ -1313,7 +1309,6 @@ class ApplicationCaseServiceImplTest {
         LocalDateTime after = BDisplayTime.now();
 
         ArgumentCaptor<CompanyAnalysis> analysisCaptor = ArgumentCaptor.forClass(CompanyAnalysis.class);
-        verify(companyAnalysisMapper, never()).deleteCompanyAnalysesByCaseId(10L);
         verify(companyAnalysisMapper).insertCompanyAnalysis(analysisCaptor.capture());
         assertThat(analysisCaptor.getValue().getJobPostingId()).isEqualTo(30L);
         assertThat(analysisCaptor.getValue().getJobPostingRevision()).isEqualTo(3);
