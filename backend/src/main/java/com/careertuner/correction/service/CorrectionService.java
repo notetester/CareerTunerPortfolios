@@ -64,17 +64,18 @@ public class CorrectionService {
     private final ObjectMapper objectMapper;
 
     public CorrectionResponse create(Long userId, CorrectionCreateRequest request) {
-        return create(userId, request, RequestedAiModel.AUTO);
+        return create(userId, request, true, null);
     }
 
     /** 사용자가 첨삭 모델을 명시 선택하는 경로(기본 AUTO=현행 폴백). */
     public CorrectionResponse create(Long userId, CorrectionCreateRequest request, RequestedAiModel requestedModel) {
-        return create(userId, request, true, requestedModel);
+        return create(userId, request, true,
+                requestedModel == null ? RequestedAiModel.AUTO : requestedModel);
     }
 
     /** AutoPrep은 단계별 결제 고지 계약이 없어 기존 WRITE 동작을 비과금으로 유지한다(모델 AUTO). */
     public CorrectionResponse createUnchargedForAutoPrep(Long userId, CorrectionCreateRequest request) {
-        return create(userId, request, false, RequestedAiModel.AUTO);
+        return create(userId, request, false, null);
     }
 
     private CorrectionResponse create(Long userId, CorrectionCreateRequest request, boolean chargeRequired,
@@ -108,7 +109,7 @@ public class CorrectionService {
 
         CorrectionPayload payload;
         try {
-            payload = aiClient.correct(new CorrectionCommand(
+            CorrectionCommand command = new CorrectionCommand(
                     correctionType,
                     sourceType,
                     request == null ? null : request.sourceRefId(),
@@ -116,7 +117,10 @@ public class CorrectionService {
                     applicationCase,
                     originalText,
                     request == null ? null : request.questionText(),
-                    selfInput), requestedModel);
+                    selfInput);
+            payload = requestedModel == null
+                    ? aiClient.correct(command)
+                    : aiClient.correct(command, requestedModel);
             validateChargeablePayload(payload);
         } catch (RuntimeException ex) {
             recordFailureBestEffort(userId, applicationCaseId, featureType, ex);

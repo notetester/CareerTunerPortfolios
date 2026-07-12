@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -20,6 +21,7 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.billing.dto.AiChargeCommand;
 import com.careertuner.billing.dto.AiChargeResult;
@@ -86,6 +88,25 @@ class CorrectionServiceTest {
         verify(correctionMapper).insert(correctionCaptor.capture());
         assertThat(correctionCaptor.getValue().getRequestKey()).isEqualTo("correction:test-request");
         verify(notificationService).notify(any());
+    }
+
+    @Test
+    void explicitModelUsesSelectedModelOverload() {
+        when(aiClient.correct(any(), eq(RequestedAiModel.CLAUDE))).thenReturn(payload());
+        when(usageLogService.recordSuccess(1L, null, "CORRECTION_SELF_INTRO", payload().usage()))
+                .thenReturn(501L);
+        when(aiChargeService.charge(any())).thenReturn(AiChargeResult.credit(2, 8));
+        doAnswer(invocation -> {
+            CorrectionRequest correction = invocation.getArgument(0);
+            correction.setId(77L);
+            return null;
+        }).when(correctionMapper).insert(any());
+
+        CorrectionResponse response = service.create(
+                1L, request("AI_USAGE:test-model"), RequestedAiModel.CLAUDE);
+
+        assertThat(response.id()).isEqualTo(77L);
+        verify(aiClient).correct(any(), eq(RequestedAiModel.CLAUDE));
     }
 
     @Test
