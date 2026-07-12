@@ -114,7 +114,7 @@ export function PhoneVerificationCard() {
     setMessage(null);
     setDevCode(null);
     try {
-      resetFirebaseRecaptcha();
+      resetFirebaseRecaptcha(RECAPTCHA_CONTAINER_ID);
       const confirmation = await sendFirebaseOtp(
         authConfig.firebase,
         toE164Kr(value),
@@ -127,7 +127,7 @@ export function PhoneVerificationCard() {
       // 재발송 쿨다운은 Firebase 가 서버측에서 관리한다 — 프런트 카운트다운은 두지 않는다.
       setMessage("인증번호를 문자로 발송했습니다. 문자를 확인해 주세요.");
     } catch (e) {
-      resetFirebaseRecaptcha();
+      resetFirebaseRecaptcha(RECAPTCHA_CONTAINER_ID);
       setError(firebaseAuthErrorMessage(e));
     } finally {
       setRequesting(false);
@@ -157,7 +157,7 @@ export function PhoneVerificationCard() {
         setCodeSent(false);
         setCode("");
         confirmationRef.current = null;
-        resetFirebaseRecaptcha();
+        resetFirebaseRecaptcha(RECAPTCHA_CONTAINER_ID);
         setMessage("전화번호 인증이 완료되었습니다.");
       }
     } catch (e) {
