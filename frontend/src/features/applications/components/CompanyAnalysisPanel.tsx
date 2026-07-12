@@ -15,6 +15,7 @@ import type {
 } from "../types/analysis";
 import {
   formatJsonArrayForTextarea,
+  getCompanySourceTypeLabel,
   isCompanyAnalysisRefreshDue,
   parseAiInferenceRows,
   parseJsonStringArray,
@@ -201,7 +202,7 @@ export function CompanyAnalysisPanel({
 
   const sourceMetadata = analysis
     ? [
-        { label: "출처 유형", value: analysis.sourceType },
+        { label: "출처 유형", value: getCompanySourceTypeLabel(analysis.sourceType) },
         { label: "확인 시각", value: analysis.checkedAt ? formatKoreaDateTime(analysis.checkedAt) : null },
         {
           label: "갱신 권장",

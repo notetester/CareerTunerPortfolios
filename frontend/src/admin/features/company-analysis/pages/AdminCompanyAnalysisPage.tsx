@@ -18,6 +18,7 @@ import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import {
   formatAnalysisProvenanceSummary,
+  getCompanySourceTypeLabel,
   parseJsonArrayOrText,
   parseJsonStringArray,
 } from "@/features/applications/types/analysis";
@@ -530,7 +531,7 @@ export function AdminCompanyAnalysisPage() {
                                 </Badge>
                               </td>
                               <td className="px-4 py-3 align-top text-sm text-slate-600">
-                                <div className="break-words font-semibold text-slate-800">{row.sourceType ?? "-"}</div>
+                                <div className="break-words font-semibold text-slate-800">{getCompanySourceTypeLabel(row.sourceType) ?? "-"}</div>
                                 <div className="mt-1 text-xs text-slate-500">출처 {parseJsonStringArray(row.sources).length}개</div>
                               </td>
                               <td className="px-4 py-3 align-top">
@@ -743,7 +744,7 @@ function CompanyAnalysisDetail({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <MetaBlock label="출처 유형" value={row.sourceType ?? "미정"} />
+        <MetaBlock label="출처 유형" value={getCompanySourceTypeLabel(row.sourceType) ?? "미정"} />
         <MetaBlock label="확인 시각" value={formatDateTime(row.checkedAt)} />
         <MetaBlock label="갱신 권장" value={formatDateTime(row.refreshRecommendedAt)} />
         <MetaBlock label="공고 revision" value={formatPostingRevision(row)} />

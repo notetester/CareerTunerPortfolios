@@ -542,6 +542,49 @@ export function getDifficultyLabel(value: string | null | undefined): string {
   }
 }
 
+// ── 표준 코드 → 한글 표시 라벨 매퍼 (E2) ──
+// employmentType·experienceLevel 은 저장 타입이 String 이지만 생성 파이프라인이 표준 코드로 정규화한다
+// (backend BAnalysisGenerationService.normalizeEmploymentType/normalizeExperienceLevel, 미분류는 MID 수렴).
+// 따라서 알려진 코드는 결정적으로 한글 라벨로 표시하고, 레거시·사용자 편집 등 미지 값은 원문 그대로 통과한다.
+// 표시 전용 — 저장/API 값은 코드를 유지한다(편집 폼에서 라벨을 저장하지 말 것).
+const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
+  FULL_TIME: "정규직",
+  CONTRACT: "계약직",
+  INTERN: "인턴",
+  PART_TIME: "시간제",
+};
+
+const EXPERIENCE_LEVEL_LABELS: Record<string, string> = {
+  JUNIOR: "주니어",
+  MID: "중급",
+  SENIOR: "시니어",
+};
+
+const COMPANY_SOURCE_TYPE_LABELS: Record<string, string> = {
+  WEB: "웹 조사",
+  JOB_POSTING: "공고 기반",
+  MANUAL: "수동 입력",
+  API: "외부 API",
+};
+
+/** 고용형태 표준 코드를 한글 라벨로. 미지·레거시 값은 원문 그대로, 빈 값은 "미정". */
+export function getEmploymentTypeLabel(value: string | null | undefined): string {
+  if (!value) return "미정";
+  return EMPLOYMENT_TYPE_LABELS[value] ?? value;
+}
+
+/** 경력수준 표준 코드를 한글 라벨로. 미지·레거시 값은 원문 그대로, 빈 값은 "미정". */
+export function getExperienceLevelLabel(value: string | null | undefined): string {
+  if (!value) return "미정";
+  return EXPERIENCE_LEVEL_LABELS[value] ?? value;
+}
+
+/** 기업분석 출처 코드를 한글 라벨로. 미지 값은 원문 그대로, 빈 값은 null(호출부에서 "-"/"미정" 선택). */
+export function getCompanySourceTypeLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return COMPANY_SOURCE_TYPE_LABELS[value] ?? value;
+}
+
 // ── 분석 provenance(생성 모델·실행 이력) 표시 헬퍼 (지원건별 모델 선택·재실행) ──
 
 /**
