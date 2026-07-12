@@ -65,9 +65,19 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK 36 packages
-        # self-hosted runner에서도 Capacitor 8 요구사항(compile/target 36)을 같은 위치에 준비한다.
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null || true
+      - name: Install required Android SDK packages
+        # setup-android가 legacy tools/bin 또는 cmdline-tools 중 어느 레이아웃을 설치해도 동작한다.
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(command -v sdkmanager || true)
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER=$(find "$ANDROID_HOME" -type f -name sdkmanager -perm -u+x 2>/dev/null | sort -V | tail -1)
+          fi
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::Android sdkmanager를 찾지 못했습니다."
+            exit 1
+          fi
+          "$SDKMANAGER" "platforms;android-36" "build-tools;35.0.0" > /dev/null
 
       - name: Install dependencies
         run: npm ci
@@ -161,13 +171,22 @@ jobs:
         run: |
           set -euo pipefail
           APK="android/app/build/outputs/apk/release/app-release.apk"
-          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
-          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
-          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
-          test -f "$APK"
-          test -x "$APKSIGNER"
-          test -x "$AAPT2"
-          test -x "$APKANALYZER"
+          resolve_sdk_tool() {
+            TOOL=$(command -v "$1" || true)
+            if [ -z "$TOOL" ]; then
+              TOOL=$(find "$ANDROID_HOME" -type f -name "$1" -perm -u+x 2>/dev/null | sort -V | tail -1)
+            fi
+            if [ -z "$TOOL" ]; then
+              echo "::error::Android SDK 도구를 찾지 못했습니다: $1" >&2
+              return 1
+            fi
+            echo "$TOOL"
+          }
+          APKSIGNER=$(resolve_sdk_tool apksigner)
+          AAPT2=$(resolve_sdk_tool aapt2)
+          APKANALYZER=$(resolve_sdk_tool apkanalyzer)
+          test -f "$APK" || { echo "::error::release APK가 없습니다: $APK"; exit 1; }
+          echo "Android SDK tools: apksigner=$APKSIGNER, aapt2=$AAPT2, apkanalyzer=$APKANALYZER"
 
           SIGNING_OUTPUT="$RUNNER_TEMP/apk-signing.txt"
           "$APKSIGNER" verify --verbose --print-certs "$APK" > "$SIGNING_OUTPUT"
@@ -180,13 +199,23 @@ jobs:
 
           MANIFEST_XML="$RUNNER_TEMP/apk-manifest.xml"
           "$APKANALYZER" manifest print "$APK" > "$MANIFEST_XML"
-          grep -Fq 'android:allowBackup="false"' "$MANIFEST_XML"
-          grep -Fq 'android:usesCleartextTraffic="false"' "$MANIFEST_XML"
+          require_fixed() {
+            LABEL="$1"
+            NEEDLE="$2"
+            FILE="$3"
+            grep -Fq "$NEEDLE" "$FILE" || {
+              echo "::error::패키징 검증 실패($LABEL): $NEEDLE"
+              return 1
+            }
+            echo "APK security check OK: $LABEL"
+          }
+          require_fixed allowBackup 'android:allowBackup="false"' "$MANIFEST_XML"
+          require_fixed cleartext-manifest 'android:usesCleartextTraffic="false"' "$MANIFEST_XML"
           # apkanalyzer는 resource 이름 대신 @ref/0x...를 출력하므로 manifest에서는 속성 존재만 확인하고,
           # 실제 패키징된 XML 세 파일은 아래 aapt2 dump로 각각 검증한다.
-          grep -Fq 'android:networkSecurityConfig=' "$MANIFEST_XML"
-          grep -Fq 'android:dataExtractionRules=' "$MANIFEST_XML"
-          grep -Fq 'android:fullBackupContent=' "$MANIFEST_XML"
+          require_fixed networkSecurityConfig 'android:networkSecurityConfig=' "$MANIFEST_XML"
+          require_fixed dataExtractionRules 'android:dataExtractionRules=' "$MANIFEST_XML"
+          require_fixed fullBackupContent 'android:fullBackupContent=' "$MANIFEST_XML"
 
           RESOURCE_TABLE="$RUNNER_TEMP/apk-resources.txt"
           "$AAPT2" dump resources "$APK" > "$RESOURCE_TABLE"
