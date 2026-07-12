@@ -69,6 +69,8 @@ public class SecurityConfig {
                         // 커뮤니티 게시글 조회 공개
                         .requestMatchers(HttpMethod.GET,
                                 "/api/community/posts", "/api/community/posts/**",
+                                "/api/community/users/*/activity",
+                                "/api/community/users/*/activity-tabs",
                                 "/api/community/guidelines/published").permitAll()
                         // 공개 채용 게시판 조회(목록·상세) — 비로그인 브라우징 허용, /{id}/analyze(POST)는 인증 필요
                         .requestMatchers(HttpMethod.GET, "/api/job-board", "/api/job-board/**").permitAll()

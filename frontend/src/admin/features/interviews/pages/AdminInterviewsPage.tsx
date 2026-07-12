@@ -73,6 +73,10 @@ export function AdminInterviewsPage() {
 
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) ?? rows[0] ?? null, [rows, selectedId]);
   const report = useMemo(() => parseReport(detail?.report ?? null), [detail]);
+  const sourceSnapshot = useMemo(
+    () => parseInterviewSourceSnapshot(detail?.session.sourceSnapshot ?? null),
+    [detail?.session.sourceSnapshot],
+  );
   const answerByQuestion = useMemo(() => {
     const map = new Map<number, AdminInterviewSessionDetail["answers"][number]>();
     detail?.answers.forEach((a) => map.set(a.questionId, a));
@@ -306,12 +310,27 @@ export function AdminInterviewsPage() {
                 </TabsList>
 
                 <TabsContent value="overview" className="mt-0">
-                  <MemoCard
-                sessionId={detail.session.id}
-                initial={detail.session.adminMemo}
-                onSaved={() => void loadDetail(detail.session.id)}
-                canUpdate={canUpdate}
-              />
+                  <div className="space-y-3">
+                    {sourceSnapshot && (
+                      <Card className="border-slate-200 bg-card">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base">질문 생성 원천</CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                          <Info label="프로필 버전" value={sourceSnapshot.profileVersionNo != null ? `v${sourceSnapshot.profileVersionNo}` : "없음"} />
+                          <Info label="공고 분석" value={sourceSnapshot.jobAnalysisId != null ? `#${sourceSnapshot.jobAnalysisId}` : "없음"} />
+                          <Info label="기업 분석" value={sourceSnapshot.companyAnalysisId != null ? `#${sourceSnapshot.companyAnalysisId}` : "없음"} />
+                          <Info label="적합도 분석" value={sourceSnapshot.fitAnalysisId != null ? `#${sourceSnapshot.fitAnalysisId} · ${sourceSnapshot.fitScore ?? "-"}점` : "미분석 폴백"} />
+                        </CardContent>
+                      </Card>
+                    )}
+                    <MemoCard
+                      sessionId={detail.session.id}
+                      initial={detail.session.adminMemo}
+                      onSaved={() => void loadDetail(detail.session.id)}
+                      canUpdate={canUpdate}
+                    />
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="report" className="mt-0">
@@ -511,6 +530,24 @@ function Info({ label, value }: { label: string; value: string }) {
       <div className="mt-1 truncate text-sm font-bold text-slate-900">{value}</div>
     </div>
   );
+}
+
+interface InterviewSourceSnapshot {
+  profileVersionNo?: number | null;
+  jobAnalysisId?: number | null;
+  companyAnalysisId?: number | null;
+  fitAnalysisId?: number | null;
+  fitScore?: number | null;
+}
+
+function parseInterviewSourceSnapshot(raw: string | null): InterviewSourceSnapshot | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed as InterviewSourceSnapshot : null;
+  } catch {
+    return null;
+  }
 }
 
 /** 면접 AI 기능 실패 모니터링 — GET /api/admin/interview/ai-failures. */

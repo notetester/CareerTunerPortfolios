@@ -10,8 +10,6 @@ import com.careertuner.jobanalysis.domain.JobAnalysis;
 @Mapper
 public interface JobAnalysisMapper {
 
-    void deleteJobAnalysesByCaseId(@Param("applicationCaseId") Long applicationCaseId);
-
     void insertJobAnalysis(JobAnalysis jobAnalysis);
 
     JobAnalysis findLatestJobAnalysisByCaseId(@Param("applicationCaseId") Long applicationCaseId);

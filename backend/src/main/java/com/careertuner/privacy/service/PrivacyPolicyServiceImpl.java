@@ -422,7 +422,7 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
             if (blockIp) {
                 deriveIpBlock(userId, block.getBlockedUserId());
             } else {
-                mapper.deleteIpBlocksBySource(userId, block.getBlockedUserId());
+                mapper.softDeleteIpBlocksBySource(userId, block.getBlockedUserId());
             }
         }
         mapper.updateBlock(block);
@@ -433,8 +433,8 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
     @Transactional
     public void unblockUser(Long userId, Long blockId) {
         UserBlock block = requireOwnBlock(userId, blockId);
-        mapper.deleteIpBlocksBySource(userId, block.getBlockedUserId());
-        mapper.deleteBlock(blockId);
+        mapper.softDeleteIpBlocksBySource(userId, block.getBlockedUserId());
+        mapper.softDeleteBlock(blockId);
     }
 
     @Override
@@ -456,7 +456,7 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
     @Override
     @Transactional
     public void deleteIpBlock(Long userId, Long ipBlockId) {
-        mapper.deleteIpBlock(ipBlockId, userId);
+        mapper.softDeleteIpBlock(ipBlockId, userId);
     }
 
     @Override
@@ -506,7 +506,7 @@ public class PrivacyPolicyServiceImpl implements PrivacyPolicyService {
         if (block == null || !userId.equals(block.getUserId())) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "차단 항목을 찾을 수 없습니다.");
         }
-        mapper.deleteConversationBlock(blockId);
+        mapper.softDeleteConversationBlock(blockId);
     }
 
     /* ─────────────────────────── 내부 ─────────────────────────── */

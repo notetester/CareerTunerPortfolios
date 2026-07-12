@@ -92,6 +92,7 @@ class InterviewServiceSoftDeleteTest {
         verify(fileService, never()).deleteOwnedLinked(
                 userId, 73L, "ATTACHMENT", "INTERVIEW_ANSWER", answer.getId());
         verify(interviewMapper).softDeleteSession(sessionId, userId);
+        verify(interviewMapper).softDeleteTrainingSamplesBySessionId(sessionId);
     }
 
     @Test
@@ -107,6 +108,7 @@ class InterviewServiceSoftDeleteTest {
         verify(interviewMapper, never()).findAnswersBySessionId(sessionId);
         verify(fileService, never()).findLinkedFiles(anyString(), any());
         verify(interviewMapper, never()).softDeleteSession(sessionId, userId);
+        verify(interviewMapper, never()).softDeleteTrainingSamplesBySessionId(sessionId);
     }
 
     @Test

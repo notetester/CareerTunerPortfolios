@@ -1,0 +1,402 @@
+{
+  "schemaVersion": 1,
+  "title": "CareerTuner demo readiness regression map",
+  "lastFullAudit": {
+    "date": "2026-07-12",
+    "source": "docs/C_FEATURE_VERIFICATION.md#6-전-영역af-시연-준비도-검증-2026-07-12-영역별-전담-에이전트-8",
+    "basePr": 379,
+    "baseCommit": "a86d089a39adad67e362d2e61c1396dd8435afd9"
+  },
+  "ignoredPaths": [
+    "docs/ai-reports/**",
+    "docs/ai-artifacts/**",
+    "docs/storyboard/**",
+    "docs/obsidian-vault/**",
+    "**/*.md",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.html"
+  ],
+  "globalRules": [
+    {
+      "paths": [
+        "backend/src/main/java/com/careertuner/common/**",
+        "backend/src/main/resources/application.yaml",
+        "backend/src/test/java/com/careertuner/common/**",
+        "backend/src/main/java/com/careertuner/billing/policy/**",
+        "frontend/src/app/lib/api.ts",
+        "frontend/src/app/lib/apiClientCore.mjs",
+        "frontend/src/app/routes.ts",
+        "frontend/src/app/App.tsx"
+      ],
+      "checks": ["*"]
+    },
+    {
+      "paths": [
+        "backend/src/main/java/com/careertuner/ai/autoprep/**",
+        "backend/src/test/java/com/careertuner/ai/autoprep/**"
+      ],
+      "checks": ["D-INTERVIEW", "E-CORRECTION", "E-BILLING-CREDITS", "F-SUPPORT-CONTENT"]
+    },
+    {
+      "paths": [
+        "backend/src/main/java/com/careertuner/ai/chat/**",
+        "backend/src/main/java/com/careertuner/ai/intake/**",
+        "backend/src/test/java/com/careertuner/ai/chat/**",
+        "backend/src/test/java/com/careertuner/ai/intake/**"
+      ],
+      "checks": ["F-SUPPORT-CONTENT"]
+    },
+    {
+      "paths": ["backend/src/main/resources/db/schema.sql", "backend/src/main/resources/db/patches/**"],
+      "checks": ["DATA-LIFECYCLE"]
+    },
+    {
+      "paths": [".github/scripts/**"],
+      "checks": ["DATA-LIFECYCLE", "RELEASE-GATE"]
+    },
+    {
+      "paths": [
+        ".github/workflows/**",
+        ".github/actionlint.yaml",
+        "docker-compose.yml",
+        "DEPLOY.md",
+        "docs/verification/demo-readiness-checks.json",
+        "scripts/verification/**"
+      ],
+      "checks": ["RELEASE-GATE"]
+    }
+  ],
+  "checks": [
+    {
+      "id": "A-AUTH-ACCOUNT",
+      "area": "A",
+      "name": "인증, 계정, 동의, 개인정보와 권한 경계",
+      "paths": [
+        "backend/src/main/java/com/careertuner/auth/**",
+        "backend/src/main/java/com/careertuner/user/**",
+        "backend/src/main/java/com/careertuner/privacy/**",
+        "backend/src/main/java/com/careertuner/consent/**",
+        "backend/src/main/java/com/careertuner/sms/**",
+        "backend/src/main/resources/mapper/auth/**",
+        "backend/src/main/resources/mapper/user/**",
+        "backend/src/main/resources/mapper/privacy/**",
+        "backend/src/test/java/com/careertuner/auth/**",
+        "backend/src/test/java/com/careertuner/user/**",
+        "backend/src/test/java/com/careertuner/privacy/**",
+        "backend/src/test/java/com/careertuner/consent/**",
+        "backend/src/test/java/com/careertuner/sms/**",
+        "frontend/src/app/auth/**",
+        "frontend/src/app/pages/Login.tsx",
+        "frontend/src/app/pages/AuthCallback.tsx",
+        "frontend/scripts/test-auth-session-boundaries.mjs",
+        "frontend/scripts/test-native-oauth.mjs",
+        "frontend/src/platform/nativeOAuth**",
+        "frontend/src/platform/deepLink**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "A-PROFILE",
+      "area": "A",
+      "name": "프로필, 문서 구조화, A AI 산출물과 버전 이력",
+      "paths": [
+        "backend/src/main/java/com/careertuner/profile/**",
+        "backend/src/main/resources/mapper/profile/**",
+        "backend/src/test/java/com/careertuner/profile/**",
+        "frontend/src/app/pages/Profile.tsx",
+        "frontend/src/app/profile/**",
+        "frontend/src/features/profile/**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "A-SETTINGS-ADMIN",
+      "area": "A",
+      "name": "사용자 설정과 A 관리자 운영 화면",
+      "paths": [
+        "backend/src/main/java/com/careertuner/admin/auth/**",
+        "backend/src/main/java/com/careertuner/admin/user/**",
+        "backend/src/main/java/com/careertuner/admin/profile/**",
+        "backend/src/main/java/com/careertuner/admin/settings/**",
+        "frontend/src/app/pages/Settings.tsx",
+        "frontend/src/admin/features/users/**",
+        "frontend/src/admin/features/profile/**",
+        "frontend/src/admin/features/profiles/**",
+        "frontend/src/admin/features/settings/**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "B-APPLICATION",
+      "area": "B",
+      "name": "지원 건 생명주기와 공고 입력",
+      "paths": [
+        "backend/src/main/java/com/careertuner/application/**",
+        "backend/src/main/java/com/careertuner/applicationcase/**",
+        "backend/src/main/resources/mapper/application/**",
+        "backend/src/main/resources/mapper/applicationcase/**",
+        "backend/src/test/java/com/careertuner/application/**",
+        "backend/src/test/java/com/careertuner/applicationcase/**",
+        "frontend/src/features/applications/**",
+        "frontend/src/app/lib/mock/domains/applications**",
+        "frontend/scripts/test-application**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "B-JOB-ANALYSIS",
+      "area": "B",
+      "name": "공고 추출, OCR, 공고 분석과 근거",
+      "paths": [
+        "backend/src/main/java/com/careertuner/jobanalysis/**",
+        "backend/src/main/java/com/careertuner/jobposting/**",
+        "backend/src/main/java/com/careertuner/file/**",
+        "backend/src/test/java/com/careertuner/file/**",
+        "backend/src/main/resources/mapper/jobanalysis/**",
+        "backend/src/main/resources/mapper/jobposting/**",
+        "frontend/src/features/applications/components/JobAnalysisPanel.tsx",
+        "frontend/src/admin/features/job-analysis/**",
+        "ml/job-posting-worker/**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "B-COMPANY-ANALYSIS",
+      "area": "B",
+      "name": "기업 분석과 관리자 운영",
+      "paths": [
+        "backend/src/main/java/com/careertuner/companyanalysis/**",
+        "backend/src/main/resources/mapper/companyanalysis/**",
+        "frontend/src/features/applications/components/CompanyAnalysisPanel.tsx",
+        "frontend/src/admin/features/company-analysis/**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "C-DASHBOARD",
+      "area": "C",
+      "name": "홈, 준비도, 대시보드와 할 일",
+      "paths": [
+        "backend/src/main/java/com/careertuner/dashboard/**",
+        "backend/src/main/resources/mapper/dashboard/**",
+        "backend/src/main/java/com/careertuner/admin/dashboard/**",
+        "backend/src/main/java/com/careertuner/admin/home/**",
+        "backend/src/main/java/com/careertuner/home/**",
+        "frontend/src/features/dashboard/**",
+        "frontend/src/app/pages/Dashboard**",
+        "frontend/src/features/onboarding/**",
+        "backend/src/test/java/com/careertuner/dashboard/**",
+        "frontend/scripts/test-c-demo-readiness.mjs"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "C-FIT-ANALYSIS",
+      "area": "C",
+      "name": "적합도, 부족 역량, 전략과 자격증 근거",
+      "paths": [
+        "backend/src/main/java/com/careertuner/fitanalysis/**",
+        "backend/src/main/resources/mapper/fitanalysis/**",
+        "backend/src/test/java/com/careertuner/fitanalysis/**",
+        "backend/src/test/resources/db/testfixture/admin_fitanalysis**",
+        "backend/src/main/java/com/careertuner/certificate/**",
+        "frontend/src/features/analysis/**",
+        "frontend/src/admin/features/fit-analysis/**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "C-CAREER-PLANNER",
+      "area": "C",
+      "name": "장기 취업 분석, 로드맵, 일정과 플래너",
+      "paths": [
+        "backend/src/main/java/com/careertuner/analysis/**",
+        "backend/src/main/java/com/careertuner/planner/**",
+        "backend/src/main/resources/mapper/analysis/**",
+        "backend/src/main/resources/mapper/planner/**",
+        "backend/src/test/java/com/careertuner/planner/**",
+        "frontend/src/app/pages/Analysis**",
+        "frontend/src/features/planner/**",
+        "desktop/core/PlannerClient**",
+        "desktop/qml/PlannerOverlay.qml"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "D-INTERVIEW",
+      "area": "D",
+      "name": "면접 세션, 질문, 답변, 채점과 재시도",
+      "paths": [
+        "backend/src/main/java/com/careertuner/interview/**",
+        "backend/src/main/resources/mapper/interview/**",
+        "backend/src/test/java/com/careertuner/interview/**",
+        "frontend/src/features/interview/**",
+        "desktop/core/InterviewSession**",
+        "desktop/qml/SessionThread.qml",
+        "desktop/qml/InputBar.qml"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "D-MEDIA-HANDOFF",
+      "area": "D",
+      "name": "음성, 영상, 아바타, 기기 핸드오프와 임시 파일",
+      "paths": [
+        "backend/src/main/java/com/careertuner/interview/media/**",
+        "backend/src/main/java/com/careertuner/interview/realtime/**",
+        "frontend/src/features/interview/components/mobile/**",
+        "frontend/src/features/interview/api/deviceHandoffApi.ts",
+        "frontend/src/app/lib/pendingInterviewFiles**",
+        "desktop/core/CameraRecorder**",
+        "desktop/core/VoiceRecorder**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "D-REPORT",
+      "area": "D",
+      "name": "면접 리포트, 복습과 로컬 내보내기",
+      "paths": [
+        "frontend/src/features/interview/components/InterviewReportTab.tsx",
+        "desktop/qml/ReportView.qml",
+        "backend/src/main/java/com/careertuner/admin/interview/**",
+        "backend/src/test/java/com/careertuner/admin/interview/**",
+        "frontend/src/admin/features/interview**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "E-CORRECTION",
+      "area": "E",
+      "name": "첨삭 4종, 이력, 원문 보존과 C 결과 연계",
+      "paths": [
+        "backend/src/main/java/com/careertuner/correction/**",
+        "backend/src/main/java/com/careertuner/admin/correction/**",
+        "backend/src/main/resources/mapper/correction/**",
+        "backend/src/test/java/com/careertuner/correction/**",
+        "frontend/src/features/correction/**",
+        "frontend/src/app/pages/Correction.tsx",
+        "frontend/scripts/test-e-demo-readiness.mjs",
+        "ml/correction-llm/**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "E-BILLING-CREDITS",
+      "area": "E",
+      "name": "요금제, 사용량, 크레딧, 결제와 환불",
+      "paths": [
+        "backend/src/main/java/com/careertuner/billing/**",
+        "backend/src/main/java/com/careertuner/payment/**",
+        "backend/src/main/java/com/careertuner/credit/**",
+        "backend/src/main/resources/mapper/billing/**",
+        "backend/src/main/resources/mapper/payment/**",
+        "frontend/src/features/billing/**",
+        "frontend/src/app/pages/Billing.tsx",
+        "frontend/src/admin/features/billing/**",
+        "desktop/core/AiChargeCoordinator**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "F-COMMUNITY",
+      "area": "F",
+      "name": "커뮤니티, 댓글, 반응, 신고와 검열",
+      "paths": [
+        "backend/src/main/java/com/careertuner/community/**",
+        "backend/src/main/resources/mapper/community/**",
+        "backend/src/test/java/com/careertuner/community/**",
+        "frontend/src/features/community/**",
+        "frontend/src/styles/av-base.css",
+        "desktop/core/CommunityClient**"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "F-SUPPORT-CONTENT",
+      "area": "F",
+      "name": "고객센터, 챗봇, 문의, 공지, FAQ와 정책 콘텐츠",
+      "paths": [
+        "backend/src/main/java/com/careertuner/support/**",
+        "backend/src/test/java/com/careertuner/support/**",
+        "backend/src/main/java/com/careertuner/notice/**",
+        "backend/src/main/java/com/careertuner/faq/**",
+        "frontend/src/features/support/**",
+        "frontend/src/admin/features/support/**",
+        "frontend/src/admin/features/notices/**",
+        "frontend/src/admin/features/faq/**",
+        "frontend/scripts/test-f-demo-readiness.mjs"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "F-NOTIFICATION-COLLAB",
+      "area": "F",
+      "name": "알림, 푸시, 메신저, 친구와 공유",
+      "paths": [
+        "backend/src/main/java/com/careertuner/notification/**",
+        "backend/src/main/java/com/careertuner/collaboration/**",
+        "backend/src/main/resources/mapper/notification/**",
+        "backend/src/main/resources/mapper/collaboration/**",
+        "backend/src/test/java/com/careertuner/notification/**",
+        "backend/src/test/java/com/careertuner/collaboration/**",
+        "frontend/src/features/notification/**",
+        "frontend/src/features/collaboration/**",
+        "desktop/core/NotificationPoller**",
+        "desktop/core/CollaborationClient**",
+        "desktop/qml/NotificationCenter.qml",
+        "desktop/qml/CollaborationPage.qml"
+      ],
+      "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "PLATFORM-DESKTOP", "DATA-LIFECYCLE"]
+    },
+    {
+      "id": "PLATFORM-WEB",
+      "area": "PLATFORM",
+      "name": "운영 웹, 반응형, 테마, 접근 경계와 PWA",
+      "paths": ["frontend/src/**", "frontend/public/**", "frontend/vite.config**"],
+      "requires": ["RELEASE-GATE"]
+    },
+    {
+      "id": "PLATFORM-MOBILE",
+      "area": "PLATFORM",
+      "name": "Capacitor Android/iOS, 딥링크, 권한과 네이티브 연동",
+      "paths": [
+        "frontend/android/**",
+        "frontend/capacitor.config**",
+        "frontend/src/platform/**",
+        "frontend/scripts/cap**",
+        "frontend/scripts/*ios*",
+        "frontend/scripts/*app-link*",
+        ".github/workflows/android-release.yml",
+        ".github/workflows/ios-build.yml"
+      ],
+      "requires": ["RELEASE-GATE"]
+    },
+    {
+      "id": "PLATFORM-DESKTOP",
+      "area": "PLATFORM",
+      "name": "Qt 데스크톱, 연동, 테마, 패키징과 로컬 산출물",
+      "paths": ["desktop/**", ".github/workflows/desktop-release.yml"],
+      "requires": ["RELEASE-GATE"]
+    },
+    {
+      "id": "DATA-LIFECYCLE",
+      "area": "CROSS",
+      "name": "스키마, 패치, MyBatis 매퍼, 소프트 삭제와 고아 데이터",
+      "paths": [
+        "backend/src/main/resources/db/**",
+        "backend/src/main/resources/mapper/**",
+        "backend/src/main/java/**/mapper/**"
+      ],
+      "requires": ["RELEASE-GATE"]
+    },
+    {
+      "id": "RELEASE-GATE",
+      "area": "CROSS",
+      "name": "CI, 빌드, 배포, 운영 헬스와 공개 데모",
+      "paths": [".github/workflows/**", "docker-compose.yml", "frontend/package.json", "backend/build.gradle", "desktop/CMakeLists.txt"],
+      "requires": []
+    }
+  ]
+}

@@ -64,6 +64,27 @@ export function RequiredConsentBoundary({ children }: { children: ReactNode }) {
   return <ConsentBlocked requirements={missing} requiredServiceConsent />;
 }
 
+/** 회원 전용 화면을 API 401 오류 화면으로 먼저 마운트하지 않고 로그인으로 복귀시킨다. */
+export function AuthenticatedRouteBoundary({ children }: { children: ReactNode }) {
+  const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <ConsentLoading />;
+  if (!isAuthenticated) {
+    const returnTo = `${location.pathname}${location.search}`;
+    return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
+  }
+  return children;
+}
+
+export function withAuthGate<P extends object>(Component: ComponentType<P>) {
+  function AuthenticatedPage(props: P) {
+    return <AuthenticatedRouteBoundary><Component {...props} /></AuthenticatedRouteBoundary>;
+  }
+  AuthenticatedPage.displayName = `Authenticated(${Component.displayName ?? Component.name ?? "Page"})`;
+  return AuthenticatedPage;
+}
+
 export function ConsentGate({ requirements, children }: { requirements: ConsentType[]; children: ReactNode }) {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { status, loading, error, refresh } = useConsent();

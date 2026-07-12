@@ -17,7 +17,7 @@ type RecognitionLike = {
   continuous: boolean;
   interimResults: boolean;
   onresult: ((e: RecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -47,29 +47,44 @@ export function isBrowserSttSupported(): boolean {
 export class BrowserSttTracker {
   private rec: RecognitionLike | null = null;
   private finalText = "";
+  private interimText = "";
   private keepAlive = false;
 
-  start() {
+  constructor(
+    private readonly onTranscript?: (text: string) => void,
+    private readonly onPermissionDenied?: () => void,
+  ) {}
+
+  start(): boolean {
     const Ctor = getRecognitionCtor();
-    if (!Ctor) return;
+    if (!Ctor) return false;
     this.finalText = "";
+    this.interimText = "";
     this.keepAlive = true;
-    this.spawn(Ctor);
+    return this.spawn(Ctor);
   }
 
-  private spawn(Ctor: new () => RecognitionLike) {
+  private spawn(Ctor: new () => RecognitionLike): boolean {
     const rec = new Ctor();
     rec.lang = "ko-KR";
     rec.continuous = true;
-    rec.interimResults = false;
+    rec.interimResults = true;
     rec.onresult = (e) => {
+      const interim: string[] = [];
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         if (r.isFinal) this.finalText += r[0].transcript + " ";
+        else interim.push(r[0].transcript);
       }
+      this.interimText = interim.join(" ");
+      this.onTranscript?.(this.currentText());
     };
-    rec.onerror = () => {
-      // no-speech/aborted 등은 무시 — onend 의 자동 재시작이 이어받는다.
+    rec.onerror = (event) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        this.keepAlive = false;
+        this.onPermissionDenied?.();
+      }
+      // no-speech/aborted 등은 onend 의 자동 재시작이 이어받는다.
     };
     rec.onend = () => {
       // 명시적 stop 전에 끊기면(침묵 등) 자동 재시작해 답변 전체를 잡는다.
@@ -84,9 +99,11 @@ export class BrowserSttTracker {
     try {
       rec.start();
     } catch {
-      /* 시작 실패(권한/중복 등)는 폴백이라 무시 */
+      this.keepAlive = false;
+      return false;
     }
     this.rec = rec;
+    return true;
   }
 
   /** 인식을 멈추고 누적 전사를 돌려준다(공백 정리). */
@@ -98,7 +115,9 @@ export class BrowserSttTracker {
       /* noop */
     }
     this.rec = null;
-    return this.finalText.replace(/\s+/g, " ").trim();
+    const text = this.currentText();
+    this.interimText = "";
+    return text;
   }
 
   dispose() {
@@ -109,5 +128,9 @@ export class BrowserSttTracker {
       /* noop */
     }
     this.rec = null;
+  }
+
+  private currentText(): string {
+    return `${this.finalText} ${this.interimText}`.replace(/\s+/g, " ").trim();
   }
 }

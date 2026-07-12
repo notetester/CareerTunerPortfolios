@@ -11,21 +11,36 @@
     </select>
 
     <select id="countUnanalyzedApplications" resultType="int">
-        SELECT COUNT(*) FROM application_case ac
+        SELECT COUNT(*)
+        FROM application_case ac
+        INNER JOIN users ON users.id = ac.user_id
         WHERE ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM fit_analysis f WHERE f.application_case_id = ac.id)
     </select>
 
     <select id="countNewAnalysesLast7Days" resultType="int">
-        SELECT COUNT(*) FROM fit_analysis
-        WHERE created_at &gt;= (CURRENT_DATE - INTERVAL 7 DAY)
+        SELECT COUNT(*)
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE fa.created_at &gt;= (CURRENT_DATE - INTERVAL 7 DAY)
+          AND ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <!-- 지원 건별 최신 적합도 분석이 비정상 상태로 사용자에게 노출 중인 건수. -->
     <select id="countDegradedLatestAnalyses" resultType="int">
         SELECT COUNT(*)
         FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
         WHERE fa.status != 'SUCCESS'
+          AND ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
           AND fa.id = (
               SELECT MAX(latest_fa.id)
               FROM fit_analysis latest_fa
@@ -37,13 +52,23 @@
     <select id="countReanalysisRequests" resultType="int">
         SELECT COUNT(DISTINCT memo.fit_analysis_id)
         FROM admin_fit_analysis_memo memo
+        INNER JOIN fit_analysis fa ON fa.id = memo.fit_analysis_id
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
         WHERE memo.memo_type = 'REANALYSIS'
           AND memo.deleted_at IS NULL
+          AND ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <select id="countCareerRunFailures" resultType="int">
-        SELECT COUNT(*) FROM career_analysis_run
-        WHERE status != 'SUCCESS'
+        SELECT COUNT(*)
+        FROM career_analysis_run run
+        INNER JOIN users ON users.id = run.user_id
+        WHERE run.status != 'SUCCESS'
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <!-- review-first evidence gate 검토 큐: 지원 건별 최신 적합도 분석 중 REVIEW_REQUIRED 상태 건수. -->
@@ -51,8 +76,13 @@
         SELECT COUNT(*)
         FROM fit_analysis fa
         INNER JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
         WHERE gr.gate_status = 'REVIEW_REQUIRED'
           AND gr.review_status = 'PENDING'
+          AND ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
           AND fa.id = (
               SELECT MAX(latest_fa.id)
               FROM fit_analysis latest_fa

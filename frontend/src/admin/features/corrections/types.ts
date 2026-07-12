@@ -23,6 +23,7 @@ export interface AdminCorrectionDetail extends Omit<AdminCorrectionRow, "hasMemo
   originalText: string;
   improvedText: string | null;
   resultJson: string | null;
+  sourceSnapshot: string | null;
   aiUsageLogId: number | null;
   inputTokens: number | null;
   outputTokens: number | null;

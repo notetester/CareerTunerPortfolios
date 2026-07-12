@@ -103,7 +103,7 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
                 source.getDesiredJob(),
                 composeCompanyContext(source),
                 certificateStrategy,
-                composeProfileInsight(userId));
+                composeProfileInsight(userId, source.getProfileVersionId()));
 
         FitAnalysisResult previous = fitAnalysisMapper.findLatestByUserIdAndApplicationCaseId(userId, applicationCaseId);
         // 사용자가 고른 모델 tier 부터 시작하는 폴백(AUTO=현행). 판단값은 규칙엔진 소유라 모델 무관 불변, 설명만 가변.
@@ -276,11 +276,14 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
      * A(profile_ai_analysis)의 프로필 요약 분석을 fit 설명용 참고 텍스트로 조립한다. 없으면 null(프로필 AI 분석
      * 미실행). 요약·강점·보완점만 담고, 판단값 계산엔 쓰지 않는다(companyContext 와 동일 격리). 실패는 null degrade.
      */
-    private String composeProfileInsight(Long userId) {
+    private String composeProfileInsight(Long userId, Long profileVersionId) {
         try {
             com.careertuner.profile.domain.ProfileAiAnalysis row =
                     profileAiAnalysisMapper.findByUserIdAndFeature(userId, "PROFILE_SUMMARY");
-            if (row == null) {
+            // 현재 비교 입력과 같은 불변 프로필 버전에서 생성한 요약만 사용한다.
+            // 프로필 수정 뒤 재분석하지 않은 오래된 A 산출물이 최신 스펙 설명에 섞이는 것을 막는다.
+            if (row == null || profileVersionId == null
+                    || !profileVersionId.equals(row.getProfileVersionId())) {
                 return null;
             }
             StringBuilder sb = new StringBuilder();
@@ -580,6 +583,8 @@ public class FitAnalysisServiceImpl implements FitAnalysisService {
         snapshot.put("jobPostingRevision", source.getJobPostingRevision());
         snapshot.put("jobAnalysisCreatedAt", source.getJobAnalysisCreatedAt());
         snapshot.put("userProfileId", source.getUserProfileId());
+        snapshot.put("profileVersionId", source.getProfileVersionId());
+        snapshot.put("profileVersionNo", source.getProfileVersionNo());
         snapshot.put("profileUpdatedAt", source.getProfileUpdatedAt());
         snapshot.put("requiredSkills", parseList(source.getRequiredSkills()));
         snapshot.put("preferredSkills", parseList(source.getPreferredSkills()));

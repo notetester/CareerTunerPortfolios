@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.billing.service.AiChargeService;
+import com.careertuner.billing.policy.AiChargePreflightService;
 import com.careertuner.correction.ai.CorrectionAiClient;
 import com.careertuner.correction.domain.CorrectionRequest;
 import com.careertuner.correction.dto.CorrectionCreateRequest;
@@ -38,6 +39,8 @@ class CorrectionServiceUnchargedIdempotencyTest {
     private final CorrectionAiUsageLogService usageLogService = mock(CorrectionAiUsageLogService.class);
     private final ApplicationCaseAccessService applicationCaseAccessService = mock(ApplicationCaseAccessService.class);
     private final CorrectionContextService contextService = mock(CorrectionContextService.class);
+    private final CorrectionSourceService sourceService = mock(CorrectionSourceService.class);
+    private final AiChargePreflightService chargePreflightService = mock(AiChargePreflightService.class);
     private final AiChargeService aiChargeService = mock(AiChargeService.class);
     private final NotificationService notificationService = mock(NotificationService.class);
     private final TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
@@ -48,7 +51,9 @@ class CorrectionServiceUnchargedIdempotencyTest {
             usageLogService,
             applicationCaseAccessService,
             contextService,
+            sourceService,
             transactionTemplate,
+            chargePreflightService,
             aiChargeService,
             notificationService,
             new ObjectMapper());

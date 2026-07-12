@@ -9,7 +9,7 @@ import type {
 } from "@/features/dashboard/types/dashboardSummary";
 import type { HomeSummary } from "@/features/home/types/homeSummary";
 import type { AnalysisSummary, CareerAnalysisRun } from "@/features/analysis/types/analysisSummary";
-import type { FitAnalysisDetail, FitAnalysisHistoryEntry, FitAnalysisLearningTask, FitScoreBreakdown } from "@/features/analysis/types/fitAnalysis";
+import type { CareerRoadmap, FitAnalysisDetail, FitAnalysisHistoryEntry, FitAnalysisLearningTask, FitScoreBreakdown } from "@/features/analysis/types/fitAnalysis";
 import type { CareerPlan } from "@/features/analysis/types/careerPlan";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
 
@@ -370,6 +370,8 @@ const fitAnalyses: FitAnalysisDetail[] = [
       jobAnalysisId: 301,
       jobPostingRevision: 2,
       jobAnalysisCreatedAt: iso(4),
+      profileVersionId: 90001,
+      profileVersionNo: 3,
       profileUpdatedAt: iso(6),
       requiredSkills: ["React", "JavaScript", "TypeScript", "테스트(Jest)"],
       profileSkills: ["React", "JavaScript", "REST API", "Git"],
@@ -434,6 +436,8 @@ const fitAnalyses: FitAnalysisDetail[] = [
       jobAnalysisId: 302,
       jobPostingRevision: 1,
       jobAnalysisCreatedAt: iso(3),
+      profileVersionId: 90001,
+      profileVersionNo: 3,
       profileUpdatedAt: iso(6),
       requiredSkills: ["React", "TypeScript", "AWS"],
       profileSkills: ["React", "TypeScript", "REST API", "성능 최적화"],
@@ -509,6 +513,78 @@ export const demoCareerCertificateStrategy = {
   ],
   note: "자격증은 보조 전략입니다. 실무 프로젝트·배포 경험 보완이 우선이며, 시험 일정은 공식 출처(Q-Net 등) 확인 후 계획하세요.",
 };
+
+/** 장애 독립 데모에서도 로드맵→플래너 흐름을 끝까지 시연할 수 있는 C 결정론 fixture. */
+export const demoCareerRoadmap: CareerRoadmap = {
+  desiredJob: "프론트엔드 개발자",
+  horizonMonths: 12,
+  generatedAt: "2026-07-12T09:00:00+09:00",
+  items: [
+    {
+      type: "APPLICATION_DEADLINE",
+      title: "네이버 프론트엔드 지원 마감",
+      startDate: "2026-08-20",
+      endDate: null,
+      certName: null,
+      detail: "지원서와 TypeScript 프로젝트 근거를 최종 점검합니다.",
+      sourceName: "데모 지원 건",
+      planningBlock: false,
+    },
+    {
+      type: "SKILL_LEARNING",
+      title: "TypeScript 실무 근거 만들기",
+      startDate: "2026-08-01",
+      endDate: "2026-09-30",
+      certName: null,
+      detail: "기존 React 프로젝트를 strict 모드로 전환하고 테스트 결과를 기록합니다.",
+      sourceName: "반복 부족 역량 집계",
+      planningBlock: true,
+    },
+    {
+      type: "CERT_REGISTRATION",
+      title: "정보처리기사 제3회 원서접수",
+      startDate: "2026-07-20",
+      endDate: "2026-07-23",
+      certName: "정보처리기사",
+      detail: "시연용 공식 일정 스냅샷입니다. 실제 접수 전 Q-Net 공고를 다시 확인하세요.",
+      sourceName: "Q-Net 데모 스냅샷",
+      planningBlock: false,
+    },
+  ],
+  basisNotes: [
+    "지원 마감은 현재 지원 건, 학습 블록은 최근 적합도 분석의 반복 부족 역량을 기준으로 배치했습니다.",
+    "자격증 일정은 데모 스냅샷이며 실제 신청 전 공식 공고 확인이 필요합니다.",
+  ],
+};
+
+const demoNationalCertificates = [
+  { name: "정보처리기사", kind: "NATIONAL_TECHNICAL", scheduleQueryable: true },
+  { name: "정보처리산업기사", kind: "NATIONAL_TECHNICAL", scheduleQueryable: true },
+  { name: "공인노무사", kind: "NATIONAL_PROFESSIONAL", scheduleQueryable: true },
+];
+
+const demoPrivateCertificates = [
+  { name: "SQL 개발자(SQLD)", currentStatus: "등록", institution: "한국데이터산업진흥원", registrationNo: "2008-000000" },
+  { name: "데이터분석 준전문가(ADsP)", currentStatus: "등록", institution: "한국데이터산업진흥원", registrationNo: "2014-000000" },
+];
+
+/** 외부 공공데이터 장애와 무관하게 검색 결과·약어 안내·빈 상태를 검증하는 데모 검색. */
+export function searchDemoCertificates(rawQuery: string) {
+  const query = rawQuery.trim();
+  const lower = query.toLocaleLowerCase("ko-KR");
+  const alias = lower === "sqld" ? "SQL" : lower === "adsp" ? "데이터분석" : null;
+  const needles = [query, alias].filter((value): value is string => Boolean(value));
+  const matches = (name: string) => needles.some((needle) => name.toLocaleLowerCase("ko-KR").includes(needle.toLocaleLowerCase("ko-KR")));
+
+  return {
+    query,
+    resolvedAlias: alias,
+    national: demoNationalCertificates.filter((item) => matches(item.name)),
+    nationalUnavailable: false,
+    privateMatches: demoPrivateCertificates.filter((item) => matches(item.name)),
+    privateLookupFailed: false,
+  };
+}
 
 export function findFitByApplicationCase(applicationCaseId: number): FitAnalysisDetail | undefined {
   return fitAnalyses.find((f) => f.applicationCaseId === applicationCaseId);

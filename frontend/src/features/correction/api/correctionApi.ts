@@ -2,6 +2,7 @@ import { api } from "@/app/lib/api";
 import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import type {
   CorrectionCreateRequest,
+  CorrectionInterviewSource,
   CorrectionResponse,
   CorrectionType,
   CorrectionWarmupResponse,
@@ -43,4 +44,12 @@ export function listCorrections(params: {
 
 export function getCorrection(id: number) {
   return api<CorrectionResponse>(`/corrections/${id}`, { method: "GET" });
+}
+
+export function getInterviewAnswerCorrectionSource(answerId: number) {
+  return api<CorrectionInterviewSource>(`/corrections/sources/interview-answers/${answerId}`, { method: "GET" });
+}
+
+export function deleteCorrection(id: number) {
+  return api<void>(`/corrections/${id}`, { method: "DELETE" });
 }

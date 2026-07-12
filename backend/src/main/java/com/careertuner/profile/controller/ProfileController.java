@@ -32,6 +32,7 @@ import com.careertuner.profile.dto.ProfileImportResponse;
 import com.careertuner.profile.dto.PortfolioFileLinkRequest;
 import com.careertuner.profile.dto.UserProfileRequest;
 import com.careertuner.profile.dto.UserProfileResponse;
+import com.careertuner.profile.dto.UserProfileVersionResponse;
 import com.careertuner.profile.service.ProfileService;
 import com.careertuner.profile.service.ProfilePortfolioService;
 
@@ -54,6 +55,21 @@ public class ProfileController {
     public ApiResponse<UserProfileResponse> save(@AuthenticationPrincipal AuthUser authUser,
                                                  @RequestBody UserProfileRequest request) {
         return ApiResponse.ok(service.save(authUser, request));
+    }
+
+    /** 분석에 사용된 입력을 사용자가 직접 대조할 수 있는 프로필 스냅샷 이력. */
+    @GetMapping("/versions")
+    public ApiResponse<List<UserProfileVersionResponse>> versions(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(defaultValue = "20") int limit) {
+        return ApiResponse.ok(service.versions(authUser, limit));
+    }
+
+    @GetMapping("/versions/{versionId}")
+    public ApiResponse<UserProfileVersionResponse> version(
+            @AuthenticationPrincipal AuthUser authUser,
+            @PathVariable Long versionId) {
+        return ApiResponse.ok(service.version(authUser, versionId));
     }
 
     /** 포트폴리오를 업로드와 동시에 현재 프로필에 연결한다. */

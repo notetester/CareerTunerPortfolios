@@ -19,7 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * 전화번호 SMS OTP 인증 서비스.
  *
- * <p>실 제공자 키가 있으면 실 발송, 없으면 {@link MockSmsProvider} 로 발송해 데모를 완결한다.
+ * <p>개발/데모에서 provider를 {@code mock}으로 선택하면 Mock 발송하고, 운영의 {@code aligo}는 실 발송한다.
  * Mock 발송일 때만 결과의 {@code devCode} 로 코드를 노출해 프런트가 자동입력할 수 있게 한다.</p>
  */
 @Slf4j

@@ -26,6 +26,24 @@
         ORDER BY id
     </select>
 
+    <select id="findProfileFilesByOwner" resultType="com.careertuner.file.domain.FileAsset">
+        SELECT *
+          FROM file_asset
+         WHERE owner_user_id = #{ownerUserId}
+           AND kind IN ('RESUME', 'PORTFOLIO')
+         ORDER BY id
+    </select>
+
+    <select id="findDeletedOwnerProfileFiles" resultType="com.careertuner.file.domain.FileAsset">
+        SELECT file.*
+          FROM file_asset file
+          JOIN users owner ON owner.id = file.owner_user_id
+         WHERE owner.status = 'DELETED'
+           AND file.kind IN ('RESUME', 'PORTFOLIO')
+         ORDER BY file.id
+         LIMIT #{limit}
+    </select>
+
     <update id="updateRef">
         UPDATE file_asset
            SET ref_type = #{refType},
@@ -185,5 +203,12 @@
            AND kind = #{expectedKind}
            AND ref_type = #{refType}
            AND ref_id = #{refId}
+    </delete>
+
+    <delete id="deleteProfileFileByIdAndOwner">
+        DELETE FROM file_asset
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND kind IN ('RESUME', 'PORTFOLIO')
     </delete>
 </mapper>

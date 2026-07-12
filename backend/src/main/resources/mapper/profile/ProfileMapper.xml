@@ -7,30 +7,32 @@
         SELECT *
         FROM user_profile
         WHERE user_id = #{userId}
+          AND deleted_at IS NULL
     </select>
 
     <select id="findByUserIdForUpdate" resultType="com.careertuner.profile.domain.UserProfile">
         SELECT *
         FROM user_profile
         WHERE user_id = #{userId}
+          AND deleted_at IS NULL
         FOR UPDATE
     </select>
 
     <insert id="insertEmptyIfAbsent">
-        INSERT IGNORE INTO user_profile (user_id)
-        VALUES (#{userId})
+        INSERT IGNORE INTO user_profile (user_id, version_no)
+        VALUES (#{userId}, 1)
     </insert>
 
     <insert id="upsert">
         INSERT INTO user_profile (
             user_id, desired_job, desired_industry, education, career, projects, skills,
-            certificates, languages, portfolio_links, resume_text, self_intro, preferences
+            certificates, languages, portfolio_links, resume_text, self_intro, preferences, version_no
         )
         VALUES (
             #{userId}, #{desiredJob}, #{desiredIndustry}, #{education}, #{career},
             #{projects}, #{skills}, #{certificates},
             #{languages}, #{portfolioLinks}, #{resumeText}, #{selfIntro},
-            #{preferences}
+            #{preferences}, 1
         )
         ON DUPLICATE KEY UPDATE
             desired_job = VALUES(desired_job),
@@ -45,14 +47,106 @@
             resume_text = VALUES(resume_text),
             self_intro = VALUES(self_intro),
             preferences = VALUES(preferences),
+            version_no = user_profile.version_no + 1,
+            deleted_at = NULL,
             updated_at = NOW()
     </insert>
+
+    <resultMap id="ProfileVersionMap" type="com.careertuner.profile.domain.UserProfileVersion">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="versionNo" column="version_no"/>
+        <result property="desiredJob" column="desired_job"/>
+        <result property="desiredIndustry" column="desired_industry"/>
+        <result property="education" column="education"/>
+        <result property="career" column="career"/>
+        <result property="projects" column="projects"/>
+        <result property="skills" column="skills"/>
+        <result property="certificates" column="certificates"/>
+        <result property="languages" column="languages"/>
+        <result property="portfolioLinks" column="portfolio_links"/>
+        <result property="resumeText" column="resume_text"/>
+        <result property="selfIntro" column="self_intro"/>
+        <result property="preferences" column="preferences"/>
+        <result property="source" column="source"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="ProfileVersionColumns">
+        id, user_id, version_no, desired_job, desired_industry, education, career,
+        projects, skills, certificates, languages, portfolio_links, resume_text,
+        self_intro, preferences, source, created_at
+    </sql>
+
+    <!-- user_profile upsert가 잡은 행 잠금 안에서 실행하므로 동시 저장도 서로 다른 version_no를 갖는다. -->
+    <insert id="insertVersionFromCurrent">
+        INSERT IGNORE INTO user_profile_version (
+            user_id, version_no, desired_job, desired_industry, education, career,
+            projects, skills, certificates, languages, portfolio_links, resume_text,
+            self_intro, preferences, source
+        )
+        SELECT user_id, version_no, desired_job, desired_industry, education, career,
+               projects, skills, certificates, languages, portfolio_links, resume_text,
+               self_intro, preferences, #{source}
+          FROM user_profile
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+    </insert>
+
+    <!-- AI 평가 직전에 읽은 객체를 직접 복제한다. 현재 행을 다시 SELECT하지 않아 동시 저장과 입력 provenance가 섞이지 않는다. -->
+    <insert id="insertVersionSnapshot">
+        INSERT IGNORE INTO user_profile_version (
+            user_id, version_no, desired_job, desired_industry, education, career,
+            projects, skills, certificates, languages, portfolio_links, resume_text,
+            self_intro, preferences, source
+        ) VALUES (
+            #{profile.userId}, #{profile.versionNo}, #{profile.desiredJob}, #{profile.desiredIndustry},
+            #{profile.education}, #{profile.career}, #{profile.projects}, #{profile.skills},
+            #{profile.certificates}, #{profile.languages}, #{profile.portfolioLinks},
+            #{profile.resumeText}, #{profile.selfIntro}, #{profile.preferences}, #{source}
+        )
+    </insert>
+
+    <select id="findVersions" resultMap="ProfileVersionMap">
+        SELECT <include refid="ProfileVersionColumns"/>
+          FROM user_profile_version
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+         ORDER BY version_no DESC
+         LIMIT #{limit}
+    </select>
+
+    <select id="findVersion" resultMap="ProfileVersionMap">
+        SELECT <include refid="ProfileVersionColumns"/>
+          FROM user_profile_version
+         WHERE id = #{versionId}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </select>
+
+    <select id="findVersionByNo" resultMap="ProfileVersionMap">
+        SELECT <include refid="ProfileVersionColumns"/>
+          FROM user_profile_version
+         WHERE user_id = #{userId}
+           AND version_no = #{versionNo}
+           AND deleted_at IS NULL
+    </select>
+
+    <select id="findLatestVersion" resultMap="ProfileVersionMap">
+        SELECT <include refid="ProfileVersionColumns"/>
+          FROM user_profile_version
+         WHERE user_id = #{userId}
+           AND deleted_at IS NULL
+         ORDER BY version_no DESC
+         LIMIT 1
+    </select>
 
     <select id="findAdminProfiles" resultType="com.careertuner.profile.domain.UserProfile">
         SELECT p.*
         FROM user_profile p
         INNER JOIN users u ON u.id = p.user_id
         <where>
+            p.deleted_at IS NULL
             <if test="keyword != null and keyword != ''">
                 AND (u.email LIKE CONCAT('%', #{keyword}, '%')
                     OR u.name LIKE CONCAT('%', #{keyword}, '%')

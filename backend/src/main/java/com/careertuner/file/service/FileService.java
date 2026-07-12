@@ -254,6 +254,36 @@ public class FileService {
         deleteStored(asset);
     }
 
+    /**
+     * 회원 개인정보 삭제 트랜잭션에서 이력서·포트폴리오 메타데이터와 실제 바이트를 함께 제거한다.
+     * 공개 게시물 첨부나 면접 미디어는 각 도메인의 보존 정책을 따르므로 이 범위에 포함하지 않는다.
+     */
+    @Transactional
+    public int deleteOwnedProfileFiles(Long userId) {
+        int deleted = 0;
+        for (FileAsset asset : fileAssetMapper.findProfileFilesByOwner(userId)) {
+            if (fileAssetMapper.deleteProfileFileByIdAndOwner(asset.getId(), userId) == 1) {
+                deleteStored(asset);
+                deleted++;
+            }
+        }
+        return deleted;
+    }
+
+    /** 배포 전에 탈퇴한 계정에 남아 있던 프로필 원본을 제한 배치로 회수한다. */
+    @Transactional
+    public int cleanupDeletedAccountProfileFiles(int requestedLimit) {
+        int limit = Math.max(1, Math.min(100, requestedLimit));
+        int deleted = 0;
+        for (FileAsset asset : fileAssetMapper.findDeletedOwnerProfileFiles(limit)) {
+            if (fileAssetMapper.deleteProfileFileByIdAndOwner(asset.getId(), asset.getOwnerUserId()) == 1) {
+                deleteStored(asset);
+                deleted++;
+            }
+        }
+        return deleted;
+    }
+
     private void assertOwner(Long userId, FileAsset asset) {
         if (asset == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "파일을 찾을 수 없습니다.");

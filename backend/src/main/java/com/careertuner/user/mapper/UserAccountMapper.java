@@ -53,6 +53,18 @@ public interface UserAccountMapper {
 
     int deleteAllSmsOtpCodes(Long userId);
 
+    /** 프로필 현재값·과거 스냅샷·AI 산출물의 개인정보를 행 보존 상태로 제거한다. */
+    int scrubUserProfile(Long userId);
+
+    int scrubUserProfileVersions(Long userId);
+
+    int scrubProfileAiAnalyses(Long userId);
+
+    int scrubResumeDetail(Long userId);
+
+    /** 첨삭 행/FK는 보존하되 사용자가 작성한 원문·개선문·AI 결과·운영 메모를 제거한다. */
+    int scrubCorrectionRequests(Long userId);
+
     int hideAndAnonymizeNicknameProfiles(Long userId);
 
     int anonymizeChatProfiles(Long userId);
@@ -64,6 +76,19 @@ public interface UserAccountMapper {
     int cancelPendingFriendRequests(Long userId);
 
     int cancelPendingConversationInvites(Long userId);
+
+    int softDeleteFriendships(Long userId);
+    int softDeleteConversationGrants(Long userId);
+    int softDeleteConversationInviteAllows(Long userId);
+    int softDeleteNotifications(Long userId);
+    int softDeleteCommunitySubscriptions(Long userId);
+    int softDeleteCommentSubscriptions(Long userId);
+    int softDeletePostScraps(Long userId);
+    int reconcilePostScrapCountsForUser(Long userId);
+    int softDeletePostReactions(Long userId);
+    int reconcilePostReactionCountsForUser(Long userId);
+    int softDeleteCommentReactions(Long userId);
+    int reconcileCommentReactionCountsForUser(Long userId);
 
     int deleteDesktopPresence(Long userId);
 

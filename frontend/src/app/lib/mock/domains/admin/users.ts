@@ -13,7 +13,7 @@ import type {
   AdminUserStatusHistoryRow,
   AdminUserConsentRow,
 } from "@/admin/features/users/types";
-import type { AdminUserProfile } from "@/admin/features/profiles/types";
+import type { AdminUserProfile, AdminUserProfileVersion } from "@/admin/features/profiles/types";
 import type { AdminConsentView } from "@/admin/features/consents/types";
 
 // ── 회원 목록(세션 내 in-memory). 상태 변경 시 갱신해 목록·상세에 즉시 반영한다. ──
@@ -578,6 +578,16 @@ const profiles: AdminUserProfile[] = [
 ];
 
 const profileByUser = new Map(profiles.map((profile) => [profile.userId, profile]));
+const profileVersionsByUser = new Map<number, AdminUserProfileVersion[]>(
+  profiles.flatMap((profile, index) => profile.userId == null ? [] : [[profile.userId, [{
+    ...structuredClone(profile),
+    id: 98000 + index,
+    userId: profile.userId,
+    versionNo: 1,
+    source: "MIGRATION",
+    createdAt: profile.updatedAt ?? iso(30),
+  }]]]),
+);
 
 // ── 동의 플랫폼 전체 뷰(/admin/consents). 회원별 동의를 평탄화 + 이메일 결합. ──
 function buildConsentViews(): AdminConsentView[] {
@@ -810,6 +820,16 @@ export const adminUsersRoutes: MockRoute[] = [
     handler: (ctx: MockContext): AdminUserProfile => {
       const userId = Number(ctx.params[0]);
       return profileByUser.get(userId) ?? { userId, skills: [], updatedAt: null };
+    },
+  },
+
+  {
+    method: "GET",
+    pattern: /^\/admin\/profiles\/(\d+)\/versions$/,
+    handler: (ctx: MockContext): AdminUserProfileVersion[] => {
+      const userId = Number(ctx.params[0]);
+      const limit = Number(ctx.query.get("limit") ?? 20) || 20;
+      return (profileVersionsByUser.get(userId) ?? []).slice(0, limit);
     },
   },
 

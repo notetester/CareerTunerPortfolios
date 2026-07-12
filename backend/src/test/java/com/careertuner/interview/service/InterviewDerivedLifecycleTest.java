@@ -73,7 +73,7 @@ class InterviewDerivedLifecycleTest {
         assertThat(error.getErrorCode()).isEqualTo(ErrorCode.CONFLICT);
         assertThat(error.getMessage()).contains("새 면접 세션");
         verify(aiClient, never()).generateQuestions(any(), anyString(), anyString(), any(Integer.class));
-        verify(interviewMapper, never()).deleteQuestionsBySessionId(11L);
+        verify(interviewMapper, never()).softDeleteQuestionsBySessionId(11L);
     }
 
     @Test

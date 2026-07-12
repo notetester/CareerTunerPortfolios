@@ -45,8 +45,9 @@ class AdminInterviewMapperXmlTest {
         String summary = statement("select", "findSummary");
 
         assertThat(summary)
-                .contains("FROM interview_session WHERE deleted_at IS NULL")
-                .contains("total_score IS NOT NULL AND deleted_at IS NULL")
+                .contains("FROM interview_session active")
+                .contains("active.total_score IS NOT NULL AND active.deleted_at IS NULL")
+                .contains("active_case.deleted_at IS NULL")
                 .contains("WHERE active_session.deleted_at IS NULL");
     }
 

@@ -4,6 +4,10 @@
 <mapper namespace="com.careertuner.admin.correction.mapper.AdminCorrectionMapper">
 
     <sql id="CorrectionFilters">
+        AND cr.deleted_at IS NULL
+        AND u.status != 'DELETED'
+        AND u.deleted_at IS NULL
+        AND (cr.application_case_id IS NULL OR ac.deleted_at IS NULL)
         <if test="criteria.keyword != null">
             AND (
                 u.email LIKE CONCAT('%', #{criteria.keyword}, '%')
@@ -62,21 +66,48 @@
     </select>
 
     <select id="findSummary" resultType="com.careertuner.admin.correction.dto.AdminCorrectionSummary">
-        SELECT (SELECT COUNT(*) FROM correction_request) AS total_requests,
-               (SELECT COUNT(*) FROM correction_request WHERE status = 'SUCCESS') AS success_count,
+        SELECT (SELECT COUNT(*)
+                  FROM correction_request cr
+                  JOIN users u ON u.id = cr.user_id
+                  LEFT JOIN application_case ac ON ac.id = cr.application_case_id
+                 WHERE cr.deleted_at IS NULL
+                   AND u.status != 'DELETED' AND u.deleted_at IS NULL
+                   AND (cr.application_case_id IS NULL OR ac.deleted_at IS NULL)) AS total_requests,
                (SELECT COUNT(*)
-                  FROM ai_usage_log
-                 WHERE status = 'FAILED'
-                   AND feature_type IN (
+                  FROM correction_request cr
+                  JOIN users u ON u.id = cr.user_id
+                  LEFT JOIN application_case ac ON ac.id = cr.application_case_id
+                 WHERE cr.status = 'SUCCESS'
+                   AND cr.deleted_at IS NULL
+                   AND u.status != 'DELETED' AND u.deleted_at IS NULL
+                   AND (cr.application_case_id IS NULL OR ac.deleted_at IS NULL)) AS success_count,
+               (SELECT COUNT(*)
+                  FROM ai_usage_log aul
+                  JOIN users u ON u.id = aul.user_id
+                  LEFT JOIN application_case ac ON ac.id = aul.application_case_id
+                 WHERE aul.status = 'FAILED'
+                   AND u.status != 'DELETED' AND u.deleted_at IS NULL
+                   AND (aul.application_case_id IS NULL OR ac.deleted_at IS NULL)
+                   AND aul.feature_type IN (
                        'CORRECTION_SELF_INTRO', 'CORRECTION_INTERVIEW_ANSWER',
                        'CORRECTION_RESUME', 'CORRECTION_PORTFOLIO'
                    )) AS failure_count,
                (SELECT COUNT(*)
-                  FROM correction_request
-                 WHERE admin_memo IS NOT NULL AND TRIM(admin_memo) &lt;&gt; '') AS memo_count,
+                  FROM correction_request cr
+                  JOIN users u ON u.id = cr.user_id
+                  LEFT JOIN application_case ac ON ac.id = cr.application_case_id
+                 WHERE cr.admin_memo IS NOT NULL AND TRIM(cr.admin_memo) &lt;&gt; ''
+                   AND cr.deleted_at IS NULL
+                   AND u.status != 'DELETED' AND u.deleted_at IS NULL
+                   AND (cr.application_case_id IS NULL OR ac.deleted_at IS NULL)) AS memo_count,
                (SELECT COUNT(*)
-                  FROM correction_request
-                 WHERE created_at &gt;= CURRENT_DATE) AS today_count
+                  FROM correction_request cr
+                  JOIN users u ON u.id = cr.user_id
+                  LEFT JOIN application_case ac ON ac.id = cr.application_case_id
+                 WHERE cr.created_at &gt;= CURRENT_DATE
+                   AND cr.deleted_at IS NULL
+                   AND u.status != 'DELETED' AND u.deleted_at IS NULL
+                   AND (cr.application_case_id IS NULL OR ac.deleted_at IS NULL)) AS today_count
     </select>
 
     <select id="findCorrection" resultType="com.careertuner.admin.correction.dto.AdminCorrectionDetail">
@@ -93,6 +124,7 @@
                cr.original_text,
                cr.improved_text,
                cr.result_json,
+               cr.source_snapshot,
                cr.status,
                cr.ai_usage_log_id,
                aul.model,
@@ -107,14 +139,24 @@
           LEFT JOIN application_case ac ON ac.id = cr.application_case_id
           LEFT JOIN ai_usage_log aul ON aul.id = cr.ai_usage_log_id
          WHERE cr.id = #{id}
+           AND cr.deleted_at IS NULL
+           AND u.status != 'DELETED'
+           AND u.deleted_at IS NULL
+           AND (cr.application_case_id IS NULL OR ac.deleted_at IS NULL)
     </select>
 
     <select id="findCorrectionForUpdate" resultType="com.careertuner.admin.correction.dto.AdminCorrectionDetail">
-        SELECT id,
-               user_id,
-               admin_memo
-          FROM correction_request
-         WHERE id = #{id}
+        SELECT cr.id,
+               cr.user_id,
+               cr.admin_memo
+          FROM correction_request cr
+          JOIN users u ON u.id = cr.user_id
+          LEFT JOIN application_case ac ON ac.id = cr.application_case_id
+         WHERE cr.id = #{id}
+           AND cr.deleted_at IS NULL
+           AND u.status != 'DELETED'
+           AND u.deleted_at IS NULL
+           AND (cr.application_case_id IS NULL OR ac.deleted_at IS NULL)
            FOR UPDATE
     </select>
 
@@ -137,6 +179,9 @@
           JOIN users u ON u.id = aul.user_id
           LEFT JOIN application_case ac ON ac.id = aul.application_case_id
          WHERE aul.status = 'FAILED'
+           AND u.status != 'DELETED'
+           AND u.deleted_at IS NULL
+           AND (aul.application_case_id IS NULL OR ac.deleted_at IS NULL)
            AND aul.feature_type IN (
                'CORRECTION_SELF_INTRO', 'CORRECTION_INTERVIEW_ANSWER',
                'CORRECTION_RESUME', 'CORRECTION_PORTFOLIO'
@@ -149,5 +194,19 @@
         UPDATE correction_request
            SET admin_memo = #{adminMemo}
          WHERE id = #{id}
+           AND deleted_at IS NULL
+           AND EXISTS (
+               SELECT 1 FROM users active_user
+               WHERE active_user.id = correction_request.user_id
+                 AND active_user.status != 'DELETED'
+                 AND active_user.deleted_at IS NULL
+           )
+           AND (
+               application_case_id IS NULL OR EXISTS (
+                   SELECT 1 FROM application_case active_case
+                   WHERE active_case.id = correction_request.application_case_id
+                     AND active_case.deleted_at IS NULL
+               )
+           )
     </update>
 </mapper>

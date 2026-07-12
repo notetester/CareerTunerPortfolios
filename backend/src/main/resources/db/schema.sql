@@ -7,6 +7,15 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+-- 배포 시 적용된 증분 patch의 파일명과 checksum을 기록한다.
+-- 2026-07-12 자동화 도입 이후 patch는 내용 수정 대신 새 파일을 추가한다.
+CREATE TABLE IF NOT EXISTS schema_migration (
+    migration_name VARCHAR(255) NOT NULL,
+    checksum       CHAR(64)     NOT NULL,
+    applied_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (migration_name)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '적용 완료된 증분 DB patch 원장';
+
 -- =====================================================================
 --  회원 / 인증
 -- =====================================================================
@@ -210,17 +219,48 @@ CREATE TABLE IF NOT EXISTS user_profile (
     resume_text      MEDIUMTEXT NULL,
     self_intro       MEDIUMTEXT NULL,
     preferences      JSON NULL,            -- {salary, region, workType}
+    version_no       INT NOT NULL DEFAULT 1 COMMENT '사용자별 현재 프로필 스냅샷 버전',
+    deleted_at       DATETIME NULL COMMENT '회원 탈퇴 개인정보 삭제 시각',
     created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_user_profile_user (user_id),
+    KEY idx_user_profile_deleted (deleted_at),
     CONSTRAINT fk_user_profile_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 프로필을 수정해도 과거 분석 입력을 재현할 수 있도록 저장 시점의 전체 필드를 불변 스냅샷으로 보존한다.
+CREATE TABLE IF NOT EXISTS user_profile_version (
+    id               BIGINT NOT NULL AUTO_INCREMENT,
+    user_id          BIGINT NOT NULL,
+    version_no       INT NOT NULL,
+    desired_job      VARCHAR(255) NULL,
+    desired_industry VARCHAR(255) NULL,
+    education        JSON NULL,
+    career           JSON NULL,
+    projects         JSON NULL,
+    skills           JSON NULL,
+    certificates     JSON NULL,
+    languages        JSON NULL,
+    portfolio_links  JSON NULL,
+    resume_text      MEDIUMTEXT NULL,
+    self_intro       MEDIUMTEXT NULL,
+    preferences      JSON NULL,
+    source           VARCHAR(40) NOT NULL COMMENT 'MANUAL_SAVE/DOCUMENT_IMPORT/AI_ANALYSIS/MIGRATION',
+    deleted_at       DATETIME NULL COMMENT '개인정보 삭제 요청으로 스냅샷 내용을 지운 시각',
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_user_profile_version (user_id, version_no),
+    KEY idx_user_profile_version_created (user_id, created_at DESC),
+    KEY idx_user_profile_version_deleted (user_id, deleted_at),
+    CONSTRAINT fk_user_profile_version_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '분석 재현용 사용자 프로필 불변 스냅샷';
 
 -- 프로필 AI 분석 산출물(A영역) 영속 — 사용자 조회 + C 적합도 입력 창구. feature_type 별 최신 1행 upsert.
 CREATE TABLE IF NOT EXISTS profile_ai_analysis (
     id                 BIGINT NOT NULL AUTO_INCREMENT,
     user_id            BIGINT NOT NULL,
+    profile_version_id BIGINT NULL COMMENT '분석에 사용한 user_profile_version.id',
     feature_type       VARCHAR(40) NOT NULL,   -- PROFILE_SUMMARY / PROFILE_SKILL_EXTRACT / PROFILE_COMPLETENESS
     summary            MEDIUMTEXT NULL,
     strengths          JSON NULL,
@@ -234,11 +274,15 @@ CREATE TABLE IF NOT EXISTS profile_ai_analysis (
     quality_warnings   JSON NULL,
     model              VARCHAR(120) NULL,
     status             VARCHAR(20) NULL,
+    deleted_at         DATETIME NULL COMMENT '회원 탈퇴 개인정보 삭제 시각',
     created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_profile_ai_user_feature (user_id, feature_type),
-    CONSTRAINT fk_profile_ai_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    KEY idx_profile_ai_profile_version (profile_version_id),
+    KEY idx_profile_ai_deleted (user_id, deleted_at),
+    CONSTRAINT fk_profile_ai_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_profile_ai_profile_version FOREIGN KEY (profile_version_id) REFERENCES user_profile_version (id) ON DELETE SET NULL
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
@@ -540,11 +584,13 @@ CREATE TABLE IF NOT EXISTS dashboard_todo (
     time_label   VARCHAR(50)  NOT NULL DEFAULT '오늘',
     done         TINYINT(1)   NOT NULL DEFAULT 0,
     completed_at DATETIME     NULL,
+    deleted_at   DATETIME     NULL,
     created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_dashboard_todo_derived (user_id, derived_key),
     KEY idx_dashboard_todo_user (user_id, created_at),
+    KEY idx_dashboard_todo_active (user_id, deleted_at, created_at),
     CONSTRAINT fk_dashboard_todo_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -731,6 +777,7 @@ CREATE TABLE IF NOT EXISTS interview_session (
     ended_at            DATETIME NULL,
     total_score         INT NULL,
     report              JSON NULL,
+    source_snapshot     JSON NULL,                     -- 질문 생성 시 사용한 A/B/C 원천 provenance + C 적합도 핵심 결과
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at          DATETIME NULL,                      -- soft delete: 사용자가 기록 삭제한 시각. NULL이면 활성
     last_resumed_at     DATETIME NULL,                      -- 복원(=복습)한 마지막 시각. 최근 기록 정렬·표시용
@@ -748,9 +795,11 @@ CREATE TABLE IF NOT EXISTS interview_question (
     model_answer         MEDIUMTEXT NULL,                   -- 모범답안(답안지), 채점 기준 (patch 20260612_d 동기화)
     question_type        VARCHAR(30) NULL,                  -- EXPECTED/TECH/PERSONALITY/SITUATION/FOLLOW_UP
     sort_order           INT NOT NULL DEFAULT 0,
+    deleted_at           DATETIME NULL,                      -- 재생성 시 기존 질문을 보존하는 soft delete
     PRIMARY KEY (id),
     KEY idx_interview_question_session (interview_session_id),
     KEY idx_interview_question_parent (parent_question_id),
+    KEY idx_interview_question_deleted (interview_session_id, deleted_at),
     CONSTRAINT fk_interview_question_session FOREIGN KEY (interview_session_id) REFERENCES interview_session (id) ON DELETE CASCADE,
     CONSTRAINT fk_interview_question_parent FOREIGN KEY (parent_question_id) REFERENCES interview_question (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
@@ -820,9 +869,11 @@ CREATE TABLE IF NOT EXISTS interview_training_sample (
     feedback             MEDIUMTEXT NULL,
     rag_used             TINYINT(1) NOT NULL DEFAULT 0,
     model                VARCHAR(80) NULL,
+    deleted_at           DATETIME NULL,                     -- 세션 삭제 시 답변 원문 학습 제외
     created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
-    KEY idx_training_session (interview_session_id)
+    KEY idx_training_session (interview_session_id),
+    KEY idx_training_deleted (deleted_at, id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- 면접 RAG 지식베이스 원본 (루브릭/기출/기업자료). 벡터는 Qdrant 에, 원본은 여기 보관.
@@ -888,6 +939,7 @@ CREATE TABLE IF NOT EXISTS collaboration_friendship (
     friend_user_id BIGINT   NOT NULL,
     created_by     BIGINT   NULL,
     created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at     DATETIME NULL COMMENT '친구 해제 시각. 재수락하면 NULL로 복원',
     PRIMARY KEY (id),
     UNIQUE KEY uq_collab_friendship_pair (user_id, friend_user_id),
     KEY idx_collab_friendship_friend (friend_user_id),
@@ -963,6 +1015,7 @@ CREATE TABLE IF NOT EXISTS collaboration_conversation_permission (
     granted_by          BIGINT     NULL,
     created_at          DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at          DATETIME   NULL COMMENT '권한 회수 시각. 재부여하면 NULL로 복원',
     PRIMARY KEY (conversation_id, user_id),
     KEY idx_collab_conv_permission_user (user_id),
     CONSTRAINT fk_collab_conv_permission_conversation FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE,
@@ -992,6 +1045,7 @@ CREATE TABLE IF NOT EXISTS collaboration_conversation_invite_allow (
     user_id         BIGINT   NOT NULL,
     granted_by      BIGINT   NULL,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at      DATETIME NULL COMMENT '초대 허용 해제 시각. 재허용하면 NULL로 복원',
     PRIMARY KEY (conversation_id, user_id),
     CONSTRAINT fk_collab_conv_invite_allow_conversation FOREIGN KEY (conversation_id) REFERENCES collaboration_conversation (id) ON DELETE CASCADE,
     CONSTRAINT fk_collab_conv_invite_allow_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
@@ -1459,6 +1513,24 @@ ON DUPLICATE KEY UPDATE
     active = VALUES(active),
     sort_order = VALUES(sort_order);
 
+-- AutoPrep 요청당 첨부 개수도 E billing policy를 정본으로 사용한다.
+INSERT INTO benefit_catalog (code, name, description, active, sort_order)
+VALUES ('AUTOPREP_ATTACHMENT', 'AutoPrep 첨부 한도', 'AutoPrep 한 요청에서 읽을 수 있는 첨부 파일 수', 1, 55)
+ON DUPLICATE KEY UPDATE
+    name = VALUES(name), description = VALUES(description), active = VALUES(active), sort_order = VALUES(sort_order);
+
+INSERT INTO subscription_benefit_policy
+    (plan_code, benefit_code, benefit_name, benefit_type, quantity, reset_cycle, overage_policy, credit_cost, active, sort_order)
+VALUES
+    ('FREE', 'AUTOPREP_ATTACHMENT', 'AutoPrep 첨부 한도', 'LIMIT', 1, 'NONE', 'BLOCK', 0, 1, 55),
+    ('BASIC', 'AUTOPREP_ATTACHMENT', 'AutoPrep 첨부 한도', 'LIMIT', 1, 'NONE', 'BLOCK', 0, 1, 55),
+    ('PRO', 'AUTOPREP_ATTACHMENT', 'AutoPrep 첨부 한도', 'LIMIT', 5, 'NONE', 'BLOCK', 0, 1, 55),
+    ('PREMIUM', 'AUTOPREP_ATTACHMENT', 'AutoPrep 첨부 한도', 'LIMIT', 5, 'NONE', 'BLOCK', 0, 1, 55)
+ON DUPLICATE KEY UPDATE
+    benefit_name = VALUES(benefit_name), benefit_type = VALUES(benefit_type), quantity = VALUES(quantity),
+    reset_cycle = VALUES(reset_cycle), overage_policy = VALUES(overage_policy), credit_cost = VALUES(credit_cost),
+    active = VALUES(active), sort_order = VALUES(sort_order);
+
 UPDATE subscription_benefit_policy
    SET overage_policy = 'CREDIT',
        credit_cost = CASE benefit_code
@@ -1605,9 +1677,11 @@ CREATE TABLE IF NOT EXISTS correction_request (
     original_text       MEDIUMTEXT NOT NULL,
     improved_text       MEDIUMTEXT NULL,
     result_json         JSON NULL,
+    source_snapshot     JSON NULL,
     status              VARCHAR(20) NOT NULL DEFAULT 'SUCCESS',
     ai_usage_log_id     BIGINT NULL,
     admin_memo          VARCHAR(2000) NULL,
+    deleted_at          DATETIME NULL,
     created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uk_correction_request_user_key (user_id, request_key),
@@ -1615,6 +1689,7 @@ CREATE TABLE IF NOT EXISTS correction_request (
     KEY idx_correction_request_case (application_case_id),
     KEY idx_correction_request_type (correction_type),
     KEY idx_correction_request_ai_usage (ai_usage_log_id),
+    KEY idx_correction_request_active (user_id, deleted_at, created_at),
     CONSTRAINT fk_correction_request_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     CONSTRAINT fk_correction_request_case FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE SET NULL,
     CONSTRAINT fk_correction_request_ai_usage FOREIGN KEY (ai_usage_log_id) REFERENCES ai_usage_log (id) ON DELETE SET NULL
@@ -1713,6 +1788,7 @@ CREATE TABLE IF NOT EXISTS community_interview_review (
     verification_confidence   DECIMAL(5,4)  NULL,
     verified_at               DATETIME      NULL,
     created_at                DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at                DATETIME      NULL COMMENT '면접 후기 확장 정보 삭제 시각',
     PRIMARY KEY (post_id),
     KEY idx_interview_review_company (company_name),
     KEY idx_interview_review_role (job_role),
@@ -1757,6 +1833,7 @@ CREATE TABLE IF NOT EXISTS post_reaction (
     axis           VARCHAR(20)  NOT NULL DEFAULT 'PREFERENCE' COMMENT '리액션 축(RECOMMEND_AXIS/PREFERENCE/BOOKMARK)',
     is_anonymous   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '익명 리액션 — 타인 시점 목록 제외, 집계 포함',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at     DATETIME     NULL COMMENT '리액션 취소 시각. 재선택하면 NULL로 복원',
     PRIMARY KEY (id),
     UNIQUE KEY uk_post_reaction_axis (user_id, post_id, axis),
     KEY idx_pr_post (post_id),
@@ -1772,6 +1849,7 @@ CREATE TABLE IF NOT EXISTS comment_reaction (
     axis           VARCHAR(20)  NOT NULL DEFAULT 'PREFERENCE' COMMENT '리액션 축(RECOMMEND_AXIS/PREFERENCE)',
     is_anonymous   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '익명 리액션 — 타인 시점 목록 제외, 집계 포함',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at     DATETIME     NULL COMMENT '리액션 취소 시각. 재선택하면 NULL로 복원',
     PRIMARY KEY (id),
     UNIQUE KEY uk_comment_reaction_axis (user_id, comment_id, axis),
     KEY idx_cr_comment (comment_id),
@@ -1861,6 +1939,7 @@ CREATE TABLE IF NOT EXISTS community_post_tag (
     tag_id     BIGINT       NOT NULL,
     is_ai      TINYINT(1)   NOT NULL DEFAULT 0,
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME     NULL COMMENT '게시글 태그 연결 해제 시각',
     PRIMARY KEY (post_id, tag_id),
     KEY idx_post_tag_tag (tag_id),
     CONSTRAINT fk_post_tag_post FOREIGN KEY (post_id) REFERENCES community_post (id) ON DELETE CASCADE,
@@ -2066,6 +2145,7 @@ CREATE TABLE IF NOT EXISTS notification (
     is_read     TINYINT(1)   NOT NULL DEFAULT 0,
     read_at     DATETIME     NULL,
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at  DATETIME     NULL COMMENT '사용자가 알림을 지운 시각',
     PRIMARY KEY (id),
     KEY idx_notification_user_unread (user_id, is_read, created_at DESC),
     KEY idx_notification_user_platform_unread (user_id, destination_platform, is_read, created_at DESC),
@@ -2120,6 +2200,7 @@ CREATE TABLE IF NOT EXISTS user_block (
     block_ip        TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '이 계정의 접속 IP 도 차단(user_ip_block 파생)',
     memo            VARCHAR(200) NULL COMMENT '개인 메모(차단 사유 등)',
     masked_label    VARCHAR(100) NULL COMMENT '익명 콘텐츠 기반 차단의 표시 라벨(비노출 익명성 유지)',
+    deleted_at      DATETIME     NULL COMMENT '차단 해제 시각. 재차단하면 NULL로 복원',
     created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -2135,6 +2216,7 @@ CREATE TABLE IF NOT EXISTS user_ip_block (
     ip_hash        VARCHAR(64)  NOT NULL COMMENT 'SHA-256(서버솔트+IP). 원본 IP 비저장',
     source_user_id BIGINT       NULL COMMENT '어느 계정 차단에서 파생됐는지',
     label          VARCHAR(100) NULL COMMENT '목록 표기용 라벨',
+    deleted_at     DATETIME     NULL COMMENT 'IP 차단 해제 시각. 재등록하면 NULL로 복원',
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     UNIQUE KEY uq_user_ip_block (user_id, ip_hash),
@@ -2147,6 +2229,7 @@ CREATE TABLE IF NOT EXISTS conversation_block (
     user_id         BIGINT      NOT NULL,
     conversation_id BIGINT      NOT NULL,
     flags_json      JSON        NULL COMMENT 'inviteFromRoom/memberCreatedRoomInvite/memberJoinedRoomInvite(+익명 변형)',
+    deleted_at      DATETIME    NULL COMMENT '대화방 차단 해제 시각. 재차단하면 NULL로 복원',
     created_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
@@ -2292,6 +2375,7 @@ CREATE TABLE IF NOT EXISTS post_scrap (
     snapshot_category     VARCHAR(30)  NOT NULL COMMENT '스크랩 시점 카테고리',
     is_anonymous          TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '익명 스크랩 — 타인 시점 목록 제외, 집계 포함',
     scrapped_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at            DATETIME     NULL COMMENT '스크랩 해제 시각',
     PRIMARY KEY (id),
     KEY idx_post_scrap_user (user_id, scrapped_at DESC),
     KEY idx_post_scrap_post (post_id),
@@ -2304,6 +2388,7 @@ CREATE TABLE IF NOT EXISTS post_subscription (
     user_id    BIGINT   NOT NULL,
     post_id    BIGINT   NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL COMMENT '게시글 구독 해제 시각. 재구독하면 NULL로 복원',
     PRIMARY KEY (id),
     UNIQUE KEY uk_post_subscription (user_id, post_id),
     KEY idx_post_subscription_post (post_id),
@@ -2316,6 +2401,7 @@ CREATE TABLE IF NOT EXISTS comment_subscription (
     user_id    BIGINT   NOT NULL,
     comment_id BIGINT   NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL COMMENT '댓글 구독 해제 시각. 재구독하면 NULL로 복원',
     PRIMARY KEY (id),
     UNIQUE KEY uk_comment_subscription (user_id, comment_id),
     KEY idx_comment_subscription_comment (comment_id),
@@ -2365,9 +2451,11 @@ CREATE TABLE IF NOT EXISTS user_resume_detail (
     skill_json         JSON     NULL COMMENT '["React","Spring",...]',
     portfolio_json     JSON     NULL COMMENT '[{label, url}]',
     desired_condition_json JSON NULL COMMENT '{jobCategoryLarge, jobCategoryMedium, employmentType, region, salaryMin, salaryMax, remote}',
+    deleted_at         DATETIME NULL COMMENT '회원 탈퇴 개인정보 삭제 시각',
     created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id),
+    KEY idx_user_resume_detail_deleted (deleted_at),
     CONSTRAINT fk_user_resume_detail_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '이력서 상세 스펙(사람인/잡코리아식 — 분석 정확도용)';
 

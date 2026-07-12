@@ -18,6 +18,9 @@ public class FitAnalysisGenerationSource {
     private Integer jobPostingRevision;
     private LocalDateTime jobAnalysisCreatedAt;
     private Long userProfileId;
+    /** 실제 비교 입력으로 사용한 불변 user_profile_version.id. */
+    private Long profileVersionId;
+    private Integer profileVersionNo;
     private LocalDateTime profileUpdatedAt;
     private String companyName;
     private String jobTitle;

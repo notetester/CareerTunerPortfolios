@@ -24,6 +24,7 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.web.FrontendReturnTarget;
 import com.careertuner.common.web.FrontendReturnUrlResolver;
+import com.careertuner.file.service.FileService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.dto.AccountInfoResponse;
 import com.careertuner.user.mapper.UserAccountMapper;
@@ -42,13 +43,15 @@ class UserAccountServiceImplTest {
     private final EmailService emailService = mock(EmailService.class);
     private final FrontendReturnUrlResolver frontendReturnUrlResolver = mock(FrontendReturnUrlResolver.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+    private final FileService fileService = mock(FileService.class);
     private final UserAccountServiceImpl service = new UserAccountServiceImpl(
             mapper,
             new ObjectMapper(),
             authMapper,
             emailService,
             frontendReturnUrlResolver,
-            passwordEncoder);
+            passwordEncoder,
+            fileService);
 
     private User user(Long id, String loginId, String phone) {
         return User.builder().id(id).email("redacted-826b0cff85484558@example.com").name("홍길동")
@@ -65,13 +68,19 @@ class UserAccountServiceImplTest {
 
         service.deleteOwnAccount(1L, "current-password", "회원탈퇴");
 
-        InOrder order = inOrder(mapper, authMapper);
+        InOrder order = inOrder(mapper, authMapper, fileService);
         order.verify(mapper).anonymizeAndSoftDeleteOwnAccount(1L);
         order.verify(authMapper).revokeAllForUser(1L);
         order.verify(mapper).deleteAllSocialLinks(1L);
         order.verify(mapper).deleteAllPushSubscriptions(1L);
         order.verify(mapper).expireAllEmailVerifications(1L);
         order.verify(mapper).deleteAllSmsOtpCodes(1L);
+        order.verify(mapper).scrubUserProfile(1L);
+        order.verify(mapper).scrubUserProfileVersions(1L);
+        order.verify(mapper).scrubProfileAiAnalyses(1L);
+        order.verify(mapper).scrubResumeDetail(1L);
+        order.verify(mapper).scrubCorrectionRequests(1L);
+        order.verify(fileService).deleteOwnedProfileFiles(1L);
         order.verify(mapper).hideAndAnonymizeNicknameProfiles(1L);
         order.verify(mapper).anonymizeChatProfiles(1L);
         order.verify(mapper).clearConversationNicknameProfiles(1L);

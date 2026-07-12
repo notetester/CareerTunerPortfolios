@@ -19,6 +19,7 @@ public class AdminCorrectionDetail {
     private String originalText;
     private String improvedText;
     private String resultJson;
+    private String sourceSnapshot;
     private String status;
     private Long aiUsageLogId;
     private String model;

@@ -25,6 +25,7 @@ import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewMediaAnalysis;
+import com.careertuner.interview.domain.InterviewPreparationContextSource;
 import com.careertuner.interview.domain.InterviewQuestion;
 import com.careertuner.interview.domain.InterviewSession;
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
@@ -74,6 +75,8 @@ public class InterviewServiceImpl implements InterviewService {
             "PERSONALITY", "인성 면접",
             "PRESSURE", "압박 면접",
             "RESUME", "자소서 기반 면접",
+            "PORTFOLIO", "포트폴리오 기반 면접",
+            "REAL", "실전 종합 면접",
             "COMPANY", "기업 맞춤 면접");
 
     private final InterviewMapper interviewMapper;
@@ -127,6 +130,7 @@ public class InterviewServiceImpl implements InterviewService {
                         userId, asset.getId(), asset.getKind(), "INTERVIEW_ANSWER", answer.getId());
             }
         }
+        interviewMapper.softDeleteTrainingSamplesBySessionId(sessionId);
         int updated = interviewMapper.softDeleteSession(sessionId, userId);
         if (updated == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "삭제할 면접 기록을 찾을 수 없습니다.");
@@ -186,20 +190,28 @@ public class InterviewServiceImpl implements InterviewService {
         }
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
         String postingText = accessService.sourceText(session.getApplicationCaseId());
+        PreparationContext preparation = capturePreparationContext(userId, session.getApplicationCaseId());
         // 압박 면접은 본질문 3개(이후 답변마다 반박 1개 자동 추가 → 총 6개), 그 외 모드는 기본 6개.
         int count = MODE_PRESSURE.equals(session.getMode()) ? PRESSURE_QUESTION_COUNT : resolveCount(request.count());
         String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
 
         InterviewOpenAiClient.GeneratedQuestions generated;
         try {
-            generated = aiClient.generateQuestions(applicationCase, postingText, modeLabel, count);
+            generated = preparation.questionContext().isBlank()
+                    ? aiClient.generateQuestions(applicationCase, postingText, modeLabel, count)
+                    : aiClient.generateQuestions(
+                            applicationCase, postingText, modeLabel, count, preparation.questionContext());
         } catch (BusinessException ex) {
             aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_QUESTION, ex.getMessage());
             throw ex;
         }
         aiUsageLogService.recordSuccess(userId, session.getApplicationCaseId(), FEATURE_QUESTION, generated.usage());
 
-        interviewMapper.deleteQuestionsBySessionId(sessionId);
+        interviewMapper.softDeleteQuestionsBySessionId(sessionId);
+        if (preparation.sourceSnapshot() != null) {
+            interviewMapper.updateSessionSourceSnapshot(sessionId, preparation.sourceSnapshot());
+            session.setSourceSnapshot(preparation.sourceSnapshot());
+        }
         interviewMapper.invalidateSessionResult(sessionId);
         int order = 0;
         List<InterviewQuestion> inserted = new java.util.ArrayList<>();
@@ -303,8 +315,12 @@ public class InterviewServiceImpl implements InterviewService {
 
         InterviewOpenAiClient.VoiceScoringResult scored;
         try {
-            scored = aiClient.scoreVoiceTranscript(questionTexts, modelAnswers, transcriptText,
-                    applicationCase.getCompanyName(), applicationCase.getJobTitle());
+            String fitContext = fitContextFromSnapshot(session.getSourceSnapshot());
+            scored = fitContext.isBlank()
+                    ? aiClient.scoreVoiceTranscript(questionTexts, modelAnswers, transcriptText,
+                            applicationCase.getCompanyName(), applicationCase.getJobTitle())
+                    : aiClient.scoreVoiceTranscript(questionTexts, modelAnswers, transcriptText,
+                            applicationCase.getCompanyName(), applicationCase.getJobTitle(), fitContext);
         } catch (BusinessException ex) {
             aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_VOICE_SCORING, ex.getMessage());
             throw ex;
@@ -381,8 +397,12 @@ public class InterviewServiceImpl implements InterviewService {
 
         InterviewOpenAiClient.GeneratedQuestions generated;
         try {
-            generated = aiClient.generateFollowUps(question.getQuestion(), answer.getAnswerText(),
-                    applicationCase, count, pressure);
+            String fitContext = fitContextFromSnapshot(session.getSourceSnapshot());
+            generated = fitContext.isBlank()
+                    ? aiClient.generateFollowUps(question.getQuestion(), answer.getAnswerText(),
+                            applicationCase, count, pressure)
+                    : aiClient.generateFollowUps(question.getQuestion(), answer.getAnswerText(),
+                            applicationCase, count, pressure, fitContext);
         } catch (BusinessException ex) {
             aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_FOLLOWUP, ex.getMessage());
             throw ex;
@@ -461,9 +481,12 @@ public class InterviewServiceImpl implements InterviewService {
             // 백그라운드 모범답안 생성이 아직이면(빠른 평가) 채점 기준 보장을 위해 단건 즉시 생성한다.
             referenceModelAnswer = generateModelAnswerForGrading(userId, session, applicationCase, question);
         }
-        InterviewAgentOrchestrator.OrchestratedEvaluation evaluation =
-                orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText(),
-                        referenceModelAnswer);
+        String fitContext = fitContextFromSnapshot(session.getSourceSnapshot());
+        InterviewAgentOrchestrator.OrchestratedEvaluation evaluation = fitContext.isBlank()
+                ? orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText(),
+                        referenceModelAnswer)
+                : orchestrator.evaluateAnswer(userId, session, applicationCase, question, request.answerText(),
+                        referenceModelAnswer, fitContext);
 
         boolean reserved = answer != null;
         if (!reserved) {
@@ -711,7 +734,10 @@ public class InterviewServiceImpl implements InterviewService {
 
         InterviewOpenAiClient.ReportPayload payload;
         try {
-            payload = aiClient.generateReport(transcript);
+            String fitContext = fitContextFromSnapshot(session.getSourceSnapshot());
+            payload = fitContext.isBlank()
+                    ? aiClient.generateReport(transcript)
+                    : aiClient.generateReport(transcript, fitContext);
         } catch (BusinessException ex) {
             aiUsageLogService.recordFailure(userId, session.getApplicationCaseId(), FEATURE_REPORT, ex.getMessage());
             throw ex;
@@ -959,6 +985,147 @@ public class InterviewServiceImpl implements InterviewService {
         return sb.toString();
     }
 
+    /**
+     * 질문 생성 순간 A/B/C 정본을 읽어 프롬프트 컨텍스트와 provenance 스냅샷을 함께 만든다.
+     * C 분석이 아직 없더라도 A/B 입력만으로 질문 생성은 계속되며, 평가·리포트는 C 컨텍스트 없이 폴백한다.
+     */
+    private PreparationContext capturePreparationContext(Long userId, Long applicationCaseId) {
+        InterviewPreparationContextSource source = interviewMapper.findPreparationContext(userId, applicationCaseId);
+        if (source == null) {
+            return PreparationContext.EMPTY;
+        }
+
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("schemaVersion", 1);
+        snapshot.put("capturedAt", LocalDateTime.now());
+        snapshot.put("profileVersionId", source.getProfileVersionId());
+        snapshot.put("profileVersionNo", source.getProfileVersionNo());
+        snapshot.put("jobAnalysisId", source.getJobAnalysisId());
+        snapshot.put("companyAnalysisId", source.getCompanyAnalysisId());
+        snapshot.put("fitAnalysisId", source.getFitAnalysisId());
+        snapshot.put("fitScore", source.getFitScore());
+        snapshot.put("matchedSkills", jsonValue(source.getMatchedSkills()));
+        snapshot.put("missingSkills", jsonValue(source.getMissingSkills()));
+        snapshot.put("gapRecommendations", jsonValue(source.getGapRecommendations()));
+        snapshot.put("strategyActions", jsonValue(source.getStrategyActions()));
+        snapshot.put("fitModel", source.getFitModel());
+        snapshot.put("fitPromptVersion", source.getFitPromptVersion());
+        snapshot.put("fitCreatedAt", source.getFitCreatedAt());
+
+        String snapshotJson;
+        try {
+            snapshotJson = objectMapper.writeValueAsString(snapshot);
+        } catch (JacksonException ex) {
+            snapshotJson = null;
+        }
+
+        String questionContext = """
+                [면접 준비 정본 컨텍스트]
+                희망 직무: %s
+                학력: %s
+                경력: %s
+                프로젝트: %s
+                보유 역량: %s
+                자격증: %s
+                포트폴리오: %s
+                이력서/자기소개 근거: %s
+                공고 필수 역량: %s
+                공고 우대 역량: %s
+                담당 업무: %s
+                지원 조건: %s
+                공고 분석 요약: %s
+                기업 요약/최근 이슈/면접 포인트: %s / %s / %s
+                최신 적합도 분석(ID %s): %s점
+                확인된 강점: %s
+                부족 역량: %s
+                보완 전략: %s
+                다음 실행: %s
+
+                위 내용은 질문 맞춤화 근거이며, 적합도 점수는 합격 확률로 해석하지 않는다.
+                """.formatted(
+                promptValue(source.getDesiredJob(), 300),
+                promptValue(source.getEducation(), 1200),
+                promptValue(source.getCareer(), 2200),
+                promptValue(source.getProjects(), 2200),
+                promptValue(source.getSkills(), 1000),
+                promptValue(source.getCertificates(), 1000),
+                promptValue(source.getPortfolioLinks(), 1000),
+                promptValue(joinNonBlank(source.getResumeText(), source.getSelfIntro()), 3500),
+                promptValue(source.getRequiredSkills(), 1200),
+                promptValue(source.getPreferredSkills(), 1200),
+                promptValue(source.getDuties(), 1800),
+                promptValue(source.getQualifications(), 1800),
+                promptValue(source.getJobSummary(), 1600),
+                promptValue(source.getCompanySummary(), 1400),
+                promptValue(source.getRecentIssues(), 1200),
+                promptValue(source.getInterviewPoints(), 1400),
+                source.getFitAnalysisId() == null ? "없음" : source.getFitAnalysisId(),
+                source.getFitScore() == null ? "미분석" : source.getFitScore(),
+                promptValue(source.getMatchedSkills(), 1000),
+                promptValue(source.getMissingSkills(), 1000),
+                promptValue(source.getGapRecommendations(), 1600),
+                promptValue(source.getStrategyActions(), 1600));
+        return new PreparationContext(snapshotJson, questionContext);
+    }
+
+    /** 세션 생성 당시 고정한 C 적합도 핵심 결과만 평가·음성 채점·리포트에 재사용한다. */
+    private String fitContextFromSnapshot(String snapshot) {
+        if (snapshot == null || snapshot.isBlank()) {
+            return "";
+        }
+        try {
+            JsonNode root = objectMapper.readTree(snapshot);
+            if (root == null || root.path("fitAnalysisId").isMissingNode() || root.path("fitAnalysisId").isNull()) {
+                return "";
+            }
+            return """
+                    [질문 생성 시점 적합도 분석 스냅샷]
+                    분석 ID: %s, 점수: %s (합격 확률이 아닌 준비도 참고값)
+                    확인된 강점: %s
+                    부족 역량: %s
+                    보완 전략: %s
+                    다음 실행: %s
+                    답변의 직무 연결성과 구체성을 판단할 때만 참고하고, 없는 경험을 있다고 추정하지 않는다.
+                    """.formatted(
+                    root.path("fitAnalysisId").asText(""), root.path("fitScore").asText("미분석"),
+                    root.path("matchedSkills"), root.path("missingSkills"),
+                    root.path("gapRecommendations"), root.path("strategyActions"));
+        } catch (RuntimeException ex) {
+            return "";
+        }
+    }
+
+    private Object jsonValue(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readTree(value);
+        } catch (RuntimeException ex) {
+            return value;
+        }
+    }
+
+    private String promptValue(String value, int maxLength) {
+        if (value == null || value.isBlank()) {
+            return "(없음)";
+        }
+        String normalized = value.trim();
+        return normalized.length() <= maxLength ? normalized : normalized.substring(0, maxLength) + "…";
+    }
+
+    private String joinNonBlank(String first, String second) {
+        String left = first == null ? "" : first.trim();
+        String right = second == null ? "" : second.trim();
+        if (left.isEmpty()) {
+            return right;
+        }
+        if (right.isEmpty()) {
+            return left;
+        }
+        return left + "\n" + right;
+    }
+
     private String durationLabel(LocalDateTime startedAt) {
         if (startedAt == null) {
             return null;
@@ -985,5 +1152,9 @@ public class InterviewServiceImpl implements InterviewService {
 
     private record AnswerMediaScores(Integer voiceScore, Integer visualScore) {
         private static final AnswerMediaScores EMPTY = new AnswerMediaScores(null, null);
+    }
+
+    private record PreparationContext(String sourceSnapshot, String questionContext) {
+        private static final PreparationContext EMPTY = new PreparationContext(null, "");
     }
 }

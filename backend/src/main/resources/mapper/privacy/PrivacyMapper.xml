@@ -27,6 +27,7 @@
           FROM user_block b
           JOIN users u ON u.id = b.blocked_user_id
          WHERE b.user_id = #{userId}
+           AND b.deleted_at IS NULL
          ORDER BY b.created_at DESC
     </select>
 
@@ -36,6 +37,7 @@
           JOIN users u ON u.id = b.blocked_user_id
          WHERE b.user_id = #{userId}
            AND b.blocked_user_id = #{blockedUserId}
+           AND b.deleted_at IS NULL
     </select>
 
     <select id="findBlockById" resultType="com.careertuner.privacy.domain.UserBlock">
@@ -43,11 +45,20 @@
           FROM user_block b
           JOIN users u ON u.id = b.blocked_user_id
          WHERE b.id = #{id}
+           AND b.deleted_at IS NULL
     </select>
 
     <insert id="insertBlock" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_block (user_id, blocked_user_id, flags_json, block_ip, memo, masked_label)
         VALUES (#{userId}, #{blockedUserId}, #{flagsJson}, #{blockIp}, #{memo}, #{maskedLabel})
+        ON DUPLICATE KEY UPDATE
+            id = LAST_INSERT_ID(id),
+            flags_json = VALUES(flags_json),
+            block_ip = VALUES(block_ip),
+            memo = VALUES(memo),
+            masked_label = VALUES(masked_label),
+            deleted_at = NULL,
+            updated_at = NOW()
     </insert>
 
     <update id="updateBlock">
@@ -57,16 +68,21 @@
                memo         = #{memo},
                masked_label = #{maskedLabel}
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </update>
 
-    <delete id="deleteBlock">
-        DELETE FROM user_block WHERE id = #{id}
-    </delete>
+    <update id="softDeleteBlock">
+        UPDATE user_block
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE id = #{id}
+           AND deleted_at IS NULL
+    </update>
 
     <select id="findBlocksAmong" resultType="com.careertuner.privacy.domain.UserBlock">
         SELECT b.id, b.user_id, b.blocked_user_id, b.flags_json, b.block_ip, b.memo, b.masked_label, b.created_at, b.updated_at
           FROM user_block b
          WHERE b.user_id = #{userId}
+           AND b.deleted_at IS NULL
            AND b.blocked_user_id IN
         <foreach collection="targetIds" item="targetId" open="(" separator="," close=")">#{targetId}</foreach>
     </select>
@@ -98,23 +114,37 @@
           LEFT JOIN user_block ub
             ON ub.user_id = b.user_id
            AND ub.blocked_user_id = b.source_user_id
+           AND ub.deleted_at IS NULL
          WHERE b.user_id = #{userId}
+           AND b.deleted_at IS NULL
          ORDER BY b.created_at DESC
     </select>
 
     <insert id="insertIpBlock" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO user_ip_block (user_id, ip_hash, source_user_id, label)
         VALUES (#{userId}, #{ipHash}, #{sourceUserId}, #{label})
-        ON DUPLICATE KEY UPDATE label = VALUES(label)
+        ON DUPLICATE KEY UPDATE
+            id = LAST_INSERT_ID(id),
+            source_user_id = VALUES(source_user_id),
+            label = VALUES(label),
+            deleted_at = NULL
     </insert>
 
-    <delete id="deleteIpBlock">
-        DELETE FROM user_ip_block WHERE id = #{id} AND user_id = #{userId}
-    </delete>
+    <update id="softDeleteIpBlock">
+        UPDATE user_ip_block
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE id = #{id}
+           AND user_id = #{userId}
+           AND deleted_at IS NULL
+    </update>
 
-    <delete id="deleteIpBlocksBySource">
-        DELETE FROM user_ip_block WHERE user_id = #{userId} AND source_user_id = #{sourceUserId}
-    </delete>
+    <update id="softDeleteIpBlocksBySource">
+        UPDATE user_ip_block
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE user_id = #{userId}
+           AND source_user_id = #{sourceUserId}
+           AND deleted_at IS NULL
+    </update>
 
     <!-- 최근 성공 로그인 IP 의 해시. 원본 IP 는 반환하지 않는다. -->
     <select id="findLatestLoginIpHash" resultType="string">
@@ -131,6 +161,7 @@
         SELECT COUNT(*)
           FROM user_ip_block b
          WHERE b.user_id = #{viewerId}
+           AND b.deleted_at IS NULL
            AND b.ip_hash = (
                SELECT SHA2(CONCAT(#{salt}, h.ip_address), 256)
                  FROM user_login_history h
@@ -157,6 +188,7 @@
           ) lh
           JOIN user_ip_block b
             ON b.user_id = #{viewerId}
+           AND b.deleted_at IS NULL
            AND b.ip_hash = SHA2(CONCAT(#{salt}, lh.latest_ip), 256)
     </select>
 
@@ -185,6 +217,7 @@
           FROM conversation_block cb
           JOIN collaboration_conversation c ON c.id = cb.conversation_id
          WHERE cb.user_id = #{userId}
+           AND cb.deleted_at IS NULL
          ORDER BY cb.created_at DESC
     </select>
 
@@ -194,6 +227,7 @@
           JOIN collaboration_conversation c ON c.id = cb.conversation_id
          WHERE cb.user_id = #{userId}
            AND cb.conversation_id = #{conversationId}
+           AND cb.deleted_at IS NULL
     </select>
 
     <select id="findConversationBlockById" resultType="com.careertuner.privacy.domain.ConversationBlock">
@@ -201,23 +235,32 @@
           FROM conversation_block cb
           JOIN collaboration_conversation c ON c.id = cb.conversation_id
          WHERE cb.id = #{id}
+           AND cb.deleted_at IS NULL
     </select>
 
     <insert id="insertConversationBlock" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO conversation_block (user_id, conversation_id, flags_json)
         VALUES (#{userId}, #{conversationId}, #{flagsJson})
-        ON DUPLICATE KEY UPDATE flags_json = VALUES(flags_json)
+        ON DUPLICATE KEY UPDATE
+            id = LAST_INSERT_ID(id),
+            flags_json = VALUES(flags_json),
+            deleted_at = NULL,
+            updated_at = NOW()
     </insert>
 
     <update id="updateConversationBlock">
         UPDATE conversation_block
            SET flags_json = #{flagsJson}
          WHERE id = #{id}
+           AND deleted_at IS NULL
     </update>
 
-    <delete id="deleteConversationBlock">
-        DELETE FROM conversation_block WHERE id = #{id}
-    </delete>
+    <update id="softDeleteConversationBlock">
+        UPDATE conversation_block
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE id = #{id}
+           AND deleted_at IS NULL
+    </update>
 
     <select id="findConversationBlocksWhereMember" resultType="com.careertuner.privacy.domain.ConversationBlock">
         SELECT <include refid="conversationBlockColumns"/>
@@ -228,6 +271,7 @@
            AND m.user_id = #{memberId}
            AND m.status = 'ACTIVE'
          WHERE cb.user_id = #{userId}
+           AND cb.deleted_at IS NULL
     </select>
 
     <select id="findConversationBlocksWhereCreator" resultType="com.careertuner.privacy.domain.ConversationBlock">
@@ -236,6 +280,7 @@
           JOIN collaboration_conversation c ON c.id = cb.conversation_id
          WHERE cb.user_id = #{userId}
            AND c.created_by = #{creatorId}
+           AND cb.deleted_at IS NULL
     </select>
 
     <!-- ── 관계 판정 보조 ── -->
@@ -248,12 +293,14 @@
           FROM collaboration_friendship
          WHERE user_id = #{userId}
            AND friend_user_id = #{otherUserId}
+           AND deleted_at IS NULL
     </select>
 
     <select id="findFriendsAmong" resultType="long">
         SELECT friend_user_id
           FROM collaboration_friendship
          WHERE user_id = #{userId}
+           AND deleted_at IS NULL
            AND friend_user_id IN
         <foreach collection="targetIds" item="targetId" open="(" separator="," close=")">#{targetId}</foreach>
     </select>

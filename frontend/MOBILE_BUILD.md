@@ -221,8 +221,9 @@ Universal Link가 검증됐다고 판단하지 않는다.
 
 확장자가 없는 AASA는 표준 Nginx에서 `application/octet-stream`으로 응답할 수 있다. 웹 배포는 전체
 `dist` 교체 전에 AASA 한 파일만 시험 설치해 공개 MIME과 내용을 검사하고, 실패하면 기존 AASA를
-즉시 원복한 뒤 중단한다. Nginx 설정을 자동 편집하지 않으며, 실패 로그가 안내하는 exact `location`을
-활성 server 블록에 운영자가 검토 후 한 번만 추가한다.
+즉시 원복한 뒤 중단한다. 이때 `careertuner.kro.kr`의 단일 TLS server 블록을 확인한 뒤 AASA exact
+`location`을 멱등 설치하고 `nginx -t`가 통과할 때만 reload한다. server 블록이 없거나 둘 이상이라
+안전하게 결정할 수 없거나 설정 검증에 실패하면 원래 Nginx 파일을 복원하고 웹 배포를 중단한다.
 
 ## 4. 공통 메모
 

@@ -3,11 +3,6 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.careertuner.jobposting.mapper.JobPostingMapper">
 
-    <delete id="deleteJobPostingsByCaseId">
-        DELETE FROM job_posting
-        WHERE application_case_id = #{applicationCaseId}
-    </delete>
-
     <select id="nextRevisionForCase" resultType="int">
         SELECT COALESCE(MAX(revision), 0) + 1
         FROM job_posting

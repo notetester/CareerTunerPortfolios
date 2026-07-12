@@ -31,6 +31,12 @@ cd desktop
 .\scripts\package-windows.ps1
 ```
 
+스크립트는 PATH에 `cmake`가 없으면 `C:\Program Files\CMake\bin\cmake.exe` 등 표준 설치 위치를
+자동 탐색한다. Ninja가 없고 Qt MinGW의 `mingw32-make.exe`가 있으면 `MinGW Makefiles`로 자동 전환한다.
+비표준 설치는 `-CMakePath` 또는 `-Generator`로 명시할 수 있다.
+기존 빌드 폴더의 generator와 현재 선택이 다르면 기존 산출물은 보존하고
+`build-release-qt6111-mingw-makefiles`처럼 generator별 형제 폴더를 사용한다.
+
 기본 경로는 현재 개발 PC 기준 `C:\Qt\6.11.1\mingw_64`, `C:\Qt\Tools\mingw1310_64\bin` 이다. 다른 Qt kit 을 쓰면 인자를 넘긴다.
 
 ```powershell

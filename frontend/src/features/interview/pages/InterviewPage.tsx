@@ -387,7 +387,7 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="correction" data-tut="tut-panel-correction" className="mt-6">
-            <CorrectionInfoTab />
+            <CorrectionInfoTab session={effectiveSession} />
           </TabsContent>
 
           <TabsContent value="report" className="mt-6">

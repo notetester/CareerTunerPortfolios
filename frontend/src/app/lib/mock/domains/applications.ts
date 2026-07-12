@@ -22,19 +22,19 @@ export function findJobPosting(applicationCaseId: number): JobPosting | null {
 }
 
 const jobAnalyses: Record<number, JobAnalysis> = {
-  101: { id: 3101, applicationCaseId: 101, jobPostingId: 1101, jobPostingRevision: 1, employmentType: "정규직", experienceLevel: "신입~3년", difficulty: "NORMAL",
+  101: { id: 3101, applicationCaseId: 101, jobPostingId: 1101, jobPostingRevision: 1, employmentType: "FULL_TIME", experienceLevel: "JUNIOR", difficulty: "NORMAL",
     requiredSkills: JSON.stringify(["React", "JavaScript", "REST API"]),
     preferredSkills: JSON.stringify(["TypeScript", "테스트 코드"]),
-    duties: JSON.stringify(["카카오 서비스 웹 프론트엔드 개발", "기존 화면 유지보수"]),
-    qualifications: JSON.stringify(["관련 전공 또는 동등 경험"]),
+    duties: "카카오 서비스 웹 프론트엔드 개발\n기존 화면 유지보수",
+    qualifications: "관련 전공 또는 동등 경험",
     summary: "React 기반 웹 프론트엔드 개발 직무. REST API 연동 경험이 핵심이며 TypeScript·테스트는 가산 요소.",
     evidence: JSON.stringify([{ field: "필수 React", quote: "필수: React, JavaScript, REST API 연동 경험" }]),
     ambiguousConditions: JSON.stringify([]), confirmedAt: iso(2), adminMemo: null, ...NULL_ANALYSIS_PROVENANCE, createdAt: iso(3) },
-  102: { id: 3102, applicationCaseId: 102, jobPostingId: 1102, jobPostingRevision: 1, employmentType: "정규직", experienceLevel: "2~5년", difficulty: "HARD",
+  102: { id: 3102, applicationCaseId: 102, jobPostingId: 1102, jobPostingRevision: 1, employmentType: "FULL_TIME", experienceLevel: "MID", difficulty: "HARD",
     requiredSkills: JSON.stringify(["React", "TypeScript", "REST API"]),
     preferredSkills: JSON.stringify(["AWS", "성능 최적화"]),
-    duties: JSON.stringify(["대규모 트래픽 서비스 프론트엔드 개발"]),
-    qualifications: JSON.stringify(["대용량 서비스 경험 우대"]),
+    duties: "대규모 트래픽 서비스 프론트엔드 개발",
+    qualifications: "대용량 서비스 경험 우대",
     summary: "대규모 트래픽 환경의 프론트엔드 개발. TypeScript 실무와 성능 최적화 경험이 중요.",
     evidence: JSON.stringify([{ field: "필수 TypeScript", quote: "필수: React, TypeScript, REST API" }]),
     ambiguousConditions: JSON.stringify([]), confirmedAt: iso(2), adminMemo: null, ...NULL_ANALYSIS_PROVENANCE, createdAt: iso(2) },
@@ -54,7 +54,7 @@ const companyAnalyses: Record<number, CompanyAnalysis> = {
     verifiedFacts: JSON.stringify([{ fact: "메신저 서비스 운영", source: "기업 홈페이지" }]),
     aiInferences: JSON.stringify([{ inference: "프론트엔드 인력 수요 증가", basis: "AI 서비스 확장" }]),
     unknowns: JSON.stringify([{ topic: "매출 규모", reason: "공고문에 관련 정보가 없다", neededSource: "IR 자료" }]),
-    sourceType: "TEXT", checkedAt: iso(3), refreshRecommendedAt: iso(-27), confirmedAt: iso(2), adminMemo: null, ...NULL_ANALYSIS_PROVENANCE, createdAt: iso(3) },
+    sourceType: "WEB", checkedAt: iso(3), refreshRecommendedAt: iso(-27), confirmedAt: iso(2), adminMemo: null, ...NULL_ANALYSIS_PROVENANCE, createdAt: iso(3) },
   102: { id: 4102, applicationCaseId: 102, jobPostingId: 1102, jobPostingRevision: 1,
     companySummary: "네이버는 검색·커머스·클라우드를 운영하는 국내 최대 IT 기업입니다.",
     recentIssues: JSON.stringify(["하이퍼클로바X 확장", "글로벌 커머스 진출"]),
@@ -64,7 +64,7 @@ const companyAnalyses: Record<number, CompanyAnalysis> = {
     verifiedFacts: JSON.stringify([{ fact: "검색 서비스 운영", source: "기업 뉴스룸" }]),
     aiInferences: JSON.stringify([{ inference: "성능 중심 프론트엔드 역량 중시", basis: "대용량 트래픽 서비스" }]),
     unknowns: null,
-    sourceType: "TEXT", checkedAt: iso(2), refreshRecommendedAt: iso(-28), confirmedAt: iso(1), adminMemo: null, ...NULL_ANALYSIS_PROVENANCE, createdAt: iso(2) },
+    sourceType: "WEB", checkedAt: iso(2), refreshRecommendedAt: iso(-28), confirmedAt: iso(1), adminMemo: null, ...NULL_ANALYSIS_PROVENANCE, createdAt: iso(2) },
 };
 
 export function findCompanyAnalysis(applicationCaseId: number): CompanyAnalysis | null {

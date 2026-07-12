@@ -25,6 +25,7 @@ import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.billing.dto.AiChargeCommand;
 import com.careertuner.billing.dto.AiChargeResult;
+import com.careertuner.billing.policy.AiChargePreflightService;
 import com.careertuner.billing.service.AiChargeService;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -33,6 +34,7 @@ import com.careertuner.correction.ai.CorrectionAiClient.CorrectionPayload;
 import com.careertuner.correction.ai.CorrectionAiClient.Usage;
 import com.careertuner.correction.domain.CorrectionRequest;
 import com.careertuner.correction.dto.CorrectionCreateRequest;
+import com.careertuner.correction.dto.CorrectionInterviewSourceResponse;
 import com.careertuner.correction.dto.CorrectionResponse;
 import com.careertuner.correction.mapper.CorrectionMapper;
 import com.careertuner.notification.service.NotificationService;
@@ -47,6 +49,8 @@ class CorrectionServiceTest {
     private final ApplicationCaseAccessService applicationCaseAccessService =
             org.mockito.Mockito.mock(ApplicationCaseAccessService.class);
     private final CorrectionContextService contextService = org.mockito.Mockito.mock(CorrectionContextService.class);
+    private final CorrectionSourceService sourceService = org.mockito.Mockito.mock(CorrectionSourceService.class);
+    private final AiChargePreflightService chargePreflightService = org.mockito.Mockito.mock(AiChargePreflightService.class);
     private final AiChargeService aiChargeService = org.mockito.Mockito.mock(AiChargeService.class);
     private final NotificationService notificationService = org.mockito.Mockito.mock(NotificationService.class);
 
@@ -56,7 +60,9 @@ class CorrectionServiceTest {
             usageLogService,
             applicationCaseAccessService,
             contextService,
+            sourceService,
             transactionTemplate(),
+            chargePreflightService,
             aiChargeService,
             notificationService,
             new ObjectMapper());
@@ -71,6 +77,8 @@ class CorrectionServiceTest {
         assertThat(response.id()).isEqualTo(77L);
         ArgumentCaptor<AiChargeCommand> captor = ArgumentCaptor.forClass(AiChargeCommand.class);
         verify(aiChargeService).charge(captor.capture());
+        verify(chargePreflightService).requireAcknowledged(
+                1L, "CORRECTION_SELF_INTRO", "AI_USAGE:test-1");
         assertThat(captor.getValue()).satisfies(command -> {
             assertThat(command.userId()).isEqualTo(1L);
             assertThat(command.featureType()).isEqualTo("CORRECTION_SELF_INTRO");
@@ -121,6 +129,7 @@ class CorrectionServiceTest {
         verify(aiClient, never()).correct(any(), any());
         verify(usageLogService, never()).recordSuccess(anyLong(), any(), anyString(), any());
         verify(aiChargeService, never()).charge(any());
+        verify(chargePreflightService, never()).requireAcknowledged(anyLong(), anyString(), anyString());
         verify(notificationService, never()).notify(any());
     }
 
@@ -190,6 +199,42 @@ class CorrectionServiceTest {
 
         verify(aiClient, never()).correct(any(), any());
         verify(usageLogService, never()).recordFailure(anyLong(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void ownedInterviewSourceOverridesClientTextAndCarriesSourceIdentity() {
+        CorrectionInterviewSourceResponse source = new CorrectionInterviewSourceResponse(
+                55L, 44L, 33L, 22L, "실제 질문", "실제 저장 답변", 72, "구체화 필요", null);
+        when(sourceService.interviewAnswer(1L, 55L)).thenReturn(source);
+        com.careertuner.applicationcase.domain.ApplicationCase applicationCase =
+                com.careertuner.applicationcase.domain.ApplicationCase.builder()
+                        .id(44L).userId(1L).companyName("회사").jobTitle("직무").build();
+        when(applicationCaseAccessService.requireOwned(1L, 44L)).thenReturn(applicationCase);
+        when(aiClient.correct(any(), eq(RequestedAiModel.CLAUDE))).thenReturn(payload());
+        when(usageLogService.recordSuccess(1L, 44L, "CORRECTION_INTERVIEW_ANSWER", payload().usage()))
+                .thenReturn(501L);
+        when(aiChargeService.charge(any())).thenReturn(AiChargeResult.credit(2, 8));
+        doAnswer(invocation -> {
+            CorrectionRequest correction = invocation.getArgument(0);
+            correction.setId(77L);
+            return null;
+        }).when(correctionMapper).insert(any());
+
+        CorrectionCreateRequest request = new CorrectionCreateRequest(
+                "INTERVIEW_ANSWER", 44L, "클라이언트가 바꾼 원문", "INTERVIEW_ANSWER", 55L,
+                "클라이언트 질문", "AI_USAGE:interview", "correction:interview");
+        service.create(1L, request, RequestedAiModel.CLAUDE);
+
+        ArgumentCaptor<com.careertuner.correction.ai.CorrectionAiClient.CorrectionCommand> command =
+                ArgumentCaptor.forClass(com.careertuner.correction.ai.CorrectionAiClient.CorrectionCommand.class);
+        verify(aiClient).correct(command.capture(), eq(RequestedAiModel.CLAUDE));
+        assertThat(command.getValue().originalText()).isEqualTo("실제 저장 답변");
+        assertThat(command.getValue().questionText()).isEqualTo("실제 질문");
+        assertThat(command.getValue().sourceRefId()).isEqualTo(55L);
+        ArgumentCaptor<CorrectionRequest> row = ArgumentCaptor.forClass(CorrectionRequest.class);
+        verify(correctionMapper).insert(row.capture());
+        assertThat(row.getValue().getSourceRefId()).isEqualTo(55L);
+        assertThat(row.getValue().getOriginalText()).isEqualTo("실제 저장 답변");
     }
 
     @Test

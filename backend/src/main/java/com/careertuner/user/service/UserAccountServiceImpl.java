@@ -16,6 +16,7 @@ import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.web.FrontendReturnTarget;
 import com.careertuner.common.web.FrontendReturnUrlResolver;
+import com.careertuner.file.service.FileService;
 import com.careertuner.user.domain.User;
 import com.careertuner.user.domain.UserResumeDetail;
 import com.careertuner.user.dto.AccountInfoResponse;
@@ -43,6 +44,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     private final EmailService emailService;
     private final FrontendReturnUrlResolver frontendReturnUrlResolver;
     private final PasswordEncoder passwordEncoder;
+    private final FileService fileService;
 
     @Override
     @Transactional(readOnly = true)
@@ -173,12 +175,30 @@ public class UserAccountServiceImpl implements UserAccountService {
         mapper.deleteAllPushSubscriptions(userId);
         mapper.expireAllEmailVerifications(userId);
         mapper.deleteAllSmsOtpCodes(userId);
+        mapper.scrubUserProfile(userId);
+        mapper.scrubUserProfileVersions(userId);
+        mapper.scrubProfileAiAnalyses(userId);
+        mapper.scrubResumeDetail(userId);
+        mapper.scrubCorrectionRequests(userId);
+        fileService.deleteOwnedProfileFiles(userId);
         mapper.hideAndAnonymizeNicknameProfiles(userId);
         mapper.anonymizeChatProfiles(userId);
         mapper.clearConversationNicknameProfiles(userId);
         mapper.deactivateConversationMemberships(userId);
         mapper.cancelPendingFriendRequests(userId);
         mapper.cancelPendingConversationInvites(userId);
+        mapper.softDeleteFriendships(userId);
+        mapper.softDeleteConversationGrants(userId);
+        mapper.softDeleteConversationInviteAllows(userId);
+        mapper.softDeleteNotifications(userId);
+        mapper.softDeleteCommunitySubscriptions(userId);
+        mapper.softDeleteCommentSubscriptions(userId);
+        mapper.softDeletePostScraps(userId);
+        mapper.reconcilePostScrapCountsForUser(userId);
+        mapper.softDeletePostReactions(userId);
+        mapper.reconcilePostReactionCountsForUser(userId);
+        mapper.softDeleteCommentReactions(userId);
+        mapper.reconcileCommentReactionCountsForUser(userId);
         mapper.deleteDesktopPresence(userId);
     }
 
