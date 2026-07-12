@@ -20,11 +20,11 @@ import { useAdminDomainAuthorization } from "../../../auth/useAdminAuthorization
 const STAGE_LABELS: Record<JobPostingFallbackStage, { title: string; description: string }> = {
   JOB_POSTING_PDF_OCR: {
     title: "PDF OCR fallback",
-    description: "자체 PDF 텍스트 추출과 Python worker가 실패한 경우에만 OpenAI PDF OCR을 허용합니다.",
+    description: "스캔 PDF의 기본 자동 OCR에서 Claude 비전 다음, Python worker 앞의 OpenAI 비전 단계를 허용합니다.",
   },
   JOB_POSTING_IMAGE_OCR: {
     title: "Image OCR fallback",
-    description: "자체 이미지 OCR/Python worker가 실패한 경우에만 OpenAI 이미지 OCR을 허용합니다.",
+    description: "이미지의 기본 자동 OCR에서 Claude 비전 다음, Python worker 앞의 OpenAI 비전 단계를 허용합니다.",
   },
 };
 
@@ -164,7 +164,7 @@ export function AdminAiSettingsPage() {
               <div>
                 <CardTitle className="text-lg font-bold text-slate-950">공고 추출 OpenAI fallback</CardTitle>
                 <p className="mt-1 text-sm leading-6 text-slate-500">
-                  기본 서비스 경로는 자체 문서 추출/Python worker입니다. 이 설정은 자체 구현이 실패한 특정 단계에서만 백업 호출을 허용합니다.
+                  스캔 문서의 기본 자동 OCR은 Claude 비전 → (허용 시) OpenAI 비전 → Python worker 순서로 처리됩니다. 이 설정은 자동 처리 중 OpenAI 단계의 허용 여부만 제어합니다. 사용자가 등록할 때 직접 선택한 OCR provider의 최초 시도에는 적용되지 않습니다. 텍스트 PDF는 OCR 없이 바로 추출합니다.
                 </p>
               </div>
               <Badge className={enabled ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"}>
