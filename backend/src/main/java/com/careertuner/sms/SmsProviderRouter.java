@@ -47,10 +47,20 @@ public class SmsProviderRouter {
                         "SMS_PROVIDER=aligo 이지만 SMS_ALIGO_API_KEY/USER_ID/SENDER 설정이 완전하지 않습니다.");
             }
             case "mock" -> mockProvider;
+            case "firebase" -> {
+                // Firebase 는 발송·코드검증을 프런트 SDK 가 수행하고 백엔드는 ID 토큰만 검증한다.
+                // 백엔드 발송자(SmsProvider)는 쓰지 않으므로 이 경로는 정상 흐름에서 호출되지 않는다.
+                // 다만 @PostConstruct 검증은 통과해야 하므로 웹 config 완비만 확인한다.
+                if (!properties.getFirebase().webConfigured()) {
+                    throw new IllegalStateException(
+                            "SMS_PROVIDER=firebase 이지만 SMS_FIREBASE_API_KEY/AUTH_DOMAIN/PROJECT_ID/APP_ID 설정이 완전하지 않습니다.");
+                }
+                yield mockProvider;
+            }
             case "twilio", "naver-sens" -> throw new IllegalStateException(
-                    "SMS provider=" + provider + " 는 현재 지원하지 않습니다. mock 또는 aligo를 사용하세요.");
+                    "SMS provider=" + provider + " 는 현재 지원하지 않습니다. mock, aligo 또는 firebase 를 사용하세요.");
             default -> throw new IllegalStateException(
-                    "알 수 없는 SMS provider='" + provider + "' 입니다. mock 또는 aligo를 사용하세요.");
+                    "알 수 없는 SMS provider='" + provider + "' 입니다. mock, aligo 또는 firebase 를 사용하세요.");
         };
     }
 }

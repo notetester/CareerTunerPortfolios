@@ -9,10 +9,11 @@
 | 항목 | 값 |
 | --- | --- |
 | 이전 전 영역 기준 | PR #379, merge `a86d089a39adad67e362d2e61c1396dd8435afd9` |
-| 이번 후보 기준 | PR #391, 검증된 코드 기준 `58aae8f6b223daa4a9dd4eaa4260f6f856627019` (이 원장 갱신 커밋 제외) |
+| 전 영역 구현 기준 | PR #391, merge `dba92c3150676b21f1b0c3efff8244c3a5fd2260` |
+| 현재 시연·배포 기준 | PR #395, merge `30a5511a13a6a304fdf13231bfea1afe7a335c2e` |
 | 검증일 | 2026-07-12 |
-| 변경 기준 | PR #390 merge `7364c4e51e137453e89044e19d0a684c66021174` 이후 PR #391 diff |
-| 종합 판정 | 코드·mock 시연 `PASS`; 실 공급자 인증은 아래 `BLOCKED_EXTERNAL` 참조 |
+| 변경 기준 | PR #390 merge `7364c4e51e137453e89044e19d0a684c66021174` 이후 PR #391 전체 보강 + PR #392 배포 경계 + PR #395 DB outage 폴백 표적 재검증 |
+| 종합 판정 | 코드·mock·AWS 핵심 시연 경로 `PASS`; 실 공급자 인증은 아래 `BLOCKED_EXTERNAL` 참조 |
 
 상태는 `PASS`, `PASS_TARGETED`, `PENDING_LIVE`, `BLOCKED_EXTERNAL`만 사용한다.
 `PASS_TARGETED`는 이전 전체 검증 이후 바뀐 파일에 필요한 항목만 다시 확인했다는 뜻이다.
@@ -38,6 +39,12 @@
 | `ANDROID-01` | `PASS` | Capacitor release sync, `lintDebug testDebugUnitTest assembleDebug` 성공(Gradle 512 task), API 35 에뮬레이터 APK 설치·기동·더보기·커뮤니티·하단탭·390px·라이트/다크 실기 확인 |
 | `DESKTOP-01` | `PASS` | Qt 6.11.1 Release 빌드, CTest 1/1, windeployqt, ZIP·NSIS 설치형·포터블 생성. 패키지 실행 후 로컬 DB 계정 로그인·세션·웹 인계 8개·설정·라이트/다크 실기 확인 |
 | `DATA-LIFECYCLE-01` | `PASS` | 사용자 콘텐츠·관계 데이터의 물리 삭제를 soft delete/reactivation으로 전환하고 활성 필터·카운트 보정·계정 삭제 연쇄를 계약 테스트와 MySQL로 확인 |
+| `CI-PR391-01` | `PASS` | PR #391 selector·frontend·backend(1,692 tests)·worker Docker 필수 체크 통과 후 `dev` merge |
+| `DEPLOY-LIVE-01` | `PASS` | backend/DB run `29189589610`과 PR #395 run `29190817227`: 관리형 DB 패치 준비·적용, backend/worker image 배포, EC2 readiness 성공 |
+| `WEB-LIVE-01` | `PASS` | PR #392 run `29190198851`, PR #395 run `29190817238`: TLS server root `/var/www/careertuner`, AASA origin 사전검증, 웹 교체, 공개 Asset Links/AASA 본문·JSON MIME 검증. 외부 재확인에서 `/`, health, readiness 모두 200·DB `UP` |
+| `ANDROID-LIVE-01` | `PASS` | run `29190211049`, release `live-pr392`: release 서명·패키지 보안 XML 검증, APK SHA-256 `b4d4986fea45489843ceeefad1473c1ed57651fcdceb3dd00fefcdf4205fd2e8`. API 35 설치·cold launch·도메인 `verified`·`/auth/callback` MainActivity 전달 확인 |
+| `SITES-BACKUP-01` | `PASS` | PR #395 Sites source `8ce73dc1acd7b0a1c1b7fdde9fe7b80e1450df0d`, version 5를 owner-only 백업 `https://careertuner.career-tuner-4654.chatgpt.site`에 게시. root 200, `/__backup/health` `UP`·upstream 200 확인 |
+| `OUTAGE-FALLBACK-01` | `PASS_TARGETED` | PR #395: DB 연결 계열만 503, 제약·일반 오류 500 유지. Sites worker가 `/api/health/ready`로 DB 장애를 판별하며 정상·503·비정상 3경로 테스트, backend 전체 CI, AWS/Sites 재배포 통과 |
 
 ## A~F 및 플랫폼 체크리스트
 
@@ -60,11 +67,11 @@
 | F-COMMUNITY | PASS_TARGETED | 글·태그·반응·스크랩 soft delete/reactivation, 카운트 보정, 공개 activity 보안 경계, 390px | BE-FULL-01, WEB-UI-01, ANDROID-01 |
 | F-NOTIFICATION-COLLAB | PASS_TARGETED | 알림·구독·친구·대화 권한 데이터 active filter와 계정 삭제 정리 | BE-FULL-01, DATA-LIFECYCLE-01, DESKTOP-01 |
 | F-SUPPORT-CONTENT | PASS_TARGETED | FAQ 검색, 비로그인 문의, 공유 AI 상담, 실제 STT, 모호 질문 원문 재실행 | FE-ALL-01, WEB-UI-01 |
-| DATA-LIFECYCLE | PASS | 패치 7개, checksum 적용기, 2회 적용 멱등성, orphan 방지 | DB-FRESH-01, DB-DEPLOY-01, DATA-LIFECYCLE-01 |
-| PLATFORM-WEB | PASS_TARGETED | mock/AWS 빌드, 영향 경로 실브라우저, 반응형·다크·권한 경계 | FE-ALL-01, WEB-UI-01 |
-| PLATFORM-MOBILE | PASS | Android CI self-hosted 전환, 네이티브 계약, 실제 APK·API 35 에뮬레이터 | FE-ALL-01, ANDROID-01 |
+| DATA-LIFECYCLE | PASS | 패치 7개, checksum 적용기, 2회 적용 멱등성, orphan 방지, AWS DB 실제 적용 | DB-FRESH-01, DB-DEPLOY-01, DATA-LIFECYCLE-01, DEPLOY-LIVE-01 |
+| PLATFORM-WEB | PASS | mock/AWS 빌드, 영향 경로 실브라우저, 반응형·다크·권한 경계, AWS live·Sites 백업·DB outage 전환 | FE-ALL-01, WEB-UI-01, WEB-LIVE-01, SITES-BACKUP-01, OUTAGE-FALLBACK-01 |
+| PLATFORM-MOBILE | PASS | Android CI self-hosted 전환, 네이티브 계약, debug UI 실기, 서명 live APK·verified App Link | FE-ALL-01, ANDROID-01, ANDROID-LIVE-01 |
 | PLATFORM-DESKTOP | PASS | 실제 Release 패키징·실행·로그인·테마·웹 인계 | DESKTOP-01 |
-| RELEASE-GATE | PENDING_LIVE | workflow·배포 스크립트 정적검증 통과. PR CI·merge·DB/web/backend 라이브 배포 후 갱신 | DB-DEPLOY-01, SCOPE-01 |
+| RELEASE-GATE | PASS | PR #391·#392·#395 merge, backend/DB·web·Android live·Sites owner-only 백업 배포와 공개 health/App Links 확인 | CI-PR391-01, DEPLOY-LIVE-01, WEB-LIVE-01, ANDROID-LIVE-01, SITES-BACKUP-01, OUTAGE-FALLBACK-01 |
 
 ## 외부 구성 차단 항목
 

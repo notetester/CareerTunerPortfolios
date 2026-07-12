@@ -4,8 +4,14 @@
   "lastFullAudit": {
     "date": "2026-07-12",
     "source": "docs/C_FEATURE_VERIFICATION.md#6-전-영역af-시연-준비도-검증-2026-07-12-영역별-전담-에이전트-8",
-    "basePr": 379,
-    "baseCommit": "a86d089a39adad67e362d2e61c1396dd8435afd9"
+    "basePr": 391,
+    "baseCommit": "dba92c3150676b21f1b0c3efff8244c3a5fd2260"
+  },
+  "lastReleaseGate": {
+    "date": "2026-07-12",
+    "pr": 395,
+    "commit": "30a5511a13a6a304fdf13231bfea1afe7a335c2e",
+    "status": "PASS"
   },
   "ignoredPaths": [
     "docs/ai-reports/**",
@@ -354,7 +360,13 @@
       "id": "PLATFORM-WEB",
       "area": "PLATFORM",
       "name": "운영 웹, 반응형, 테마, 접근 경계와 PWA",
-      "paths": ["frontend/src/**", "frontend/public/**", "frontend/vite.config**"],
+      "paths": [
+        "frontend/src/**",
+        "frontend/public/**",
+        "frontend/worker/**",
+        "frontend/scripts/test-sites-worker-outage.mjs",
+        "frontend/vite.config**"
+      ],
       "requires": ["RELEASE-GATE"]
     },
     {

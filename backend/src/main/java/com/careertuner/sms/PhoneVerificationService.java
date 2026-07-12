@@ -33,6 +33,7 @@ public class PhoneVerificationService {
     private final SmsProviderRouter providerRouter;
     private final SmsOtpMapper smsOtpMapper;
     private final UserMapper userMapper;
+    private final FirebaseAuthClient firebaseAuthClient;
     private final com.careertuner.activitylog.service.SecurityHistoryService securityHistoryService;
 
     /** 전화번호 인증 코드를 발송한다. Mock 이면 devCode 를 함께 반환한다. */
@@ -130,6 +131,39 @@ public class PhoneVerificationService {
         return new OtpVerifyResult(true, phone);
     }
 
+    /**
+     * Firebase Phone Auth 로 발급된 ID 토큰을 검증하고 전화번호 인증을 완료한다.
+     *
+     * <p>발송·코드검증은 프런트 Firebase SDK 가 끝낸 상태다. 여기서는 토큰의 진위와 전화번호 클레임만
+     * 확인하고, 검증된 번호를 국내 형식으로 맞춰 {@code users.phone / phone_verified} 를 갱신한다.
+     * OTP 테이블은 사용하지 않는다.</p>
+     */
+    @Transactional
+    public OtpVerifyResult verifyFirebase(Long userId, String idToken) {
+        String e164 = firebaseAuthClient.verifyPhoneToken(idToken);
+        String phone = normalizePhone(e164ToLocal(e164));
+        try {
+            userMapper.markPhoneVerified(userId, phone);
+        } catch (DuplicateKeyException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 다른 계정에서 사용 중인 전화번호입니다.");
+        }
+        securityHistoryService.record("PHONE_VERIFY", "COMPLETE", userId, true, phone, null);
+        return new OtpVerifyResult(true, phone);
+    }
+
+    /** 프런트에 내려보낼 전화번호 인증 설정(provider + Firebase 웹 config). 서비스계정은 절대 포함하지 않는다. */
+    public PhoneAuthConfigResult authConfig() {
+        String provider = properties.normalizedProvider();
+        if ("firebase".equals(provider) && properties.getFirebase().webConfigured()) {
+            SmsProperties.Firebase fb = properties.getFirebase();
+            return new PhoneAuthConfigResult(provider, new FirebaseWebConfig(
+                    fb.getApiKey(), fb.getAuthDomain(), fb.getProjectId(),
+                    fb.getAppId(), fb.getMessagingSenderId()));
+        }
+        // firebase 가 아니거나 웹 config 미완비 → 기존 OTP 흐름(백엔드 발송/검증)으로 취급한다.
+        return new PhoneAuthConfigResult("otp", null);
+    }
+
     /** 현재 사용자의 전화번호 인증 상태. */
     public PhoneStatusResult status(Long userId) {
         User user = userMapper.findById(userId);
@@ -142,6 +176,15 @@ public class PhoneVerificationService {
     private static String generateCode() {
         int value = RANDOM.nextInt(1_000_000); // 0 ~ 999999
         return String.format("%06d", value);
+    }
+
+    /** E.164(+8210…) 를 국내 저장 형식(0…)으로 맞춘다. 기존 OTP 저장값과 형식을 통일하기 위함. */
+    private static String e164ToLocal(String e164) {
+        String digits = e164 == null ? "" : e164.replaceAll("[^0-9]", "");
+        if (digits.startsWith("82")) {
+            digits = "0" + digits.substring(2);
+        }
+        return digits;
     }
 
     /** 숫자만 남긴다(하이픈·공백 제거). 40자 컬럼을 넘지 않게 자른다. */
@@ -171,5 +214,18 @@ public class PhoneVerificationService {
     }
 
     public record PhoneStatusResult(String phone, boolean phoneVerified) {
+    }
+
+    /** 프런트 인증 흐름 선택용 설정. provider="firebase" 이고 firebase 웹 config 완비 시 firebase 흐름을 탄다. */
+    public record PhoneAuthConfigResult(String provider, FirebaseWebConfig firebase) {
+    }
+
+    /** Firebase 웹 SDK 초기화용 공개 config(비밀 없음). */
+    public record FirebaseWebConfig(
+            String apiKey,
+            String authDomain,
+            String projectId,
+            String appId,
+            String messagingSenderId) {
     }
 }

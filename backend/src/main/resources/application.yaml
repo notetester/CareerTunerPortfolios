@@ -102,6 +102,16 @@ careertuner:
       user-id: ${SMS_ALIGO_USER_ID:}
       sender: ${SMS_ALIGO_SENDER:}
       base-url: ${SMS_ALIGO_BASE_URL:https://apis.aligo.in}
+    # Firebase Phone Auth. provider=firebase 로 지정하면 발송·코드검증은 프런트 Firebase SDK 가 수행하고
+    # 백엔드는 ID 토큰만 검증한다. 웹 config(공개키)는 GET /api/auth/phone/config 로 프런트에 내려가고,
+    # service-account(비밀)는 서버에서만 ID 토큰 검증에 쓰인다(FCM 서비스계정과 같은 프로젝트면 재사용 가능).
+    firebase:
+      api-key: ${SMS_FIREBASE_API_KEY:}
+      auth-domain: ${SMS_FIREBASE_AUTH_DOMAIN:}
+      project-id: ${SMS_FIREBASE_PROJECT_ID:}
+      app-id: ${SMS_FIREBASE_APP_ID:}
+      messaging-sender-id: ${SMS_FIREBASE_MESSAGING_SENDER_ID:}
+      service-account: ${SMS_FIREBASE_SERVICE_ACCOUNT:}
   openai:
     api-key: ${OPENAI_API_KEY:}
     model: ${OPENAI_MODEL:gpt-5}
