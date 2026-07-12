@@ -6,6 +6,7 @@
     <resultMap id="ProfileAiAnalysisMap" type="com.careertuner.profile.domain.ProfileAiAnalysis">
         <id property="id" column="id"/>
         <result property="userId" column="user_id"/>
+        <result property="profileVersionId" column="profile_version_id"/>
         <result property="featureType" column="feature_type"/>
         <result property="summary" column="summary"/>
         <result property="strengths" column="strengths"/>
@@ -24,21 +25,22 @@
     </resultMap>
 
     <sql id="Columns">
-        id, user_id, feature_type, summary, strengths, gaps, recommendations,
+        id, user_id, profile_version_id, feature_type, summary, strengths, gaps, recommendations,
         extracted_skills, criteria, job_family, completeness_score, ai_score,
         quality_warnings, model, status, created_at, updated_at
     </sql>
 
     <insert id="upsert">
         INSERT INTO profile_ai_analysis
-            (user_id, feature_type, summary, strengths, gaps, recommendations,
+            (user_id, profile_version_id, feature_type, summary, strengths, gaps, recommendations,
              extracted_skills, criteria, job_family, completeness_score, ai_score,
              quality_warnings, model, status)
         VALUES
-            (#{userId}, #{featureType}, #{summary}, #{strengths}, #{gaps}, #{recommendations},
+            (#{userId}, #{profileVersionId}, #{featureType}, #{summary}, #{strengths}, #{gaps}, #{recommendations},
              #{extractedSkills}, #{criteria}, #{jobFamily}, #{completenessScore}, #{aiScore},
              #{qualityWarnings}, #{model}, #{status})
         ON DUPLICATE KEY UPDATE
+            profile_version_id = VALUES(profile_version_id),
             summary = VALUES(summary),
             strengths = VALUES(strengths),
             gaps = VALUES(gaps),
@@ -50,20 +52,24 @@
             ai_score = VALUES(ai_score),
             quality_warnings = VALUES(quality_warnings),
             model = VALUES(model),
-            status = VALUES(status)
+            status = VALUES(status),
+            deleted_at = NULL
     </insert>
 
     <select id="findByUserId" resultMap="ProfileAiAnalysisMap">
         SELECT <include refid="Columns"/>
         FROM profile_ai_analysis
         WHERE user_id = #{userId}
+          AND deleted_at IS NULL
         ORDER BY updated_at DESC
     </select>
 
     <select id="findByUserIdAndFeature" resultMap="ProfileAiAnalysisMap">
         SELECT <include refid="Columns"/>
         FROM profile_ai_analysis
-        WHERE user_id = #{userId} AND feature_type = #{featureType}
+        WHERE user_id = #{userId}
+          AND feature_type = #{featureType}
+          AND deleted_at IS NULL
     </select>
 
 </mapper>

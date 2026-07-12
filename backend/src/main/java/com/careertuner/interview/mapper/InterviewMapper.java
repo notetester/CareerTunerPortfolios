@@ -10,6 +10,7 @@ import com.careertuner.interview.domain.InterviewAgentStep;
 import com.careertuner.interview.domain.InterviewAiUsageLog;
 import com.careertuner.interview.domain.InterviewAnswer;
 import com.careertuner.interview.domain.InterviewQuestion;
+import com.careertuner.interview.domain.InterviewPreparationContextSource;
 import com.careertuner.interview.domain.InterviewSession;
 
 @Mapper
@@ -27,6 +28,9 @@ public interface InterviewMapper {
     /** 본인 세션을 soft delete (deleted_at 기록). 이미 삭제됐거나 본인 것이 아니면 0. */
     int softDeleteSession(@Param("id") Long id, @Param("userId") Long userId);
 
+    /** 세션 삭제 시 답변 원문 복제본인 학습 샘플도 학습/운영 조회에서 제외한다. */
+    int softDeleteTrainingSamplesBySessionId(@Param("sessionId") Long sessionId);
+
     /** 본인 세션의 복습(복원) 시각 갱신. 본인 것이 아니거나 삭제됐으면 0. */
     int touchSessionResumed(@Param("id") Long id, @Param("userId") Long userId);
 
@@ -43,13 +47,21 @@ public interface InterviewMapper {
     /** 입력이 바뀌면 이전 리포트 스냅샷과 완료 시각을 함께 무효화한다. */
     int invalidateSessionResult(@Param("id") Long id);
 
+    /** A 프로필 버전/B 공고·기업 분석/C 최신 성공 적합도 분석을 한 번에 읽는다. */
+    InterviewPreparationContextSource findPreparationContext(@Param("userId") Long userId,
+                                                              @Param("applicationCaseId") Long applicationCaseId);
+
+    /** 질문 생성 시점의 원천 provenance를 세션에 고정한다. */
+    int updateSessionSourceSnapshot(@Param("id") Long id, @Param("sourceSnapshot") String sourceSnapshot);
+
     Integer findLatestScoredSessionScore(@Param("applicationCaseId") Long applicationCaseId,
                                          @Param("excludeSessionId") Long excludeSessionId);
 
     // ── 질문 ──
     void insertQuestion(InterviewQuestion question);
 
-    void deleteQuestionsBySessionId(@Param("sessionId") Long sessionId);
+    /** 재생성 대상인 활성 질문을 soft delete 한다. */
+    int softDeleteQuestionsBySessionId(@Param("sessionId") Long sessionId);
 
     List<InterviewQuestion> findQuestionsBySessionId(@Param("sessionId") Long sessionId);
 

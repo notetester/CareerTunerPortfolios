@@ -309,7 +309,7 @@ export function AdminApplicationCasesPage() {
       breadcrumb="지원 건 관리"
       title="지원 건 관리"
       icon={Briefcase}
-      desc="지원 건별 상태, 공고 revision, 분석 이력과 B AI 사용 로그를 확인합니다."
+      desc="지원 건별 상태, 공고 revision, 분석 이력과 AI 사용 로그를 확인합니다."
       actions={(
         <Button variant="outline" onClick={() => void loadRows()} disabled={rowsLoading}>
           <RefreshCw className={`size-4 ${rowsLoading ? "animate-spin" : ""}`} />
@@ -1016,7 +1016,7 @@ function CompanyAnalysisTab({ detail }: { detail: AdminApplicationCaseDetail }) 
 
 function AiLogsTab({ detail }: { detail: AdminApplicationCaseDetail }) {
   return (
-    <GridSection title="B AI 사용량/실패 로그" empty={detail.usageLogs.length === 0} emptyMessage="AI 사용 로그가 없습니다.">
+    <GridSection title="AI 사용량/실패 로그" empty={detail.usageLogs.length === 0} emptyMessage="AI 사용 로그가 없습니다.">
       {detail.usageLogs.map((log) => (
         <Card key={log.id} className={log.status === "FAILED" ? "border-red-200 bg-red-50" : "border-slate-200 bg-card"}>
           <CardContent className="space-y-3 p-4 text-sm">

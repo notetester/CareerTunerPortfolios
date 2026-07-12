@@ -19,9 +19,13 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
   `src/main/resources/db/schema.sql` → `src/main/resources/db/data.sql` 순서로 실행한다(IntelliJ Database 콘솔 권장).
   `data.sql`에는 공통 비밀번호의 개발용 `SUPER_ADMIN`이 있으므로 `team1_db`와 운영 DB에는 적용하지 않는다.
   운영 관리자는 별도 one-time bootstrap 절차와 운영 비밀값으로 생성·승격한다.
-- 기존 DB를 갱신할 때는 배포 절차에 명시된 `src/main/resources/db/patches/*.sql`을 적용한다. Sites 반환
+- 기존 DB의 `src/main/resources/db/patches/*.sql`은 `dev` 백엔드 배포가 `schema_migration` 원장과
+  SHA-256 checksum을 기준으로 자동 적용한다. 자동화 도입 뒤 생성한 patch는 수정하지 말고 후속 patch를
+  추가한다. 로컬 DB에는 필요한 patch를 수동 적용할 수 있다. Sites 반환
   주소 연동에는 `20260711_auth_frontend_return_client.sql`이 필요하며, 기존 이메일 토큰은 `primary`로 호환된다.
   동일 사용자의 소셜 provider 중복 연결 방지는 `20260711_user_social_provider_unique.sql`을 적용한다.
+  프로필 버전·AI provenance와 탈퇴 계정의 프로필 PII 정리는 `20260712_user_profile_version.sql`을 적용한다.
+  개인 계정·IP·대화방 차단 관계의 소프트 해제/재등록 복원은 `20260712_privacy_block_soft_delete.sql`을 적용한다.
 - 관리자 경계 정합 보정은 애플리케이션 쓰기를 멈춘 뒤
   `20260711_admin_active_assignment_unique.sql` → `20260711_admin_soft_delete_columns.sql` →
   `20260711_admin_permission_crud_catalog.sql` 순서로 준비한다.
@@ -85,6 +89,7 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 | JWT | `JWT_SECRET` `JWT_ACCESS_TTL` `JWT_REFRESH_TTL` | dev 기본키 / `1800`(30분) / `1209600`(14일) |
 | OAuth | `OAUTH_{KAKAO,NAVER,GOOGLE}_CLIENT_ID` `..._CLIENT_SECRET` `..._REDIRECT_URI` | `CHANGEME`(미발급) |
 | 메일 | `MAIL_HOST` `MAIL_USERNAME` `MAIL_PASSWORD` `MAIL_FROM` `MAIL_DEV_MODE` | `smtp.naver.com` / 빈값 / 빈값 / no-reply / `true` |
+| SMS OTP | `SMS_PROVIDER` `SMS_ALIGO_API_KEY` `SMS_ALIGO_USER_ID` `SMS_ALIGO_SENDER` | `mock` / 빈값 — 운영 실발송 provider는 `aligo`만 지원 |
 | 앱 | `APP_FRONTEND_URL` `APP_SITES_FRONTEND_URL` `APP_API_BASE_URL` | `http://localhost:5173` / 빈값(AWS 프로파일은 Sites 주소) / `http://localhost:8080` |
 | 업로드 | `SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE` `SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE` `JOB_POSTING_MAX_FILE_SIZE_BYTES` | `10MB` / `12MB` / `10485760` |
 | 로컬 LLM | `AI_OLLAMA_BASE_URL` `AI_OLLAMA_MODEL` `AI_OLLAMA_CONNECT_TIMEOUT` `AI_OLLAMA_READ_TIMEOUT` | `http://localhost:11434` / `gemma4` / `3s` / `30s` |
@@ -94,6 +99,8 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 
 > 메일은 `MAIL_DEV_MODE=true`(또는 SMTP username 미설정)면 **실제 발송 대신 인증 링크를 로그로 출력**한다.
 > OAuth 키는 아직 미발급이라 placeholder다 — 키 수령 후 위 env(또는 yaml 기본값)만 교체하면 동작한다.
+> SMS는 개발/데모에서만 `SMS_PROVIDER=mock`을 사용한다. `aligo`를 선택하고 키가 빠졌거나
+> 미구현 provider(`twilio`, `naver-sens`)를 지정하면 Mock 성공으로 폴백하지 않고 설정 오류로 중단한다.
 
 ## 인증 (Auth) API
 
@@ -125,6 +132,22 @@ DB_PASSWORD=... JWT_SECRET=... OAUTH_KAKAO_CLIENT_SECRET=... java -jar app.jar
 - Android App Link가 보안 경계가 되려면 release 인증서 지문이
   `https://careertuner.kro.kr/.well-known/assetlinks.json`에 게시되고 OS에서 verified 상태여야 한다.
 - Sites 요청은 결제 준비를 서버에서 거부한다. 결제·구독·환불 mutation은 운영 AWS 프런트에서만 수행한다.
+
+## 프로필·이력서 API
+
+| Method | Path | 설명 | 인증 |
+| --- | --- | --- | --- |
+| GET / PUT | `/api/profile` | 현재 프로필 조회·저장. 저장할 때 불변 버전 스냅샷 생성 | Bearer |
+| GET | `/api/profile/versions` | 내 프로필 버전 이력 조회 | Bearer |
+| GET | `/api/profile/versions/{versionId}` | 내 프로필 특정 버전 조회 | Bearer |
+| POST | `/api/profile/ai/{summary\|skills\|completeness}` | 선택 모델로 분석하고 실제 입력 `profileVersionId/No` 반환 | Bearer + AI/이력서 동의 |
+| GET | `/api/profile/ai-analysis` | 최근 저장된 분석과 입력 프로필 버전 조회 | Bearer |
+| GET | `/api/admin/profiles/{userId}/versions` | 관리자 프로필 버전 이력 조회 | Bearer(ADMIN) |
+
+기존 DB에는 `db/patches/20260712_user_profile_version.sql`이 필요하다. 이 패치는 현재 프로필을 v1로
+backfill하고 AI 분석을 해당 버전에 연결하며, 탈퇴 계정의 프로필·AI·이력서 상세 PII를 소프트 삭제 상태로 정리한다.
+신규 탈퇴는 DB PII scrub과 함께 `PORTFOLIO`·`PROFILE_IMAGE` 저장 파일을 실제 스토리지에서도 제거하고,
+과거 탈퇴 계정의 남은 파일은 bounded scheduler가 후속 정리한다.
 
 ## 결제·구독 사용권 API
 

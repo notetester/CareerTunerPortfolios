@@ -29,7 +29,16 @@ export interface UserProfile {
   resumeText?: string | null;
   selfIntro?: string | null;
   preferences?: unknown;
+  versionNo?: number;
   updatedAt?: string;
+}
+
+export interface UserProfileVersion extends UserProfile {
+  id: number;
+  userId: number;
+  versionNo: number;
+  source: "MANUAL_SAVE" | "DOCUMENT_IMPORT" | "AI_ANALYSIS" | "MIGRATION" | string;
+  createdAt: string;
 }
 
 export interface ProfilePortfolioFile {
@@ -99,6 +108,8 @@ export interface ProfileAiResponse {
   qualityPenalty?: number;
   qualityWarnings?: string[];
   qualityRecommendations?: string[];
+  profileVersionId?: number | null;
+  profileVersionNo?: number | null;
 }
 
 export interface ProfileCompleteness {
@@ -115,6 +126,8 @@ export interface ProfileCompleteness {
   qualityPenalty?: number;
   qualityWarnings?: string[];
   qualityRecommendations?: string[];
+  profileVersionId?: number | null;
+  profileVersionNo?: number | null;
 }
 
 export interface ProfileCriterionScore {
@@ -135,6 +148,14 @@ export function saveProfile(profile: UserProfile): Promise<UserProfile> {
   return api<UserProfile>("/profile", { method: "PUT", body: JSON.stringify(profile) });
 }
 
+export function getProfileVersions(limit = 20): Promise<UserProfileVersion[]> {
+  return api<UserProfileVersion[]>(`/profile/versions?limit=${Math.max(1, Math.min(limit, 100))}`);
+}
+
+export function getProfileVersion(versionId: number): Promise<UserProfileVersion> {
+  return api<UserProfileVersion>(`/profile/versions/${versionId}`);
+}
+
 export function summarizeProfile(model: AiModelChoice = "AUTO"): Promise<ProfileAiResponse> {
   return api<ProfileAiResponse>(`/profile/ai/summary${modelQuery(model)}`, { method: "POST" });
 }
@@ -152,6 +173,8 @@ export interface ProfileAiAnalysis {
   aiScore: number | null;
   criteria: ProfileCriterionScore[] | null;
   qualityWarnings: string[];
+  profileVersionId: number | null;
+  profileVersionNo: number | null;
   analyzedAt: string | null;
 }
 

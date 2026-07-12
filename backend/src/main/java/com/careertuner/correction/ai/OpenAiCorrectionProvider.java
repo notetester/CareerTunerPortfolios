@@ -58,7 +58,7 @@ public class OpenAiCorrectionProvider implements CorrectionAiProvider {
                 "correction_result",
                 correctionSchema(),
                 CorrectionPromptCatalog.OPENAI_SYSTEM_PROMPT,
-                CorrectionPromptBuilder.userPrompt(command)));
+                CorrectionPromptBuilder.userPrompt(command, groundedContextJson(command))));
         return payloadParser.parsePayload(outputText(root), usage(root));
     }
 
@@ -127,6 +127,17 @@ public class OpenAiCorrectionProvider implements CorrectionAiProvider {
                         "strict", true,
                         "schema", schema)));
         return body;
+    }
+
+    private String groundedContextJson(CorrectionCommand command) {
+        SelfCorrectionInput input = command.selfInput() == null
+                ? SelfCorrectionInput.minimal(command)
+                : command.selfInput();
+        try {
+            return objectMapper.writeValueAsString(input.toRequestMap());
+        } catch (JacksonException exception) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "Correction input context could not be serialized.");
+        }
     }
 
     private Map<String, Object> message(String role, List<Map<String, Object>> content) {
@@ -241,7 +252,7 @@ public class OpenAiCorrectionProvider implements CorrectionAiProvider {
         private CorrectionPromptBuilder() {
         }
 
-        static String userPrompt(CorrectionCommand command) {
+        static String userPrompt(CorrectionCommand command, String groundedContextJson) {
             ApplicationCase applicationCase = command.applicationCase();
             String caseContext = applicationCase == null
                     ? "No application case was selected."
@@ -257,6 +268,10 @@ public class OpenAiCorrectionProvider implements CorrectionAiProvider {
                     Application context:
                     %s
                     %s
+                    Grounded profile/job/fit context (job requirements and fit gaps are guidance only,
+                    never user-owned facts):
+                    %s
+
                     Original text:
                     %s
                     """.formatted(
@@ -264,6 +279,7 @@ public class OpenAiCorrectionProvider implements CorrectionAiProvider {
                     command.sourceType(),
                     caseContext,
                     question,
+                    groundedContextJson == null ? "{}" : groundedContextJson,
                     command.originalText());
         }
 

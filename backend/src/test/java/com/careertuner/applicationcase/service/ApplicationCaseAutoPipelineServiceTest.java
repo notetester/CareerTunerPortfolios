@@ -130,6 +130,9 @@ class ApplicationCaseAutoPipelineServiceTest {
         verify(fitAnalysisMapper).insertFitAnalysis(fitCaptor.capture());
         assertThat(fitCaptor.getValue().getModel()).isEqualTo("self-rules-v1");
         assertThat(fitCaptor.getValue().getStatus()).isEqualTo("SUCCESS");
+        assertThat(fitCaptor.getValue().getSourceSnapshot())
+                .contains("\"profileVersionId\":401")
+                .contains("\"profileVersionNo\":3");
         verify(fitAnalysisMapper).insertHistory(eq(70L), eq(10L), eq(null), any(), any());
         verify(fitAnalysisMapper, atLeastOnce()).insertConditionMatch(eq(70L), any(), any(), anyInt());
         verify(fitAnalysisMapper, atLeastOnce()).insertLearningTask(any());
@@ -550,6 +553,8 @@ class ApplicationCaseAutoPipelineServiceTest {
         source.setJobAnalysisId(60L);
         source.setJobPostingId(20L);
         source.setJobPostingRevision(2);
+        source.setProfileVersionId(401L);
+        source.setProfileVersionNo(3);
         source.setCompanyName("Acme");
         source.setJobTitle("Backend Engineer");
         source.setRequiredSkills("[\"Java\",\"Spring Boot\",\"MySQL\",\"Docker\"]");

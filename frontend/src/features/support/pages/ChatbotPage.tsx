@@ -2,7 +2,7 @@ import { ChatbotFullScreen } from "../components/ChatbotFullScreen";
 
 export function ChatbotPage() {
   return (
-    <div className="max-w-[1180px] mx-auto px-6 py-8">
+    <div className="w-full min-w-0 max-w-[1180px] mx-auto px-4 sm:px-6 py-5 sm:py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-extrabold tracking-tight">AI 상담</h1>
         <p className="text-sm text-muted-foreground mt-1">

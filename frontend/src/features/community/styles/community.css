@@ -1,7 +1,8 @@
 /* CareerTuner Community v2 */
 
 /* ===== Layout grid ===== */
-.cv-page { max-width: 1120px; margin: 0 auto; padding: 28px 32px 64px; word-break: keep-all; }
+.cv-page { width: 100%; min-width: 0; max-width: 1120px; margin: 0 auto; padding: 28px 32px 64px; box-sizing: border-box; word-break: keep-all; }
+.cv-page > * { min-width: 0; }
 @media (max-width: 768px) { .cv-page { padding: 20px 16px 48px; } }
 .cv-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; margin-top: 16px; }
 /* grid item 이 콘텐츠(긴 nowrap 텍스트) 폭으로 안 줄어드는 것 방지 → 좁아지면 ellipsis 로 수축 */
@@ -577,4 +578,16 @@
 
 @media (max-width: 768px) {
   .dv-title { font-size: 21px; }
+}
+
+@media (max-width: 600px) {
+  .cv-bar { flex-wrap: wrap; align-items: stretch; }
+  .cv-bar .av-seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .cv-bar .av-seg::-webkit-scrollbar { display: none; }
+  .cv-bar .right { order: 3; width: 100% !important; margin-left: 0; }
+  .cv-bar .cv-hint { order: 4; width: 100%; white-space: normal; }
+  .cv-post { gap: 10px; padding-inline: 12px; align-items: flex-start; }
+  .cv-post__stats { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .cv-mobutil { flex-wrap: wrap; }
+  .cv-mobutil > * { min-width: 0; }
 }

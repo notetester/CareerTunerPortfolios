@@ -1219,12 +1219,15 @@ public class ChatbotController {
         }
 
         // 확인 대기(1턴) 소비: 이 턴은 라우팅을 돌리지 않는다. (오분류 안전판 A)
-        if (routeConfirmStore.consumePending(conversationId)) {
+        String pendingQuestion = routeConfirmStore.consumePendingQuestion(conversationId);
+        if (pendingQuestion != null) {
             if (isAffirmative(question)) {
                 return ApiResponse.ok(enterIntake(conversationId, question, userId, "③(확인후)",
                         req.selectedCaseId(), req.selectedModeCode()));
             }
-            return ApiResponse.ok(faqPath(conversationId, question, userId, "①(확인후)"));
+            // 빠른 응답 "그냥 질문이에요"는 의도 설명일 뿐 실제 질문이 아니다. 최초 발화를 복원해 답한다.
+            String effectiveQuestion = isGenericQuestionConfirmation(question) ? pendingQuestion : question;
+            return ApiResponse.ok(faqPath(conversationId, effectiveQuestion, userId, "①(확인후)"));
         }
 
         // 통합 라우팅 판정.
@@ -1235,7 +1238,7 @@ public class ChatbotController {
                         req.selectedCaseId(), req.selectedModeCode()));
             }
             case INTAKE_CONFIRM -> {
-                routeConfirmStore.markPending(conversationId);
+                routeConfirmStore.markPending(conversationId, question);
                 responseLogService.record(conversationId, userId, question, "INTAKE", false, null, null, false);
                 return ApiResponse.ok(new ChatAskResponse(
                         conversationId,
@@ -1294,6 +1297,14 @@ public class ChatbotController {
         }
         String norm = question.trim().toLowerCase().replace(" ", "");
         return AFFIRMATIVE.contains(norm);
+    }
+
+    /** 확인 카드의 부정/질문 전용 빠른 응답인지 판정한다. 실제 새 질문이면 그 문장을 그대로 사용한다. */
+    static boolean isGenericQuestionConfirmation(String question) {
+        if (question == null) return true;
+        String norm = question.trim().toLowerCase().replace(" ", "");
+        return Set.of("그냥질문이에요", "그냥질문이요", "질문이에요", "질문이요", "아니", "아니요")
+                .contains(norm);
     }
 
     /**

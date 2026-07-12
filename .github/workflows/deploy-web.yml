@@ -88,15 +88,21 @@ jobs:
           strip_components: 2   # frontend/dist/ 접두어 제거 → 스테이징에 dist 내용물만
           rm: true              # 이전 스테이징 잔여(구 해시 에셋) 제거
 
-      - name: Swap into nginx root
-        uses: appleboy/ssh-action@v1.2.5
-        env:
-          IOS_APP_LINK_TEAM_IDS: ${{ vars.IOS_APP_LINK_TEAM_IDS }}
+      - name: Copy AASA Nginx guard
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IOS_APP_LINK_TEAM_IDS
+          source: ".github/scripts/ensure_aasa_nginx_location.py"
+          target: "~/careertuner"
+
+      - name: Swap into nginx root
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
             STAGING="$HOME/careertuner/web-staging"
@@ -109,9 +115,19 @@ jobs:
               echo "::error::nginx root 미확인(ROOT='$ROOT') — /etc/nginx/sites-enabled 수동 확인 필요"
               exit 1
             fi
+            # AASA는 Team ID 등록 전 deny-all 문서도 Apple 규약에 맞는 JSON MIME으로 제공한다.
+            # hostname을 가진 TLS server block이 하나로 결정될 때만 exact location을 멱등 설치한다.
+            NGINX_CONFIGS=$(sudo grep -RlsE 'server_name[^;]*careertuner\.kro\.kr' \
+              /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true)
+            if [ -z "$NGINX_CONFIGS" ]; then
+              echo "::error::careertuner.kro.kr nginx server 설정을 찾지 못했습니다."
+              exit 1
+            fi
+            # shellcheck disable=SC2086 -- 파일 목록은 grep이 반환한 고정 nginx 경로이며 Python이 다시 검증한다.
+            sudo python3 "$HOME/careertuner/.github/scripts/ensure_aasa_nginx_location.py" \
+              --hostname careertuner.kro.kr $NGINX_CONFIGS
             # Apple Team ID가 등록된 뒤에는 extensionless AASA의 JSON MIME을 전체 교체 전에 검증한다.
-            # 아직 Team ID가 없으면 details:[] deny-all 파일만 배포하므로 Android/web 배포를 막지 않는다.
-            if [ -n "${IOS_APP_LINK_TEAM_IDS:-}" ]; then
+            # Team ID가 없으면 details:[] deny-all 파일을 게시하되 MIME/본문 계약은 동일하게 검증한다.
             AASA_REL=".well-known/apple-app-site-association"
             AASA_LIVE="$ROOT/$AASA_REL"
             AASA_BACKUP=$(mktemp)
@@ -158,9 +174,6 @@ jobs:
               exit 1
             fi
             echo "AASA public MIME preflight OK"
-            else
-              echo "IOS_APP_LINK_TEAM_IDS 미설정 — deny-all AASA를 배포하고 iOS Universal Link는 비활성 유지"
-            fi
             # 롤백용 백업(최근 3개 유지)
             sudo tar -czf "$HOME/careertuner/web-backup-$(date +%Y%m%d%H%M%S).tar.gz" -C "$ROOT" .
             ls -t "$HOME"/careertuner/web-backup-*.tar.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
@@ -170,15 +183,11 @@ jobs:
             # 헬스체크 — index 서빙 확인(실패해도 백업 tar 로 수동 롤백 가능)
             curl -fsS -o /dev/null http://localhost/
             echo "web OK"
-            if [ -n "${IOS_APP_LINK_TEAM_IDS:-}" ]; then
-              AASA_PROBE_COMMITTED=1
-              rm -f "$AASA_BACKUP" "$AASA_HEADERS" "$AASA_BODY"
-              trap - EXIT
-            fi
+            AASA_PROBE_COMMITTED=1
+            rm -f "$AASA_BACKUP" "$AASA_HEADERS" "$AASA_BODY"
+            trap - EXIT
 
       - name: Verify public App Links metadata deployment
-        env:
-          IOS_APP_LINK_TEAM_IDS: ${{ vars.IOS_APP_LINK_TEAM_IDS }}
         run: |
           curl -fsS --retry 5 --retry-delay 2 -D /tmp/assetlinks.headers \
             https://careertuner.kro.kr/.well-known/assetlinks.json \
@@ -190,7 +199,5 @@ jobs:
             https://careertuner.kro.kr/.well-known/apple-app-site-association \
             -o /tmp/aasa.deployed.json
           grep -Eq '^HTTP/[^ ]+ 200' /tmp/aasa.headers
-          if [ -n "${IOS_APP_LINK_TEAM_IDS:-}" ]; then
-            grep -Eiq '^content-type:[[:space:]]*application/json' /tmp/aasa.headers
-          fi
+          grep -Eiq '^content-type:[[:space:]]*application/json' /tmp/aasa.headers
           cmp frontend/dist/.well-known/apple-app-site-association /tmp/aasa.deployed.json

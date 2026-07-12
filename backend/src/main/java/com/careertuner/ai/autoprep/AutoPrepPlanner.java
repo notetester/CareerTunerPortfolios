@@ -47,8 +47,9 @@ public class AutoPrepPlanner {
         너는 취업 준비 요청을 분석하는 분류기다. 사용자의 한 줄 요청에서 다음을 추출해 JSON 으로만 답하라.
         - company: 지원 회사명(모르면 빈 문자열)
         - jobTitle: 직무(모르면 빈 문자열)
-        - mode: 면접 모드. 정확히 BASIC, JOB, PERSONALITY, PRESSURE, RESUME, COMPANY 중 하나.
-          압박/꼬리/반박 → PRESSURE, 인성/가치관/협업 → PERSONALITY, 자소서 → RESUME, 기업/컬처 → COMPANY,
+        - mode: 면접 모드. 정확히 BASIC, JOB, PERSONALITY, PRESSURE, RESUME, PORTFOLIO, REAL, COMPANY 중 하나.
+          압박/꼬리/반박 → PRESSURE, 인성/가치관/협업 → PERSONALITY, 자소서 → RESUME,
+          포트폴리오/프로젝트 발표 → PORTFOLIO, 실전/종합/제한 시간 → REAL, 기업/컬처 → COMPANY,
           기술/직무/개발 → JOB, 그 외 → BASIC.
         - parts: 이 요청에 필요한 준비 단계 배열. 후보:
           PROFILE(프로필·역량), JOB(공고분석), FIT(적합도), WRITE(자소서교정), INTERVIEW(면접질문), COMMUNITY(커뮤니티).

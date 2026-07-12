@@ -37,7 +37,8 @@ concurrency:
 
 jobs:
   build-and-release:
-    runs-on: ubuntu-latest
+    # GitHub-hosted 분량 소진과 무관하게 팀 self-hosted Linux runner에서 릴리스를 만든다.
+    runs-on: [self-hosted, linux, x64, careertuner-ci]
 
     defaults:
       run:
@@ -61,8 +62,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install Android SDK 36 packages
-        # ubuntu 러너에 ANDROID_HOME 사전 설치됨. Capacitor 8 요구사항(compile/target 36)만 보강.
+        # self-hosted runner에서도 Capacitor 8 요구사항(compile/target 36)을 같은 위치에 준비한다.
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null || true
 
       - name: Install dependencies
@@ -202,7 +206,10 @@ jobs:
           "$AAPT2" dump xmltree "$APK" --file "$NETWORK_RESOURCE" > "$NETWORK_XML"
           grep -Fq 'cleartextTrafficPermitted' "$NETWORK_XML"
           grep -Eq 'cleartextTrafficPermitted.*(0x0|false)' "$NETWORK_XML"
-          ! grep -Eq 'cleartextTrafficPermitted.*(0xffffffff|true)' "$NETWORK_XML"
+          if grep -Eq 'cleartextTrafficPermitted.*(0xffffffff|true)' "$NETWORK_XML"; then
+            echo "::error::패키징된 network security 설정이 cleartext 통신을 허용합니다."
+            exit 1
+          fi
 
           for RULES in backup_rules data_extraction_rules; do
             RULES_RESOURCE=$(resolve_resource_file "$RULES")

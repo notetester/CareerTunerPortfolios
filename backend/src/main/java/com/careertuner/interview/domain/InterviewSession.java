@@ -21,6 +21,8 @@ public class InterviewSession {
     private Integer totalScore;
     /** interview_session.report (JSON 컬럼) 원문 문자열. */
     private String report;
+    /** 질문 생성에 사용한 A/B/C 원천 식별자와 C 적합도 핵심 결과(JSON). */
+    private String sourceSnapshot;
     private LocalDateTime createdAt;
     /** 복원(=복습) 마지막 시각. NULL이면 복습 안 함. */
     private LocalDateTime lastResumedAt;

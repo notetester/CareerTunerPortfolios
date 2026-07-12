@@ -11,6 +11,8 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
 
 import com.careertuner.common.text.DocumentTextExtractor;
+import com.careertuner.billing.domain.SubscriptionBenefitPolicy;
+import com.careertuner.billing.service.BillingPolicyService;
 import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.user.domain.User;
@@ -24,10 +26,11 @@ class AutoPrepAttachmentLoaderDocxTest {
     private static final Long USER_ID = 9L;
 
     private final UserMapper userMapper = mock(UserMapper.class);
+    private final BillingPolicyService billingPolicyService = mock(BillingPolicyService.class);
     private final FileService fileService = mock(FileService.class);
     private final DocumentTextExtractor documentTextExtractor = new DocumentTextExtractor();
     private final AutoPrepAttachmentLoader loader =
-            new AutoPrepAttachmentLoader(userMapper, fileService, documentTextExtractor);
+            new AutoPrepAttachmentLoader(userMapper, billingPolicyService, fileService, documentTextExtractor);
 
     @Test
     void load_extractsTextFromDocx() throws Exception {
@@ -76,10 +79,35 @@ class AutoPrepAttachmentLoaderDocxTest {
         assertThat(result.get(0).hasText()).isFalse();
     }
 
+    @Test
+    void load_usesCurrentBillingPolicyQuantityInsteadOfHardcodedPlanBranch() throws Exception {
+        User user = mock(User.class);
+        when(user.getPlan()).thenReturn("PRO");
+        when(userMapper.findById(USER_ID)).thenReturn(user);
+        when(billingPolicyService.activeBenefitPolicy("PRO", "AUTOPREP_ATTACHMENT", null))
+                .thenReturn(policy(2));
+        stubDownload(10L, "a.docx", DOCX_TYPE, docxBytes("a"));
+        stubDownload(11L, "b.docx", DOCX_TYPE, docxBytes("b"));
+        stubDownload(12L, "c.docx", DOCX_TYPE, docxBytes("c"));
+
+        assertThat(loader.load(USER_ID, List.of(10L, 11L, 12L)))
+                .extracting(PrepAttachment::fileId)
+                .containsExactly(10L, 11L);
+    }
+
     private void stubFreeUser() {
         User user = mock(User.class);
         when(user.getPlan()).thenReturn("FREE");
         when(userMapper.findById(USER_ID)).thenReturn(user);
+        when(billingPolicyService.activeBenefitPolicy("FREE", "AUTOPREP_ATTACHMENT", null))
+                .thenReturn(policy(1));
+    }
+
+    private static SubscriptionBenefitPolicy policy(int quantity) {
+        SubscriptionBenefitPolicy policy = new SubscriptionBenefitPolicy();
+        policy.setQuantity(quantity);
+        policy.setActive(true);
+        return policy;
     }
 
     private void stubDownload(Long fileId, String name, String contentType, byte[] bytes) {

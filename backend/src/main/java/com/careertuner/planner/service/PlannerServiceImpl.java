@@ -158,7 +158,7 @@ public class PlannerServiceImpl implements PlannerService {
         if (plannerMapper.deleteScheduleItem(userId, itemId) == 0) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "일정을 찾을 수 없습니다.");
         }
-        plannerMapper.deleteRemindersByItem(userId, itemId);
+        plannerMapper.cancelRemindersByItem(userId, itemId);
     }
 
     @Override
@@ -260,7 +260,7 @@ public class PlannerServiceImpl implements PlannerService {
     }
 
     private void replaceReminders(Long userId, PlannerScheduleItem item, List<PlannerScheduleReminderRequest> requests) {
-        plannerMapper.deleteRemindersByItem(userId, item.getId());
+        plannerMapper.cancelRemindersByItem(userId, item.getId());
         if (requests == null || requests.isEmpty()) {
             return;
         }

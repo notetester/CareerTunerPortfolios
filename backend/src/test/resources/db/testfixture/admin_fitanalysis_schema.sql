@@ -3,9 +3,11 @@
 -- JSON 컬럼은 매퍼가 문자열로 다루므로 CLOB 로 둔다. 컬럼명·의미는 운영 스키마와 동일하게 유지할 것.
 
 CREATE TABLE IF NOT EXISTS users (
-    id        BIGINT PRIMARY KEY,
-    email     VARCHAR(255) NOT NULL,
-    name      VARCHAR(100) NOT NULL
+    id         BIGINT PRIMARY KEY,
+    email      VARCHAR(255) NOT NULL,
+    name       VARCHAR(100) NOT NULL,
+    status     VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    deleted_at TIMESTAMP NULL
 );
 
 CREATE TABLE IF NOT EXISTS application_case (

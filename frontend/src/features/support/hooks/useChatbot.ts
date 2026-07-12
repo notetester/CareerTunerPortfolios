@@ -12,6 +12,7 @@ import { useAutoPrepRun } from "@/features/autoprep/hooks/useAutoPrepRun";
 import { displayCompany, displayJobTitle } from "@/features/autoprep/lib/caseLabels";
 import type { AutoPrepRequest } from "@/features/autoprep/types/autoPrep";
 import { getInterviewReport, listInterviewSessions } from "@/features/interview/api/interviewApi";
+import { BrowserSttTracker, isBrowserSttSupported } from "@/features/interview/hooks/speechToText";
 import type {
   ChatMessage,
   BotStatus,
@@ -133,7 +134,7 @@ export function useChatbot() {
   }, []);
   // 복원은 세션당 1회만 시도 (열 때마다 재호출 방지).
   const restoredRef = useRef(false);
-  const voiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceRecognizerRef = useRef<BrowserSttTracker | null>(null);
   const accountSwitchCleanupIdsRef = useRef<number[]>([]);
   // ④ 재진입 하이드레이션 — 복원 resume 에 실려 온 확정 수집값(가이드 패널이 소비, 표시용).
   const [onbCollected, setOnbCollected] = useState<OnbCollected | null>(null);
@@ -169,10 +170,8 @@ export function useChatbot() {
     runStartedRef.current = false;
     orchRef.current = false;
     sessionsRef.current = [];
-    if (voiceTimerRef.current != null) {
-      clearTimeout(voiceTimerRef.current);
-      voiceTimerRef.current = null;
-    }
+    voiceRecognizerRef.current?.dispose();
+    voiceRecognizerRef.current = null;
   }
 
   const runReset = run.reset;
@@ -209,7 +208,8 @@ export function useChatbot() {
     requestScope.abortAll();
     runCancel();
     discardOwnedPendingAutoPrepFiles({ keepalive: true });
-    if (voiceTimerRef.current != null) clearTimeout(voiceTimerRef.current);
+    voiceRecognizerRef.current?.dispose();
+    voiceRecognizerRef.current = null;
   }, [requestScope, runCancel]);
 
   const restoreRecent = useCallback(() => {
@@ -683,37 +683,56 @@ export function useChatbot() {
   }, [requestScope, run, sendMessage, collapseToCorner]);
 
   const startVoice = useCallback(() => {
-    if (voiceTimerRef.current != null) clearTimeout(voiceTimerRef.current);
+    voiceRecognizerRef.current?.dispose();
+    voiceRecognizerRef.current = null;
+    if (!isBrowserSttSupported()) {
+      setVoiceState("denied");
+      setInterimTranscript("");
+      return;
+    }
     const request = requestScope.begin("voice");
     setVoiceState("requesting");
-    voiceTimerRef.current = setTimeout(() => {
-      voiceTimerRef.current = null;
-      if (!requestScope.isCurrent(request)) return;
-      if (navigator.mediaDevices) {
-        setVoiceState("listening");
-        setInterimTranscript("");
-      } else {
+    const tracker = new BrowserSttTracker(
+      (text) => {
+        if (requestScope.isCurrent(request)) setInterimTranscript(text);
+      },
+      () => {
+        if (!requestScope.isCurrent(request)) return;
+        requestScope.cancelLane("voice");
+        voiceRecognizerRef.current = null;
         setVoiceState("denied");
-      }
-      requestScope.finish(request);
-    }, 500);
+        setInterimTranscript("");
+      },
+    );
+    voiceRecognizerRef.current = tracker;
+    if (tracker.start()) {
+      setVoiceState("listening");
+      setInterimTranscript("");
+    } else {
+      voiceRecognizerRef.current = null;
+      requestScope.cancelLane("voice");
+      setVoiceState("denied");
+    }
   }, [requestScope]);
 
   const cancelVoice = useCallback(() => {
-    if (voiceTimerRef.current != null) clearTimeout(voiceTimerRef.current);
-    voiceTimerRef.current = null;
+    voiceRecognizerRef.current?.dispose();
+    voiceRecognizerRef.current = null;
     requestScope.cancelLane("voice");
     setVoiceState("idle");
     setInterimTranscript("");
   }, [requestScope]);
 
   const confirmVoice = useCallback(() => {
-    if (interimTranscript) {
-      sendMessage(interimTranscript);
+    const transcript = voiceRecognizerRef.current?.stop() || interimTranscript;
+    voiceRecognizerRef.current = null;
+    requestScope.cancelLane("voice");
+    if (transcript) {
+      sendMessage(transcript);
     }
     setVoiceState("idle");
     setInterimTranscript("");
-  }, [interimTranscript, sendMessage]);
+  }, [interimTranscript, requestScope, sendMessage]);
 
   const retryConnection = useCallback(() => {
     const retry = lastFailedActionRef.current;
@@ -751,8 +770,9 @@ export function useChatbot() {
     setOrchestrator(false);
     setActiveSessionId("");
     setOnbCollected(null);
-    if (voiceTimerRef.current != null) clearTimeout(voiceTimerRef.current);
-    voiceTimerRef.current = null;
+    voiceRecognizerRef.current?.dispose();
+    voiceRecognizerRef.current = null;
+    requestScope.cancelLane("voice");
     setVoiceState("idle");
     setInterimTranscript("");
     collapseToCorner();

@@ -38,6 +38,7 @@ export function CorrectionDetailDialog({
   const [saving, setSaving] = useState(false);
   const [memoError, setMemoError] = useState<string | null>(null);
   const result = useMemo(() => parseCorrectionResult(detail?.resultJson ?? null), [detail?.resultJson]);
+  const provenance = useMemo(() => parseCorrectionProvenance(detail?.sourceSnapshot ?? null), [detail?.sourceSnapshot]);
 
   useEffect(() => {
     setMemo(detail?.adminMemo ?? "");
@@ -99,6 +100,20 @@ export function CorrectionDetailDialog({
               <TextPanel title="원문" text={detail.originalText} className="bg-slate-50 dark:bg-slate-900/40" />
               <TextPanel title="개선문" text={detail.improvedText || "개선문이 기록되지 않았습니다."} className="bg-emerald-50/60 dark:bg-emerald-950/20" />
             </div>
+
+            {provenance && (
+              <section className="rounded-lg border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900 dark:bg-violet-950/20">
+                <h3 className="text-sm font-bold text-violet-900 dark:text-violet-200">입력 출처</h3>
+                <p className="mt-2 text-sm text-violet-800 dark:text-violet-300">
+                  {provenance.fitAnalysisId ? `적합도 분석 #${provenance.fitAnalysisId}` : "적합도 분석 미사용"}
+                  {provenance.answerId ? ` · 면접 답변 #${provenance.answerId}` : ""}
+                  {provenance.requestedModel ? ` · 요청 모델 ${provenance.requestedModel}` : ""}
+                </p>
+                {provenance.missingSkills.length > 0 && (
+                  <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">반영한 부족 역량: {provenance.missingSkills.join(", ")}</p>
+                )}
+              </section>
+            )}
 
             {result.summary && (
               <section className="rounded-lg border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900 dark:bg-blue-950/20">
@@ -197,6 +212,31 @@ function parseCorrectionResult(raw: string | null): ParsedCorrectionResult {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+interface CorrectionProvenance {
+  fitAnalysisId: number | null;
+  answerId: number | null;
+  requestedModel: string | null;
+  missingSkills: string[];
+}
+
+function parseCorrectionProvenance(raw: string | null): CorrectionProvenance | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as unknown;
+    if (!isRecord(value)) return null;
+    const fit = isRecord(value.fitAnalysis) ? value.fitAnalysis : null;
+    const interview = isRecord(value.interviewAnswer) ? value.interviewAnswer : null;
+    return {
+      fitAnalysisId: typeof fit?.fitAnalysisId === "number" ? fit.fitAnalysisId : null,
+      answerId: typeof interview?.answerId === "number" ? interview.answerId : null,
+      requestedModel: typeof value.requestedModel === "string" ? value.requestedModel : null,
+      missingSkills: stringArray(fit?.missingSkills),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

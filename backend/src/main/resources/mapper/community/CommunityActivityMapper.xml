@@ -89,6 +89,7 @@
               JOIN community_post cp ON cp.id = pr.post_id AND cp.status = 'PUBLISHED'
              WHERE pr.user_id = #{ownerId}
                AND pr.reaction_type = 'LIKE'
+               AND pr.deleted_at IS NULL
             <if test="!includeAnonymous">
                AND pr.is_anonymous = 0
             </if>
@@ -107,6 +108,7 @@
               JOIN community_post cp2 ON cp2.id = cc.post_id AND cp2.status = 'PUBLISHED'
              WHERE cr.user_id = #{ownerId}
                AND cr.reaction_type = 'LIKE'
+               AND cr.deleted_at IS NULL
             <if test="!includeAnonymous">
                AND cr.is_anonymous = 0
             </if>
@@ -122,6 +124,7 @@
               JOIN community_post cp ON cp.id = pr.post_id AND cp.status = 'PUBLISHED'
              WHERE pr.user_id = #{ownerId}
                AND pr.reaction_type = 'LIKE'
+               AND pr.deleted_at IS NULL
             <if test="!includeAnonymous">
                AND pr.is_anonymous = 0
             </if>
@@ -132,6 +135,7 @@
               JOIN community_post cp2 ON cp2.id = cc.post_id AND cp2.status = 'PUBLISHED'
              WHERE cr.user_id = #{ownerId}
                AND cr.reaction_type = 'LIKE'
+               AND cr.deleted_at IS NULL
             <if test="!includeAnonymous">
                AND cr.is_anonymous = 0
             </if>
@@ -153,6 +157,7 @@
           JOIN community_post cp ON cp.id = pr.post_id AND cp.status = 'PUBLISHED'
          WHERE pr.user_id = #{ownerId}
            AND pr.reaction_type = 'BOOKMARK'
+           AND pr.deleted_at IS NULL
         <if test="!includeAnonymous">
            AND pr.is_anonymous = 0
         </if>
@@ -166,6 +171,7 @@
           JOIN community_post cp ON cp.id = pr.post_id AND cp.status = 'PUBLISHED'
          WHERE pr.user_id = #{ownerId}
            AND pr.reaction_type = 'BOOKMARK'
+           AND pr.deleted_at IS NULL
         <if test="!includeAnonymous">
            AND pr.is_anonymous = 0
         </if>
@@ -184,6 +190,7 @@
                ps.scrapped_at      AS createdAt
           FROM post_scrap ps
          WHERE ps.user_id = #{ownerId}
+           AND ps.deleted_at IS NULL
         <if test="!includeAnonymous">
            AND ps.is_anonymous = 0
         </if>
@@ -195,6 +202,7 @@
         SELECT COUNT(*)
           FROM post_scrap ps
          WHERE ps.user_id = #{ownerId}
+           AND ps.deleted_at IS NULL
         <if test="!includeAnonymous">
            AND ps.is_anonymous = 0
         </if>

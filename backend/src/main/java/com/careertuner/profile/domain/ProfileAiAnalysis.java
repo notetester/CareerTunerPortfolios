@@ -15,6 +15,8 @@ public class ProfileAiAnalysis {
 
     private Long id;
     private Long userId;
+    /** 이 분석이 실제로 사용한 user_profile_version.id. */
+    private Long profileVersionId;
     private String featureType;
     private String summary;
     private String strengths;         // JSON 문자열 ["..."]

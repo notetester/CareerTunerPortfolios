@@ -26,9 +26,10 @@ class NotificationMapperPlatformXmlTest {
         assertThat(statementBody(xml, "update", "markAllAsRead"))
                 .contains("COALESCE(destination_platform, 'ALL') IN ('ALL', #{platform})")
                 .contains("platform != null");
-        assertThat(statementBody(xml, "delete", "deleteAllByUser"))
+        assertThat(statementBody(xml, "update", "deleteAllByUser"))
                 .contains("COALESCE(destination_platform, 'ALL') IN ('ALL', #{platform})")
-                .contains("platform != null");
+                .contains("platform != null")
+                .contains("deleted_at = COALESCE(deleted_at, NOW())");
     }
 
     @Test

@@ -13,5 +13,14 @@ export interface AdminUserProfile {
   resumeText?: string | null;
   selfIntro?: string | null;
   preferences?: unknown;
+  versionNo?: number | null;
   updatedAt?: string | null;
+}
+
+export interface AdminUserProfileVersion extends AdminUserProfile {
+  id: number;
+  userId: number;
+  versionNo: number;
+  source: string;
+  createdAt: string;
 }

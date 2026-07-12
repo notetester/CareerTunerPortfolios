@@ -253,6 +253,8 @@ function recommendMode(prompt: string): InterviewMode {
   if (/압박|꼬리|반박|당황|몰아/.test(p)) return "PRESSURE";
   if (/인성|성격|가치관|협업|갈등|태도/.test(p)) return "PERSONALITY";
   if (/자소서|자기소개서/.test(p)) return "RESUME";
+  if (/포트폴리오|프로젝트\s*발표|프로젝트\s*검증/.test(p)) return "PORTFOLIO";
+  if (/실전|종합|제한\s*시간/.test(p)) return "REAL";
   if (/기업\s*맞춤|컬처|컬쳐|회사\s*맞춤/.test(p)) return "COMPANY";
   if (/기술|직무|개발|백엔드|프론트|코딩|엔지니어|데이터|서버/.test(p)) return "JOB";
   return "JOB";

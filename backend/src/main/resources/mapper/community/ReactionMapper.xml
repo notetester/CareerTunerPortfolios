@@ -22,6 +22,7 @@
          WHERE pr.user_id = #{userId}
            AND pr.post_id = #{postId}
            AND pr.reaction_type = #{reactionType}
+           AND pr.deleted_at IS NULL
          LIMIT 1
     </select>
 
@@ -32,6 +33,7 @@
          WHERE pr.user_id = #{userId}
            AND pr.post_id = #{postId}
            AND pr.axis = #{axis}
+           AND pr.deleted_at IS NULL
          LIMIT 1
     </select>
 
@@ -41,19 +43,27 @@
           FROM post_reaction pr
          WHERE pr.user_id = #{userId}
            AND pr.post_id = #{postId}
+           AND pr.deleted_at IS NULL
     </select>
 
     <insert id="insertPostReaction" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO post_reaction (user_id, post_id, reaction_type, axis, is_anonymous)
         VALUES (#{userId}, #{postId}, #{reactionType}, #{axis}, #{anonymous})
+        ON DUPLICATE KEY UPDATE
+            reaction_type = VALUES(reaction_type),
+            is_anonymous = VALUES(is_anonymous),
+            created_at = NOW(),
+            deleted_at = NULL
     </insert>
 
-    <delete id="deletePostReaction">
-        DELETE FROM post_reaction
+    <update id="deletePostReaction">
+        UPDATE post_reaction
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE user_id = #{userId}
            AND post_id = #{postId}
            AND reaction_type = #{reactionType}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <!-- 카운트 캐시 증감 (음수 방지) -->
     <update id="adjustPostReactionCount">
@@ -70,6 +80,7 @@
           FROM post_reaction pr
           JOIN users u ON u.id = pr.user_id
          WHERE pr.post_id = #{postId}
+           AND pr.deleted_at IS NULL
            AND (pr.is_anonymous = 0
             <if test="viewerId != null"> OR pr.user_id = #{viewerId}</if>
                )
@@ -78,23 +89,24 @@
 
     <!-- 게시글 수정 시 release 설정 사용자의 리액션 일괄 삭제
          (user_privacy_policy.policy_json 의 reactionRetention 별도 키 — privacy relations 키와 무관) -->
-    <delete id="deleteReleasedPostReactions">
-        DELETE pr
-          FROM post_reaction pr
+    <update id="deleteReleasedPostReactions">
+        UPDATE post_reaction pr
           JOIN user_privacy_policy upp ON upp.user_id = pr.user_id
+           SET pr.deleted_at = COALESCE(pr.deleted_at, NOW())
          WHERE pr.post_id = #{postId}
+           AND pr.deleted_at IS NULL
            AND JSON_UNQUOTE(JSON_EXTRACT(upp.policy_json,
                CONCAT('$.reactionRetention.', LOWER(pr.reaction_type)))) = 'release'
-    </delete>
+    </update>
 
     <!-- 카운트 캐시 대사 — release 삭제 후 실제 행 수로 재계산 -->
     <update id="reconcilePostReactionCounts">
         UPDATE community_post cp
-           SET cp.like_count         = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'LIKE'),
-               cp.dislike_count      = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'DISLIKE'),
-               cp.recommend_count    = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'RECOMMEND'),
-               cp.disrecommend_count = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'DISRECOMMEND'),
-               cp.bookmark_count     = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'BOOKMARK')
+           SET cp.like_count         = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'LIKE' AND deleted_at IS NULL),
+               cp.dislike_count      = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'DISLIKE' AND deleted_at IS NULL),
+               cp.recommend_count    = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'RECOMMEND' AND deleted_at IS NULL),
+               cp.disrecommend_count = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'DISRECOMMEND' AND deleted_at IS NULL),
+               cp.bookmark_count     = (SELECT COUNT(*) FROM post_reaction WHERE post_id = cp.id AND reaction_type = 'BOOKMARK' AND deleted_at IS NULL)
          WHERE cp.id = #{postId}
     </update>
 
@@ -115,6 +127,7 @@
          WHERE cr.user_id = #{userId}
            AND cr.comment_id = #{commentId}
            AND cr.reaction_type = #{reactionType}
+           AND cr.deleted_at IS NULL
          LIMIT 1
     </select>
 
@@ -124,6 +137,7 @@
          WHERE cr.user_id = #{userId}
            AND cr.comment_id = #{commentId}
            AND cr.axis = #{axis}
+           AND cr.deleted_at IS NULL
          LIMIT 1
     </select>
 
@@ -135,19 +149,27 @@
           JOIN community_comment cc ON cc.id = cr.comment_id
          WHERE cr.user_id = #{userId}
            AND cc.post_id = #{postId}
+           AND cr.deleted_at IS NULL
     </select>
 
     <insert id="insertCommentReaction" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO comment_reaction (user_id, comment_id, reaction_type, axis, is_anonymous)
         VALUES (#{userId}, #{commentId}, #{reactionType}, #{axis}, #{anonymous})
+        ON DUPLICATE KEY UPDATE
+            reaction_type = VALUES(reaction_type),
+            is_anonymous = VALUES(is_anonymous),
+            created_at = NOW(),
+            deleted_at = NULL
     </insert>
 
-    <delete id="deleteCommentReaction">
-        DELETE FROM comment_reaction
+    <update id="deleteCommentReaction">
+        UPDATE comment_reaction
+           SET deleted_at = COALESCE(deleted_at, NOW())
          WHERE user_id = #{userId}
            AND comment_id = #{commentId}
            AND reaction_type = #{reactionType}
-    </delete>
+           AND deleted_at IS NULL
+    </update>
 
     <update id="adjustCommentReactionCount">
         UPDATE community_comment

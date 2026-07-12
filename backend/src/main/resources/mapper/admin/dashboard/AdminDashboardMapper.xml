@@ -7,22 +7,44 @@
 
     <select id="countUsers" resultType="int">
         SELECT COUNT(*) FROM users
+        WHERE status != 'DELETED'
+          AND deleted_at IS NULL
     </select>
 
     <select id="countActiveUsers" resultType="int">
-        SELECT COUNT(*) FROM users WHERE status = 'ACTIVE'
+        SELECT COUNT(*) FROM users
+        WHERE status = 'ACTIVE'
+          AND deleted_at IS NULL
     </select>
 
     <select id="countApplications" resultType="int">
-        SELECT COUNT(*) FROM application_case WHERE deleted_at IS NULL
+        SELECT COUNT(*)
+        FROM application_case ac
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <select id="countFitAnalyses" resultType="int">
-        SELECT COUNT(*) FROM fit_analysis
+        SELECT COUNT(*)
+        FROM fit_analysis fa
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <select id="countInterviewSessions" resultType="int">
-        SELECT COUNT(*) FROM interview_session
+        SELECT COUNT(*)
+        FROM interview_session session
+        INNER JOIN application_case ac ON ac.id = session.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
+        WHERE session.deleted_at IS NULL
+          AND ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
     </select>
 
     <select id="countAiCallsThisMonth" resultType="int">
@@ -35,8 +57,13 @@
         SELECT COUNT(*)
         FROM fit_analysis fa
         INNER JOIN fit_analysis_gate_result gr ON gr.fit_analysis_id = fa.id
+        INNER JOIN application_case ac ON ac.id = fa.application_case_id
+        INNER JOIN users ON users.id = ac.user_id
         WHERE gr.gate_status = 'REVIEW_REQUIRED'
           AND gr.review_status = 'PENDING'
+          AND ac.deleted_at IS NULL
+          AND users.status != 'DELETED'
+          AND users.deleted_at IS NULL
           AND fa.id = (
               SELECT MAX(latest_fa.id)
               FROM fit_analysis latest_fa

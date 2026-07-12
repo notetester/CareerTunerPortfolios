@@ -36,12 +36,18 @@ EOF
 ```
 > `.env` 는 절대 커밋하지 않는다(.gitignore 처리됨). 실제 접속값은 팀 채널/시크릿으로 공유.
 
-## 3. DB 마이그레이션 (최초 1회)
-`backend/src/main/resources/db/schema.sql` 을 팀 MySQL 에 적용.
-이번에 추가된 것: `file_asset` 테이블, `interview_question.parent_question_id`.
+## 3. DB 마이그레이션
+
+신규 DB는 `backend/src/main/resources/db/schema.sql`을 한 번 적용한다.
 ```bash
 mysql -h $DB_HOST -u $DB_USERNAME -p team1_db < backend/src/main/resources/db/schema.sql
 ```
+
+운영 DB는 `dev` 백엔드 배포 전에 `backend/src/main/resources/db/patches/`의 새 patch를 자동 적용한다.
+적용한 파일명과 SHA-256은 `schema_migration`에 기록되며, 재배포는 같은 checksum을 건너뛴다.
+자동화 도입 기준(`95edad0c`, PR #388) 뒤에 추가된 patch를 매 배포에서 다시 산출하므로 이전 배포가
+중단되었어도 다음 배포에서 누락분을 재시도한다. 이미 추가된 patch 파일은 수정하지 말고 새 파일을
+추가해야 하며, checksum이 달라지면 배포가 중단된다.
 
 ## 4. 빌드 & 기동
 ```bash

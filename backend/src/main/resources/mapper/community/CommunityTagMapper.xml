@@ -20,20 +20,24 @@
     </update>
 
     <select id="findAiTagIds" resultType="java.lang.Long">
-        SELECT tag_id FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 1
+        SELECT tag_id FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 1 AND deleted_at IS NULL
     </select>
 
-    <delete id="deleteAiPostTags">
-        DELETE FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 1
-    </delete>
+    <update id="deleteAiPostTags">
+        UPDATE community_post_tag
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE post_id = #{postId} AND is_ai = 1 AND deleted_at IS NULL
+    </update>
 
     <select id="findUserTagIds" resultType="java.lang.Long">
-        SELECT tag_id FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 0
+        SELECT tag_id FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 0 AND deleted_at IS NULL
     </select>
 
-    <delete id="deleteUserPostTags">
-        DELETE FROM community_post_tag WHERE post_id = #{postId} AND is_ai = 0
-    </delete>
+    <update id="deleteUserPostTags">
+        UPDATE community_post_tag
+           SET deleted_at = COALESCE(deleted_at, NOW())
+         WHERE post_id = #{postId} AND is_ai = 0 AND deleted_at IS NULL
+    </update>
 
     <!--
         동시 태깅 시 PK(post_id, tag_id) 중복으로 INSERT가 실패하던 문제를 흡수한다.
@@ -45,7 +49,10 @@
     <insert id="insertPostTag">
         INSERT INTO community_post_tag (post_id, tag_id, is_ai)
         VALUES (#{postId}, #{tagId}, #{isAi})
-        ON DUPLICATE KEY UPDATE is_ai = VALUES(is_ai)
+        ON DUPLICATE KEY UPDATE
+            is_ai = VALUES(is_ai),
+            created_at = NOW(),
+            deleted_at = NULL
     </insert>
 
     <select id="findTagNamesByPostId" resultType="java.lang.String">
@@ -53,6 +60,18 @@
           FROM community_post_tag pt
           JOIN community_tag t ON t.id = pt.tag_id
          WHERE pt.post_id = #{postId}
+           AND pt.deleted_at IS NULL
     </select>
+
+    <update id="reconcileUsageCount">
+        UPDATE community_tag tag
+           SET tag.usage_count = (
+               SELECT COUNT(*)
+                 FROM community_post_tag mapping
+                WHERE mapping.tag_id = tag.id
+                  AND mapping.deleted_at IS NULL
+           )
+         WHERE tag.id = #{id}
+    </update>
 
 </mapper>
