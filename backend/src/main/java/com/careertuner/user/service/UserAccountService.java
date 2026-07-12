@@ -23,6 +23,9 @@ public interface UserAccountService {
 
     AccountInfoResponse unlinkSocial(Long userId, String provider);
 
+    /** 현재 사용자를 tombstone 소프트 삭제하고 모든 로그인·소셜·푸시 수단을 폐기한다. */
+    void deleteOwnAccount(Long userId, String password, String confirmation);
+
     UserResumeDetailResponse getResumeDetail(Long userId);
 
     UserResumeDetailResponse saveResumeDetail(Long userId, UserResumeDetailRequest request);

@@ -59,6 +59,13 @@ export function getAccountInfo(): Promise<AccountInfo> {
   return api<AccountInfo>("/account", { method: "GET" });
 }
 
+export function deleteOwnAccount(password: string | null, confirmation: string): Promise<void> {
+  return api<void>("/account", {
+    method: "DELETE",
+    body: JSON.stringify({ password, confirmation }),
+  });
+}
+
 export function setLoginId(loginId: string): Promise<AccountInfo> {
   return api<AccountInfo>("/account/login-id", { method: "POST", body: JSON.stringify({ loginId }) });
 }

@@ -150,9 +150,11 @@ class CollaborationServiceImplTest {
                 .id(9L)
                 .ownerUserId(1L)
                 .kind("ATTACHMENT")
+                .refType("COLLAB_MESSAGE")
                 .originalName("portfolio.pdf")
                 .sizeBytes(1200L)
                 .build());
+        when(fileAssetMapper.claimPendingCollaborationAttachment(9L, 1L, 20L)).thenReturn(1);
         when(mapper.findConversationMembersForNotify(5L)).thenReturn(List.of(
                 ConversationMemberRow.builder().userId(1L).name("나").muted(false).build(),
                 ConversationMemberRow.builder().userId(2L).name("민지").muted(false).build()));
@@ -184,8 +186,54 @@ class CollaborationServiceImplTest {
         assertThat(response.attachments()).hasSize(1);
         verify(mapper).insertMessageAttachment(org.mockito.Mockito.eq(20L), org.mockito.Mockito.eq(9L),
                 org.mockito.Mockito.eq("TEMPORARY"), org.mockito.Mockito.any());
-        verify(fileAssetMapper).updateRef(9L, "COLLAB_MESSAGE", 20L);
+        verify(fileAssetMapper).claimPendingCollaborationAttachment(9L, 1L, 20L);
         verify(notificationService).notify(any(Notification.class));
+    }
+
+    @Test
+    void sendMessageRejectsAlreadySentAttachmentBeforeCreatingMessage() {
+        when(mapper.countConversationMember(5L, 1L)).thenReturn(1);
+        when(fileAssetMapper.findById(9L)).thenReturn(FileAsset.builder()
+                .id(9L)
+                .ownerUserId(1L)
+                .kind("ATTACHMENT")
+                .refType("COLLAB_MESSAGE")
+                .refId(88L)
+                .build());
+
+        assertThatThrownBy(() -> service.sendMessage(1L, 5L,
+                new SendMessageRequest("CHAT", null, List.of(9L), "TEMPORARY", 24, List.of())))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(mapper, never()).insertMessage(any());
+        verify(fileAssetMapper, never()).claimPendingCollaborationAttachment(any(), any(), any());
+    }
+
+    @Test
+    void sendMessageRollsBackWhenPendingAttachmentWasDeletedConcurrently() {
+        when(mapper.countConversationMember(5L, 1L)).thenReturn(1);
+        doAnswer(invocation -> {
+            CollaborationMessage message = invocation.getArgument(0);
+            message.setId(21L);
+            return null;
+        }).when(mapper).insertMessage(any());
+        when(fileAssetMapper.findById(10L)).thenReturn(FileAsset.builder()
+                .id(10L)
+                .ownerUserId(1L)
+                .kind("ATTACHMENT")
+                .refType("COLLAB_MESSAGE")
+                .build());
+        when(fileAssetMapper.claimPendingCollaborationAttachment(10L, 1L, 21L)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.sendMessage(1L, 5L,
+                new SendMessageRequest("CHAT", null, List.of(10L), "TEMPORARY", 24, List.of())))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(error -> assertThat(((BusinessException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+
+        verify(mapper, never()).insertMessageAttachment(any(), any(), any(), any());
     }
 
     @Test
@@ -325,6 +373,26 @@ class CollaborationServiceImplTest {
         // 차단 메시지는 첨부/공고 조회 자체를 생략한다
         verify(mapper, never()).findAttachmentsByMessageId(21L);
         verify(mapper, never()).findPostingsByMessageId(21L);
+    }
+
+    @Test
+    void listMessages_keepsDeletedUsersMessageButRemovesSenderIdentityLinks() {
+        when(mapper.countConversationMember(5L, 1L)).thenReturn(1);
+        when(mapper.findMessages(eq(5L), anyInt())).thenReturn(List.of(
+                CollaborationMessage.builder()
+                        .id(90L).conversationId(5L).senderId(2L)
+                        .senderName("탈퇴한 사용자").senderEmail(null).senderStatus("DELETED")
+                        .kind("CHAT").content("보존된 메시지")
+                        .build()));
+        when(mapper.findAttachmentsByMessageId(90L)).thenReturn(List.of());
+        when(mapper.findPostingsByMessageId(90L)).thenReturn(List.of());
+
+        var response = service.listMessages(1L, 5L, 50).getFirst();
+
+        assertThat(response.content()).isEqualTo("보존된 메시지");
+        assertThat(response.sender().name()).isEqualTo("탈퇴한 사용자");
+        assertThat(response.sender().id()).isNull();
+        assertThat(response.sender().email()).isNull();
     }
 
     // ══════════════ LOCAL 파일 공유 — 데스크톱 presence 게이트 ══════════════

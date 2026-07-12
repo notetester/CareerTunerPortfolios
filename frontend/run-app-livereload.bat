@@ -35,6 +35,8 @@ if "%LANIP%"=="" (
   pause & exit /b 1
 )
 set "CAP_SERVER_URL=http://%LANIP%:5173"
+set "CAP_SYNC_MODE=debug"
+set "CAP_ALLOW_CLEARTEXT=true"
 echo [1/5] LAN IP 감지: %LANIP%   server=%CAP_SERVER_URL%
 
 REM --- 2) vite dev 서버 (5173 미사용일 때만 새 창) ---

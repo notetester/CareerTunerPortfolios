@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { Browser } from "@capacitor/browser";
+import { useLocation, useNavigate } from "react-router";
 import { AtSign, KeyRound, Link2, MailCheck, Phone, ShieldCheck } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -8,8 +10,12 @@ import { requestPasswordReset } from "@/app/auth/authApi";
 import type { SocialProvider } from "@/app/auth/AuthContext";
 import { useOAuthProviderAvailability } from "@/app/auth/useOAuthProviderAvailability";
 import { useOutageFallback } from "@/app/lib/outageFallback";
+import { isNativeApp } from "@/platform/capacitor";
+import { validateAuthorizationUrl, type NativeOAuthProvider } from "@/platform/nativeOAuthCore.mjs";
 import { getAccountInfo, getSocialLinkUrl, requestEmailRegistration, setLoginId, setPhone, unlinkSocial } from "../api/nicknameProfileApi";
 import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 /**
  * 계정 정보 카드 — 로그인 아이디(최초 1회 설정), 전화번호, 연결된 소셜 계정.
@@ -17,6 +23,8 @@ import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
  * 아이디는 설정 후 변경 불가, 전화번호는 언제든 변경 가능(인증은 선택적·스텁).
  */
 export function AccountInfoCard() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { socialOAuthBlocked } = useOutageFallback();
   const {
     providers: oauthProviders,
@@ -37,7 +45,7 @@ export function AccountInfoCard() {
   const [savingPhone, setSavingPhone] = useState(false);
   const [socialBusy, setSocialBusy] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<AccountInfo | null> => {
     setLoading(true);
     setError(null);
     try {
@@ -45,8 +53,10 @@ export function AccountInfoCard() {
       setInfo(next);
       setEmailDraft(next.temporaryEmail ? "" : next.email ?? "");
       setPhoneDraft(next.phone ?? "");
+      return next;
     } catch (e) {
       setError(e instanceof Error ? e.message : "계정 정보를 불러오지 못했습니다.");
+      return null;
     } finally {
       setLoading(false);
     }
@@ -57,14 +67,59 @@ export function AccountInfoCard() {
   }, [load]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const linked = params.get("socialLinked");
-    if (linked) {
-      const suffix = params.get("socialMock") ? " mock 계정을 연결했습니다." : " 계정을 연결했습니다.";
-      setMessage(`${PROVIDER_LABELS[linked] ?? linked}${suffix}`);
-      window.history.replaceState(null, "", window.location.pathname);
-    }
+    if (!isNativeApp() || USE_MOCK) return;
+
+    let disposed = false;
+    let removeListener: (() => Promise<void>) | null = null;
+    void Browser.addListener("browserFinished", () => {
+      setSocialBusy(null);
+    }).then((handle) => {
+      if (disposed) {
+        void handle.remove();
+      } else {
+        removeListener = () => handle.remove();
+      }
+    }).catch(() => {
+      // 브라우저 종료 이벤트가 없는 플랫폼에서도 App Link 콜백이 busy 상태를 정리한다.
+    });
+
+    return () => {
+      disposed = true;
+      if (removeListener) void removeListener();
+    };
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const linkedValue = params.get("socialLinked")?.toUpperCase() ?? null;
+    const linked = linkedValue && ["GOOGLE", "KAKAO", "NAVER"].includes(linkedValue)
+      ? linkedValue
+      : null;
+    const linkError = params.get("socialLinkError");
+    if (!linked && !linkError) return;
+
+    let cancelled = false;
+    void load().then((next) => {
+      if (cancelled) return;
+      setSocialBusy(null);
+      if (linked && next?.linkedProviders.includes(linked)) {
+        const suffix = params.get("socialMock") ? " mock 계정을 연결했습니다." : " 계정을 연결했습니다.";
+        setMessage(`${PROVIDER_LABELS[linked] ?? linked}${suffix}`);
+      } else if (linked) {
+        setMessage(null);
+        setError("소셜 계정 연결 결과를 확인하지 못했습니다. 현재 연결 상태를 확인해 주세요.");
+      } else {
+        setMessage(null);
+        setError(linkError === "social_login_cancelled"
+          ? "소셜 계정 연결을 취소했습니다."
+          : "소셜 계정 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      }
+      void navigate("/profile/detail", { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [load, location.search, navigate]);
 
   const submitLoginId = async () => {
     const value = loginIdDraft.trim().toLowerCase();
@@ -148,6 +203,23 @@ export function AccountInfoCard() {
     setMessage(null);
     try {
       const { url } = await getSocialLinkUrl(provider);
+      if (isNativeApp()) {
+        if (USE_MOCK) {
+          const expectedCallback = `/profile/detail?socialLinked=${encodeURIComponent(provider.toUpperCase())}&socialMock=1`;
+          if (url !== expectedCallback) {
+            throw new Error("데모 소셜 계정 연결 결과를 확인할 수 없습니다.");
+          }
+          void navigate(url);
+          return;
+        }
+        const providerId = provider.toLowerCase() as NativeOAuthProvider;
+        const authorizationUrl = validateAuthorizationUrl(providerId, url);
+        if (!authorizationUrl) {
+          throw new Error("소셜 로그인 제공자 주소를 확인할 수 없습니다.");
+        }
+        await Browser.open({ url: authorizationUrl });
+        return;
+      }
       window.location.href = url;
     } catch (e) {
       setError(e instanceof Error ? e.message : "소셜 계정 연결을 시작하지 못했습니다.");

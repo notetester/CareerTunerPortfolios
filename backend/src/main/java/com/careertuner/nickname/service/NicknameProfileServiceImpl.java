@@ -40,6 +40,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class NicknameProfileServiceImpl implements NicknameProfileService {
 
+    private static final String DELETED_STATUS = "DELETED";
+    private static final String DELETED_DISPLAY_NAME = "탈퇴한 사용자";
+
     private static final int MAX_PROFILES_PER_ACCOUNT = 10;
     private static final String ANONYMOUS_LABEL = "익명";
 
@@ -184,6 +187,9 @@ public class NicknameProfileServiceImpl implements NicknameProfileService {
     @Override
     @Transactional(readOnly = true)
     public DisplayNameResponse resolveDisplayName(Long accountId, Long profileId) {
+        if (DELETED_STATUS.equals(mapper.findAccountStatus(accountId))) {
+            return deletedDisplayName();
+        }
         if (profileId != null) {
             NicknameProfile profile = mapper.findById(profileId);
             // 프로필이 실제로 그 계정 소유일 때만 표시 계층을 적용(귀속은 계정 단위)
@@ -237,26 +243,30 @@ public class NicknameProfileServiceImpl implements NicknameProfileService {
             }
         }
         // 3) 계정명 벌크 조회(폴백 2순위).
-        Map<Long, String> accountNames = new HashMap<>();
+        Map<Long, AccountNameRow> accounts = new HashMap<>();
         if (!accountIds.isEmpty()) {
             for (AccountNameRow row : mapper.findAccountNames(accountIds)) {
-                accountNames.put(row.getUserId(), row.getName());
+                accounts.put(row.getUserId(), row);
             }
         }
 
         Map<DisplayNameQuery, DisplayNameResponse> result = new HashMap<>(distinct.size());
         for (DisplayNameQuery q : distinct) {
-            result.put(q, resolveFromMaps(q, profilesById, defaultsByAccount, accountNames));
+            result.put(q, resolveFromMaps(q, profilesById, defaultsByAccount, accounts));
         }
         return result;
     }
 
     /** 벌크 조회 결과 맵만으로 단건 규칙(resolveDisplayName)과 동일하게 해석한다(추가 쿼리 없음). */
     private DisplayNameResponse resolveFromMaps(DisplayNameQuery q,
-                                                Map<Long, NicknameProfile> profilesById,
-                                                Map<Long, NicknameProfile> defaultsByAccount,
-                                                Map<Long, String> accountNames) {
+                                                 Map<Long, NicknameProfile> profilesById,
+                                                 Map<Long, NicknameProfile> defaultsByAccount,
+                                                 Map<Long, AccountNameRow> accounts) {
         Long accountId = q.accountId();
+        AccountNameRow account = accounts.get(accountId);
+        if (account != null && DELETED_STATUS.equals(account.getStatus())) {
+            return deletedDisplayName();
+        }
         if (q.profileId() != null) {
             NicknameProfile profile = profilesById.get(q.profileId());
             // 지정 프로필이 그 계정 소유 ACTIVE 일 때만 그 표시 계층 사용(귀속은 계정 단위).
@@ -270,9 +280,13 @@ public class NicknameProfileServiceImpl implements NicknameProfileService {
             return new DisplayNameResponse(accountId, defaultProfile.getId(), defaultProfile.getNickname(),
                     defaultProfile.getAvatarFileId(), false);
         }
-        String accountName = accountNames.get(accountId);
+        String accountName = account != null ? account.getName() : null;
         return new DisplayNameResponse(accountId, null,
                 accountName != null ? accountName : "회원", null, false);
+    }
+
+    private static DisplayNameResponse deletedDisplayName() {
+        return new DisplayNameResponse(null, null, DELETED_DISPLAY_NAME, null, false);
     }
 
     // ── 내부 헬퍼 ──

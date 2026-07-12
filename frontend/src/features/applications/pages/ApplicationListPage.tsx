@@ -238,12 +238,13 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
   const [searchParams] = useSearchParams();
   const tabIntent = searchParams.get("tab");
   const detailSection = tabIntent === "fit" || tabIntent === "strategy" || tabIntent === "learning" ? "fit" : "overview";
-  const { loading: authLoading, isAuthenticated } = useAuth();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
   const isTrash = mode === "trash";
   const [includeArchived, setIncludeArchived] = useState(false);
   const { applicationCases, setApplicationCases, loading, error, refresh } = useApplicationCases(
     isAuthenticated,
     isTrash ? { view: "DELETED" } : includeArchived,
+    user?.id ?? null,
   );
   const applicationCaseIds = useMemo(
     () => applicationCases.map((item) => item.id),

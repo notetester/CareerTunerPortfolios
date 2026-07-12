@@ -51,8 +51,9 @@ export const previewAiCharge = (
 export async function notifyAndAcknowledgeAiCharge(
   featureType: string,
   creditCost?: number,
+  requestedActionKey?: string,
 ): Promise<AcknowledgedChargePreview> {
-  const actionKey = createPolicyActionKey("AI_USAGE");
+  const actionKey = requestedActionKey ?? createPolicyActionKey("AI_USAGE");
   const preview = await previewAiCharge(featureType, creditCost, actionKey);
 
   if (preview.chargeType === "BLOCKED") {
@@ -91,8 +92,9 @@ export const aiChargeAcknowledgementHeaders = (featureType: string, policyAcknow
 export async function runWithAiCharge<T>(
   featureType: string,
   operation: (headers: Record<string, string>) => Promise<T>,
+  actionKey?: string,
 ): Promise<T> {
-  const acknowledged = await notifyAndAcknowledgeAiCharge(featureType);
+  const acknowledged = await notifyAndAcknowledgeAiCharge(featureType, undefined, actionKey);
   const result = await operation(aiChargeAcknowledgementHeaders(featureType, acknowledged.policyAcknowledgementKey));
   toastAiChargeCompleted(acknowledged.preview);
   return result;

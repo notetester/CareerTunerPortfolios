@@ -14,6 +14,13 @@ export interface CollaborationUser {
   relationStatus?: "NONE" | "REQUESTED" | "PENDING_INCOMING" | "FRIEND" | string | null;
 }
 
+/** 과거 메시지/대화의 공개 신원. 탈퇴 계정은 링크·이메일을 제거한다. */
+export interface CollaborationPublicIdentity {
+  id: number | null;
+  email: string | null;
+  name: string;
+}
+
 export interface FriendResponse {
   user: CollaborationUser;
   friendsSince: string;
@@ -52,7 +59,7 @@ export interface ConversationSummaryResponse {
   myRole: RoomRole | null;
   /** 방 설정 시트 진입 버튼 노출 힌트(실제 권한은 시트 조회에서 재검사). */
   canManageRoom: boolean;
-  peer: CollaborationUser | null;
+  peer: CollaborationPublicIdentity | null;
   latestMessage: MessagePreviewResponse | null;
   unreadCount: number;
   updatedAt: string;
@@ -74,7 +81,7 @@ export interface ConversationPermission {
 }
 
 export interface ConversationMemberDetail {
-  userId: number;
+  userId: number | null;
   /** 익명 참가자는 방 전용 표시명, 그 외 실명. */
   displayName: string;
   /** 익명이면 null. */
@@ -88,7 +95,7 @@ export interface ConversationMemberDetail {
 }
 
 export interface ConversationBan {
-  userId: number;
+  userId: number | null;
   displayName: string;
   reason: string | null;
   bannedBy: number | null;
@@ -174,7 +181,7 @@ export interface SendMessageRequest {
 export interface MessageResponse {
   id: number;
   conversationId: number;
-  sender: CollaborationUser;
+  sender: CollaborationPublicIdentity;
   mine: boolean;
   kind: MessageKind;
   content: string | null;

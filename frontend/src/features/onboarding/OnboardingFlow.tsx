@@ -115,7 +115,6 @@ export function OnboardingFlow() {
     resumeAnalysis: false,
     marketing: false,
   });
-
   const requiredOk = consents.terms && consents.privacy;
   const allOk = Object.values(consents).every(Boolean);
   const toggleConsent = (k: ConsentKey) => setConsents((c) => ({ ...c, [k]: !c[k] }));
@@ -219,15 +218,28 @@ export function OnboardingFlow() {
     }
   };
 
-  const doSocialLogin = (provider: SocialProvider) => {
+  const doSocialLogin = async (provider: SocialProvider) => {
     if (!requiredOk || busy) return;
     if (USE_MOCK || PREVIEW) {
       void doLogin();
       return;
     }
-    if (socialOAuthBlocked || oauthProvidersLoading || !oauthProviders[provider]) return;
+    if (
+      socialOAuthBlocked
+      || oauthProvidersLoading
+      || !oauthProviders[provider]
+    ) return;
     saveOnboardingResume(consentRequest());
-    socialLogin(provider);
+    setBusy(true);
+    setErr("");
+    try {
+      await socialLogin(provider);
+    } catch (error) {
+      clearOnboardingResume();
+      setErr(error instanceof Error ? error.message : "소셜 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const askPush = async () => {
@@ -309,15 +321,18 @@ export function OnboardingFlow() {
                 <button
                   key={p.id}
                   className={`ob-soc s-${p.cls}`}
-                  onClick={() => doSocialLogin(p.id)}
+                  onClick={() => void doSocialLogin(p.id)}
                   disabled={busy || !requiredOk || socialOAuthBlocked || (!(USE_MOCK || PREVIEW) && (oauthProvidersLoading || !oauthProviders[p.id]))}
-                  title={!(USE_MOCK || PREVIEW) && !oauthProvidersLoading && !oauthProviders[p.id] ? `${p.label} 로그인 설정이 완료되지 않았습니다.` : undefined}
+                  title={!(USE_MOCK || PREVIEW) && !oauthProvidersLoading && !oauthProviders[p.id]
+                    ? `${p.label} 로그인 설정이 완료되지 않았습니다.`
+                    : undefined}
                 >
                   <span className="ob-soc-ic">{p.icon}</span>
                   <span className="ob-soc-tx">{p.label}로 계속하기</span>
                 </button>
               ))}
             </div>
+            {err && !emailOpen && <div className="ob-err">{err}</div>}
             {socialOAuthBlocked && <p className="ob-hint">장애 체험 중에는 소셜 로그인을 사용할 수 없어요.</p>}
             {!(USE_MOCK || PREVIEW) && !socialOAuthBlocked && oauthProvidersLoading && (
               <p className="ob-hint">소셜 로그인 설정을 확인하고 있어요.</p>

@@ -9,12 +9,17 @@ import { uploadAttachment } from "@/features/autoprep/api/autoPrepApi";
 import { AutoPrepWorkView } from "@/features/autoprep/components/AutoPrepWorkView";
 import { displayCompany, displayJobTitle } from "@/features/autoprep/lib/caseLabels";
 import { useAuth } from "@/app/auth/AuthContext";
+import {
+  deletePendingAutoPrepFile,
+  discardPendingAutoPrepFiles,
+} from "@/app/lib/pendingAutoPrepFiles";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { listInterviewSessions } from "@/features/interview/api/interviewApi";
 import { getInterviewModeLabel } from "@/features/interview/types/interview";
 import type { InterviewMode, InterviewSession } from "@/features/interview/types/interview";
 import { useChatbot } from "@/features/support/hooks/useChatbot";
 import { capturePhotoFile } from "@/platform/nativeCamera";
+import { registerNativeOverlayLifecycle } from "@/platform/nativeOverlayLifecycle";
 import "./apphome.css";
 
 /**
@@ -57,9 +62,14 @@ function relTime(iso: string | null | undefined): string {
 }
 
 export function AppHome() {
+  const { user } = useAuth();
+  return <AppHomeAccount key={user?.id != null ? `user:${user.id}` : "guest"} />;
+}
+
+function AppHomeAccount() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading } = useAuth();
-  const cases = useApplicationCases(isAuthenticated);
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const cases = useApplicationCases(isAuthenticated, false, user?.id ?? null);
   const chat = useChatbot();
   const [q, setQ] = useState("");
   // 홈(헤드라인+최근 목록) ↔ 채팅(스레드) 뷰. 스레드 상태는 훅에 남아 있어 세션 목록에서 언제든 복귀.
@@ -70,8 +80,36 @@ export function AppHome() {
   const fileRef = useRef<HTMLInputElement>(null);
   const captureRef = useRef<HTMLInputElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+  const filesRef = useRef<FileItem[]>([]);
+  const mountedRef = useRef(true);
+  const fileGenerationRef = useRef(0);
+  const cancelledFileItemsRef = useRef(new WeakSet<FileItem>());
   // 이번 대화에서 올린 첨부 누적 — ready 시 run 요청에 병합(setPendingAttachments 는 교체 방식이라 합집합 유지).
   const sentAttachmentIdsRef = useRef<number[]>([]);
+
+  const updateFiles = (updater: (current: FileItem[]) => FileItem[]) => {
+    const next = updater(filesRef.current);
+    filesRef.current = next;
+    setFiles(next);
+  };
+
+  const discardHomeFiles = (keepalive = false, resetState = true) => {
+    fileGenerationRef.current += 1;
+    const fileIds = filesRef.current
+      .map((item) => item.id)
+      .filter((id): id is number => id != null);
+    filesRef.current = [];
+    if (resetState) setFiles([]);
+    if (fileIds.length > 0) void discardPendingAutoPrepFiles(fileIds, { keepalive });
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      discardHomeFiles(true, false);
+    };
+  }, []);
 
   // 최근 면접 세션 — 로그인 상태에서만 로드. 실패하면 빈 배열 → 섹션 숨김.
   useEffect(() => {
@@ -100,6 +138,12 @@ export function AppHome() {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: "smooth" });
   }, [chat.messages, chat.botStatus, chat.runParts]);
 
+  useEffect(() => {
+    if (!drawer) return undefined;
+    const closeDrawer = () => setDrawer(false);
+    return registerNativeOverlayLifecycle({ onBack: closeDrawer, onSuspend: closeDrawer });
+  }, [drawer]);
+
   // 세션 라벨 = "회사명 · 직무" (지원 건 매핑).
   const caseLabel = useMemo(() => {
     const map = new Map(cases.applicationCases.map((c) => [c.id, `${c.companyName} · ${c.jobTitle}`]));
@@ -114,6 +158,8 @@ export function AppHome() {
   // 저장된 대화 열기 — 메시지 복원 + 스레드 뷰 전환.
   const openChat = (id: string) => {
     setDrawer(false);
+    setQ("");
+    discardHomeFiles();
     sentAttachmentIdsRef.current = [];
     chat.openSession(id);
     setView("chat");
@@ -122,6 +168,8 @@ export function AppHome() {
   // 새 대화 — 훅 상태 초기화 후 홈으로(홈 입력 = 새 대화 시작).
   const startNewChat = () => {
     setDrawer(false);
+    setQ("");
+    discardHomeFiles();
     sentAttachmentIdsRef.current = [];
     chat.newSession();
     chat.loadSessions();
@@ -137,18 +185,42 @@ export function AppHome() {
   // 선택/드롭/촬영한 파일을 즉시 업로드(kind=ATTACHMENT)해 fileId 확보. AutoPrepLauncher 와 동일 패턴.
   const addFiles = async (list: FileList | File[] | null) => {
     if (!list || list.length === 0) return;
+    const generation = fileGenerationRef.current;
     const items: FileItem[] = Array.from(list).map((file) => ({ file, uploading: true }));
-    setFiles((prev) => [...prev, ...items]);
+    updateFiles((prev) => [...prev, ...items]);
     for (const item of items) {
       try {
         const res = await uploadAttachment(item.file);
-        setFiles((prev) => prev.map((f) => (f === item ? { ...f, id: res.id, uploading: false } : f)));
+        if (
+          !mountedRef.current
+          || generation !== fileGenerationRef.current
+          || cancelledFileItemsRef.current.has(item)
+        ) {
+          await deletePendingAutoPrepFile(res.id).catch(() => {});
+          continue;
+        }
+        updateFiles((prev) => prev.map((f) => (f === item ? { ...f, id: res.id, uploading: false } : f)));
       } catch {
-        setFiles((prev) => prev.map((f) => (f === item ? { ...f, uploading: false, error: true } : f)));
+        if (mountedRef.current && generation === fileGenerationRef.current) {
+          updateFiles((prev) => prev.map((f) => (f === item ? { ...f, uploading: false, error: true } : f)));
+        }
       }
     }
   };
-  const removeFile = (target: FileItem) => setFiles((prev) => prev.filter((f) => f !== target));
+  const removeFile = async (target: FileItem) => {
+    cancelledFileItemsRef.current.add(target);
+    if (target.id != null) {
+      try {
+        await deletePendingAutoPrepFile(target.id);
+      } catch {
+        if (mountedRef.current) {
+          updateFiles((prev) => prev.map((f) => (f === target ? { ...f, error: true } : f)));
+        }
+        return;
+      }
+    }
+    if (mountedRef.current) updateFiles((prev) => prev.filter((f) => f !== target));
+  };
 
   // 공고 찍어서 등록 — 네이티브 카메라(capacitor) 우선, 웹/미지원/취소면 input capture 폴백.
   const captureJobPosting = async () => {
@@ -160,7 +232,7 @@ export function AppHome() {
   // 전송 — 홈에서 보내면 새 대화 시작(이전 스레드가 남아 있으면 비우고), 스레드에선 대화 계속.
   const run = (text: string) => {
     const t = text.trim();
-    const ids = files.filter((f) => f.id != null).map((f) => f.id as number);
+    const ids = files.filter((f) => f.id != null && !f.error).map((f) => f.id as number);
     if (!t && ids.length === 0) return;
     if (chat.botStatus === "thinking") return;
     if (view === "home" && chat.messages.length > 0) {
@@ -173,6 +245,9 @@ export function AppHome() {
     }
     chat.sendMessage(t || "첨부한 파일로 준비해줘");
     setQ("");
+    // 완료된 ID는 챗봇 실행이 소유하고, 아직 진행 중인 업로드는 세대가 바뀌어 완료 즉시 삭제된다.
+    fileGenerationRef.current += 1;
+    filesRef.current = [];
     setFiles([]);
     setView("chat");
   };
@@ -218,7 +293,7 @@ export function AppHome() {
             <span key={i} className={`ah-file${f.uploading ? " up" : ""}${f.error ? " err" : ""}`}>
               {f.error ? <AlertCircle size={13} /> : <FileText size={13} />}
               <span className="ah-file-n">{f.file.name}</span>
-              <button className="ah-file-x" onClick={() => removeFile(f)} aria-label="첨부 제거"><X size={12} /></button>
+              <button className="ah-file-x" onClick={() => void removeFile(f)} aria-label="첨부 제거"><X size={12} /></button>
             </span>
           ))}
         </div>
@@ -232,7 +307,14 @@ export function AppHome() {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && run(q)}
         />
-        <button className="ah-ic" aria-label="음성"><Mic size={18} /></button>
+        <button
+          className="ah-ic"
+          onClick={() => navigate("/interview?tab=live")}
+          aria-label="음성 모의면접 시작"
+          title="음성 모의면접"
+        >
+          <Mic size={18} />
+        </button>
         <button
           className="ah-send"
           onClick={() => run(q)}
@@ -278,8 +360,9 @@ export function AppHome() {
           </button>
           <div className="ah-brand">CareerTuner</div>
           <div className="ah-right">
-            {/* 크레딧 잔량 = mock. 구독 사용권 잔량 표시·실행 전 차감 미리보기는 E 결제 DB/UX 합의 후. 차감은 E 공통서비스가 사용권 먼저→크레딧 보조로 처리(면접 파트는 호출만). */}
-            <span className="ah-credit"><Sparkles size={13} strokeWidth={2} /> 2,400</span>
+            <span className="ah-credit" aria-label={`보유 크레딧 ${user?.credit ?? 0}`}>
+              <Sparkles size={13} strokeWidth={2} /> {(user?.credit ?? 0).toLocaleString("ko-KR")}
+            </span>
             <button className="ah-up" onClick={() => navigate("/pricing")}>업그레이드</button>
           </div>
         </header>
@@ -319,7 +402,7 @@ export function AppHome() {
             <div className="ah-recent">
               <div className="ah-recent-label">최근 면접 세션</div>
               {recent.map((s) => {
-                const done = s.endedAt != null;
+                const done = s.finished;
                 return (
                   <button key={s.id} className="ah-sess" onClick={() => openInterviewSession(s.id)}>
                     <span className="ah-sess-t">{caseLabel(s.applicationCaseId)}</span>

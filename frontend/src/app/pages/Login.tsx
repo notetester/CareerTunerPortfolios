@@ -183,7 +183,15 @@ export function LoginPage() {
 
   const handleSocialLogin = async (provider: "google" | "kakao" | "naver") => {
     if (!USE_MOCK) {
-      socialLogin(provider);
+      setSubmitting(true);
+      setError(null);
+      try {
+        await socialLogin(provider);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "소셜 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
     setSubmitting(true);

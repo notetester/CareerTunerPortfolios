@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+import groovy.json.JsonSlurper
+
 def signingProps = new Properties()
 def signingPropsFile = file('release-signing.properties')
 if (signingPropsFile.exists()) {
@@ -52,6 +54,69 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+}
+
+def verifyReleaseNetworkSecurity = tasks.register('verifyReleaseNetworkSecurity') {
+    group = 'verification'
+    description = 'Fails release builds when Capacitor or Android native network policy permits insecure traffic.'
+
+    doLast {
+        def generatedConfigFile = file('src/main/assets/capacitor.config.json')
+        if (!generatedConfigFile.exists()) {
+            throw new GradleException(
+                'Generated Capacitor config is missing. Run the secure sync helper before a release build: ' +
+                'npm run native:sync -- android'
+            )
+        }
+
+        def generatedConfig = new JsonSlurper().parse(generatedConfigFile)
+        def server = generatedConfig.server instanceof Map ? generatedConfig.server : [:]
+        def androidConfig = generatedConfig.android instanceof Map ? generatedConfig.android : [:]
+        if (server.androidScheme != 'https') {
+            throw new GradleException('Release WebView androidScheme must be https.')
+        }
+        if (androidConfig.allowMixedContent != false) {
+            throw new GradleException('Release WebView allowMixedContent must be false.')
+        }
+        if (androidConfig.webContentsDebuggingEnabled != false) {
+            throw new GradleException('Release WebView remote debugging must be disabled.')
+        }
+        if (server.containsKey('url')) {
+            throw new GradleException('Release WebView must not contain an external server.url.')
+        }
+
+        // server.cleartext is consumed by the Capacitor CLI only while generating Cordova manifests.
+        // Android runtime enforcement remains the application manifest + network security config below.
+        if (server.cleartext != false) {
+            throw new GradleException('Release Capacitor sync must not generate cleartext Cordova manifest attributes.')
+        }
+
+        def mainManifest = file('src/main/AndroidManifest.xml').getText('UTF-8')
+        if (!mainManifest.contains('android:usesCleartextTraffic="false"')) {
+            throw new GradleException('Main AndroidManifest must set usesCleartextTraffic=false.')
+        }
+        if (!mainManifest.contains('android:allowBackup="false"')) {
+            throw new GradleException('Release AndroidManifest must disable application data backup.')
+        }
+        if (!mainManifest.contains('android:dataExtractionRules="@xml/data_extraction_rules"')
+                || !mainManifest.contains('android:fullBackupContent="@xml/backup_rules"')) {
+            throw new GradleException('Release AndroidManifest must reference explicit backup exclusion rules.')
+        }
+        def networkSecurityConfig = file('src/main/res/xml/network_security_config.xml').getText('UTF-8')
+        if (!networkSecurityConfig.contains('cleartextTrafficPermitted="false"')) {
+            throw new GradleException('Main network security config must deny cleartext traffic.')
+        }
+        for (def rulesPath : ['src/main/res/xml/backup_rules.xml', 'src/main/res/xml/data_extraction_rules.xml']) {
+            def rulesFile = file(rulesPath)
+            if (!rulesFile.exists() || !rulesFile.getText('UTF-8').contains('<exclude')) {
+                throw new GradleException("Release backup exclusion rules are missing: ${rulesPath}")
+            }
+        }
+    }
+}
+
+tasks.matching { task -> task.name == 'preReleaseBuild' }.configureEach {
+    dependsOn verifyReleaseNetworkSecurity
 }
 
 tasks.matching { task ->

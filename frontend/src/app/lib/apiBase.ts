@@ -5,6 +5,8 @@
  * 설정 화면의 "서버 주소" 입력이 이 값을 기록한다.
  */
 import { isNativeApp } from "@/platform/capacitor";
+import { clearTokens } from "./tokenStore";
+import { resolveServerOverride } from "@/features/settings/lib/serverAddress";
 
 const OVERRIDE_KEY = "ct.apiBase";
 
@@ -12,12 +14,25 @@ function normalize(url: string): string {
   return url.trim().replace(/\/+$/, "");
 }
 
+function allowPrivateHttp(): boolean {
+  return import.meta.env.DEV || import.meta.env.VITE_ALLOW_PRIVATE_HTTP === "true";
+}
+
 /** 저장된 런타임 오버라이드(없으면 null). 네이티브 앱 또는 dev 웹에서만 유효. */
 export function apiBaseOverride(): string | null {
   if (!isNativeApp() && !import.meta.env.DEV) return null;
   try {
     const stored = localStorage.getItem(OVERRIDE_KEY);
-    return stored && stored.trim() ? normalize(stored) : null;
+    if (!stored?.trim()) return null;
+    const validated = resolveServerOverride("custom", stored, allowPrivateHttp());
+    if (validated.error || !validated.override) {
+      // 이전 버전이 저장한 평문/비정상 주소로 기존 JWT가 전송되기 전에 함께 폐기한다.
+      localStorage.removeItem(OVERRIDE_KEY);
+      clearTokens();
+      return null;
+    }
+    if (validated.override !== stored) localStorage.setItem(OVERRIDE_KEY, validated.override);
+    return validated.override;
   } catch {
     return null;
   }
@@ -27,7 +42,13 @@ export function apiBaseOverride(): string | null {
 export function setApiBaseOverride(url: string | null): void {
   try {
     if (url && url.trim()) {
-      localStorage.setItem(OVERRIDE_KEY, normalize(url));
+      const validated = resolveServerOverride("custom", url, allowPrivateHttp());
+      if (validated.error || !validated.override) {
+        localStorage.removeItem(OVERRIDE_KEY);
+        clearTokens();
+        return;
+      }
+      localStorage.setItem(OVERRIDE_KEY, validated.override);
     } else {
       localStorage.removeItem(OVERRIDE_KEY);
     }

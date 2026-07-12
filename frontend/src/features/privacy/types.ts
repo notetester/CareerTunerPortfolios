@@ -175,7 +175,8 @@ export interface PrivacyPolicyUpdateRequest {
  */
 export interface UserBlockResponse {
   id: number;
-  blockedUserId: number;
+  /** 탈퇴 계정은 공개 식별자 연결을 막기 위해 null. 차단 해제는 block id로 수행한다. */
+  blockedUserId: number | null;
   blockedUserName: string | null;
   blockedUserEmail: string | null;
   masked: boolean;

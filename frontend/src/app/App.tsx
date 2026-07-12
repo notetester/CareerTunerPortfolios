@@ -8,6 +8,8 @@ import { router } from "./routes";
 import { initNativeShell } from "@/platform/nativeShell";
 import { initDeepLinks } from "@/platform/deepLink";
 import { initNativePush } from "@/platform/push";
+import { isNativeApp } from "@/platform/capacitor";
+import { bootstrapNativeRuntime } from "@/platform/nativeBootstrapCore.mjs";
 
 export default function App() {
   // 네이티브(Capacitor) 셸 초기화 — 상태바·스플래시·키보드·하드웨어 뒤로가기. 웹은 무해 no-op.
@@ -22,11 +24,17 @@ export default function App() {
         /* ignore */
       }
     }
-    initNativeShell();
-    // 딥링크·푸시 탭 → 앱 내 경로 이동. 데이터 라우터 인스턴스의 navigate 를 직접 사용한다(웹은 no-op).
+    // 딥링크·푸시 탭 → 앱 내 경로 이동. 데이터 라우터 인스턴스의 navigate 를 직접 사용한다.
+    // WebView 첫 렌더에서는 Capacitor 플랫폼 감지가 잠깐 web일 수 있어, 준비된 뒤 세 기능을 함께 초기화한다.
     const navigate = (path: string) => { void router.navigate(path); };
-    initDeepLinks(navigate);
-    initNativePush(navigate);
+    void bootstrapNativeRuntime({
+      isNative: isNativeApp,
+      initializers: [
+        initNativeShell,
+        () => initDeepLinks(navigate),
+        () => initNativePush(navigate),
+      ],
+    });
   }, []);
 
   return (

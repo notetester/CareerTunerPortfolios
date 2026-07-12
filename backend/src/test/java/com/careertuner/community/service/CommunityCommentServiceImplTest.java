@@ -97,6 +97,23 @@ class CommunityCommentServiceImplTest {
         return rs.stream().filter(r -> r.id() == id).findFirst().orElseThrow();
     }
 
+    @Test
+    void deletedAccountCommentKeepsContentButRemovesIdentityLinks() {
+        givenPost();
+        CommunityComment deletedAuthor = cmt(
+                50, null, null, 10, false, CommentStatus.PUBLISHED.name(), "탈퇴한 사용자", 0);
+        deletedAuthor.setUserStatus("DELETED");
+        deletedAuthor.setNicknameProfileId(777L);
+        when(commentMapper.findAllByPostId(POST_ID)).thenReturn(List.of(deletedAuthor));
+
+        CommentResponse response = service.getComments(POST_ID, null).getFirst();
+
+        assertThat(response.content()).isEqualTo("c50");
+        assertThat(response.author().name()).isEqualTo("탈퇴한 사용자");
+        assertThat(response.author().id()).isNull();
+        assertThat(response.author().nicknameProfileId()).isNull();
+    }
+
     // ── M1: 삭제된 루트 + 살아있는 자식 → 자식이 tombstone 아래로 그대로 보임 ──
     @Test
     void deletedRoot_keepsAliveChildAsVisible_underTombstone() {

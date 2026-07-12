@@ -67,7 +67,7 @@ function QuestionItem({
     try {
       // 반환된 전체 질문 목록을 그대로 반영한다. loadExisting(로딩 스피너로 전체 교체)을 쓰면
       // 답변/평가 결과가 있는 카드까지 언마운트돼 "초기화"처럼 보이므로 목록만 갈아끼운다.
-      const updated = await generateFollowUps(question.id);
+      const updated = await generateFollowUps(question.id, {}, question.interviewSessionId);
       onFollowUpsGenerated(updated);
       return true;
     } catch (err) {
@@ -266,6 +266,16 @@ export function ExpectedQuestionsTab({
 
   const handleGenerate = async () => {
     if (!session) return;
+    const hasSavedAnswers = Object.keys(answerMap).length > 0;
+    if (questions.length > 0 && hasSavedAnswers) {
+      setError("이미 답변한 세션의 질문은 기록 보호를 위해 교체할 수 없습니다. '면접 모드 선택'에서 새 세션을 시작해 주세요.");
+      return;
+    }
+    if (questions.length > 0 && !window.confirm(
+      "아직 답변하지 않은 기존 질문과 모범답안을 새 질문으로 교체할까요? 이 작업은 되돌릴 수 없습니다.",
+    )) {
+      return;
+    }
     setGenerating(true);
     setError(null);
     try {

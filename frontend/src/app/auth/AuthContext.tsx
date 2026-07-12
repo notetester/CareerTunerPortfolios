@@ -3,10 +3,28 @@ import { api } from "../lib/api";
 import { apiBase } from "../lib/apiBase";
 import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
 import { isOutageFallbackActive, isSocialOAuthBlocked } from "../lib/outageFallback";
+import { isNativeApp } from "@/platform/capacitor";
+import { cancelPendingNativeOAuth, startNativeSocialLogin } from "@/platform/nativeOAuth";
 import {
-  clearTokens,
+  discardPendingCollaborationFiles,
+  forgetPendingCollaborationFiles,
+} from "../lib/pendingCollaborationFiles";
+import {
+  discardPendingInterviewFiles,
+  forgetPendingInterviewFiles,
+} from "../lib/pendingInterviewFiles";
+import {
+  discardPendingAutoPrepFiles,
+  forgetPendingAutoPrepFiles,
+} from "../lib/pendingAutoPrepFiles";
+import {
+  ensureNotificationAccount,
+  resetNotificationState,
+} from "@/features/notification/hooks/useNotificationStore";
+import { resetCommunityState } from "@/features/community/hooks/useCommunityStore";
+import { disablePush } from "@/platform/push";
+import {
   clearTokensIfUnchanged,
-  getRefreshToken,
   getTokenStoreSnapshot,
   isTokenStoreSnapshotCurrent,
   setTokens,
@@ -60,7 +78,7 @@ interface AuthContextValue {
   login(identifier: string, password: string): Promise<LoginResponse>;
   completeLogin(token: TokenResponse): void;
   register(loginId: string, email: string | null, password: string, name: string, consents: RegisterConsents): Promise<void>;
-  socialLogin(provider: SocialProvider): void;
+  socialLogin(provider: SocialProvider): Promise<void>;
   logout(): Promise<void>;
   logoutAll(): Promise<void>;
   refreshMe(): Promise<void>;
@@ -72,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MeUser | null>(null);
   const [loading, setLoading] = useState(true);
   const refreshGeneration = useRef(0);
+  const currentUserIdRef = useRef<number | null>(null);
 
   const refreshMe = useCallback(async () => {
     const generation = ++refreshGeneration.current;
@@ -83,6 +102,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           generation === refreshGeneration.current
           && isTokenStoreSnapshotCurrent(sessionSnapshot)
         ) {
+          resetNotificationState(null);
+          currentUserIdRef.current = null;
           setUser(null);
         }
         return;
@@ -92,6 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         generation === refreshGeneration.current
         && isTokenStoreSnapshotCurrent(sessionSnapshot)
       ) {
+        ensureNotificationAccount(me.id);
+        currentUserIdRef.current = me.id;
         setUser(me);
       }
     } catch {
@@ -99,6 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         generation === refreshGeneration.current
         && isTokenStoreSnapshotCurrent(sessionSnapshot)
       ) {
+        resetNotificationState(null);
+        currentUserIdRef.current = null;
         setUser(null);
         clearTokensIfUnchanged(sessionSnapshot);
       }
@@ -107,14 +132,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // refresh가 토큰을 바꾸면 /auth/me로 role을 다시 검증한다. 검증 중에는 loading으로 관리자 경계를 닫는다.
+  // refresh는 같은 사용자 세션을 유지하고, 로그인/외부 탭 교체는 이전 사용자 상태를 즉시 폐기한다.
   useEffect(() => subscribeTokenStore((event) => {
+    if (event === "refreshed") {
+      void refreshMe();
+      return;
+    }
+    // 계정 경계가 바뀐 뒤에는 이전 계정의 메모리 상태와 pending ID를 새 토큰으로 재사용하지 않는다.
+    resetNotificationState(null);
+    resetCommunityState();
+    forgetPendingCollaborationFiles();
+    forgetPendingInterviewFiles();
+    forgetPendingAutoPrepFiles();
     if (event === "cleared") {
       refreshGeneration.current += 1;
+      currentUserIdRef.current = null;
       setUser(null);
       setLoading(false);
       return;
     }
+    currentUserIdRef.current = null;
+    setUser(null);
+    setLoading(true);
     void refreshMe();
   }), [refreshMe]);
 
@@ -128,6 +167,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isOutageFallbackActive()) {
       setTokens({ accessToken: token.accessToken, refreshToken: token.refreshToken });
     }
+    resetNotificationState(token.user.id);
+    currentUserIdRef.current = token.user.id;
     setUser(token.user);
   }, []);
 
@@ -167,37 +208,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isOutageFallbackActive()) {
       setTokens({ accessToken: res.accessToken, refreshToken: res.refreshToken });
     }
+    resetNotificationState(res.user.id);
+    currentUserIdRef.current = res.user.id;
     setUser(res.user);
   }, []);
 
-  const socialLogin = useCallback((provider: SocialProvider) => {
+  const socialLogin = useCallback(async (provider: SocialProvider) => {
     if (isSocialOAuthBlocked()) return;
+    if (isNativeApp()) {
+      await startNativeSocialLogin(provider);
+      return;
+    }
     // 전체 페이지 이동 → 백엔드가 제공자로 리다이렉트
     window.location.href = `${apiBase()}/auth/oauth/${provider}`;
   }, []);
 
   const logout = useCallback(async () => {
-    const refreshToken = getRefreshToken();
+    if (isNativeApp()) cancelPendingNativeOAuth();
+    const accountId = currentUserIdRef.current;
+    resetNotificationState(null);
+    await Promise.all([
+      discardPendingCollaborationFiles(),
+      discardPendingInterviewFiles(true),
+      discardPendingAutoPrepFiles(),
+      disablePush(),
+    ]);
+    // 정리 중 실제 로그인 계정이 바뀌었다면 새 계정 세션을 건드리지 않는다.
+    if (currentUserIdRef.current !== accountId) return;
+    const operationSnapshot = getTokenStoreSnapshot();
+    const refreshToken = operationSnapshot.tokens?.refreshToken ?? "";
+    forgetPendingCollaborationFiles();
+    forgetPendingInterviewFiles();
+    forgetPendingAutoPrepFiles();
     try {
       await api<void>("/auth/logout", {
         method: "POST",
-        body: JSON.stringify({ refreshToken: refreshToken ?? "" }),
-      });
+        body: JSON.stringify({ refreshToken }),
+      }, { auth: false });
     } catch {
       // 서버 실패와 무관하게 로컬 세션은 종료
     }
-    clearTokens();
-    setUser(null);
+    if (currentUserIdRef.current === accountId && clearTokensIfUnchanged(operationSnapshot)) {
+      currentUserIdRef.current = null;
+      setUser(null);
+    }
   }, []);
 
   const logoutAll = useCallback(async () => {
+    if (isNativeApp()) cancelPendingNativeOAuth();
+    const accountId = currentUserIdRef.current;
+    resetNotificationState(null);
+    await Promise.all([
+      discardPendingCollaborationFiles(),
+      discardPendingInterviewFiles(true),
+      discardPendingAutoPrepFiles(),
+      disablePush(),
+    ]);
+    // 계정이 바뀐 뒤에는 새 계정 refresh token으로 logout-all을 보내면 안 된다.
+    if (currentUserIdRef.current !== accountId) return;
+    const operationSnapshot = getTokenStoreSnapshot();
+    const refreshToken = operationSnapshot.tokens?.refreshToken ?? "";
+    forgetPendingCollaborationFiles();
+    forgetPendingInterviewFiles();
+    forgetPendingAutoPrepFiles();
     try {
-      await api<void>("/auth/logout-all", { method: "POST" });
+      await api<void>("/auth/logout-all", {
+        method: "POST",
+        body: JSON.stringify({ refreshToken }),
+      }, { auth: false });
     } catch {
       // 서버 실패와 무관하게 로컬 세션은 종료
     }
-    clearTokens();
-    setUser(null);
+    if (currentUserIdRef.current === accountId && clearTokensIfUnchanged(operationSnapshot)) {
+      currentUserIdRef.current = null;
+      setUser(null);
+    }
   }, []);
 
   return (

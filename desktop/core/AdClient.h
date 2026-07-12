@@ -2,8 +2,12 @@
 
 #include <QObject>
 #include <QString>
+#include <QUrl>
 
 #include "ApiClient.h"
+
+class SettingsStore;
+class DesktopCoreTests;
 
 // 데스크톱 홈 배너 광고 클라이언트.
 // 살아있는 백엔드 ads API 계약에 맞춘다:
@@ -28,7 +32,7 @@ class AdClient : public QObject
     Q_PROPERTY(QString imageUrl READ imageUrl NOTIFY changed)
 
 public:
-    explicit AdClient(ApiClient* api, QObject* parent = nullptr);
+    explicit AdClient(ApiClient* api, SettingsStore* settings = nullptr, QObject* parent = nullptr);
 
     bool visible() const { return m_visible; }
     QString title() const { return m_title; }
@@ -42,12 +46,17 @@ public:
 
 signals:
     void changed();
+    void targetOpened(const QUrl& url);
 
 private:
+    friend class DesktopCoreTests;
     void recordImpression();
     void applyEmpty();
 
     ApiClient* m_api;
+    SettingsStore* m_settings;
+    quint64 m_refreshGeneration = 0;
+    quint64 m_lifecycleGeneration = 0;
     qint64 m_adId = 0;
     bool m_visible = false;
     QString m_title;

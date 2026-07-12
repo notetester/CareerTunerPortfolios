@@ -22,11 +22,35 @@ Item {
 
             // 빈 상태
             Text {
-                visible: !session.report.totalScore && session.report.totalScore !== 0
+                visible: session.reportError.length === 0
+                    && !session.report.totalScore && session.report.totalScore !== 0
                 text: "리포트가 아직 없습니다 — 답변을 제출하면 채점 결과가 쌓입니다."
                 color: Theme.muted; font.pixelSize: 13
                 Layout.topMargin: 30
                 Layout.alignment: Qt.AlignHCenter
+            }
+
+            Rectangle {
+                visible: session.reportError.length > 0
+                Layout.fillWidth: true
+                radius: Theme.radius
+                color: Theme.surface; border.color: Theme.danger
+                implicitHeight: reportErrorRow.implicitHeight + 24
+                RowLayout {
+                    id: reportErrorRow
+                    x: 14; y: 12; width: parent.width - 28
+                    Text {
+                        Layout.fillWidth: true
+                        text: session.reportError
+                        color: Theme.danger; font.pixelSize: 12; wrapMode: Text.WordWrap
+                    }
+                    Button {
+                        text: "다시 시도"
+                        enabled: !session.reportLoading
+                        Accessible.name: "면접 리포트 다시 생성"
+                        onClicked: session.loadReport()
+                    }
+                }
             }
 
             // 헤더: 종합 점수

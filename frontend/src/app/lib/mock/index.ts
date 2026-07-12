@@ -23,7 +23,7 @@ import { findJobPosting, findJobAnalysis, findCompanyAnalysis } from "./domains/
 import {
   demoInterviewSessions, findSessionQuestions, findReport, progress, agentSteps,
   createSession, generateQuestions, submitAnswer as submitInterviewAnswer, followUps,
-  realtimeSession, fileAsset,
+  realtimeSession, fileAsset, deleteFileAsset,
 } from "./domains/interview";
 import {
   communityPostPage, demoHotPosts, findCommunityPost, communityCommentsFor, demoPublishedGuideline,
@@ -369,8 +369,8 @@ const coreRoutes: MockRoute[] = [
   { method: "POST", pattern: /^\/interview\/sessions\/(\d+)\/realtime$/, handler: () => realtimeSession() },
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/answers$/, handler: ({ params, body }) => submitInterviewAnswer(Number(params[0]), body as { answerText: string }) },
   { method: "POST", pattern: /^\/interview\/questions\/(\d+)\/follow-ups$/, handler: ({ params }) => followUps(Number(params[0])) },
-  { method: "POST", pattern: /^\/file\/upload$/, handler: () => fileAsset() },
-  { method: "DELETE", pattern: /^\/file\/(\d+)$/, handler: () => null },
+  { method: "POST", pattern: /^\/file\/upload$/, handler: ({ body }) => fileAsset(body) },
+  { method: "DELETE", pattern: /^\/file\/(\d+)$/, handler: ({ params }) => { deleteFileAsset(Number(params[0])); return null; } },
 
   // ── C: 적합도 분석 ──
   { method: "GET", pattern: /^\/fit-analyses$/, handler: () => [...demoFitAnalyses, ...generatedFitAnalyses.values()] },

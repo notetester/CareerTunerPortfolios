@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.careertuner.auth.domain.EmailVerification;
 import com.careertuner.auth.mapper.AuthMapper;
@@ -41,6 +42,7 @@ public class UserAccountServiceImpl implements UserAccountService {
     private final AuthMapper authMapper;
     private final EmailService emailService;
     private final FrontendReturnUrlResolver frontendReturnUrlResolver;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional(readOnly = true)
@@ -82,7 +84,9 @@ public class UserAccountServiceImpl implements UserAccountService {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 등록된 전화번호입니다.");
         }
         try {
-            mapper.updatePhone(userId, normalized);
+            if (mapper.updatePhone(userId, normalized) != 1) {
+                throw new BusinessException(ErrorCode.CONFLICT, "계정 상태가 변경되어 전화번호를 저장하지 못했습니다.");
+            }
         } catch (DuplicateKeyException e) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 등록된 전화번호입니다.");
         }
@@ -142,6 +146,40 @@ public class UserAccountServiceImpl implements UserAccountService {
         }
         mapper.deleteSocial(userId, normalizedProvider);
         return toAccountInfo(requireUser(userId));
+    }
+
+    @Override
+    @Transactional
+    public void deleteOwnAccount(Long userId, String password, String confirmation) {
+        User user = mapper.findByIdForUpdate(userId);
+        if (user == null || "DELETED".equals(user.getStatus())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "회원 정보를 찾을 수 없습니다.");
+        }
+        if (!"회원탈퇴".equals(confirmation == null ? "" : confirmation.trim())) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "확인 문구로 회원탈퇴를 입력해 주세요.");
+        }
+        if (user.isPasswordEnabled()
+                && (password == null || password.isBlank()
+                || !passwordEncoder.matches(password, user.getPassword()))) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED, "현재 비밀번호가 올바르지 않습니다.");
+        }
+        // 잠근 users 행을 먼저 DELETED+tombstone 으로 전환한다. 이후 단계가 하나라도 실패하면
+        // @Transactional 경계에서 전부 rollback되어 부분 탈퇴 상태가 남지 않는다.
+        if (mapper.anonymizeAndSoftDeleteOwnAccount(userId) != 1) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 탈퇴했거나 계정 상태가 변경되었습니다.");
+        }
+        authMapper.revokeAllForUser(userId);
+        mapper.deleteAllSocialLinks(userId);
+        mapper.deleteAllPushSubscriptions(userId);
+        mapper.expireAllEmailVerifications(userId);
+        mapper.deleteAllSmsOtpCodes(userId);
+        mapper.hideAndAnonymizeNicknameProfiles(userId);
+        mapper.anonymizeChatProfiles(userId);
+        mapper.clearConversationNicknameProfiles(userId);
+        mapper.deactivateConversationMemberships(userId);
+        mapper.cancelPendingFriendRequests(userId);
+        mapper.cancelPendingConversationInvites(userId);
+        mapper.deleteDesktopPresence(userId);
     }
 
     @Override

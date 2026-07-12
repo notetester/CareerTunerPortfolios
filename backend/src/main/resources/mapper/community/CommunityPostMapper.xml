@@ -28,7 +28,8 @@
     <select id="findAll" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
                cp.is_anonymous AS anonymous,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
          WHERE cp.status = #{status}
@@ -65,7 +66,8 @@
     <select id="findByIds" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
                cp.is_anonymous AS anonymous,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
          WHERE cp.status = #{status}
@@ -110,7 +112,8 @@
     -->
     <select id="findPersonalizedCandidates" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
          WHERE cp.status = 'PUBLISHED'
@@ -150,7 +153,8 @@
     -->
     <select id="findFreshPopular" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
          WHERE cp.status = 'PUBLISHED'
@@ -183,7 +187,8 @@
     <select id="findById" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
                cp.is_anonymous AS anonymous,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
          WHERE cp.id = #{id}
@@ -232,7 +237,8 @@
     <select id="findHotPosts" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
                cp.is_anonymous AS anonymous,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_post cp
           JOIN users u ON cp.user_id = u.id
          WHERE cp.status = #{status}

@@ -31,11 +31,12 @@ npm run dev      # http://localhost:5173
 | `npm run build:mock` | mock 데모 모드 프로덕션 빌드 (웹 데모/APK 용) |
 | `npm run build:tailscale` / `build:aws` / `build:domain` | 환경 모드 빌드 — `VITE_API_BASE_URL` 이 빌드에 박힌다 |
 | `npm run build:sites` | Codex Sites 배포 산출물(`dist/client`, `dist/server`) 생성 |
-| `npm run app:tailscale` | tailscale 모드 빌드 + `cap sync android` (실백엔드 APK 준비) |
+| `npm run native:sync -- android` | HTTPS 기본값 검증 후 Capacitor 동기화 (iOS는 `ios`) |
+| `npm run app:tailscale` | tailscale 모드 빌드 + 보안 기본값 Android 동기화 (실백엔드 APK 준비) |
 | `npm run preview` | 빌드 결과 미리보기 |
 | `npm run typecheck` | 타입 검사 (`tsc --noEmit`) |
 | `npm run gen:icons` | PWA/앱 아이콘 생성 (`public/icons/*`) |
-| `npm run mobile:sync` | mock 빌드 + Android 프로젝트 동기화 (`cap sync`) |
+| `npm run mobile:sync` | mock 빌드 + HTTPS 기본값 Android 프로젝트 동기화 |
 | `npm run mobile:apk` | 디버그 APK 빌드 (`android/.../app-debug.apk`) |
 | `npm run ios:sync` | mock 빌드 + iOS 프로젝트 동기화 (Mac 전용) |
 

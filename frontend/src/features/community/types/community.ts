@@ -11,7 +11,8 @@ export type CommunityCategory =
 export type PostStatus = "PUBLISHED" | "HIDDEN" | "DELETED" | "PENDING";
 
 export interface PublicAuthor {
-  id: number;
+  /** 익명 또는 탈퇴 계정은 프로필 링크를 만들지 않도록 null. */
+  id: number | null;
   name: string;
   /**
    * 표시명 산출에 사용한 닉네임 프로필 id(옵션).

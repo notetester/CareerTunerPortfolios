@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QMediaFormat>
 #include <QUrl>
 #include <QVideoSink>
@@ -29,20 +30,11 @@ CameraRecorder::CameraRecorder(QObject* parent) : QObject(parent)
     });
     connect(&m_recorder, &QMediaRecorder::errorOccurred, this,
         [this](QMediaRecorder::Error, const QString& msg) {
-            m_recording = false;
-            emit recordingChanged();
-            emit errorOccurred(msg);
+            handleRecorderError(msg);
         });
     connect(&m_recorder, &QMediaRecorder::recorderStateChanged, this,
         [this](QMediaRecorder::RecorderState st) {
-            if (st == QMediaRecorder::StoppedState && m_recording) {
-                m_recording = false;
-                emit recordingChanged();
-                if (m_cancelled)
-                    QFile::remove(m_outPath); // 취소된 녹화는 즉시 폐기 (영상 프라이버시)
-                else
-                    emit recorded(m_outPath);
-            }
+            if (st == QMediaRecorder::StoppedState) finishRecording();
         });
     connect(&m_camera, &QCamera::errorOccurred, this,
         [this](QCamera::Error err, const QString& msg) {
@@ -53,6 +45,39 @@ CameraRecorder::CameraRecorder(QObject* parent) : QObject(parent)
     // 카메라/마이크 연결·해제 → 버튼/기기 카드 상태 갱신
     connect(&m_devices, &QMediaDevices::videoInputsChanged, this, &CameraRecorder::devicesChanged);
     connect(&m_devices, &QMediaDevices::audioInputsChanged, this, &CameraRecorder::devicesChanged);
+}
+
+void CameraRecorder::handleRecorderError(const QString& message)
+{
+    const QString failedPath = m_outPath;
+    const bool wasRecording = m_recording;
+    m_recording = false;
+    m_cancelled = true;
+    if (wasRecording) emit recordingChanged();
+    // error 뒤에는 StoppedState가 와도 finishRecording()이 early-return한다. 여기서 직접
+    // recorder 소유권과 부분 mp4를 정리해야 로그아웃 후 임시 파일이 남지 않는다.
+    discard(failedPath);
+    emit errorOccurred(message.isEmpty() ? QStringLiteral("영상 녹화에 실패했습니다") : message);
+}
+
+void CameraRecorder::finishRecording()
+{
+    if (!m_recording) return;
+
+    const QString completedPath = m_outPath;
+    const bool cancelled = m_cancelled;
+    m_recording = false;
+    emit recordingChanged();
+    if (cancelled)
+        discard(completedPath); // 취소된 녹화는 즉시 폐기하고 recorder 소유권도 비운다.
+    else
+        emit recorded(completedPath);
+}
+
+QString CameraRecorder::recordingDir()
+{
+    return QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+                           + QStringLiteral("/careertuner"));
 }
 
 bool CameraRecorder::cameraAvailable() const
@@ -101,8 +126,8 @@ void CameraRecorder::start()
     if (!m_previewing) startPreview();
     if (!m_previewing) return; // 카메라 없음 — startPreview 가 이미 에러 발행
 
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-                        + QStringLiteral("/careertuner");
+    if (!m_outPath.isEmpty()) discard(m_outPath);
+    const QString dir = recordingDir();
     QDir().mkpath(dir);
     m_outPath = dir + QStringLiteral("/video-answer-%1.mp4")
                           .arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
@@ -112,15 +137,19 @@ void CameraRecorder::start()
     emit secondsChanged();
 
     m_recorder.setOutputLocation(QUrl::fromLocalFile(m_outPath));
-    m_recorder.record();
     m_recording = true;
     emit recordingChanged();
+    // record()가 동기 errorOccurred를 내도 handler가 부분 파일과 recording 상태를 정리할 수 있게
+    // 상태를 먼저 전환한다.
+    m_recorder.record();
 }
 
 void CameraRecorder::stop()
 {
     if (!m_recording) return;
     m_recorder.stop(); // StoppedState 시그널에서 recorded() 발행
+    if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
+        finishRecording();
 }
 
 void CameraRecorder::cancel()
@@ -128,4 +157,70 @@ void CameraRecorder::cancel()
     if (!m_recording) return;
     m_cancelled = true;
     m_recorder.stop();
+    if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
+        finishRecording();
+}
+
+void CameraRecorder::reset()
+{
+    const bool wasRecording = m_recording;
+    if (wasRecording) {
+        cancel();
+    } else if (!m_outPath.isEmpty()) {
+        discard(m_outPath);
+    }
+    if (m_previewing) {
+        m_camera.stop();
+        m_previewing = false;
+        emit previewingChanged();
+    }
+    // 비동기 StoppedState가 아직 남아 있으면 finishRecording()이 취소 파일로 처리하도록 유지한다.
+    if (!wasRecording) m_cancelled = false;
+    if (m_seconds != 0) {
+        m_seconds = 0;
+        emit secondsChanged();
+    }
+}
+
+bool CameraRecorder::discard(const QString& filePath)
+{
+    if (filePath.isEmpty()) return true;
+
+    const QFileInfo fileInfo(filePath);
+    const QString expectedDir = QDir::cleanPath(recordingDir());
+    const Qt::CaseSensitivity pathCase =
+#ifdef Q_OS_WIN
+        Qt::CaseInsensitive;
+#else
+        Qt::CaseSensitive;
+#endif
+    if (QDir::cleanPath(fileInfo.absolutePath()).compare(expectedDir, pathCase) != 0
+        || !fileInfo.fileName().startsWith(QStringLiteral("video-answer-"))
+        || fileInfo.suffix().compare(QStringLiteral("mp4"), Qt::CaseInsensitive) != 0) {
+        return false;
+    }
+
+    const QString absolutePath = QDir::cleanPath(fileInfo.absoluteFilePath());
+    const bool removed = !QFile::exists(absolutePath) || QFile::remove(absolutePath);
+    if (removed && QDir::cleanPath(m_outPath).compare(absolutePath, pathCase) == 0)
+        m_outPath.clear();
+    return removed;
+}
+
+bool CameraRecorder::release(const QString& filePath)
+{
+    if (filePath.isEmpty() || m_outPath.isEmpty()) return false;
+
+    const Qt::CaseSensitivity pathCase =
+#ifdef Q_OS_WIN
+        Qt::CaseInsensitive;
+#else
+        Qt::CaseSensitive;
+#endif
+    const QString requested = QDir::cleanPath(QFileInfo(filePath).absoluteFilePath());
+    const QString active = QDir::cleanPath(QFileInfo(m_outPath).absoluteFilePath());
+    if (requested.compare(active, pathCase) != 0) return false;
+
+    m_outPath.clear();
+    return true;
 }

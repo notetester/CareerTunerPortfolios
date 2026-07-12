@@ -1,10 +1,12 @@
 import { apiBase } from "./apiBase";
+import { applyFrontendClientHeader } from "./apiClientCore.mjs";
+import { isNativeApp } from "@/platform/capacitor";
 import {
   clearTokensIfUnchanged,
-  getAccessToken,
-  getRefreshToken,
   getTokenStoreSnapshot,
+  isTokenStoreSnapshotCurrent,
   setTokensIfUnchanged,
+  subscribeTokenStore,
   type TokenStoreSnapshot,
 } from "./tokenStore";
 import {
@@ -122,73 +124,105 @@ export function createOutageMutationUncertainError(): ApiError {
   );
 }
 
-function buildHeaders(options: RequestInit, withAuth: boolean): Headers {
+function buildHeaders(options: RequestInit, accessToken: string | null): Headers {
   const headers = new Headers(options.headers ?? {});
+  applyFrontendClientHeader(headers, isNativeApp());
   const body = options.body;
   const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   if (body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  if (withAuth) {
-    const token = getAccessToken();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-  }
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   return headers;
 }
 
 interface RefreshAttempt {
   snapshot: TokenStoreSnapshot;
   refreshToken: string;
-  promise: Promise<boolean>;
+  promise: Promise<TokenStoreSnapshot | null>;
+}
+
+interface CompletedRefresh {
+  source: TokenStoreSnapshot;
+  target: TokenStoreSnapshot;
 }
 
 // 같은 세션의 동시 401만 하나로 합친다. 세션이 바뀌면 이전 응답은 CAS에서 폐기한다.
 let refreshAttempt: RefreshAttempt | null = null;
+let completedRefresh: CompletedRefresh | null = null;
 
-function tryRefresh(): Promise<boolean> {
-  const snapshot = getTokenStoreSnapshot();
+function sameSnapshot(a: TokenStoreSnapshot, b: TokenStoreSnapshot): boolean {
+  return a.revision === b.revision
+    && a.tokens?.accessToken === b.tokens?.accessToken
+    && a.tokens?.refreshToken === b.tokens?.refreshToken;
+}
+
+function tryRefresh(snapshot: TokenStoreSnapshot): Promise<TokenStoreSnapshot | null> {
   const refreshToken = snapshot.tokens?.refreshToken;
-  if (!refreshToken) return Promise.resolve(false);
+  if (!refreshToken) return Promise.resolve(null);
   if (
     refreshAttempt
-    && refreshAttempt.snapshot.revision === snapshot.revision
+    && sameSnapshot(refreshAttempt.snapshot, snapshot)
     && refreshAttempt.refreshToken === refreshToken
   ) {
     return refreshAttempt.promise;
   }
+  if (
+    completedRefresh
+    && sameSnapshot(completedRefresh.source, snapshot)
+    && isTokenStoreSnapshotCurrent(completedRefresh.target)
+  ) {
+    return Promise.resolve(completedRefresh.target);
+  }
+  if (!isTokenStoreSnapshotCurrent(snapshot)) return Promise.resolve(null);
 
   const attempt: RefreshAttempt = {
     snapshot,
     refreshToken,
-    promise: Promise.resolve(false),
+    promise: Promise.resolve(null),
   };
   attempt.promise = (async () => {
     try {
+      const refreshBody = JSON.stringify({ refreshToken });
       const res = await fetch(`${apiBase()}/auth/refresh`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
+        headers: buildHeaders({ body: refreshBody }, null),
+        body: refreshBody,
       });
       const env = (await res.json().catch(() => null)) as ApiEnvelope<{
         accessToken: string;
         refreshToken: string;
       }> | null;
       if (res.ok && env?.success && env.data) {
-        return setTokensIfUnchanged(snapshot, {
+        const updated = setTokensIfUnchanged(snapshot, {
           accessToken: env.data.accessToken,
           refreshToken: env.data.refreshToken,
         });
+        if (!updated) return null;
+        const target = getTokenStoreSnapshot();
+        completedRefresh = { source: snapshot, target };
+        return target;
       }
       clearTokensIfUnchanged(snapshot);
-      return false;
+      return null;
     } catch {
-      return false;
+      return null;
     } finally {
       if (refreshAttempt === attempt) refreshAttempt = null;
     }
   })();
   refreshAttempt = attempt;
   return attempt.promise;
+}
+
+function assertAuthenticatedRequestStillCurrent(snapshot: TokenStoreSnapshot | null): void {
+  if (snapshot && !isTokenStoreSnapshotCurrent(snapshot)) {
+    throw new ApiError(
+      "로그인 계정이 변경되어 이전 요청 결과를 폐기했습니다. 다시 시도해 주세요.",
+      "AUTH_SESSION_CHANGED",
+      409,
+    );
+  }
 }
 
 /** ApiResponse 를 풀어 data 를 반환. 실패 시 ApiError 를 던진다. */
@@ -198,29 +232,38 @@ export async function api<T = unknown>(
   config: { auth?: boolean } = {},
 ): Promise<T> {
   const withAuth = config.auth ?? true;
+  let sessionSnapshot = withAuth ? getTokenStoreSnapshot() : null;
   const resolveFallback = () => resolveMockData<T>(path, options);
   let result = await requestRealFirst(
     `${apiBase()}${path}`,
-    { ...options, headers: buildHeaders(options, withAuth) },
+    { ...options, headers: buildHeaders(options, sessionSnapshot?.tokens?.accessToken ?? null) },
     resolveFallback,
   );
-  if (result.kind === "mock") return result.value;
+  if (result.kind === "mock") {
+    assertAuthenticatedRequestStillCurrent(sessionSnapshot);
+    return result.value;
+  }
   let res = result.response;
 
-  if (res.status === 401 && withAuth && getRefreshToken()) {
-    const refreshed = await tryRefresh();
-    if (refreshed) {
+  if (res.status === 401 && sessionSnapshot?.tokens?.refreshToken) {
+    const refreshedSnapshot = await tryRefresh(sessionSnapshot);
+    if (refreshedSnapshot && isTokenStoreSnapshotCurrent(refreshedSnapshot)) {
+      sessionSnapshot = refreshedSnapshot;
       result = await requestRealFirst(
         `${apiBase()}${path}`,
-        { ...options, headers: buildHeaders(options, true) },
+        { ...options, headers: buildHeaders(options, refreshedSnapshot.tokens?.accessToken ?? null) },
         resolveFallback,
       );
-      if (result.kind === "mock") return result.value;
+      if (result.kind === "mock") {
+        assertAuthenticatedRequestStillCurrent(sessionSnapshot);
+        return result.value;
+      }
       res = result.response;
     }
   }
 
   const env = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
+  assertAuthenticatedRequestStillCurrent(sessionSnapshot);
   if (!res.ok || !env || env.success === false) {
     throw new ApiError(env?.message ?? `요청에 실패했습니다 (${res.status})`, env?.code ?? "ERROR", res.status);
   }
@@ -234,29 +277,118 @@ export async function apiBlob(
   config: { auth?: boolean } = {},
 ): Promise<Blob> {
   const withAuth = config.auth ?? true;
+  let sessionSnapshot = withAuth ? getTokenStoreSnapshot() : null;
   const resolveFallback = () => resolveMockBlob(path, options);
   let result = await requestRealFirst(
     `${apiBase()}${path}`,
-    { ...options, headers: buildHeaders(options, withAuth) },
+    { ...options, headers: buildHeaders(options, sessionSnapshot?.tokens?.accessToken ?? null) },
     resolveFallback,
   );
-  if (result.kind === "mock") return result.value;
+  if (result.kind === "mock") {
+    assertAuthenticatedRequestStillCurrent(sessionSnapshot);
+    return result.value;
+  }
   let res = result.response;
-  if (res.status === 401 && withAuth && getRefreshToken()) {
-    const refreshed = await tryRefresh();
-    if (refreshed) {
+  if (res.status === 401 && sessionSnapshot?.tokens?.refreshToken) {
+    const refreshedSnapshot = await tryRefresh(sessionSnapshot);
+    if (refreshedSnapshot && isTokenStoreSnapshotCurrent(refreshedSnapshot)) {
+      sessionSnapshot = refreshedSnapshot;
       result = await requestRealFirst(
         `${apiBase()}${path}`,
-        { ...options, headers: buildHeaders(options, true) },
+        { ...options, headers: buildHeaders(options, refreshedSnapshot.tokens?.accessToken ?? null) },
         resolveFallback,
       );
-      if (result.kind === "mock") return result.value;
+      if (result.kind === "mock") {
+        assertAuthenticatedRequestStillCurrent(sessionSnapshot);
+        return result.value;
+      }
       res = result.response;
     }
   }
+  assertAuthenticatedRequestStillCurrent(sessionSnapshot);
   if (!res.ok) {
     const env = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;
     throw new ApiError(env?.message ?? `파일 요청에 실패했습니다 (${res.status})`, env?.code ?? "ERROR", res.status);
   }
-  return res.blob();
+  const blob = await res.blob();
+  // 큰 파일 본문을 읽는 동안에도 계정이 바뀔 수 있다. 바이트 소비가 끝난 뒤
+  // 다시 검증해 이전 계정 파일이 새 계정 화면에서 다운로드되지 않게 한다.
+  assertAuthenticatedRequestStillCurrent(sessionSnapshot);
+  return blob;
+}
+
+export interface AuthenticatedRawResponse {
+  response: Response;
+  /** 스트림의 각 이벤트를 UI에 반영하기 직전에 호출한다. */
+  assertSessionCurrent(): void;
+  /** 응답 본문 소비가 끝나면 계정 변경 감시기를 해제한다. */
+  dispose(): void;
+}
+
+/**
+ * JSON envelope가 아닌 SSE 같은 장기 응답용 인증 fetch다.
+ * 중앙 401 갱신을 공유하고, 요청 도중 로그인 계정이 바뀌면 네트워크와 결과 소비를 함께 중단한다.
+ */
+export async function apiRaw(
+  path: string,
+  options: RequestInit = {},
+  config: { auth?: boolean } = {},
+): Promise<AuthenticatedRawResponse> {
+  const withAuth = config.auth ?? true;
+  let sessionSnapshot = withAuth ? getTokenStoreSnapshot() : null;
+  const controller = new AbortController();
+  const callerSignal = options.signal;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) abortFromCaller();
+  else callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  const unsubscribe = withAuth
+    ? subscribeTokenStore((event) => {
+        // 동일 계정의 access-token 회전은 계속 진행하고, 실제 로그인 경계만 끊는다.
+        if (event !== "refreshed") {
+          controller.abort(new ApiError(
+            "로그인 계정이 변경되어 이전 요청을 중단했습니다. 다시 시도해 주세요.",
+            "AUTH_SESSION_CHANGED",
+            409,
+          ));
+        }
+      })
+    : () => {};
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    unsubscribe();
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  };
+  const assertSessionCurrent = () => {
+    if (controller.signal.aborted) {
+      const reason = controller.signal.reason;
+      throw reason instanceof Error ? reason : new DOMException("Aborted", "AbortError");
+    }
+    assertAuthenticatedRequestStillCurrent(sessionSnapshot);
+  };
+
+  try {
+    const request = (snapshot: TokenStoreSnapshot | null) => fetch(`${apiBase()}${path}`, {
+      ...options,
+      headers: buildHeaders(options, snapshot?.tokens?.accessToken ?? null),
+      signal: controller.signal,
+    });
+    let response = await request(sessionSnapshot);
+    if (response.status === 401 && sessionSnapshot?.tokens?.refreshToken) {
+      const refreshedSnapshot = await tryRefresh(sessionSnapshot);
+      if (refreshedSnapshot && isTokenStoreSnapshotCurrent(refreshedSnapshot)) {
+        sessionSnapshot = refreshedSnapshot;
+        response = await request(refreshedSnapshot);
+      }
+    }
+    assertSessionCurrent();
+    return { response, assertSessionCurrent, dispose };
+  } catch (error) {
+    dispose();
+    if (controller.signal.aborted && controller.signal.reason instanceof Error) {
+      throw controller.signal.reason;
+    }
+    throw error;
+  }
 }

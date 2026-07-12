@@ -94,6 +94,9 @@ export const router = createBrowserRouter([
       { path: "community/users/:userId/activity", Component: CommunityUserActivityPage },
       // 내 정보 관리 — 닉네임 프로필·이력서 스펙·계정 확충
       { path: "profile/detail", Component: ProfileDetailPage },
+      // 브라우저 소셜 계정 연결 전용 반환 경로. verified App Link 경로와 분리해
+      // 설치 앱이 모바일 웹의 OAuth 결과를 가로채지 않게 한다.
+      { path: "profile/social-callback", Component: ProfileDetailPage },
       { path: "profile/rewards", Component: RewardsPage },
       { path: "billing", Component: BillingPage },
       { path: "billing/success", Component: BillingSuccessPage },
@@ -128,6 +131,7 @@ export const router = createBrowserRouter([
       { path: "legal/copyright", Component: LegalPage },
       { path: "login", Component: LoginPage },
       { path: "auth/callback", Component: AuthCallbackPage },
+      { path: "auth/browser-callback", Component: AuthCallbackPage },
       { path: "auth/social-consent", Component: SocialConsentPage },
       { path: "auth/verify-email/result", Component: VerifyEmailResultPage },
       { path: "auth/forgot-password", Component: ForgotPasswordPage },

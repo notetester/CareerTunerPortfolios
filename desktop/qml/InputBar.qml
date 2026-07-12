@@ -20,8 +20,23 @@ Item {
     function fill(text) { input.text = text; input.forceActiveFocus() }
     function clear() { input.text = "" }
 
-    function closeVideoPanel() {
+    function cancelSessionMedia() {
+        recorder.cancel()
+        cameraRecorder.reset()
+        if (root.recordedVideoPath !== "")
+            cameraRecorder.discard(root.recordedVideoPath)
+        root.recordedVideoPath = ""
+        consentBox.checked = false
+        root.videoPanelOpen = false
+    }
+
+    function closeVideoPanel(discardRecording) {
+        const shouldDiscard = discardRecording !== false
         cameraRecorder.stopPreview()
+        if (root.recordedVideoPath !== "") {
+            if (shouldDiscard) cameraRecorder.discard(root.recordedVideoPath)
+            else cameraRecorder.release(root.recordedVideoPath)
+        }
         root.recordedVideoPath = ""
         consentBox.checked = false
         root.videoPanelOpen = false
@@ -39,6 +54,16 @@ Item {
         function onTranscribed(text) {
             if (root.mode === "answer") { input.text = text; input.forceActiveFocus() }
         }
+        function onAnswerSubmissionStarted() {
+            if (root.mode === "answer") input.text = ""
+        }
+        function onAnswerSubmissionFailed(text) {
+            if (root.mode === "answer" && input.text.trim() === "") {
+                input.text = text
+                input.forceActiveFocus()
+            }
+        }
+        function onVideoAnswerSubmitted() { root.closeVideoPanel(false) }
     }
     Connections {
         target: recorder
@@ -47,7 +72,11 @@ Item {
     }
     Connections {
         target: cameraRecorder
-        function onRecorded(filePath) { root.recordedVideoPath = filePath }
+        function onRecorded(filePath) {
+            if (root.recordedVideoPath !== "" && root.recordedVideoPath !== filePath)
+                cameraRecorder.discard(root.recordedVideoPath)
+            root.recordedVideoPath = filePath
+        }
         function onErrorOccurred(message) { win.showToast("카메라 오류", message) }
     }
 
@@ -84,14 +113,24 @@ Item {
                     }
                     Text {
                         text: root.recordedVideoPath !== ""
-                              ? "녹화 완료 — 전송 전 동의를 확인하세요"
-                              : (cameraRecorder.recording ? "녹화 중" : "최대 3분 · 채점 후 영상은 즉시 폐기됩니다")
+                              ? "녹화 완료 — 원본 저장·분석 동의를 확인하세요"
+                              : (cameraRecorder.recording ? "녹화 중" : "최대 3분 · 제출 원본은 답변 기록에 저장됩니다")
                         color: Theme.muted; font.pixelSize: 11
                     }
                     Item { Layout.fillWidth: true }
                     Rectangle {
                         width: 22; height: 22; radius: 6
                         color: vClose.containsMouse ? Theme.hover : "transparent"
+                        border.color: activeFocus ? Theme.accent : "transparent"
+                        activeFocusOnTab: visible
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "영상 답변 패널 닫기"
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                root.closeVideoPanel()
+                            }
+                        }
                         Text { anchors.centerIn: parent; text: "✕"; color: Theme.muted; font.pixelSize: 11 }
                         MouseArea {
                             id: vClose
@@ -144,7 +183,20 @@ Item {
                         visible: root.recordedVideoPath === ""
                         width: recLbl.implicitWidth + 22; height: 28; radius: 8
                         color: cameraRecorder.recording ? Theme.accentSoft : Theme.raised
-                        border.color: cameraRecorder.recording ? Theme.accent : Theme.border
+                        border.color: activeFocus ? Theme.accentText
+                                                  : (cameraRecorder.recording ? Theme.accent : Theme.border)
+                        activeFocusOnTab: visible
+                        Accessible.role: Accessible.Button
+                        Accessible.name: cameraRecorder.recording ? "영상 녹화 중지" : "영상 녹화 시작"
+                        function toggleVideoRecording() {
+                            cameraRecorder.recording ? cameraRecorder.stop() : cameraRecorder.start()
+                        }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                toggleVideoRecording()
+                            }
+                        }
                         Text {
                             id: recLbl; anchors.centerIn: parent
                             text: cameraRecorder.recording ? "■ 녹화 중지" : "● 녹화 시작"
@@ -153,7 +205,7 @@ Item {
                         }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: cameraRecorder.recording ? cameraRecorder.stop() : cameraRecorder.start()
+                            onClicked: parent.toggleVideoRecording()
                         }
                     }
 
@@ -166,22 +218,33 @@ Item {
                             property bool checked: false
                             width: 16; height: 16; radius: 4
                             color: checked ? Theme.accent : Theme.raised
-                            border.color: checked ? Theme.accent : Theme.border
+                            border.color: activeFocus ? Theme.accentText : (checked ? Theme.accent : Theme.border)
+                            activeFocusOnTab: visible
+                            Accessible.role: Accessible.CheckBox
+                            Accessible.name: "영상 원본 저장 및 분석 동의"
+                            Accessible.checked: checked
+                            function toggleConsent() { checked = !checked }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    toggleConsent()
+                                }
+                            }
                             Text {
                                 anchors.centerIn: parent; visible: consentBox.checked
                                 text: "✓"; color: "white"; font.pixelSize: 10; font.bold: true
                             }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: consentBox.checked = !consentBox.checked
+                                onClicked: consentBox.toggleConsent()
                             }
                         }
                         Text {
-                            text: "영상은 채점 후 즉시 폐기됩니다 — 전송에 동의합니다"
+                            text: "원본 저장 및 분석에 동의합니다 (삭제 후 재분석 불가)"
                             color: Theme.muted; font.pixelSize: 11
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: consentBox.checked = !consentBox.checked
+                                onClicked: consentBox.toggleConsent()
                             }
                         }
                     }
@@ -192,11 +255,25 @@ Item {
                     Rectangle {
                         visible: root.recordedVideoPath !== ""
                         width: retryLbl.implicitWidth + 20; height: 28; radius: 8
-                        color: Theme.raised; border.color: Theme.border
+                        color: Theme.raised; border.color: activeFocus ? Theme.accent : Theme.border
+                        activeFocusOnTab: visible
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "영상 다시 녹화"
+                        function retryVideoRecording() {
+                            cameraRecorder.discard(root.recordedVideoPath)
+                            root.recordedVideoPath = ""
+                            consentBox.checked = false
+                        }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                retryVideoRecording()
+                            }
+                        }
                         Text { id: retryLbl; anchors.centerIn: parent; text: "다시 녹화"; color: Theme.text; font.pixelSize: 11 }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.recordedVideoPath = ""; consentBox.checked = false }
+                            onClicked: parent.retryVideoRecording()
                         }
                     }
 
@@ -204,7 +281,23 @@ Item {
                     Rectangle {
                         visible: root.recordedVideoPath !== ""
                         width: sendVideoLbl.implicitWidth + 22; height: 28; radius: 8
-                        opacity: consentBox.checked && !session.scoring ? 1 : 0.4
+                        property bool canSendVideo: consentBox.checked && !session.scoring
+                        opacity: canSendVideo ? 1 : 0.4
+                        border.color: activeFocus ? Theme.accentText : "transparent"
+                        activeFocusOnTab: visible && canSendVideo
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "영상 답변 전송"
+                        Accessible.description: canSendVideo ? "" : "영상 원본 저장 및 분석 동의가 필요합니다"
+                        function sendVideoAnswer() {
+                            if (canSendVideo)
+                                session.submitVideoAnswer(root.recordedVideoPath, consentBox.checked)
+                        }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                sendVideoAnswer()
+                            }
+                        }
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: Theme.accent2 }
                             GradientStop { position: 1.0; color: Theme.accent }
@@ -212,11 +305,8 @@ Item {
                         Text { id: sendVideoLbl; anchors.centerIn: parent; text: "↑ 영상 전송"; color: "white"; font.pixelSize: 11; font.bold: true }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            enabled: consentBox.checked && !session.scoring
-                            onClicked: {
-                                session.submitVideoAnswer(root.recordedVideoPath, consentBox.checked)
-                                root.closeVideoPanel()
-                            }
+                            enabled: parent.canSendVideo
+                            onClicked: parent.sendVideoAnswer()
                         }
                     }
                 }
@@ -255,7 +345,16 @@ Item {
                 Item { Layout.fillWidth: true }
                 Rectangle {
                     width: stopRow.implicitWidth + 20; height: 26; radius: 7
-                    color: Theme.raised; border.color: Theme.border
+                    color: Theme.raised; border.color: activeFocus ? Theme.accent : Theme.border
+                    activeFocusOnTab: visible
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "음성 녹음 정지"
+                    Keys.onPressed: (event) => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                            event.accepted = true
+                            recorder.stop()
+                        }
+                    }
                     Row {
                         id: stopRow; anchors.centerIn: parent; spacing: 6
                         Rectangle { width: 6; height: 6; radius: 1; color: Theme.text; anchors.verticalCenter: parent.verticalCenter }
@@ -305,9 +404,24 @@ Item {
                 // 마이크 (답변 모드)
                 Rectangle {
                     visible: root.mode === "answer"
+                    enabled: session.currentQid >= 0 && !session.scoring && !session.transcribing
+                    activeFocusOnTab: visible && enabled
+                    Accessible.role: Accessible.Button
+                    Accessible.name: recorder.recording ? "음성 녹음 정지" : "음성 답변 녹음 시작"
+                    Accessible.description: enabled ? "" : "답변 가능한 질문이 없거나 처리 중"
                     width: micRow.implicitWidth + 18; height: 26; radius: 7
                     color: recorder.recording ? Theme.accentSoft : "transparent"
-                    border.color: recorder.recording ? Theme.accent : Theme.border
+                    border.color: activeFocus ? Theme.accentText
+                        : (recorder.recording ? Theme.accent : Theme.border)
+                    function toggleVoiceRecording() {
+                        if (enabled) recorder.recording ? recorder.stop() : recorder.start()
+                    }
+                    Keys.onPressed: (event) => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                            event.accepted = true
+                            toggleVoiceRecording()
+                        }
+                    }
                     Row {
                         id: micRow; anchors.centerIn: parent; spacing: 6
                         Icon {
@@ -324,17 +438,39 @@ Item {
                     }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        enabled: session.currentQid >= 0
-                        onClicked: recorder.recording ? recorder.stop() : recorder.start()
+                        enabled: parent.enabled
+                        onClicked: parent.toggleVoiceRecording()
                     }
                 }
 
                 // 영상 답변 (답변 모드) — 카메라 없으면 폰 이어하기 안내로 대체
                 Rectangle {
                     visible: root.mode === "answer"
+                    enabled: session.currentQid >= 0 && !session.scoring
+                    activeFocusOnTab: visible && enabled
+                    Accessible.role: Accessible.Button
+                    Accessible.name: cameraRecorder.cameraAvailable ? "영상 답변 열기" : "폰으로 이어하기"
+                    Accessible.description: enabled ? "" : "답변 가능한 질문이 없거나 처리 중"
                     width: camRow.implicitWidth + 18; height: 26; radius: 7
                     color: root.videoPanelOpen ? Theme.accentSoft : "transparent"
-                    border.color: root.videoPanelOpen ? Theme.accent : Theme.border
+                    border.color: activeFocus ? Theme.accentText
+                        : (root.videoPanelOpen ? Theme.accent : Theme.border)
+                    function activateVideoAnswer() {
+                        if (!enabled) return
+                        if (!cameraRecorder.cameraAvailable) {
+                            jobModel.dispatchToPhone(session.sessionId)
+                            win.showToast("폰으로 이어하기", "폰 알림(최대 30초 내)을 탭하면 이 세션이 폰에서 이어집니다")
+                            return
+                        }
+                        if (root.videoPanelOpen) root.closeVideoPanel()
+                        else root.videoPanelOpen = true
+                    }
+                    Keys.onPressed: (event) => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                            event.accepted = true
+                            activateVideoAnswer()
+                        }
+                    }
                     Row {
                         id: camRow; anchors.centerIn: parent; spacing: 6
                         Icon {
@@ -352,17 +488,8 @@ Item {
                     }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        enabled: session.currentQid >= 0
-                        onClicked: {
-                            if (!cameraRecorder.cameraAvailable) {
-                                // 카메라 없는 PC — 세션을 폰으로 보내 영상 면접을 이어한다
-                                jobModel.dispatchToPhone(session.sessionId)
-                                win.showToast("폰으로 이어하기", "폰 알림(최대 30초 내)을 탭하면 이 세션이 폰에서 이어집니다")
-                                return
-                            }
-                            if (root.videoPanelOpen) root.closeVideoPanel()
-                            else root.videoPanelOpen = true
-                        }
+                        enabled: parent.enabled
+                        onClicked: parent.activateVideoAnswer()
                     }
                 }
 
@@ -398,7 +525,13 @@ Item {
                 // 전송
                 Rectangle {
                     width: 32; height: 32; radius: 9
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.Button
+                    Accessible.name: root.mode === "intake" ? "AI 자동 준비 요청 보내기" : "면접 답변 보내기"
+                    Accessible.description: sendEnabled ? "" : "보낼 내용을 입력하세요"
                     opacity: sendEnabled ? 1 : 0.35
+                    border.color: activeFocus ? Theme.accentText : "transparent"
+                    border.width: activeFocus ? 2 : 0
                     property bool sendEnabled: input.text.trim() !== ""
                                                && !session.scoring
                                                && (root.mode === "intake" || session.currentQid >= 0)
@@ -407,6 +540,12 @@ Item {
                         GradientStop { position: 1.0; color: Theme.accent }
                     }
                     Text { anchors.centerIn: parent; text: "↑"; color: "white"; font.pixelSize: 15; font.bold: true }
+                    Keys.onPressed: (event) => {
+                        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                            event.accepted = true
+                            if (sendEnabled) root.trySend()
+                        }
+                    }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         enabled: parent.sendEnabled
@@ -422,6 +561,6 @@ Item {
         if (t === "") return
         if (root.mode === "answer" && (session.currentQid < 0 || session.scoring)) return
         root.submitted(t)
-        input.text = ""
+        if (root.mode === "intake") input.text = ""
     }
 }

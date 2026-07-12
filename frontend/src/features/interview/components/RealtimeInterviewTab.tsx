@@ -37,6 +37,12 @@ import { getScoreColor } from "../types/interview";
 import { VoiceScorePanel } from "./VoiceScorePanel";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { TutorialMediaPreview } from "../tutorial/TutorialMediaPreview";
+import {
+  captureAppLockGeneration,
+  isAppLockGenerationCurrent,
+  keepStreamForAppLock,
+  useAppLockCleanup,
+} from "@/platform/appLockEvents";
 
 type Status = "idle" | "connecting" | "live" | "analyzing" | "scored" | "error";
 
@@ -123,6 +129,13 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     setMicStream(null);
   };
 
+  useAppLockCleanup(() => {
+    cleanup();
+    chunksRef.current = [];
+    setStatus("idle");
+    setError("앱 잠금으로 실시간 면접 연결을 종료했습니다.");
+  });
+
   const pushLine = useCallback((line: TranscriptLine) => {
     if (!line.text.trim()) return;
     const next = [...linesRef.current, { ...line, text: line.text.trim() }];
@@ -154,6 +167,8 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
 
   const start = async () => {
     if (!session) return;
+    const lockGeneration = captureAppLockGeneration();
+    if (lockGeneration === null) return;
     setStatus("connecting");
     setError(null);
     setSaveNote(null);
@@ -165,18 +180,28 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
     setLines([]);
     try {
       const rt = await createRealtimeSession(session.id, trial ? 1 : undefined);
+      if (!isAppLockGenerationCurrent(lockGeneration)) return;
 
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
       // 면접관 음성 수신.
       pc.ontrack = (e) => {
+        if (!isAppLockGenerationCurrent(lockGeneration)) {
+          e.streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+          e.track.stop();
+          return;
+        }
         if (audioRef.current) audioRef.current.srcObject = e.streams[0];
       };
 
       // 마이크 송신 + 온디바이스 분석(지표 샘플링 · 감정 분석용 녹음).
       // 폰 마이크가 연결돼 있으면 그 원격 스트림을 쓴다 — clone 이라 종료(cleanup)해도 원본 연결은 유지된다.
       const mic = remoteMic ? remoteMic.clone() : await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!keepStreamForAppLock(mic, lockGeneration)) {
+        pc.close();
+        return;
+      }
       micRef.current = mic;
       setMicStream(mic);
       mic.getTracks().forEach((t) => pc.addTrack(t, mic));
@@ -192,7 +217,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
         const { recorder, format } = createNegotiatedRecorder(mic, "audio");
         recordFormatRef.current = format;
         recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunksRef.current.push(e.data);
+          if (isAppLockGenerationCurrent(lockGeneration) && e.data.size > 0) chunksRef.current.push(e.data);
         };
         recorder.start();
         recorderRef.current = recorder;
@@ -202,6 +227,7 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       const dc = pc.createDataChannel("oai-events");
       dc.onmessage = (e) => handleEvent(e.data);
       dc.onopen = () => {
+        if (!isAppLockGenerationCurrent(lockGeneration)) return;
         // 사용자 음성도 텍스트로 받도록 활성화 (GA 스키마 — 구 input_audio_transcription 형식은 reject됨).
         dc.send(
           JSON.stringify({
@@ -226,7 +252,9 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
       };
 
       const offer = await pc.createOffer();
+      if (!isAppLockGenerationCurrent(lockGeneration)) { cleanup(); return; }
       await pc.setLocalDescription(offer);
+      if (!isAppLockGenerationCurrent(lockGeneration)) { cleanup(); return; }
 
       const sdpRes = await fetch(`${rt.realtimeUrl}?model=${encodeURIComponent(rt.model)}`, {
         method: "POST",
@@ -236,15 +264,19 @@ export function RealtimeInterviewTab({ session }: { session: InterviewSession | 
           "Content-Type": "application/sdp",
         },
       });
+      if (!isAppLockGenerationCurrent(lockGeneration)) { cleanup(); return; }
       if (!sdpRes.ok) {
         throw new Error(`Realtime 연결 실패 (${sdpRes.status})`);
       }
       const answerSdp = await sdpRes.text();
+      if (!isAppLockGenerationCurrent(lockGeneration)) { cleanup(); return; }
       await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+      if (!isAppLockGenerationCurrent(lockGeneration)) { cleanup(); return; }
 
       setStatus("live");
     } catch (err) {
       cleanup();
+      if (!isAppLockGenerationCurrent(lockGeneration)) return;
       setError(err instanceof Error ? err.message : "실시간 면접 연결에 실패했습니다.");
       setStatus("error");
     }

@@ -57,6 +57,8 @@ import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
+import com.careertuner.consent.domain.ConsentType;
+import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.community.search.PostHit;
 import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.jobposting.service.JobPostingService;
@@ -1036,6 +1038,7 @@ public class ChatbotController {
      * 명확구역이면 ③ 즉시 진입, 경계구역이면 확인 1턴을 띄운다. 인테이크 진입 후 sticky 유지는 다음 PR.</p>
      */
     @PostMapping("/chatbot/ask")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ChatAskResponse> ask(@RequestBody ChatAskRequest req,
                                             @AuthenticationPrincipal AuthUser authUser) {
         if (req == null || req.question() == null || req.question().isBlank()) {
@@ -1782,6 +1785,7 @@ public class ChatbotController {
      * 남은 본문을 이어 요약 에이전트에 넘긴다. 응답은 묶음 요약 평문(summaryChip=null, links/quickReplies=[]).
      */
     @PostMapping("/chatbot/summarize-posts")
+    @RequiresConsent(ConsentType.AI_DATA)
     public ApiResponse<ChatAskResponse> summarizePosts(@RequestBody ChatSummarizeRequest req,
                                                        @AuthenticationPrincipal AuthUser authUser) {
         if (req == null || req.postIds() == null || req.postIds().isEmpty()) {

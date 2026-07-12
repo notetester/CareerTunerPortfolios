@@ -137,6 +137,20 @@ export function InterviewReportTab({ session }: { session: InterviewSession | nu
                     )}
                   </div>
                   {q.score !== null && <Progress value={q.score} className="h-2" />}
+                  {(q.voiceScore != null || q.visualScore != null) && (
+                    <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                      {q.voiceScore != null && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+                          <Mic className="size-3" /> 전달력 {q.voiceScore}점
+                        </span>
+                      )}
+                      {q.visualScore != null && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-1 text-purple-700">
+                          <Video className="size-3" /> 비언어 {q.visualScore}점
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {q.feedback && <p className="text-sm leading-relaxed text-slate-500">{q.feedback}</p>}
                 </div>
               ))}
