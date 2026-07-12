@@ -11,6 +11,7 @@ import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.sms.PhoneVerificationService.OtpRequestResult;
 import com.careertuner.sms.PhoneVerificationService.OtpVerifyResult;
+import com.careertuner.sms.PhoneVerificationService.PhoneAuthConfigResult;
 import com.careertuner.sms.PhoneVerificationService.PhoneStatusResult;
 
 import jakarta.validation.Valid;
@@ -48,9 +49,28 @@ public class PhoneVerificationController {
         return ApiResponse.ok(phoneVerificationService.status(authUser.id()));
     }
 
+    /**
+     * 전화번호 인증 흐름 설정. provider="firebase" 이고 웹 config 완비면 Firebase 웹 인증 흐름을,
+     * 그 외에는 백엔드 OTP 흐름을 프런트가 선택한다. 서비스계정 등 비밀값은 내려보내지 않는다.
+     */
+    @GetMapping("/config")
+    public ApiResponse<PhoneAuthConfigResult> config() {
+        return ApiResponse.ok(phoneVerificationService.authConfig());
+    }
+
+    /** Firebase Phone Auth ID 토큰 검증. 성공 시 전화번호 인증 완료 처리. */
+    @PostMapping("/verify-firebase")
+    public ApiResponse<OtpVerifyResult> verifyFirebase(@AuthenticationPrincipal AuthUser authUser,
+                                                       @Valid @RequestBody VerifyFirebaseBody body) {
+        return ApiResponse.ok(phoneVerificationService.verifyFirebase(authUser.id(), body.idToken()));
+    }
+
     public record OtpRequestBody(@NotBlank String phone) {
     }
 
     public record OtpVerifyBody(@NotBlank String phone, @NotBlank String code) {
+    }
+
+    public record VerifyFirebaseBody(@NotBlank String idToken) {
     }
 }
