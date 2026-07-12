@@ -26,15 +26,15 @@ export function ModelPicker({
   className?: string;
 }) {
   return (
-    <label className={`inline-flex items-center gap-1.5 text-xs text-slate-500 ${className ?? ""}`}>
-      <Cpu className="size-3.5 text-slate-400" />
+    <label className={`inline-flex items-center gap-1.5 text-xs text-muted-foreground ${className ?? ""}`}>
+      <Cpu className="size-3.5 text-muted-foreground" />
       <span className="sr-only">AI 모델 선택</span>
       <select
         aria-label="AI 모델 선택"
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as AiModelChoice)}
-        className="rounded-md border border-slate-200 bg-card px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-50"
+        className="rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-foreground disabled:opacity-50"
       >
         {OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>

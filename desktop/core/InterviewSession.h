@@ -28,6 +28,8 @@ class InterviewSession : public QObject
     Q_PROPERTY(int          sessionId   READ sessionId   NOTIFY sessionChanged)
     Q_PROPERTY(QString      title       READ title       NOTIFY sessionChanged)
     Q_PROPERTY(QString      mode        READ mode        NOTIFY sessionChanged)
+    Q_PROPERTY(QString      questionGenerationModel READ questionGenerationModel
+               WRITE setQuestionGenerationModel NOTIFY questionGenerationModelChanged)
     Q_PROPERTY(QVariantList thread      READ thread      NOTIFY threadChanged)
     Q_PROPERTY(QVariantList agentSteps  READ agentSteps  NOTIFY agentStepsChanged)
     Q_PROPERTY(QVariantMap  progress    READ progress    NOTIFY progressChanged)
@@ -51,6 +53,8 @@ public:
     int sessionId() const { return m_sessionId; }
     QString title() const { return m_title; }
     QString mode() const { return m_mode; }
+    QString questionGenerationModel() const { return m_questionGenerationModel; }
+    void setQuestionGenerationModel(const QString& model);
     QVariantList thread() const { return m_thread; }
     QVariantList agentSteps() const { return m_agentSteps; }
     QVariantMap progress() const { return m_progress; }
@@ -94,6 +98,7 @@ public:
 
 signals:
     void sessionChanged();
+    void questionGenerationModelChanged();
     void threadChanged();
     void agentStepsChanged();
     void progressChanged();
@@ -173,6 +178,7 @@ private:
     int     m_caseId = -1;
     QString m_title;
     QString m_mode;
+    QString m_questionGenerationModel = QStringLiteral("AUTO");
 
     QVariantList m_thread;
     QVariantList m_agentSteps;
@@ -207,5 +213,6 @@ private:
     QString m_pendingSubmissionMediaKey;
     QString m_pendingClientSubmissionId;
     QString m_questionGenerationActionKey;
+    QString m_questionGenerationActionModel;
     QHash<qint64, QString> m_followUpActionKeys;
 };

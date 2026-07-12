@@ -14,6 +14,7 @@ import {
 import { onAppLockState } from "@/platform/appLockEvents";
 import { haptic } from "@/platform/haptics";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import {
   dispatchSessionToDesktop,
@@ -120,6 +121,7 @@ export function MobileSessionThreadPage() {
   const [items, setItems] = useState<ThreadItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [generationModel, setGenerationModel] = useState<AiModelChoice>("AUTO");
   const [draft, setDraft] = useState("");
   const draftRef = useRef("");
   const [scoring, setScoring] = useState(false);
@@ -151,6 +153,10 @@ export function MobileSessionThreadPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   draftRef.current = draft;
+
+  useEffect(() => {
+    setGenerationModel("AUTO");
+  }, [sessionId, user?.id]);
 
   const toast = useCallback((msg: string) => {
     setToastMsg(msg);
@@ -896,7 +902,7 @@ export function MobileSessionThreadPage() {
       && sessionGenerationRef.current === expectedGeneration;
     setGenerating(true);
     try {
-      await generateExpectedQuestions(sessionId, { mode: session.mode });
+      await generateExpectedQuestions(sessionId, { mode: session.mode }, generationModel);
       if (!stillCurrent()) return;
       await reload(expectedSessionId, expectedGeneration);
     } catch {
@@ -1009,6 +1015,13 @@ export function MobileSessionThreadPage() {
                 featureType="INTERVIEW_QUESTION_GEN"
                 className="mx-auto mt-3 bg-accent text-primary"
               />
+              <div className="mt-3 flex justify-center">
+                <ModelPicker
+                  value={generationModel}
+                  onChange={setGenerationModel}
+                  disabled={generating}
+                />
+              </div>
               <button
                 onClick={() => void generate()}
                 disabled={generating}
