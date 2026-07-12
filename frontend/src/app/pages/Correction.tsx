@@ -12,6 +12,7 @@ import { listApplicationCases } from "@/features/applications/api/applicationCas
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
 import { warmupCorrectionModel } from "@/features/correction/api/correctionApi";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { CorrectionHistoryList } from "@/features/correction/components/CorrectionHistoryList";
 import { CorrectionResultCard } from "@/features/correction/components/CorrectionResultCard";
 import { useCorrections } from "@/features/correction/hooks/useCorrections";
@@ -116,6 +117,7 @@ export function CorrectionPage() {
     selectHistory,
     submit,
   } = useCorrections(CORRECTION_TYPE_BY_TAB[activeTab], selectedCaseId);
+  const [correctionModel, setCorrectionModel] = useState<AiModelChoice>("AUTO");
 
   useEffect(() => {
     void warmupCorrectionModel().catch(() => {
@@ -178,7 +180,7 @@ export function CorrectionPage() {
       originalText,
       sourceType: "DIRECT_INPUT",
       questionText: active.questionLabel && draft.questionText.trim() ? draft.questionText.trim() : undefined,
-    });
+    }, correctionModel);
   };
 
   const invalidRequestedCase = !casesLoading && requestedCaseId !== null && selectedCaseId === null;
@@ -286,10 +288,13 @@ export function CorrectionPage() {
                   </Alert>
                 )}
 
-                <Button type="button" onClick={() => void handleSubmit()} disabled={submitting || !draft.originalText.trim()}>
-                  {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                  {submitting ? "첨삭 중" : `${active.title} 실행`}
-                </Button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button type="button" onClick={() => void handleSubmit()} disabled={submitting || !draft.originalText.trim()}>
+                    {submitting ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                    {submitting ? "첨삭 중" : `${active.title} 실행`}
+                  </Button>
+                  <ModelPicker value={correctionModel} onChange={setCorrectionModel} disabled={submitting} />
+                </div>
               </CardContent>
             </Card>
 

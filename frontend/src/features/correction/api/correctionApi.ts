@@ -1,4 +1,5 @@
 import { api } from "@/app/lib/api";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import type {
   CorrectionCreateRequest,
   CorrectionResponse,
@@ -12,8 +13,10 @@ export function warmupCorrectionModel() {
   });
 }
 
-export function createCorrection(request: CorrectionCreateRequest) {
-  return api<CorrectionResponse>("/corrections", {
+export function createCorrection(request: CorrectionCreateRequest, model: AiModelChoice = "AUTO") {
+  // model 은 첨삭 provider 만 선택(AUTO=현행 폴백). 선택 실패 시 하위 tier 로 폴백.
+  const query = model && model !== "AUTO" ? `?model=${model}` : "";
+  return api<CorrectionResponse>(`/corrections${query}`, {
     method: "POST",
     body: JSON.stringify(request),
   });
