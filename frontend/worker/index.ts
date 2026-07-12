@@ -175,7 +175,10 @@ async function checkAwsHealth(): Promise<{ up: boolean; upstreamStatus: number |
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
   try {
-    const upstream = await fetch(`${AWS_ORIGIN}/api/health`, {
+    // readiness(DB 왕복 포함)로 확인한다 — liveness(/api/health)는 백엔드가 DB 없이도 부팅하도록
+    // 설계돼(initialization-fail-timeout:-1) DB 가 끊겨도 UP 이라, DB-only 장애를 놓친다.
+    // ready 는 DB 불가 시 503 을 반환하므로 이 확인이 outage 폴백을 올바르게 발동시킨다.
+    const upstream = await fetch(`${AWS_ORIGIN}/api/health/ready`, {
       headers: { Accept: "application/json", [FRONTEND_CLIENT_HEADER]: "sites" },
       cache: "no-store",
       signal: controller.signal,
