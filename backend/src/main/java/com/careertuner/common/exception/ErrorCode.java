@@ -12,6 +12,8 @@ import lombok.Getter;
 public enum ErrorCode {
 
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "잘못된 요청입니다."),
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "허용되지 않는 요청 방식입니다."),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 콘텐츠 형식입니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "서비스 이용에 필요한 동의가 없습니다."),
