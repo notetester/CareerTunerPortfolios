@@ -64,5 +64,8 @@ jobs:
       - name: Test native network security boundary
         run: npm run test:native-config
 
+      - name: Test interview model retry choice
+        run: npm run test:interview-model-retry
+
       - name: Build
         run: npm run build

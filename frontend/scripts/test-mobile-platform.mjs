@@ -202,6 +202,7 @@ for (const mediaFile of directMediaFiles) {
 const mobileThreadSource = await readFile(resolve("src/features/interview/pages/MobileSessionThreadPage.tsx"), "utf8");
 const modelPickerSource = await readFile(resolve("src/app/components/ai/ModelPicker.tsx"), "utf8");
 const expectedQuestionsSource = await readFile(resolve("src/features/interview/components/ExpectedQuestionsTab.tsx"), "utf8");
+const practiceTabSource = await readFile(resolve("src/features/interview/components/PracticeTab.tsx"), "utf8");
 const appHomeSource = await readFile(resolve("src/features/onboarding/AppHome.tsx"), "utf8");
 const rootLayoutSource = await readFile(resolve("src/app/components/layout/Root.tsx"), "utf8");
 const mobileBottomNavSource = await readFile(resolve("src/app/components/layout/MobileBottomNav.tsx"), "utf8");
@@ -214,6 +215,7 @@ const consentGateSource = await readFile(resolve("src/app/auth/ConsentGate.tsx")
 const notificationStoreSource = await readFile(resolve("src/features/notification/hooks/useNotificationStore.ts"), "utf8");
 const interviewPageSource = await readFile(resolve("src/features/interview/pages/InterviewPage.tsx"), "utf8");
 const interviewApiSource = await readFile(resolve("src/features/interview/api/interviewApi.ts"), "utf8");
+const questionSingleFlightSource = await readFile(resolve("src/features/interview/api/questionGenerationSingleFlight.ts"), "utf8");
 const aiChargePreviewSource = await readFile(resolve("src/features/billing/api/aiChargePreviewApi.ts"), "utf8");
 const notificationApiSource = await readFile(resolve("src/features/notification/api/notificationApi.ts"), "utf8");
 const messengerPageSource = await readFile(resolve("src/features/collaboration/pages/MessengerPage.tsx"), "utf8");
@@ -242,6 +244,24 @@ assert(
   "모바일 전용 면접 화면도 웹과 같은 질문 생성 모델 선택을 서버에 전달해야 한다",
 );
 assert(
+  mobileThreadSource.includes("canRegenerateQuestions")
+    && mobileThreadSource.includes("선택 모델로 질문 재생성")
+    && mobileThreadSource.includes("window.confirm"),
+  "모바일은 답변 전 기존 질문을 선택한 모델로 확인 후 재생성할 수 있어야 한다",
+);
+assert(
+  practiceTabSource.includes("onGoToQuestions")
+    && practiceTabSource.includes("모델을 선택해 질문 만들기")
+    && !practiceTabSource.includes("generateExpectedQuestions(session.id"),
+  "웹 복습 탭의 빈 상태는 AUTO 생성을 우회하지 않고 모델 선택 화면으로 안내해야 한다",
+);
+assert(
+  interviewPageSource.includes('useState<AiModelChoice>("AUTO")')
+    && interviewPageSource.includes("generationModel={questionGenerationModel}")
+    && expectedQuestionsSource.includes("onGenerationModelChange"),
+  "웹 질문 생성 모델 선택은 탭을 오가도 활성 세션 동안 유지되어야 한다",
+);
+assert(
   modelPickerSource.includes("border-border")
     && modelPickerSource.includes("text-foreground")
     && modelPickerSource.includes("text-muted-foreground")
@@ -257,6 +277,19 @@ assert(
     && interviewApiSource.includes("pending.key")
     && aiChargePreviewSource.includes("requestedActionKey"),
   "질문 재생성·꼬리질문 응답 유실은 같은 과금/operation 키로 재시도하고 GET 결과를 먼저 조정해야 한다",
+);
+assert(
+  interviewApiSource.includes("PendingQuestionGenerationOperation")
+    && interviewApiSource.includes("pending.model !== selectedModel")
+    && interviewApiSource.includes("model: selectedModel")
+    && (interviewApiSource.match(/key: `AI_USAGE:\$\{createAnswerSubmissionId\(\)\}`/g)?.length ?? 0) >= 2,
+  "질문 생성은 같은 모델 재시도에만 기존 키를 유지하고 사용자가 모델을 바꾸면 새 요청 키를 사용해야 한다",
+);
+assert(
+  interviewApiSource.includes("questionGenerationSingleFlight.run")
+    && questionSingleFlightSource.includes("current.model === model")
+    && questionSingleFlightSource.includes("current.promise.then(operation, operation)"),
+  "같은 모델 중복 호출은 합치고 실행 중 다른 모델 선택은 별도 의도로 직렬화해야 한다",
 );
 assert(mobileThreadSource.includes("restoreFailedDraft"), "모바일 답변 실패 시 입력 초안 복원을 유지해야 한다");
 assert(mobileThreadSource.includes("deleteTrackedPendingInterviewFile"), "교체·이탈 시 계정 범위 registry를 통해 pending 면접 원본을 정리해야 한다");

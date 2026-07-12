@@ -8,7 +8,6 @@ import {
   Play,
   RotateCcw,
   Shuffle,
-  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
@@ -16,7 +15,6 @@ import { Card, CardContent } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import {
-  generateExpectedQuestions,
   getAgentSteps,
   listSessionQuestions,
   submitAnswer,
@@ -57,14 +55,15 @@ function shuffle<T>(arr: T[]): T[] {
  */
 export function PracticeTab({
   session,
+  onGoToQuestions,
   onGoToReport,
 }: {
   session: InterviewSession | null;
+  onGoToQuestions: () => void;
   onGoToReport: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
 
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [current, setCurrent] = useState(0);
@@ -99,19 +98,6 @@ export function PracticeTab({
       </div>
     );
   }
-
-  const handleGenerate = async () => {
-    setGenerating(true);
-    setError(null);
-    try {
-      await generateExpectedQuestions(session.id, { mode: session.mode });
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "질문 생성에 실패했습니다.");
-    } finally {
-      setGenerating(false);
-    }
-  };
 
   const start = () => {
     setQuestions((prev) => shuffle(prev));
@@ -184,16 +170,13 @@ export function PracticeTab({
         <Card className="border border-slate-200 bg-card">
           <CardContent className="space-y-4 p-10 text-center">
             <p className="text-sm text-slate-500">
-              복습 테스트를 보려면 예상 면접 질문이 필요합니다. "예상 면접 질문" 탭에서 먼저 질문을 만들어 학습하세요.
+              복습 테스트를 보려면 예상 면접 질문이 필요합니다. 모델을 직접 선택한 뒤 질문을 만들어 학습하세요.
             </p>
-            <AiChargeCostBadge featureType="INTERVIEW_QUESTION_GEN" />
             <Button
-              onClick={handleGenerate}
-              disabled={generating}
+              onClick={onGoToQuestions}
               className="gap-2 bg-primary text-primary-foreground"
             >
-              {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {generating ? "질문 생성 중…" : "질문 생성하기"}
+              모델을 선택해 질문 만들기 <ArrowRight className="size-4" />
             </Button>
           </CardContent>
         </Card>

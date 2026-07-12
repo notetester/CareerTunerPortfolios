@@ -14,6 +14,7 @@
     "test:native-config": "node --test scripts/test-capacitor-config.mjs",
     "test:deep-link-runtime": "node --test scripts/test-deep-link-runtime.mjs",
     "test:mobile-platform": "node scripts/test-mobile-platform.mjs",
+    "test:interview-model-retry": "node --experimental-strip-types --test scripts/test-question-generation-single-flight.mjs",
     "test:pending-interview-files": "node scripts/test-pending-interview-files.mjs",
     "test:pending-collaboration-files": "node scripts/test-pending-collaboration-files.mjs",
     "test:pending-auto-prep-files": "node scripts/test-pending-auto-prep-files.mjs",
