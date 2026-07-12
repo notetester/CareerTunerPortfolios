@@ -33,16 +33,35 @@ public class CertificateEvidenceService {
     private final NationalQualificationCatalogProvider catalog;
     private final NationalTechExamScheduleProvider schedule;
     private final UnifiedExamScheduleProvider unifiedSchedule;
+    private final NationalProfExamScheduleBundle profScheduleBundle;
     private final PrivateCertRegistrationProvider registration;
+    // 레거시 getJMList 라이브 폴백 사용 여부 — 기본 false(정식 미사용 확정). 원서버 복구 시 env 로 재활성.
+    private final boolean legacyGetJmListEnabled;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public CertificateEvidenceService(NationalQualificationCatalogProvider catalog,
                                       NationalTechExamScheduleProvider schedule,
                                       UnifiedExamScheduleProvider unifiedSchedule,
-                                      PrivateCertRegistrationProvider registration) {
+                                      NationalProfExamScheduleBundle profScheduleBundle,
+                                      PrivateCertRegistrationProvider registration,
+                                      @org.springframework.beans.factory.annotation.Value(
+                                          "${careertuner.certificate.data-go-kr.legacy-getjmlist-enabled:false}")
+                                      boolean legacyGetJmListEnabled) {
         this.catalog = catalog;
         this.schedule = schedule;
         this.unifiedSchedule = unifiedSchedule;
+        this.profScheduleBundle = profScheduleBundle;
         this.registration = registration;
+        this.legacyGetJmListEnabled = legacyGetJmListEnabled;
+    }
+
+    /** 테스트/구성용 — 레거시 폴백 여부를 명시. */
+    CertificateEvidenceService(NationalQualificationCatalogProvider catalog,
+                               NationalTechExamScheduleProvider schedule,
+                               UnifiedExamScheduleProvider unifiedSchedule,
+                               NationalProfExamScheduleBundle profScheduleBundle,
+                               PrivateCertRegistrationProvider registration) {
+        this(catalog, schedule, unifiedSchedule, profScheduleBundle, registration, true);
     }
 
     /** 하나라도 조회 가능한 provider 가 있는지(키 설정). false 면 근거 수집을 아예 하지 않는다. */
@@ -86,16 +105,22 @@ public class CertificateEvidenceService {
     }
 
     /**
-     * 국가기술자격 일정 조회 — 카탈로그에 검증된 jmCd 가 있으면 <b>통합 일정 API(살아 있는 호스트) 우선</b>,
-     * 실패(UPSTREAM)하거나 jmCd 미매핑 종목이면 레거시 getJMList 로 폴백(구형 호스트 복구 시 동작).
-     * 두 경로 모두 확인 실패면 정직한 UPSTREAM_UNAVAILABLE 로 남는다(날짜 미생성).
+     * 국가기술자격 일정 조회 — 카탈로그에 검증된 jmCd 가 있으면 <b>통합 일정 API(살아 있는 호스트)</b>로 조회한다.
+     * 레거시 getJMList 라이브 폴백은 <b>정식 미사용 확정(2026-07-12)</b>이라 기본 비활성이며,
+     * {@code legacy-getjmlist-enabled=true}(원서버 복구 시 env) 일 때만 통합 API 실패/미매핑 종목에서 폴백한다.
+     * 폴백이 꺼져 있고 통합으로 확인 못 하면 정직한 UPSTREAM_UNAVAILABLE 로 남는다(날짜 미생성).
      */
     private CertificateScheduleEvidence technicalSchedule(String cert, NationalQualificationCatalogEntry entry) {
         if (entry.jmCd() != null && !entry.jmCd().isBlank()) {
             CertificateScheduleEvidence unified = unifiedSchedule.lookup(entry.jmCd(), cert);
-            if (unified.status() != ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE) {
+            if (unified.status() != ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE || !legacyGetJmListEnabled) {
                 return unified;
             }
+        }
+        if (!legacyGetJmListEnabled) {
+            // 레거시 미사용 확정 — 미매핑 종목/통합 실패는 죽은 원서버를 부르지 않고 정직하게 '확인 못 함'.
+            return new CertificateScheduleEvidence(ScheduleEvidenceStatus.UPSTREAM_UNAVAILABLE,
+                    entry.jmCd(), cert, NATIONAL_SOURCE_NAME, NATIONAL_SOURCE_URL, List.of());
         }
         return schedule.lookup(cert);
     }
@@ -115,8 +140,15 @@ public class CertificateEvidenceService {
     }
 
     private CertificateEvidenceResponse professional(String cert) {
-        // 국가전문자격 시행일정 API(InquiryTestDatesNationalProfessionalQualificationSVC)가 존재하나 계열코드(seriesCd)
-        // 매핑표 미확보 + Q-Net 장애로 아직 연동하지 않았다 — 자동 확인 대상이 아니라는 표현 대신 '현재 미연동'으로 솔직하게.
+        // 공단 연간 사전공고 번들(당해연도 한정)에 있으면 PREANNOUNCED 신뢰층으로 일정 제공 — (안)임을 명시.
+        CertificateScheduleEvidence pre = profScheduleBundle.lookup(cert);
+        if (pre != null) {
+            return new CertificateEvidenceResponse(cert, CertificateKind.NATIONAL_PROFESSIONAL.name(),
+                    pre.status().name(), null,
+                    "공단 연간 사전공고(안) 기준 일정입니다. 자격별 최종 시행계획 공고로 확정되므로, 접수 전 반드시 공식 공고를 확인하세요.",
+                    pre.sourceName(), pre.sourceUrl(), pre.rounds());
+        }
+        // 번들 무매칭/연도 불일치 — '일정 없음' 단정 없이 시행기관 확인 안내(사전공고 37종 밖 자격 포함).
         return new CertificateEvidenceResponse(cert, CertificateKind.NATIONAL_PROFESSIONAL.name(),
                 ScheduleEvidenceStatus.NOT_APPLICABLE.name(), null,
                 "국가전문자격 시험일정은 아직 자동 확인이 연동되지 않아, 시행기관 공식 페이지에서 일정을 확인해야 합니다.",

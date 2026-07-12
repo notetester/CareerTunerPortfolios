@@ -50,4 +50,18 @@ class JwtTokenProviderOAuthStateTest {
         assertThat(parsed).isNotNull();
         assertThat(parsed.frontendClient()).isNull();
     }
+
+    @Test
+    void signedNativeStateBindsFixedClientAndPkceChallenge() {
+        String challenge = "A".repeat(43);
+
+        String state = provider.createNativeOauthState("KAKAO", challenge);
+        JwtTokenProvider.OauthState parsed = provider.parseOauthState(state, "KAKAO");
+
+        assertThat(parsed).isNotNull();
+        assertThat(parsed.nativeLogin()).isTrue();
+        assertThat(parsed.frontendClient()).isEqualTo("native");
+        assertThat(parsed.handoffChallenge()).isEqualTo(challenge);
+        assertThat(provider.parseOauthState(state, "NAVER")).isNull();
+    }
 }

@@ -108,7 +108,7 @@ if (flags.has("--clean")) {
   rmSync(resolve(androidDir, "build"), { recursive: true, force: true });
   rmSync(resolve(androidDir, "app", "build"), { recursive: true, force: true });
 }
-run("npx cap sync android"); // 최신 dist + 플러그인 반영
+run("npm run native:sync -- android"); // 최신 dist + 플러그인 + release-safe network profile 반영
 removeUnusedFlatDirRepositories();
 
 // --open: SDK 없이도 Android Studio 에서 빌드/설치하도록 프로젝트만 열고 종료.

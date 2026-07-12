@@ -1,25 +1,35 @@
+import { useEffect, useId, useRef } from "react";
 import { Mic, Camera, Trash2, Hand } from "lucide-react";
+import { registerNativeOverlayLifecycle } from "@/platform/nativeOverlayLifecycle";
 
 /**
  * 마이크/카메라 권한 사전 동의 바텀시트 (스토어 심사 대응).
  * OS 권한 다이얼로그 전에 왜 필요한지·데이터 처리 방식을 설명한다.
- * - 원본 즉시 폐기, 거부 시 대체 경로(텍스트 답변) 고지
+ * - 답변 원본 저장·사용자 삭제 정책, 거부 시 대체 경로(텍스트 답변) 고지
  * - 허용 시 localStorage 에 기억 → 다음부터 바로 진입
  */
 export type PermKind = "voice" | "avatar";
 
-const ACCEPT_KEY = (kind: PermKind) => `careertuner.perm.preprompt.${kind}`;
+// v2부터 녹음/녹화 원본을 답변에 저장한다. 즉시 폐기 정책에 동의했던 사용자는
+// 변경된 보관 정책을 다시 확인해야 하므로 기존 동의 키를 재사용하지 않는다.
+function acceptKey(kind: PermKind, scope: string): string | null {
+  const normalizedScope = scope.trim().toLocaleLowerCase("en-US");
+  if (!normalizedScope) return null;
+  return `careertuner.perm.preprompt.v2.${encodeURIComponent(normalizedScope)}.${kind}`;
+}
 
-export function isPrepromptAccepted(kind: PermKind): boolean {
+export function isPrepromptAccepted(kind: PermKind, scope: string): boolean {
   try {
-    return localStorage.getItem(ACCEPT_KEY(kind)) === "1";
+    const key = acceptKey(kind, scope);
+    return key !== null && localStorage.getItem(key) === "1";
   } catch {
     return false;
   }
 }
-export function markPrepromptAccepted(kind: PermKind): void {
+export function markPrepromptAccepted(kind: PermKind, scope: string): void {
   try {
-    localStorage.setItem(ACCEPT_KEY(kind), "1");
+    const key = acceptKey(kind, scope);
+    if (key) localStorage.setItem(key, "1");
   } catch {
     /* no-op */
   }
@@ -27,21 +37,103 @@ export function markPrepromptAccepted(kind: PermKind): void {
 
 export function PermissionPreprompt({
   kind,
+  scope,
   open,
   onAllow,
   onClose,
 }: {
   kind: PermKind;
+  /** 안정적인 사용자 ID 또는 정규화 가능한 이메일. 빈 값은 동의를 저장하지 않는다. */
+  scope: string;
   open: boolean;
   onAllow: () => void;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const allowingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+  const descriptionId = useId();
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+
+    returnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    allowingRef.current = false;
+    const focusFrame = window.requestAnimationFrame(() => {
+      cancelButtonRef.current?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ));
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const active = document.activeElement;
+      if (!dialog.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && (active === first || active === dialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleKeyDown, true);
+      const returnTarget = returnFocusRef.current;
+      returnFocusRef.current = null;
+      if (!allowingRef.current && returnTarget?.isConnected) returnTarget.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    return registerNativeOverlayLifecycle({
+      onBack: () => onCloseRef.current(),
+      onSuspend: () => onCloseRef.current(),
+    });
+  }, [open]);
+
   if (!open) return null;
   const voice = kind === "voice";
   return (
     <div className="fixed inset-0 z-[70]">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
+      <div aria-hidden="true" className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
         className="absolute inset-x-0 bottom-0 rounded-t-[20px] border-t border-white/10 bg-[#0a0a0c] px-5 pt-2.5 shadow-[0_-20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)]"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 24px)" }}
       >
@@ -49,10 +141,10 @@ export function PermissionPreprompt({
         <div className="mx-auto mb-3.5 flex size-[52px] items-center justify-center rounded-[14px] border border-[#5E6AD2]/30 bg-[#5E6AD2]/15 text-[#7d88de] shadow-[0_0_30px_rgba(94,106,210,0.15)]">
           {voice ? <Mic className="size-6" /> : <Camera className="size-6" />}
         </div>
-        <h3 className="text-center text-[16px] font-semibold tracking-tight text-[#EDEDEF]">
+        <h3 id={titleId} className="text-center text-[16px] font-semibold tracking-tight text-[#EDEDEF]">
           {voice ? "마이크 사용 안내" : "카메라·마이크 사용 안내"}
         </h3>
-        <p className="mt-2 mb-4 text-center text-[12.5px] leading-relaxed text-[#8A8F98]">
+        <p id={descriptionId} className="mt-2 mb-4 text-center text-[12.5px] leading-relaxed text-[#8A8F98]">
           {voice
             ? "음성 면접 답변을 녹음해 텍스트로 바꾸고 전달력을 채점합니다."
             : "화상 면접에서 표정·자세·음성을 분석해 비언어 피드백을 드립니다."}
@@ -61,9 +153,9 @@ export function PermissionPreprompt({
           <div className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.04] px-3.5 py-3">
             <Trash2 className="mt-0.5 size-4 shrink-0 text-[#8A8F98]" />
             <div>
-              <div className="text-[12.5px] font-semibold text-[#EDEDEF]">원본은 즉시 폐기</div>
+              <div className="text-[12.5px] font-semibold text-[#EDEDEF]">원본 저장과 삭제</div>
               <div className="mt-0.5 text-[11.5px] leading-relaxed text-[#8A8F98]">
-                채점 후 녹음·녹화 원본은 저장하지 않아요. 점수와 텍스트만 남습니다.
+                원본은 답변 기록에 저장되며 직접 삭제할 수 있어요. 삭제 후에는 원본 기반 재분석이 불가능합니다.
               </div>
             </div>
           </div>
@@ -79,14 +171,18 @@ export function PermissionPreprompt({
         </div>
         <div className="flex gap-2">
           <button
+            ref={cancelButtonRef}
+            type="button"
             onClick={onClose}
             className="flex-1 rounded-[10px] border border-white/[0.06] py-3 text-[13.5px] font-semibold text-[#EDEDEF]"
           >
             나중에
           </button>
           <button
+            type="button"
             onClick={() => {
-              markPrepromptAccepted(kind);
+              allowingRef.current = true;
+              markPrepromptAccepted(kind, scope);
               onAllow();
             }}
             className="flex-[2] rounded-[10px] bg-gradient-to-b from-[#7d88de] to-[#5E6AD2] py-3 text-[13.5px] font-semibold text-white shadow-[0_0_0_1px_rgba(94,106,210,0.5),0_4px_12px_rgba(94,106,210,0.3),inset_0_1px_0_rgba(255,255,255,0.2)]"

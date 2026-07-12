@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.notification.domain.Notification;
+import com.careertuner.notification.domain.NotificationDestinationPlatform;
 import com.careertuner.notification.dto.NotificationPageResponse;
 import com.careertuner.notification.dto.NotificationResponse;
 import com.careertuner.notification.event.NotificationPushEvent;
@@ -25,6 +26,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class NotificationServiceImpl implements NotificationService {
+
+    private static final String DELETED_USER_STATUS = "DELETED";
+    private static final String DELETED_USER_LABEL = "탈퇴한 사용자";
 
     /**
      * actorId 를 차단 억제 판정용으로만 쓰는 시스템 발신 type — 응답에 actor 를 노출하지 않는다.
@@ -61,23 +65,29 @@ public class NotificationServiceImpl implements NotificationService {
             notification.setSenderRelation(
                     senderRelationResolver.resolve(notification.getUserId(), notification.getActorId()));
         }
-        notificationMapper.insert(notification);
+        notification.setDestinationPlatform(notification.resolvedDestinationPlatform());
+        if (notificationMapper.insert(notification) != 1) {
+            // 탈퇴/차단 등 현재 ACTIVE가 아닌 수신자는 알림 행과 푸시 이벤트를 모두 만들지 않는다.
+            return;
+        }
         // 푸시는 알림 트랜잭션 밖에서 비동기로 발송(AFTER_COMMIT) — 커밋 지연·유령 푸시 방지.
         eventPublisher.publishEvent(new NotificationPushEvent(notification));
     }
 
     @Override
-    public NotificationPageResponse getNotifications(Long userId, int page, int size) {
+    public NotificationPageResponse getNotifications(
+            Long userId, int page, int size, NotificationDestinationPlatform platform) {
         int offset = page * size;
-        List<Notification> list = notificationMapper.findByUserId(userId, offset, size);
-        int total = notificationMapper.countByUserId(userId);
+        String platformFilter = platformFilter(platform);
+        List<Notification> list = notificationMapper.findByUserId(userId, platformFilter, offset, size);
+        int total = notificationMapper.countByUserId(userId, platformFilter);
         List<NotificationResponse> responses = list.stream().map(this::toResponse).toList();
         return new NotificationPageResponse(responses, total, page, size, offset + size < total);
     }
 
     @Override
-    public int getUnreadCount(Long userId) {
-        return notificationMapper.countUnreadByUserId(userId);
+    public int getUnreadCount(Long userId, NotificationDestinationPlatform platform) {
+        return notificationMapper.countUnreadByUserId(userId, platformFilter(platform));
     }
 
     @Override
@@ -95,8 +105,8 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    public void markAllAsRead(Long userId) {
-        notificationMapper.markAllAsRead(userId);
+    public void markAllAsRead(Long userId, NotificationDestinationPlatform platform) {
+        notificationMapper.markAllAsRead(userId, platformFilter(platform));
     }
 
     @Override
@@ -114,18 +124,19 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    public void deleteAll(Long userId) {
-        notificationMapper.deleteAllByUser(userId);
+    public void deleteAll(Long userId, NotificationDestinationPlatform platform) {
+        notificationMapper.deleteAllByUser(userId, platformFilter(platform));
     }
 
     private NotificationResponse toResponse(Notification n) {
         NotificationResponse.ActorDto actor = null;
         // 억제 판정용 actorId(ACTOR_HIDDEN_TYPES)는 응답에 내리지 않는다 — 익명 작성자 신원 보호.
         if (n.getActorId() != null && !ACTOR_HIDDEN_TYPES.contains(n.getType())) {
+            boolean deletedActor = DELETED_USER_STATUS.equals(n.getActorStatus());
             actor = new NotificationResponse.ActorDto(
-                    n.getActorId(),
-                    n.getActorName(),
-                    n.getActorAvatarUrl()
+                    deletedActor ? null : n.getActorId(),
+                    deletedActor ? DELETED_USER_LABEL : n.getActorName(),
+                    deletedActor ? null : n.getActorAvatarUrl()
             );
         }
         return new NotificationResponse(
@@ -134,6 +145,7 @@ public class NotificationServiceImpl implements NotificationService {
                 n.getTargetType(),
                 n.getTargetId(),
                 n.getSenderRelation(),
+                n.resolvedDestinationPlatform(),
                 n.getTitle(),
                 n.getMessage(),
                 n.getLink(),
@@ -141,5 +153,10 @@ public class NotificationServiceImpl implements NotificationService {
                 n.getCreatedAt(),
                 actor
         );
+    }
+
+    private static String platformFilter(NotificationDestinationPlatform platform) {
+        NotificationDestinationPlatform resolved = NotificationDestinationPlatform.resolve(platform);
+        return resolved == NotificationDestinationPlatform.ALL ? null : resolved.name();
     }
 }

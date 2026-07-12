@@ -7,6 +7,9 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 import com.careertuner.ai.common.budget.AiTotalTimeBudget;
+import com.careertuner.ai.common.model.AiProviderChain;
+import com.careertuner.ai.common.model.AiProviderTier;
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
@@ -26,6 +29,10 @@ public class CorrectionAiClient {
     /** E 첨삭 self tier 총 시간예산 DB 런타임 키. 행이 없으면 정적 self.totalTimeBudget 로 fallback(동작 불변). */
     private static final String SELF_TOTAL_TIME_BUDGET_KEY = "ai.correction.self-total-time-budget-seconds";
 
+    /** 첨삭 기본 tier 순서. AUTO 는 이 전체를, 명시 선택은 그 tier 부터 하위까지 시도한다. */
+    private static final List<AiProviderTier> DEFAULT_ORDER =
+            List.of(AiProviderTier.CAREERTUNER, AiProviderTier.CLAUDE, AiProviderTier.OPENAI);
+
     private final CorrectionAiProperties properties;
     private final OpenAiCorrectionProvider openAiProvider;
     private final SelfLlmCorrectionProvider selfLlmProvider;
@@ -41,40 +48,58 @@ public class CorrectionAiClient {
      * 않도록 {@link ErrorCode#AI_UNAVAILABLE}로 종료한다.
      */
     public CorrectionPayload correct(CorrectionCommand command) {
-        // 1) 자체모델(Self) — 활성 시 항상 시도. 실패하면 허용된 다음 tier로 넘긴다.
-        if (properties.selfProviderEnabled()) {
-            var self = properties.getSelf();
-            warmupService.awaitIfInProgress(self.getTimeout());
-            // 총 시간예산 — 0 또는 음수면 무제한(예산 OFF). self tier 의 최소 보장은 self.timeout.
-            // DB 런타임 설정 우선(관리자 콘솔 제어), 행이 없으면 정적 self.totalTimeBudget.
-            AiTotalTimeBudget budget = AiTotalTimeBudget.start(selfTotalTimeBudget(self));
-            try {
-                return invokeModel(command, self.getModel(), self.getMaxAttempts(), budget);
-            } catch (RuntimeException selfFailure) {
-                log.warn("Self correction model {} failed: {}", self.getModel(), selfFailure.getMessage());
-                if (!properties.isFallbackEnabled()) {
-                    log.warn("Correction fallback disabled after self provider failure");
-                    throw unavailable();
+        return correct(command, RequestedAiModel.AUTO);
+    }
+
+    /**
+     * 사용자가 고른 모델 tier 부터 시작하는 첨삭 폴백. {@code AUTO} 는 자체→Claude→OpenAI 현행과 동일하고,
+     * 명시 선택은 그 tier 부터 시작하되 실패 시 하위 tier 로 폴백한다. 첨삭은 무가치한 원문 복제를 성공으로
+     * 저장하지 않도록 <b>안전망 Mock 없이</b> 모든 tier 실패 시 {@link ErrorCode#AI_UNAVAILABLE}로 종료한다
+     * (화면은 정직한 오류 안내). 명시 {@code CAREERTUNER}는 전역 self 토글이 꺼져 있어도 자체모델을 시도한다.
+     * 과금·멱등·출력검증 계약은 어느 tier 를 타든 동일하다.
+     */
+    public CorrectionPayload correct(CorrectionCommand command, RequestedAiModel requestedModel) {
+        boolean explicitSelf = requestedModel == RequestedAiModel.CAREERTUNER;
+        for (AiProviderTier tier : AiProviderChain.startingFrom(requestedModel, DEFAULT_ORDER)) {
+            switch (tier) {
+                case CAREERTUNER -> {
+                    // 자체모델(Self) — 활성이거나(명시 선택 + 엔드포인트 설정 시) 시도. 실패하면 다음 tier 로.
+                    // 명시 CAREERTUNER 는 전역 self 토글을 우회하되, 엔드포인트(self.configured)가 있어야 시도한다.
+                    if (properties.selfProviderEnabled() || (explicitSelf && properties.getSelf().configured())) {
+                        var self = properties.getSelf();
+                        warmupService.awaitIfInProgress(self.getTimeout());
+                        // 총 시간예산 — 0/음수면 무제한. DB 런타임 우선, 행 없으면 정적 self.totalTimeBudget.
+                        AiTotalTimeBudget budget = AiTotalTimeBudget.start(selfTotalTimeBudget(self));
+                        try {
+                            return invokeModel(command, self.getModel(), self.getMaxAttempts(), budget);
+                        } catch (RuntimeException selfFailure) {
+                            log.warn("Self correction model {} failed: {}", self.getModel(), selfFailure.getMessage());
+                            if (!properties.isFallbackEnabled()) {
+                                log.warn("Correction fallback disabled after self provider failure");
+                                throw unavailable();
+                            }
+                        }
+                    }
+                }
+                case CLAUDE -> {
+                    if (anthropicProvider.configured()) {
+                        try {
+                            return anthropicProvider.correct(command);
+                        } catch (RuntimeException anthropicFailure) {
+                            log.warn("Anthropic correction fallback failed: {}", anthropicFailure.getMessage());
+                        }
+                    } else {
+                        log.warn("Anthropic correction fallback is not configured. Skipping to OpenAI.");
+                    }
+                }
+                case OPENAI -> {
+                    try {
+                        return openAiProvider.correct(command);
+                    } catch (RuntimeException openAiFailure) {
+                        log.warn("OpenAI correction fallback failed: {}", openAiFailure.getMessage());
+                    }
                 }
             }
-        }
-
-        // 2) Claude tier — 설정 시 항상 시도.
-        if (anthropicProvider.configured()) {
-            try {
-                return anthropicProvider.correct(command);
-            } catch (RuntimeException anthropicFailure) {
-                log.warn("Anthropic correction fallback failed: {}", anthropicFailure.getMessage());
-            }
-        } else {
-            log.warn("Anthropic correction fallback is not configured. Skipping to OpenAI.");
-        }
-
-        // 3) OpenAI tier — 항상 시도하고, 실패하면 무과금 오류로 종료한다.
-        try {
-            return openAiProvider.correct(command);
-        } catch (RuntimeException openAiFailure) {
-            log.warn("OpenAI correction fallback failed: {}", openAiFailure.getMessage());
         }
 
         throw unavailable();

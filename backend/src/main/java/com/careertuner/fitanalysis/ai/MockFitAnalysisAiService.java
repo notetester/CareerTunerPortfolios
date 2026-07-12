@@ -21,12 +21,25 @@ import com.careertuner.fitanalysis.certificate.CertificateNeedGate;
 @Service
 public class MockFitAnalysisAiService implements FitAnalysisAiService {
 
+    private final SkillAliasCatalog skillAliasCatalog;
+
+    public MockFitAnalysisAiService(SkillAliasCatalog skillAliasCatalog) {
+        this.skillAliasCatalog = skillAliasCatalog;
+    }
+
+    /** 테스트/폴백용 — 기본 별칭 리소스 로드. */
+    public MockFitAnalysisAiService() {
+        this(new SkillAliasCatalog("cert/skill-aliases.csv"));
+    }
+
     @Override
     public FitAnalysisAiResult generate(FitAnalysisAiCommand command) {
         List<String> required = clean(command.requiredSkills());
         List<String> preferred = clean(command.preferredSkills());
         List<String> profile = clean(command.profileSkills());
         Set<String> profileLower = lower(profile);
+        // 동의어 정규형 집합 — substring 매칭이 놓치는 약어/표기 차이(JS↔JavaScript)를 가산적으로 보완.
+        Set<String> profileCanonical = canonicalSet(profile);
 
         List<String> matched = new ArrayList<>();
         List<String> missing = new ArrayList<>();
@@ -39,13 +52,13 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             missing.addAll(required);
         } else {
             for (String skill : required) {
-                (profileLower.contains(skill.toLowerCase(Locale.ROOT)) ? matched : missing).add(skill);
+                (has(profileLower, profileCanonical, skill) ? matched : missing).add(skill);
             }
         }
 
         // 우대 역량 중 미보유는 장기 보완 항목으로 분류한다.
         for (String skill : preferred) {
-            if (profileLower.contains(skill.toLowerCase(Locale.ROOT))) {
+            if (has(profileLower, profileCanonical, skill)) {
                 if (!containsIgnoreCase(matched, skill)) {
                     matched.add(skill);
                 }
@@ -54,7 +67,7 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             }
         }
 
-        int fitScore = score(required, preferred, profileLower, profile.isEmpty());
+        int fitScore = score(required, preferred, profileLower, profileCanonical, profile.isEmpty());
         List<String> study = missing.stream().limit(4).map(skill -> skill + " 집중 학습").toList();
         // 자격증은 보조 전략 — cert-need-gate 가 켜질 때만 추천을 생성한다. 필요 신호가 없으면 빈 목록(NOT_NEEDED)이라
         // 일반 직무에 자격증이 무분별하게 붙지 않는다(3B 프롬프트 과대반영 차단). userRequested(학습/자격증 탭 요청)면
@@ -72,7 +85,7 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
         List<FitCertificateRecommendation> certificateRecommendations =
                 certificateRecommendations(certificates, command.desiredJob(), certGate.status());
         List<String> strategyActions = strategyActions(matched, gapRecommendations, fitScore);
-        List<FitConditionMatch> conditionMatrix = conditionMatrix(required, preferred, profileLower);
+        List<FitConditionMatch> conditionMatrix = conditionMatrix(required, preferred, profileLower, profileCanonical);
         FitApplyDecision applyDecision = applyDecision(fitScore, matched, gapRecommendations);
 
         return new FitAnalysisAiResult(
@@ -99,20 +112,22 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
      * 요구조건-스펙 비교 매트릭스. 필수/우대 역량을 행으로 두고 보유 여부와 근거를 판정한다.
      * 부분 일치(예: "AWS EC2" 보유, 조건 "AWS")는 PARTIAL로 분류한다.
      */
-    private List<FitConditionMatch> conditionMatrix(List<String> required, List<String> preferred, Set<String> profileLower) {
+    private List<FitConditionMatch> conditionMatrix(List<String> required, List<String> preferred,
+                                                    Set<String> profileLower, Set<String> profileCanonical) {
         List<FitConditionMatch> rows = new ArrayList<>();
         for (String skill : required) {
-            rows.add(conditionRow(skill, "REQUIRED", profileLower));
+            rows.add(conditionRow(skill, "REQUIRED", profileLower, profileCanonical));
         }
         for (String skill : preferred) {
-            rows.add(conditionRow(skill, "PREFERRED", profileLower));
+            rows.add(conditionRow(skill, "PREFERRED", profileLower, profileCanonical));
         }
         return rows;
     }
 
-    private FitConditionMatch conditionRow(String skill, String conditionType, Set<String> profileLower) {
+    private FitConditionMatch conditionRow(String skill, String conditionType,
+                                           Set<String> profileLower, Set<String> profileCanonical) {
         String lower = skill.toLowerCase(Locale.ROOT);
-        if (profileLower.contains(lower)) {
+        if (has(profileLower, profileCanonical, skill)) {
             return new FitConditionMatch(skill, conditionType, "MET", "프로필 보유 기술에서 동일 항목이 확인됩니다.");
         }
         boolean partial = profileLower.stream()
@@ -273,6 +288,7 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
     private int score(List<String> required,
                       List<String> preferred,
                       Set<String> profileLower,
+                      Set<String> profileCanonical,
                       boolean profileEmpty) {
         if (required.isEmpty()) {
             return 0;
@@ -281,10 +297,10 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             return 10;
         }
         long matchedRequired = required.stream()
-                .filter(skill -> profileLower.contains(skill.toLowerCase(Locale.ROOT)))
+                .filter(skill -> has(profileLower, profileCanonical, skill))
                 .count();
         long matchedPreferred = preferred.stream()
-                .filter(skill -> profileLower.contains(skill.toLowerCase(Locale.ROOT)))
+                .filter(skill -> has(profileLower, profileCanonical, skill))
                 .count();
         double requiredRatio = (double) matchedRequired / required.size();
         double preferredRatio = preferred.isEmpty() ? 0 : (double) matchedPreferred / preferred.size();
@@ -332,6 +348,24 @@ public class MockFitAnalysisAiService implements FitAnalysisAiService {
             }
         }
         return new ArrayList<>(result.values());
+    }
+
+    /** 보유 스킬의 정규형 집합. */
+    private Set<String> canonicalSet(List<String> profile) {
+        Set<String> result = new LinkedHashSet<>();
+        for (String value : profile) {
+            String canonical = skillAliasCatalog.canonical(value);
+            if (!canonical.isEmpty()) {
+                result.add(canonical);
+            }
+        }
+        return result;
+    }
+
+    /** 보유 판정 — 기존 substring(하위호환) 또는 동의어 정규형 일치(약어/표기차 보완). 가산적. */
+    private boolean has(Set<String> profileLower, Set<String> profileCanonical, String skill) {
+        return profileLower.contains(skill.toLowerCase(Locale.ROOT))
+                || profileCanonical.contains(skillAliasCatalog.canonical(skill));
     }
 
     private Set<String> lower(List<String> values) {

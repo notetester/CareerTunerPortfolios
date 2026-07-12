@@ -2,6 +2,8 @@
 #include <QStandardPaths>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QTimer>
 #include <QMediaFormat>
 #include <QUrl>
@@ -24,27 +26,66 @@ VoiceRecorder::VoiceRecorder(QObject* parent) : QObject(parent)
     });
     connect(&m_recorder, &QMediaRecorder::errorOccurred, this,
         [this](QMediaRecorder::Error, const QString& msg) {
+            const QString failedPath = m_outPath;
+            m_outPath.clear();
             m_recording = false;
             emit recordingChanged();
+            discardManagedRecording(failedPath);
             emit errorOccurred(msg);
         });
     connect(&m_recorder, &QMediaRecorder::recorderStateChanged, this,
         [this](QMediaRecorder::RecorderState st) {
-            if (st == QMediaRecorder::StoppedState && m_recording) {
-                m_recording = false;
-                emit recordingChanged();
-                if (!m_cancelled)
-                    emit recorded(m_outPath);
-            }
+            if (st == QMediaRecorder::StoppedState) finishRecording();
         });
+}
+
+QString VoiceRecorder::recordingDir()
+{
+    return QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+                           + QStringLiteral("/careertuner"));
+}
+
+bool VoiceRecorder::discardManagedRecording(const QString& filePath)
+{
+    if (filePath.isEmpty()) return true;
+
+    const QFileInfo info(filePath);
+    const Qt::CaseSensitivity pathCase =
+#ifdef Q_OS_WIN
+        Qt::CaseInsensitive;
+#else
+        Qt::CaseSensitive;
+#endif
+    if (QDir::cleanPath(info.absolutePath()).compare(recordingDir(), pathCase) != 0
+        || !info.fileName().startsWith(QStringLiteral("answer-"))
+        || info.suffix().compare(QStringLiteral("m4a"), Qt::CaseInsensitive) != 0) {
+        return false;
+    }
+    const QString absolutePath = QDir::cleanPath(info.absoluteFilePath());
+    return !QFile::exists(absolutePath) || QFile::remove(absolutePath);
+}
+
+void VoiceRecorder::finishRecording()
+{
+    if (!m_recording) return;
+
+    const QString completedPath = m_outPath;
+    const bool cancelled = m_cancelled;
+    m_outPath.clear();
+    m_recording = false;
+    emit recordingChanged();
+
+    if (cancelled)
+        discardManagedRecording(completedPath);
+    else
+        emit recorded(completedPath);
 }
 
 void VoiceRecorder::start()
 {
     if (m_recording) return;
 
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
-                        + QStringLiteral("/careertuner");
+    const QString dir = recordingDir();
     QDir().mkpath(dir);
     m_outPath = dir + QStringLiteral("/answer-%1.m4a")
                           .arg(QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss"));
@@ -63,6 +104,8 @@ void VoiceRecorder::stop()
 {
     if (!m_recording) return;
     m_recorder.stop(); // StoppedState 시그널에서 recorded() 발행
+    if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
+        finishRecording();
 }
 
 void VoiceRecorder::cancel()
@@ -70,4 +113,6 @@ void VoiceRecorder::cancel()
     if (!m_recording) return;
     m_cancelled = true;
     m_recorder.stop();
+    if (m_recorder.recorderState() == QMediaRecorder::StoppedState)
+        finishRecording();
 }

@@ -95,6 +95,20 @@ public class NationalQualificationOfflineCatalog {
                 NationalQualificationCatalogStatus.FOUND, certName, entry, sourceName, sourceUrl);
     }
 
+    /** 사용자 대면 검색용 부분일치(정규화 contains) — 스냅샷 미로드 시 빈 목록. */
+    public java.util.List<NationalQualificationCatalogEntry> search(String query, int limit) {
+        if (query == null || query.isBlank() || !available()) {
+            return java.util.List.of();
+        }
+        String needle = QnetXmlSupport.norm(query);
+        return byNormalizedName.entrySet().stream()
+                .filter(entry -> entry.getKey().contains(needle))
+                .map(Map.Entry::getValue)
+                .sorted(java.util.Comparator.comparing(NationalQualificationCatalogEntry::certName))
+                .limit(Math.max(1, Math.min(30, limit)))
+                .toList();
+    }
+
     /** 스냅샷 헤더 고정값 — 오인코딩(CP949 등)·다른 파일 오배치를 로드 시점에 즉시 걸러낸다. */
     static final String EXPECTED_HEADER = "자격구분코드,자격구분명,계열명,종목명";
     /**

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified   TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '이메일 인증 완료 여부',
     user_type        VARCHAR(20)  NOT NULL DEFAULT 'JOB_SEEKER', -- JOB_SEEKER/CAREER_CHANGER/EXPERIENCED
     role             VARCHAR(20)  NOT NULL DEFAULT 'USER' COMMENT '회원 권한. USER/ADMIN/SUPER_ADMIN',
-    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT '회원 상태. ACTIVE/DORMANT/BLOCKED/DELETED',
+    status           VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' COMMENT '회원 상태. ACTIVE/DORMANT/BLOCKED/DELETED. DELETED는 행/FK를 보존하고 공개 식별자·로그인 수단을 tombstone 처리',
     plan             VARCHAR(20)  NOT NULL DEFAULT 'FREE',       -- FREE/BASIC/PRO/PREMIUM
     credit           INT          NOT NULL DEFAULT 0,
     activity_point   INT          NOT NULL DEFAULT 0 COMMENT '누적 활동 포인트(리워드 레벨 산정용 XP)',
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS users (
     KEY idx_users_status (status),
     KEY idx_users_status_changed_by (status_changed_by),
     CONSTRAINT fk_users_status_changed_by FOREIGN KEY (status_changed_by) REFERENCES users (id) ON DELETE SET NULL
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 기본 정보와 로그인/권한/상태 관리 정보';
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '회원 기본 정보와 로그인/권한/상태 관리. 탈퇴 시 행은 보존하고 식별정보·인증수단은 비식별화';
 
 -- 한 유저가 여러 소셜 계정 연동 가능 (provider별 1개)
 CREATE TABLE IF NOT EXISTS user_social (
@@ -113,6 +113,24 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     KEY idx_refresh_token_user (user_id),
     CONSTRAINT fk_refresh_token_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'JWT refresh token 저장 및 세션 감사 정보';
+
+-- 네이티브 소셜 제공자 응답을 앱의 PKCE verifier와 일회성으로 교환한다.
+-- verifier 검증 전에는 users/user_social을 만들지 않고, handoff 원문도 DB에 저장하지 않는다.
+CREATE TABLE IF NOT EXISTS native_auth_handoff (
+    id                BIGINT       NOT NULL AUTO_INCREMENT,
+    provider          VARCHAR(20)  NOT NULL COMMENT 'KAKAO/NAVER/GOOGLE',
+    provider_user_id  VARCHAR(255) NOT NULL COMMENT '제공자가 발급한 고유 사용자 ID',
+    email             VARCHAR(255) NULL COMMENT '제공자가 반환한 이메일. 미제공 시 NULL',
+    email_verified    TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '제공자가 명시적으로 보증한 이메일 검증 여부',
+    display_name      VARCHAR(100) NULL COMMENT '제공자가 반환한 이름. 미제공 시 NULL',
+    code_hash         CHAR(43) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'handoffCode의 SHA-256 base64url hash',
+    handoff_challenge CHAR(43) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'SHA-256(handoffVerifier)의 base64url 값',
+    expired_at        DATETIME     NOT NULL COMMENT '교환 만료 시각(발급 후 3분)',
+    created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_native_auth_handoff_code_hash (code_hash),
+    KEY idx_native_auth_handoff_expiry (expired_at)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = '네이티브 OAuth PKCE 일회성 토큰 교환';
 
 -- 로그인/로그아웃/토큰 갱신 감사 로그.
 -- user_id는 실패 로그인처럼 사용자를 특정하지 못하는 이벤트를 위해 NULL 허용.
@@ -197,6 +215,30 @@ CREATE TABLE IF NOT EXISTS user_profile (
     PRIMARY KEY (id),
     UNIQUE KEY uk_user_profile_user (user_id),
     CONSTRAINT fk_user_profile_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- 프로필 AI 분석 산출물(A영역) 영속 — 사용자 조회 + C 적합도 입력 창구. feature_type 별 최신 1행 upsert.
+CREATE TABLE IF NOT EXISTS profile_ai_analysis (
+    id                 BIGINT NOT NULL AUTO_INCREMENT,
+    user_id            BIGINT NOT NULL,
+    feature_type       VARCHAR(40) NOT NULL,   -- PROFILE_SUMMARY / PROFILE_SKILL_EXTRACT / PROFILE_COMPLETENESS
+    summary            MEDIUMTEXT NULL,
+    strengths          JSON NULL,
+    gaps               JSON NULL,
+    recommendations    JSON NULL,
+    extracted_skills   JSON NULL,
+    criteria           JSON NULL,
+    job_family         VARCHAR(60) NULL,
+    completeness_score INT NULL,
+    ai_score           INT NULL,
+    quality_warnings   JSON NULL,
+    model              VARCHAR(120) NULL,
+    status             VARCHAR(20) NULL,
+    created_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_profile_ai_user_feature (user_id, feature_type),
+    CONSTRAINT fk_profile_ai_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- =====================================================================
@@ -713,17 +755,36 @@ CREATE TABLE IF NOT EXISTS interview_question (
     CONSTRAINT fk_interview_question_parent FOREIGN KEY (parent_question_id) REFERENCES interview_question (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
-CREATE TABLE IF NOT EXISTS interview_answer (
-    id              BIGINT NOT NULL AUTO_INCREMENT,
-    question_id     BIGINT NOT NULL,
-    answer_text     MEDIUMTEXT NULL,
-    audio_url       VARCHAR(512) NULL,
-    video_url       VARCHAR(512) NULL,
-    score           INT NULL,
-    feedback        MEDIUMTEXT NULL,
-    improved_answer MEDIUMTEXT NULL,
-    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+-- 질문 생성/재생성과 꼬리질문 생성의 분산 멱등 완료 표식.
+-- 서비스 트랜잭션 안에서 먼저 INSERT되지만 커밋된 행만 외부에 보이므로,
+-- 같은 operation_key 재요청은 모델 호출·사용량 기록·정산 없이 현재 결과를 재사용한다.
+CREATE TABLE IF NOT EXISTS interview_ai_operation (
+    id            BIGINT NOT NULL AUTO_INCREMENT,
+    user_id       BIGINT NOT NULL,
+    feature_type  VARCHAR(60) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    target_id     BIGINT NOT NULL,
+    operation_key VARCHAR(120) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
+    UNIQUE KEY uk_interview_ai_operation (user_id, feature_type, target_id, operation_key),
+    KEY idx_interview_ai_operation_target (feature_type, target_id, created_at),
+    CONSTRAINT fk_interview_ai_operation_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS interview_answer (
+    id                   BIGINT NOT NULL AUTO_INCREMENT,
+    question_id          BIGINT NOT NULL,
+    client_submission_id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    submission_status    ENUM('PENDING', 'COMPLETED', 'FAILED') NOT NULL DEFAULT 'COMPLETED',
+    answer_text          MEDIUMTEXT NULL,
+    audio_url            VARCHAR(512) NULL,
+    video_url            VARCHAR(512) NULL,
+    score                INT NULL,
+    feedback             MEDIUMTEXT NULL,
+    improved_answer      MEDIUMTEXT NULL,
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_interview_answer_question_submission (question_id, client_submission_id),
     KEY idx_interview_answer_question (question_id),
     CONSTRAINT fk_interview_answer_question FOREIGN KEY (question_id) REFERENCES interview_question (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
@@ -1998,6 +2059,7 @@ CREATE TABLE IF NOT EXISTS notification (
     target_type VARCHAR(20)  NULL,
     target_id   BIGINT       NULL,
     sender_relation VARCHAR(12) NULL COMMENT '발신자 관계. stranger/friend/company/operator (관계 기반 알림에만)',
+    destination_platform ENUM('ALL', 'MOBILE', 'DESKTOP', 'WEB') NOT NULL DEFAULT 'ALL' COMMENT '알림 노출 플랫폼. ALL은 모든 플랫폼',
     title       VARCHAR(255) NOT NULL,
     message     TEXT         NULL,
     link        VARCHAR(512) NULL,
@@ -2006,6 +2068,7 @@ CREATE TABLE IF NOT EXISTS notification (
     created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     KEY idx_notification_user_unread (user_id, is_read, created_at DESC),
+    KEY idx_notification_user_platform_unread (user_id, destination_platform, is_read, created_at DESC),
     KEY idx_notification_user_type (user_id, type, created_at DESC),
     KEY idx_notification_target (target_type, target_id),
     CONSTRAINT fk_notification_user  FOREIGN KEY (user_id)  REFERENCES users (id) ON DELETE CASCADE,
@@ -3039,6 +3102,8 @@ CREATE TABLE IF NOT EXISTS `enterprise_job_posting` (
 CREATE TABLE IF NOT EXISTS `interview_media_analysis` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `interview_session_id` bigint NOT NULL,
+  `question_id` bigint DEFAULT NULL,
+  `answer_id` bigint DEFAULT NULL,
   `kind` varchar(20) NOT NULL,
   `transcript` json DEFAULT NULL,
   `metrics` json DEFAULT NULL,
@@ -3047,7 +3112,11 @@ CREATE TABLE IF NOT EXISTS `interview_media_analysis` (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_media_analysis_session` (`interview_session_id`),
-  CONSTRAINT `fk_media_analysis_session` FOREIGN KEY (`interview_session_id`) REFERENCES `interview_session` (`id`) ON DELETE CASCADE
+  KEY `idx_media_analysis_question` (`question_id`),
+  UNIQUE KEY `uk_media_analysis_answer_kind` (`answer_id`,`kind`),
+  CONSTRAINT `fk_media_analysis_session` FOREIGN KEY (`interview_session_id`) REFERENCES `interview_session` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_media_analysis_question` FOREIGN KEY (`question_id`) REFERENCES `interview_question` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_media_analysis_answer` FOREIGN KEY (`answer_id`) REFERENCES `interview_answer` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE IF NOT EXISTS `legal_clause` (
   `id` bigint NOT NULL AUTO_INCREMENT,

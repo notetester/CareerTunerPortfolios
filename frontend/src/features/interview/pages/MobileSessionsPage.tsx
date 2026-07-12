@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/app/auth/AuthContext";
 import { haptic } from "@/platform/haptics";
 import { useApplicationCases } from "@/features/applications/hooks/useApplicationCases";
 import { listInterviewSessions } from "../api/interviewApi";
+import { getInterviewSessionListState } from "../lib/sessionListState";
 import { getInterviewModeLabel } from "../types/interview";
 import type { InterviewSession } from "../types/interview";
 
@@ -14,10 +15,15 @@ import type { InterviewSession } from "../types/interview";
  */
 export function MobileSessionsPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading } = useAuth();
-  const cases = useApplicationCases(isAuthenticated);
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const cases = useApplicationCases(isAuthenticated, false, user?.id ?? null);
   const [sessions, setSessions] = useState<InterviewSession[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useLayoutEffect(() => {
+    setSessions([]);
+    setLoading(true);
+  }, [user?.id]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -35,7 +41,7 @@ export function MobileSessionsPage() {
         setLoading(false);
       }
     })();
-  }, [authLoading, isAuthenticated, navigate]);
+  }, [authLoading, isAuthenticated, navigate, user?.id]);
 
   const caseLabel = useMemo(() => {
     const map = new Map(cases.applicationCases.map((c) => [c.id, `${c.companyName} · ${c.jobTitle}`]));
@@ -56,7 +62,7 @@ export function MobileSessionsPage() {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-[#050506] text-[#EDEDEF]">
+    <div className="fixed inset-0 z-40 flex flex-col bg-background text-foreground">
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -65,7 +71,7 @@ export function MobileSessionsPage() {
         }}
       />
       <div
-        className="relative flex h-[52px] shrink-0 items-center gap-2 border-b border-white/[0.06] px-4"
+        className="relative flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-4"
         style={{ marginTop: "env(safe-area-inset-top)" }}
       >
         <span className="text-[15px] font-semibold tracking-tight">세션</span>
@@ -85,20 +91,20 @@ export function MobileSessionsPage() {
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 64px)" }}
       >
         {loading && (
-          <div className="flex items-center justify-center gap-3 py-14 text-[13px] text-[#8A8F98]">
-            <span className="size-4 animate-spin rounded-full border-2 border-white/10 border-t-[#5E6AD2]" />
+          <div className="flex items-center justify-center gap-3 py-14 text-[13px] text-muted-foreground">
+            <span className="size-4 animate-spin rounded-full border-2 border-border border-t-primary" />
             불러오는 중
           </div>
         )}
         {!loading && sessions.length === 0 && (
-          <div className="px-8 py-16 text-center text-[13px] leading-relaxed text-[#8A8F98]">
+          <div className="px-8 py-16 text-center text-[13px] leading-relaxed text-muted-foreground">
             아직 세션이 없습니다.
             <br />새 면접 준비로 시작해 보세요.
           </div>
         )}
         <div className="mx-auto max-w-xl px-2 pt-2">
           {sessions.map((s) => {
-            const done = s.endedAt != null;
+            const state = getInterviewSessionListState(s);
             return (
               <button
                 key={s.id}
@@ -106,20 +112,24 @@ export function MobileSessionsPage() {
                   haptic("light");
                   navigate(`/m/session/${s.id}`);
                 }}
-                className="flex w-full flex-col gap-1 rounded-xl border border-transparent px-3.5 py-3 text-left transition-colors hover:border-white/[0.06] hover:bg-white/[0.04]"
+                className="flex w-full flex-col gap-1 rounded-xl border border-transparent px-3.5 py-3 text-left transition-colors hover:border-border hover:bg-accent"
               >
                 <span className="truncate text-[13.5px] font-semibold tracking-tight">
                   {caseLabel(s.applicationCaseId)}
                 </span>
-                <span className="flex items-center gap-2 text-[11.5px] text-[#8A8F98]">
+                <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
                   <span
                     className={`size-1.5 rounded-full ${
-                      done ? "bg-[#4cc38a]" : "bg-[#d6a24c] shadow-[0_0_8px_rgba(214,162,76,0.5)]"
+                      state.kind === "DONE"
+                        ? "bg-[#4cc38a]"
+                        : state.kind === "REPORTED"
+                          ? "bg-[#58a6ff]"
+                          : "bg-[#d6a24c] shadow-[0_0_8px_rgba(214,162,76,0.5)]"
                     }`}
                   />
                   {getInterviewModeLabel(s.mode)}
                   {" · "}
-                  {done ? "완료" : "진행 중"}
+                  {state.label}
                   {s.avgScore != null && ` · ${s.avgScore}점`}
                   {" · "}
                   {relTime(s.lastResumedAt ?? s.createdAt)}

@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,7 @@ import com.careertuner.billing.dto.BenefitConsumeResult;
 import com.careertuner.billing.dto.BenefitTransactionResponse;
 import com.careertuner.billing.dto.MyBillingResponse;
 import com.careertuner.billing.dto.MyBenefitsResponse;
+import com.careertuner.billing.dto.PlanRecommendationResponse;
 import com.careertuner.billing.dto.SubscriptionBenefitPolicyResponse;
 import com.careertuner.billing.dto.SubscriptionPlanResponse;
 import com.careertuner.billing.dto.UserBenefitBalanceResponse;
@@ -59,6 +61,13 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     private static final String REF_BENEFIT_BALANCE = "BENEFIT_BALANCE";
     private static final String SOURCE_TYPE_PLAN = "PLAN";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+    // 사용량 추천 임계값(보수적 — 과장/강요 금지, 애매하면 KEEP). 이번 달 사용 N회 이상이면 상위 요금제 검토,
+    // 크레딧이 바닥나고(≤) 사용이 꾸준하면(≥) 충전 검토. 그 외엔 현 요금제 유지 권고.
+    private static final int HEAVY_USAGE_THRESHOLD = 15;
+    private static final int ACTIVE_USAGE_THRESHOLD = 3;
+    private static final int LOW_CREDIT_THRESHOLD = 5;
+    private static final int MIN_CREDIT_PACK = 30;
 
     private final BillingMapper billingMapper;
     private final BillingPolicyService billingPolicyService;
@@ -123,6 +132,85 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
     public List<UsageRow> getMonthlyUsage(Long userId) {
         LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
         return billingMapper.monthlyUsage(userId, monthStart);
+    }
+
+    /**
+     * 사용량 기반 요금제/크레딧 추천 — <b>결정론(규칙 기반), LLM 미호출</b>. 이번 달 실사용량·보유 크레딧·현재
+     * 요금제만으로 판단한다. 과사용이 아니면 기본값은 KEEP(과장·강요 금지). 판단값은 규칙이 소유한다.
+     */
+    @Override
+    public PlanRecommendationResponse recommendPlan(Long userId) {
+        List<UsageRow> usage = getMonthlyUsage(userId); // monthlyUsage 는 used DESC 정렬
+        int monthlyCalls = usage.stream().mapToInt(UsageRow::getUsed).sum();
+        int monthlyCredits = usage.stream().mapToInt(UsageRow::getCreditUsed).sum();
+        String topFeature = usage.isEmpty() ? null : usage.get(0).getFeatureType();
+
+        MyBillingResponse billing = getMyBilling(userId);
+        int creditBalance = billing.creditBalance();
+
+        List<SubscriptionPlanResponse> plans = listPlans().stream()
+                .sorted(Comparator.comparingInt(SubscriptionPlanResponse::monthlyPrice))
+                .toList();
+        int currentPrice = plans.stream()
+                .filter(p -> p.code().equalsIgnoreCase(billing.currentPlanCode()))
+                .mapToInt(SubscriptionPlanResponse::monthlyPrice)
+                .findFirst()
+                .orElse(0);
+        SubscriptionPlanResponse nextPlan = plans.stream()
+                .filter(p -> p.monthlyPrice() > currentPrice)
+                .findFirst()
+                .orElse(null);
+
+        List<String> reasons = new ArrayList<>();
+        reasons.add("이번 달 AI 사용 %d회".formatted(monthlyCalls));
+        reasons.add("보유 크레딧 %d개".formatted(creditBalance));
+
+        // 1) 과사용 + 상위 요금제 존재 → 업그레이드 검토(회당 비용 절감 관점).
+        if (monthlyCalls >= HEAVY_USAGE_THRESHOLD && nextPlan != null) {
+            reasons.add("이번 달 사용이 기준(%d회) 이상".formatted(HEAVY_USAGE_THRESHOLD));
+            String headline = "이번 달 AI 기능을 %d회 사용하셨어요. %s 요금제로 올리면 매달 사용권이 넉넉해 회당 비용을 아낄 수 있어요."
+                    .formatted(monthlyCalls, nextPlan.name());
+            return new PlanRecommendationResponse("UPGRADE_PLAN", billing.currentPlanCode(), billing.currentPlanName(),
+                    creditBalance, monthlyCalls, monthlyCredits, topFeature, headline, reasons,
+                    new PlanRecommendationResponse.RecommendedPlan(nextPlan.code(), nextPlan.name(), nextPlan.monthlyPrice()),
+                    null);
+        }
+
+        // 2) 크레딧 바닥 + 사용 꾸준 → 충전 검토.
+        if (creditBalance <= LOW_CREDIT_THRESHOLD && monthlyCalls >= ACTIVE_USAGE_THRESHOLD) {
+            CreditProduct pack = pickCreditProduct(monthlyCredits);
+            if (pack != null) {
+                reasons.add("크레딧이 기준(%d개) 이하로 낮음".formatted(LOW_CREDIT_THRESHOLD));
+                String headline = "크레딧이 %d개 남았고 사용이 꾸준해요. %s(%d크레딧) 충전으로 끊김 없이 이용하세요."
+                        .formatted(creditBalance, pack.getName(), pack.getCreditAmount());
+                return new PlanRecommendationResponse("BUY_CREDITS", billing.currentPlanCode(), billing.currentPlanName(),
+                        creditBalance, monthlyCalls, monthlyCredits, topFeature, headline, reasons, null,
+                        new PlanRecommendationResponse.RecommendedCreditPack(
+                                pack.getCode(), pack.getName(), pack.getPrice(), pack.getCreditAmount()));
+            }
+        }
+
+        // 3) 그 외 — 현 요금제 유지 권고(정직: 과장 추천 안 함).
+        String headline = monthlyCalls == 0
+                ? "아직 이번 달 AI 사용 기록이 없어요. 지금 요금제로 충분히 시작할 수 있습니다."
+                : "지금 사용량에는 현재 요금제가 적절해요. 굳이 올리지 않아도 됩니다.";
+        return new PlanRecommendationResponse("KEEP", billing.currentPlanCode(), billing.currentPlanName(),
+                creditBalance, monthlyCalls, monthlyCredits, topFeature, headline, reasons, null, null);
+    }
+
+    /** 이번 달 소모 크레딧(최소 {@code MIN_CREDIT_PACK})을 커버하는 가장 작은 충전 상품, 없으면 가장 큰 상품. */
+    private CreditProduct pickCreditProduct(int monthlyCredits) {
+        List<CreditProduct> products = getCreditProducts().stream()
+                .sorted(Comparator.comparingInt(CreditProduct::getCreditAmount))
+                .toList();
+        if (products.isEmpty()) {
+            return null;
+        }
+        int target = Math.max(MIN_CREDIT_PACK, monthlyCredits);
+        return products.stream()
+                .filter(p -> p.getCreditAmount() >= target)
+                .findFirst()
+                .orElse(products.get(products.size() - 1));
     }
 
     @Override

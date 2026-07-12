@@ -38,18 +38,27 @@ Item {
 
     function shareModeLabel(mode) {
         if (mode === "CLOUD") return "클라우드"
-        if (mode === "LOCAL") return "로컬"
+        if (mode === "LOCAL") return "온라인 제한 서버 공유"
         return "임시"
     }
 
     function availabilityLabel(value) {
         if (value === "EXPIRED") return "만료"
         if (value === "PLAN_INACTIVE") return "플랜 중지"
-        if (value === "LOCAL_ONLY") return "로컬"
+        if (value === "LOCAL_ONLY") return "데스크톱 온라인 필요"
         return "저장"
     }
 
     Component.onCompleted: collaboration.refresh()
+
+    Connections {
+        target: collaboration
+        function onMessageSent(conversationId, content, postingIdsText) {
+            if (collaboration.currentConversationId !== conversationId) return
+            if (messageInput.text === content) messageInput.clear()
+            if (postingIdsInput.text === postingIdsText) postingIdsInput.clear()
+        }
+    }
 
     FileDialog {
         id: attachDialog
@@ -690,6 +699,20 @@ Item {
                                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: collaboration.removePendingAttachment(index) }
                                 }
                             }
+                            Rectangle {
+                                visible: collaboration.pendingAttachments.length > 1
+                                height: 26
+                                width: 68
+                                radius: 7
+                                color: Theme.raised
+                                border.color: Theme.border
+                                Text { anchors.centerIn: parent; text: "모두 취소"; color: Theme.danger; font.pixelSize: 9 }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: collaboration.clearPendingAttachments()
+                                }
+                            }
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -700,12 +723,12 @@ Item {
                                     model: [
                                         { label: "임시", mode: "TEMPORARY", hint: "" },
                                         { label: "클라우드", mode: "CLOUD", hint: "" },
-                                        // LOCAL 은 데스크톱 전용 공유 모드 — 웹/모바일 선택지에는 없다
-                                        { label: "로컬", mode: "LOCAL", hint: "데스크톱 전용 (웹/모바일에는 안 보임)" }
+                                        // 실제 파일은 서버에 업로드되고 소유자 데스크톱 presence로 다운로드를 제한한다.
+                                        { label: "온라인 제한", mode: "LOCAL", hint: "서버를 통해 전달되며 소유자 데스크톱이 온라인일 때만 받을 수 있습니다" }
                                     ]
                                     delegate: Rectangle {
                                         required property var modelData
-                                        width: modelData.mode === "CLOUD" ? 62 : 48
+                                        width: modelData.mode === "LOCAL" ? 82 : (modelData.mode === "CLOUD" ? 62 : 48)
                                         height: 28
                                         radius: 7
                                         color: root.selectedShareMode === modelData.mode ? Theme.accent : Theme.raised
@@ -725,7 +748,7 @@ Item {
                             }
                             Text {
                                 visible: root.selectedShareMode === "LOCAL"
-                                text: "웹/모바일에는 안 보임"
+                                text: "서버 경유 · 소유자 데스크톱 온라인 필요"
                                 color: Theme.muted; font.pixelSize: 9
                             }
                             TextField {
@@ -794,11 +817,15 @@ Item {
                             Rectangle {
                                 width: 68; height: 54; radius: 9
                                 color: Theme.accent
-                                opacity: collaboration.currentConversationId > 0 ? 1 : 0.4
-                                Text { anchors.centerIn: parent; text: "보내기"; color: "white"; font.pixelSize: 12; font.bold: true }
+                                opacity: collaboration.currentConversationId > 0 && !collaboration.sendingMessage ? 1 : 0.4
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: collaboration.sendingMessage ? "전송 중…" : "보내기"
+                                    color: "white"; font.pixelSize: 12; font.bold: true
+                                }
                                 MouseArea {
                                     anchors.fill: parent
-                                    enabled: collaboration.currentConversationId > 0
+                                    enabled: collaboration.currentConversationId > 0 && !collaboration.sendingMessage
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
                                         collaboration.sendMessage(
@@ -808,8 +835,6 @@ Item {
                                             Number(temporaryHoursInput.text || 72),
                                             postingIdsInput.text
                                         )
-                                        messageInput.clear()
-                                        postingIdsInput.clear()
                                     }
                                 }
                             }

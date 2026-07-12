@@ -18,7 +18,8 @@
     <sql id="userBlockColumns">
         b.id, b.user_id, b.blocked_user_id, b.flags_json, b.block_ip, b.memo, b.masked_label, b.created_at, b.updated_at,
         u.name  AS blocked_user_name,
-        u.email AS blocked_user_email
+        u.email AS blocked_user_email,
+        u.status AS blocked_user_status
     </sql>
 
     <select id="findBlocksByUser" resultType="com.careertuner.privacy.domain.UserBlock">
@@ -90,6 +91,7 @@
     <select id="findIpBlocksByUser" resultType="com.careertuner.privacy.domain.UserIpBlock">
         SELECT b.*,
                s.name AS source_user_name,
+               s.status AS source_user_status,
                ub.masked_label AS source_masked_label
           FROM user_ip_block b
           LEFT JOIN users s ON s.id = b.source_user_id

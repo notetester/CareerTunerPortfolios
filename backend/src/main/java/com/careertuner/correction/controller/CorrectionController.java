@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.domain.ConsentType;
@@ -41,8 +42,10 @@ public class CorrectionController {
 
     @PostMapping
     public ApiResponse<CorrectionResponse> create(@AuthenticationPrincipal AuthUser authUser,
-                                                  @Valid @RequestBody CorrectionCreateRequest request) {
-        return ApiResponse.ok(correctionService.create(authUser.id(), request));
+                                                  @Valid @RequestBody CorrectionCreateRequest request,
+                                                  @RequestParam(required = false) String model) {
+        // model 로 첨삭 모델을 명시 선택(AUTO/CAREERTUNER/CLAUDE/OPENAI, 기본 AUTO=현행 폴백).
+        return ApiResponse.ok(correctionService.create(authUser.id(), request, RequestedAiModel.parse(model)));
     }
 
     @GetMapping

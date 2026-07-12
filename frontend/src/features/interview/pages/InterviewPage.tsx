@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/auth/AuthContext";
 import { useOutageFallback } from "@/app/lib/outageFallback";
@@ -44,8 +45,14 @@ function parseCaseId(value: string | null): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseInterviewTab(value: string | null): InterviewTab | null {
+  return value && INTERVIEW_TABS.includes(value as InterviewTab)
+    ? value as InterviewTab
+    : null;
+}
+
 export function InterviewPage() {
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const mode = useTutorialStore((s) => s.mode);
   const tutStep = useTutorialStore((s) => s.step);
   const startTutorial = useTutorialStore((s) => s.startTutorial);
@@ -61,6 +68,7 @@ export function InterviewPage() {
   const [selectedMode, setSelectedMode] = useState<InterviewMode | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
   const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
+  const [questionGenerationModel, setQuestionGenerationModel] = useState<AiModelChoice>("AUTO");
   // 현재 활성 세션이 새로 시작한 것인지(new), 과거 기록을 복원(복습)한 것인지(resumed).
   const [sessionOrigin, setSessionOrigin] = useState<"new" | "resumed" | null>(null);
   // 디스패치 딥링크로 이어받았을 때 다음 답변 위치 안내.
@@ -70,13 +78,22 @@ export function InterviewPage() {
   // "폰으로 보내기"(기기 핸드오프) 전송 중 여부 — 중복 클릭 방지.
   const [sendingToPhone, setSendingToPhone] = useState(false);
 
-  const cases = useApplicationCases(isAuthenticated);
+  const cases = useApplicationCases(isAuthenticated, false, user?.id ?? null);
+
+  // 같은 탭에서 로그인 계정이 바뀌어도 이전 사용자의 세션·리포트 선택을 재사용하지 않는다.
+  useLayoutEffect(() => {
+    setSelectedMode(null);
+    setSelectedCaseId(null);
+    setActiveSession(null);
+    setSessionOrigin(null);
+    setResumeHint(null);
+    setSendingToPhone(false);
+    setQuestionGenerationModel("AUTO");
+  }, [user?.id]);
   const requestedCaseId = parseCaseId(searchParams.get("caseId"));
 
-  const requested = searchParams.get("tab") ?? "modes";
-  const activeTab: InterviewTab = INTERVIEW_TABS.includes(requested as InterviewTab)
-    ? (requested as InterviewTab)
-    : "modes";
+  const requestedTab = parseInterviewTab(searchParams.get("tab"));
+  const activeTab: InterviewTab = requestedTab ?? "modes";
   const autoMode = searchParams.get("auto") === "1" && autoPrompt.length > 0;
 
   // 지원 건 상세·챗봇·AutoPrep가 넘긴 ?caseId 를 실제 모드 선택에 반영한다.
@@ -119,6 +136,9 @@ export function InterviewPage() {
 
   // 데모/튜토리얼 모드에서는 실제 세션 없이도 더미 세션으로 흐름을 보여준다.
   const effectiveSession = mockActive ? (activeSession ?? dummySession) : activeSession;
+  useEffect(() => {
+    setQuestionGenerationModel("AUTO");
+  }, [effectiveSession?.id]);
   const activeCase = effectiveSession
     ? cases.applicationCases.find((c) => c.id === effectiveSession.applicationCaseId)
     : undefined;
@@ -142,6 +162,8 @@ export function InterviewPage() {
     if (!sidRaw || !isAuthenticated) return;
     const sid = Number(sidRaw);
     if (!Number.isFinite(sid)) return;
+    // 리포트 완료 알림처럼 명시된 유효 탭은 복원 뒤에도 유지하고, 누락/오염 값만 질문 탭으로 보정한다.
+    const restoredTab = parseInterviewTab(searchParams.get("tab")) ?? "questions";
     let cancelled = false;
     void (async () => {
       try {
@@ -163,8 +185,14 @@ export function InterviewPage() {
         } catch {
           // 진행률 조회 실패는 무시 — 세션 활성화 자체는 유지
         }
-        // session 파라미터 제거(뒤로가기 재실행 방지) 후 질문 탭으로
-        if (!cancelled) setSearchParams({ tab: "questions" }, { replace: true });
+        // session 파라미터만 제거해 뒤로가기 재실행을 막고, 검증한 요청 탭은 보존한다.
+        if (!cancelled) {
+          const next = new URLSearchParams(searchParams);
+          next.delete("session");
+          if (restoredTab === "modes") next.delete("tab");
+          else next.set("tab", restoredTab);
+          setSearchParams(next, { replace: true });
+        }
       } catch {
         // 세션 목록 조회 실패 — 수동 이어받기 경로(최근 기록)로 대체 가능하므로 조용히 무시
       }
@@ -330,11 +358,20 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="questions" className="mt-6">
-            <ExpectedQuestionsTab session={effectiveSession} onGoToPractice={() => goTab("practice")} />
+            <ExpectedQuestionsTab
+              session={effectiveSession}
+              generationModel={questionGenerationModel}
+              onGenerationModelChange={setQuestionGenerationModel}
+              onGoToPractice={() => goTab("practice")}
+            />
           </TabsContent>
 
           <TabsContent value="practice" data-tut="tut-panel-practice" className="mt-6">
-            <PracticeTab session={effectiveSession} onGoToReport={() => goTab("report")} />
+            <PracticeTab
+              session={effectiveSession}
+              onGoToQuestions={() => goTab("questions")}
+              onGoToReport={() => goTab("report")}
+            />
           </TabsContent>
 
           <TabsContent value="live" data-tut="tut-panel-live" className="mt-6">

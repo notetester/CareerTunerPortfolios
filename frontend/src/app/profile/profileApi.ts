@@ -1,4 +1,10 @@
 import { api, apiBlob } from "../lib/api";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
+
+/** 프로필 AI 모델 선택 쿼리(AUTO=현행 폴백이라 파라미터 생략). */
+function modelQuery(model: AiModelChoice): string {
+  return model && model !== "AUTO" ? `?model=${model}` : "";
+}
 
 /** 프로필 문서 업로드 — 기존 POST /file/upload 재사용. */
 export function uploadProfileFile(file: File, kind: "RESUME" | "ATTACHMENT" = "RESUME") {
@@ -129,16 +135,37 @@ export function saveProfile(profile: UserProfile): Promise<UserProfile> {
   return api<UserProfile>("/profile", { method: "PUT", body: JSON.stringify(profile) });
 }
 
-export function summarizeProfile(): Promise<ProfileAiResponse> {
-  return api<ProfileAiResponse>("/profile/ai/summary", { method: "POST" });
+export function summarizeProfile(model: AiModelChoice = "AUTO"): Promise<ProfileAiResponse> {
+  return api<ProfileAiResponse>(`/profile/ai/summary${modelQuery(model)}`, { method: "POST" });
 }
 
-export function extractProfileSkills(): Promise<ProfileAiResponse> {
-  return api<ProfileAiResponse>("/profile/ai/skills", { method: "POST" });
+export interface ProfileAiAnalysis {
+  hasAnalysis: boolean;
+  summary: string | null;
+  strengths: string[];
+  gaps: string[];
+  recommendations: string[];
+  extractedSkills: string[];
+  jobFamily: string | null;
+  jobFamilyLabel: string | null;
+  completenessScore: number | null;
+  aiScore: number | null;
+  criteria: ProfileCriterionScore[] | null;
+  qualityWarnings: string[];
+  analyzedAt: string | null;
 }
 
-export function diagnoseProfileCompleteness(): Promise<ProfileCompleteness> {
-  return api<ProfileCompleteness>("/profile/ai/completeness", { method: "POST" });
+/** 저장된 프로필 AI 분석 조회(새로고침 후에도 최근 분석 표시). 분석 이력 없으면 hasAnalysis=false. */
+export function getProfileAiAnalysis(): Promise<ProfileAiAnalysis> {
+  return api<ProfileAiAnalysis>("/profile/ai-analysis");
+}
+
+export function extractProfileSkills(model: AiModelChoice = "AUTO"): Promise<ProfileAiResponse> {
+  return api<ProfileAiResponse>(`/profile/ai/skills${modelQuery(model)}`, { method: "POST" });
+}
+
+export function diagnoseProfileCompleteness(model: AiModelChoice = "AUTO"): Promise<ProfileCompleteness> {
+  return api<ProfileCompleteness>(`/profile/ai/completeness${modelQuery(model)}`, { method: "POST" });
 }
 
 /** 문서 import 대상 필드. */

@@ -8,6 +8,8 @@ import { AIInterviewPage } from "./pages/AIInterview";
 import { CorrectionPage } from "./pages/Correction";
 import { AnalysisPage } from "./pages/Analysis";
 import { PlannerPage } from "./pages/Planner";
+import { CareerRoadmapPage } from "@/features/analysis/pages/CareerRoadmapPage";
+import { CertificateSearchPage } from "@/features/analysis/pages/CertificateSearchPage";
 import { CommunityPage } from "./pages/Community";
 import { MessengerPage } from "./pages/Messenger";
 import { BillingPage } from "./pages/Billing";
@@ -81,6 +83,8 @@ export const router = createBrowserRouter([
       { path: "correction", Component: ConsentCorrectionPage },
       { path: "analysis", Component: ConsentAnalysisPage },
       { path: "planner", Component: PlannerPage },
+      { path: "career-roadmap", Component: CareerRoadmapPage },
+      { path: "certificates", Component: CertificateSearchPage },
       { path: "messenger", Component: MessengerPage },
       { path: "community", Component: CommunityPage },
       // 알림/딥링크용 글 상세 경로. 같은 CommunityPage가 :postId를 읽어 상세 뷰를 연다. (팀장 승인 2026-06-19)
@@ -90,6 +94,9 @@ export const router = createBrowserRouter([
       { path: "community/users/:userId/activity", Component: CommunityUserActivityPage },
       // 내 정보 관리 — 닉네임 프로필·이력서 스펙·계정 확충
       { path: "profile/detail", Component: ProfileDetailPage },
+      // 브라우저 소셜 계정 연결 전용 반환 경로. verified App Link 경로와 분리해
+      // 설치 앱이 모바일 웹의 OAuth 결과를 가로채지 않게 한다.
+      { path: "profile/social-callback", Component: ProfileDetailPage },
       { path: "profile/rewards", Component: RewardsPage },
       { path: "billing", Component: BillingPage },
       { path: "billing/success", Component: BillingSuccessPage },
@@ -124,6 +131,7 @@ export const router = createBrowserRouter([
       { path: "legal/copyright", Component: LegalPage },
       { path: "login", Component: LoginPage },
       { path: "auth/callback", Component: AuthCallbackPage },
+      { path: "auth/browser-callback", Component: AuthCallbackPage },
       { path: "auth/social-consent", Component: SocialConsentPage },
       { path: "auth/verify-email/result", Component: VerifyEmailResultPage },
       { path: "auth/forgot-password", Component: ForgotPasswordPage },

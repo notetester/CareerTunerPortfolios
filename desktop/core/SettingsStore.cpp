@@ -4,11 +4,24 @@
 #include <QFileDialog>
 #include <QDir>
 #include <QFile>
+#include <QHostAddress>
+#include <QUrl>
 
 SettingsStore::SettingsStore(QObject* parent)
     : QObject(parent)
     , m_s(createSettings())
 {
+    const QString stored = m_s->value(QStringLiteral("server/baseUrl")).toString();
+    if (!stored.isEmpty()) {
+        const QString normalized = normalizedBaseUrl(stored);
+        if (normalized.isEmpty()) {
+            // 이전 버전에서 저장한 안전하지 않은 주소와 그 서버의 자격증명을 함께 폐기한다.
+            m_s->remove(QStringLiteral("server/baseUrl"));
+            clearTokens();
+        } else if (normalized != stored) {
+            m_s->setValue(QStringLiteral("server/baseUrl"), normalized);
+        }
+    }
 }
 
 QString SettingsStore::portableDataDir()
@@ -75,11 +88,70 @@ QString SettingsStore::baseUrl() const
     // 기본은 공개 AWS 통합 백엔드 — 기본값 상수는 defaultBaseUrl() 한 곳에서 관리
     return m_s->value("server/baseUrl", defaultBaseUrl()).toString();
 }
+
+QString SettingsStore::webAppUrl() const
+{
+    // 배포/시연 환경이 API와 웹 origin을 분리할 때 명시적으로 지정한다.
+    const QString configured = normalizedBaseUrl(
+        qEnvironmentVariable("CAREERTUNER_WEB_APP_URL"));
+    if (!configured.isEmpty()) return configured;
+
+    QUrl url(baseUrl());
+    QHostAddress address;
+    const bool loopback = url.host().compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0
+        || (address.setAddress(url.host()) && address.isLoopback());
+    if (loopback && url.scheme() == QStringLiteral("http") && url.port() == 8080) {
+        url.setPort(5173);
+        return url.toString(QUrl::FullyEncoded | QUrl::StripTrailingSlash);
+    }
+    return baseUrl();
+}
+
+QString SettingsStore::normalizedBaseUrl(const QString& v)
+{
+    const QUrl url(v.trimmed(), QUrl::StrictMode);
+    if (!url.isValid() || url.host().isEmpty() || !url.userInfo().isEmpty()
+        || url.hasQuery() || url.hasFragment()) {
+        return QString();
+    }
+
+    const QString path = url.path();
+    if (!path.isEmpty() && path != QStringLiteral("/")) return QString();
+
+    const QString scheme = url.scheme().toLower();
+    bool loopback = url.host().compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0;
+    QHostAddress address;
+    if (!loopback && address.setAddress(url.host())) loopback = address.isLoopback();
+
+    if (scheme != QStringLiteral("https")
+        && !(scheme == QStringLiteral("http") && loopback)) {
+        return QString();
+    }
+    if (url.port() == 0) return QString();
+
+    QUrl normalized = url;
+    normalized.setScheme(scheme);
+    normalized.setPath(QString());
+    return normalized.toString(QUrl::FullyEncoded | QUrl::StripTrailingSlash);
+}
+
 void SettingsStore::setBaseUrl(const QString& v)
 {
-    if (v == baseUrl()) return;
-    m_s->setValue("server/baseUrl", v);
+    applyBaseUrl(v);
+}
+
+bool SettingsStore::applyBaseUrl(const QString& v)
+{
+    const QString normalized = normalizedBaseUrl(v);
+    if (normalized.isEmpty()) return false;
+    if (normalized == baseUrl()) return true;
+
+    // 다른 서버의 JWT/refresh token을 새 호스트에 절대 전달하지 않는다.
+    clearTokens();
+    m_s->setValue(QStringLiteral("server/baseUrl"), normalized);
+    emit baseUrlChanged();
     emit changed();
+    return true;
 }
 
 QString SettingsStore::saveDir() const
@@ -119,6 +191,14 @@ void SettingsStore::setTrayNotify(bool v)
 {
     if (v == trayNotify()) return;
     m_s->setValue("notify/tray", v);
+    emit changed();
+}
+
+bool SettingsStore::darkTheme() const { return m_s->value("display/darkTheme", true).toBool(); }
+void SettingsStore::setDarkTheme(bool v)
+{
+    if (v == darkTheme()) return;
+    m_s->setValue("display/darkTheme", v);
     emit changed();
 }
 

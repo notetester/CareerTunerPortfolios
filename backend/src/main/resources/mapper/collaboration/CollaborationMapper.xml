@@ -60,6 +60,7 @@
         SELECT f.friend_user_id AS user_id,
                u.name,
                u.email,
+               u.status AS user_status,
                f.created_at
           FROM collaboration_friendship f
           JOIN users u ON u.id = f.friend_user_id
@@ -98,9 +99,11 @@
                rq.id AS requester_id,
                rq.name AS requester_name,
                rq.email AS requester_email,
+               rq.status AS requester_status,
                rc.id AS receiver_id,
                rc.name AS receiver_name,
-               rc.email AS receiver_email
+               rc.email AS receiver_email,
+               rc.status AS receiver_status
           FROM collaboration_friend_request r
           JOIN users rq ON rq.id = r.requester_id
           JOIN users rc ON rc.id = r.receiver_id
@@ -115,9 +118,11 @@
                rq.id AS requester_id,
                rq.name AS requester_name,
                rq.email AS requester_email,
+               rq.status AS requester_status,
                rc.id AS receiver_id,
                rc.name AS receiver_name,
-               rc.email AS receiver_email
+               rc.email AS receiver_email,
+               rc.status AS receiver_status
           FROM collaboration_friend_request r
           JOIN users rq ON rq.id = r.requester_id
           JOIN users rc ON rc.id = r.receiver_id
@@ -134,9 +139,11 @@
                rq.id AS requester_id,
                rq.name AS requester_name,
                rq.email AS requester_email,
+               rq.status AS requester_status,
                rc.id AS receiver_id,
                rc.name AS receiver_name,
-               rc.email AS receiver_email
+               rc.email AS receiver_email,
+               rc.status AS receiver_status
           FROM collaboration_friend_request r
           JOIN users rq ON rq.id = r.requester_id
           JOIN users rc ON rc.id = r.receiver_id
@@ -291,6 +298,7 @@
         peer.user_id AS peer_user_id,
         peer_user.name AS peer_name,
         peer_user.email AS peer_email,
+        peer_user.status AS peer_status,
         c.updated_at,
         lm.id AS latest_message_id,
         lm.kind AS latest_kind,
@@ -376,6 +384,7 @@
         SELECT m.*,
                u.name AS sender_name,
                u.email AS sender_email,
+               u.status AS sender_status,
                cm.anonymous AS sender_anonymous,
                cm.room_nickname AS sender_room_nickname,
                cmp.nickname_profile_id AS sender_nickname_profile_id
@@ -394,6 +403,7 @@
               SELECT m.*,
                      u.name AS sender_name,
                      u.email AS sender_email,
+                     u.status AS sender_status,
                      cm.anonymous AS sender_anonymous,
                      cm.room_nickname AS sender_room_nickname,
                      cmp.nickname_profile_id AS sender_nickname_profile_id
@@ -643,6 +653,7 @@
         cm.user_id,
         u.name,
         u.email,
+        u.status AS user_status,
         cm.role,
         cm.status,
         cm.anonymous,
@@ -718,6 +729,7 @@
         SELECT b.user_id,
                u.name,
                u.email,
+               u.status AS user_status,
                b.banned_by,
                b.reason,
                b.created_at
@@ -736,10 +748,11 @@
     </select>
 
     <select id="findInviteAllowUserIds" resultType="long">
-        SELECT user_id
-          FROM collaboration_conversation_invite_allow
-         WHERE conversation_id = #{conversationId}
-         ORDER BY user_id ASC
+        SELECT allow.user_id
+          FROM collaboration_conversation_invite_allow allow
+          JOIN users u ON u.id = allow.user_id AND u.status = 'ACTIVE'
+         WHERE allow.conversation_id = #{conversationId}
+         ORDER BY allow.user_id ASC
     </select>
 
     <delete id="deleteInviteAllowAll">
@@ -763,8 +776,10 @@
                a.conversation_id,
                a.actor_id,
                actor.name AS actor_name,
+               actor.status AS actor_status,
                a.target_user_id,
                target.name AS target_name,
+               target.status AS target_status,
                a.action,
                a.detail,
                a.created_at

@@ -8,7 +8,8 @@
     <select id="findByPostId" resultType="com.careertuner.community.domain.CommunityComment">
         SELECT cc.*,
                cc.is_anonymous AS anonymous,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_comment cc
           JOIN users u ON cc.user_id = u.id
          WHERE cc.post_id = #{postId}
@@ -21,7 +22,8 @@
     <select id="findAllByPostId" resultType="com.careertuner.community.domain.CommunityComment">
         SELECT cc.*,
                cc.is_anonymous AS anonymous,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_comment cc
           JOIN users u ON cc.user_id = u.id
          WHERE cc.post_id = #{postId}
@@ -32,7 +34,8 @@
     <select id="findById" resultType="com.careertuner.community.domain.CommunityComment">
         SELECT cc.*,
                cc.is_anonymous AS anonymous,
-               u.name AS user_name
+               u.name AS user_name,
+               u.status AS user_status
           FROM community_comment cc
           JOIN users u ON cc.user_id = u.id
          WHERE cc.id = #{id}

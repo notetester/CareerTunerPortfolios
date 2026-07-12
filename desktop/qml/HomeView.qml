@@ -22,6 +22,14 @@ Item {
         autoprep.intake(query)
     }
 
+    function resetAccountState() {
+        root.lastQuery = ""
+        root.candidates = []
+        root.modes = []
+        root.askMessage = ""
+        root.pendingCaseId = -1
+    }
+
     Connections {
         target: autoprep
         function onIntakeReady(result) {
@@ -34,6 +42,7 @@ Item {
                 root.modes = result.nextAsk === "MODE" ? result.modes : []
             }
         }
+        function onCleared() { root.resetAccountState() }
     }
 
     Flickable {
@@ -79,7 +88,16 @@ Item {
                             required property string modelData
                             height: 32; radius: 16
                             width: chipLbl.implicitWidth + 26
-                            color: Theme.raised; border.color: chipHover.containsMouse ? Theme.accent : Theme.border
+                            color: Theme.raised; border.color: activeFocus || chipHover.containsMouse ? Theme.accent : Theme.border
+                            activeFocusOnTab: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "자동 준비 예시: " + modelData
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    root.startIntake(modelData)
+                                }
+                            }
                             Text { id: chipLbl; anchors.centerIn: parent; text: modelData; color: Theme.text; font.pixelSize: 12 }
                             MouseArea {
                                 id: chipHover
@@ -186,7 +204,16 @@ Item {
                         Rectangle {
                             visible: autoprep.running
                             width: cancelLbl.implicitWidth + 18; height: 24; radius: 7
-                            color: Theme.raised; border.color: Theme.border
+                            color: Theme.raised; border.color: activeFocus ? Theme.accent : Theme.border
+                            activeFocusOnTab: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "자동 준비 중지"
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    autoprep.cancel()
+                                }
+                            }
                             Text { id: cancelLbl; anchors.centerIn: parent; text: "중지"; color: Theme.muted; font.pixelSize: 11 }
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: autoprep.cancel() }
                         }

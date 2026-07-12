@@ -8,6 +8,7 @@ import {
   Minimize2, Maximize2, Loader2, SquarePen,
 } from "lucide-react";
 import { getAccessToken } from "@/app/lib/tokenStore";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { useChatbot } from "../hooks/useChatbot";
 import type {
   ChatMessage, ChatEvidence, SiteLink, IntakeCaseCandidate, IntakeModeOption, ChatSession,
@@ -182,6 +183,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
 
   const navigate = useNavigate();
   const [input, setInput] = useState("");
+  const [chatModel, setChatModel] = useState<AiModelChoice>("AUTO");
   const [showSessions, setShowSessions] = useState(false);
   // ③→가이드 매핑: 인테이크 CASE 되묻기를 텍스트 대신 가이드 스텝 UI 로. msgId = 어느 되묻기 턴에 붙은 가이드인지.
   const [intakeGuide, setIntakeGuide] = useState<{ msgId: string; steps: GuideStep[] } | null>(null);
@@ -369,7 +371,7 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
     const text = input.trim();
     if (!text) return;
     setInput("");
-    sendMessage(text);
+    sendMessage(text, { model: chatModel });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -548,6 +550,9 @@ function ChatbotPanel({ chatbot }: ChatbotPanelProps) {
                 {botStatus === "not_found" && <NotFoundView />}
               </>
             )}
+          </div>
+          <div className="flex items-center justify-end px-3 pt-1">
+            <ModelPicker value={chatModel} onChange={setChatModel} disabled={botStatus === "thinking"} />
           </div>
           <InputBar
             value={input}

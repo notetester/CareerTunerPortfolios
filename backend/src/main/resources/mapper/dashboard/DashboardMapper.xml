@@ -207,6 +207,7 @@
         FROM interview_answer ia
         INNER JOIN interview_question iq ON iq.id = ia.question_id
         WHERE iq.interview_session_id = #{sessionId}
+          AND ia.submission_status = 'COMPLETED'
           AND ia.feedback IS NOT NULL
           AND ia.feedback != ''
         ORDER BY COALESCE(ia.score, 0) ASC, ia.id DESC

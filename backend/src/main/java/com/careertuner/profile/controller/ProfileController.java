@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.domain.ConsentType;
@@ -116,19 +117,29 @@ public class ProfileController {
 
     @PostMapping("/ai/summary")
     @RequiresConsent({ConsentType.AI_DATA, ConsentType.RESUME_ANALYSIS})
-    public ApiResponse<ProfileAiResponse> summarize(@AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(service.summarize(authUser));
+    public ApiResponse<ProfileAiResponse> summarize(@AuthenticationPrincipal AuthUser authUser,
+                                                    @RequestParam(required = false) String model) {
+        return ApiResponse.ok(service.summarize(authUser, RequestedAiModel.parse(model)));
     }
 
     @PostMapping("/ai/skills")
     @RequiresConsent({ConsentType.AI_DATA, ConsentType.RESUME_ANALYSIS})
-    public ApiResponse<ProfileAiResponse> extractSkills(@AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(service.extractSkills(authUser));
+    public ApiResponse<ProfileAiResponse> extractSkills(@AuthenticationPrincipal AuthUser authUser,
+                                                        @RequestParam(required = false) String model) {
+        return ApiResponse.ok(service.extractSkills(authUser, RequestedAiModel.parse(model)));
     }
 
     @PostMapping("/ai/completeness")
     @RequiresConsent({ConsentType.AI_DATA, ConsentType.RESUME_ANALYSIS})
-    public ApiResponse<ProfileCompletenessResponse> diagnoseCompleteness(@AuthenticationPrincipal AuthUser authUser) {
-        return ApiResponse.ok(service.diagnoseCompleteness(authUser));
+    public ApiResponse<ProfileCompletenessResponse> diagnoseCompleteness(@AuthenticationPrincipal AuthUser authUser,
+                                                                         @RequestParam(required = false) String model) {
+        return ApiResponse.ok(service.diagnoseCompleteness(authUser, RequestedAiModel.parse(model)));
+    }
+
+    /** 저장된 프로필 AI 분석 조회 — 새로고침 후에도 최근 분석 결과를 보여준다(조회는 동의 불요, 저장분 읽기만). */
+    @GetMapping("/ai-analysis")
+    public ApiResponse<com.careertuner.profile.dto.ProfileAiAnalysisResponse> aiAnalysis(
+            @AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(service.aiAnalysis(authUser));
     }
 }

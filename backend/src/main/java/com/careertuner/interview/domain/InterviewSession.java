@@ -30,4 +30,13 @@ public class InterviewSession {
 
     /** 비영속(목록 조회 계산값): 이 세션 음성 면접 점수 평균(interview_media_analysis kind=VOICE). */
     private Integer avgVoiceScore;
+
+    /** 비영속(목록 조회 계산값): 생성된 질문 수. */
+    private Integer totalQuestions;
+
+    /** 비영속(목록 조회 계산값): 답변이 하나 이상 존재하는 질문 수. */
+    private Integer answeredQuestions;
+
+    /** 비영속(목록 조회 계산값): 질문이 있고 모든 질문에 답변했는지 여부. */
+    private Boolean finished;
 }

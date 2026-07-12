@@ -12,6 +12,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { InterviewProgressBar } from "./InterviewProgressBar";
 import {
   generateExpectedQuestions,
@@ -67,7 +68,7 @@ function QuestionItem({
     try {
       // 반환된 전체 질문 목록을 그대로 반영한다. loadExisting(로딩 스피너로 전체 교체)을 쓰면
       // 답변/평가 결과가 있는 카드까지 언마운트돼 "초기화"처럼 보이므로 목록만 갈아끼운다.
-      const updated = await generateFollowUps(question.id);
+      const updated = await generateFollowUps(question.id, {}, question.interviewSessionId);
       onFollowUpsGenerated(updated);
       return true;
     } catch (err) {
@@ -216,9 +217,13 @@ function QuestionItem({
 
 export function ExpectedQuestionsTab({
   session,
+  generationModel,
+  onGenerationModelChange,
   onGoToPractice,
 }: {
   session: InterviewSession | null;
+  generationModel: AiModelChoice;
+  onGenerationModelChange: (model: AiModelChoice) => void;
   onGoToPractice: () => void;
 }) {
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
@@ -266,10 +271,20 @@ export function ExpectedQuestionsTab({
 
   const handleGenerate = async () => {
     if (!session) return;
+    const hasSavedAnswers = Object.keys(answerMap).length > 0;
+    if (questions.length > 0 && hasSavedAnswers) {
+      setError("이미 답변한 세션의 질문은 기록 보호를 위해 교체할 수 없습니다. '면접 모드 선택'에서 새 세션을 시작해 주세요.");
+      return;
+    }
+    if (questions.length > 0 && !window.confirm(
+      "아직 답변하지 않은 기존 질문과 모범답안을 새 질문으로 교체할까요? 이 작업은 되돌릴 수 없습니다.",
+    )) {
+      return;
+    }
     setGenerating(true);
     setError(null);
     try {
-      const generated = await generateExpectedQuestions(session.id, { mode: session.mode });
+      const generated = await generateExpectedQuestions(session.id, { mode: session.mode }, generationModel);
       setQuestions(generated);
       setAnswerMap({}); // 재생성하면 과거 답변은 무효
       setModelAnswersPreparing(true); // 모범답안 백그라운드 생성 동안 잠깐 준비 중 힌트 표시
@@ -294,6 +309,11 @@ export function ExpectedQuestionsTab({
         <h2 className="font-bold text-slate-800">예상 면접 질문</h2>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <AiChargeCostBadge featureType="INTERVIEW_QUESTION_GEN" />
+          <ModelPicker
+            value={generationModel}
+            onChange={onGenerationModelChange}
+            disabled={generating}
+          />
           {questions.length > 0 && (
             <Button size="sm" variant="outline" className="gap-1.5" disabled={generating} onClick={handleGenerate}>
               {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}

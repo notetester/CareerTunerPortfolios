@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -20,6 +21,7 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.billing.dto.AiChargeCommand;
 import com.careertuner.billing.dto.AiChargeResult;
@@ -89,6 +91,25 @@ class CorrectionServiceTest {
     }
 
     @Test
+    void explicitModelUsesSelectedModelOverload() {
+        when(aiClient.correct(any(), eq(RequestedAiModel.CLAUDE))).thenReturn(payload());
+        when(usageLogService.recordSuccess(1L, null, "CORRECTION_SELF_INTRO", payload().usage()))
+                .thenReturn(501L);
+        when(aiChargeService.charge(any())).thenReturn(AiChargeResult.credit(2, 8));
+        doAnswer(invocation -> {
+            CorrectionRequest correction = invocation.getArgument(0);
+            correction.setId(77L);
+            return null;
+        }).when(correctionMapper).insert(any());
+
+        CorrectionResponse response = service.create(
+                1L, request("AI_USAGE:test-model"), RequestedAiModel.CLAUDE);
+
+        assertThat(response.id()).isEqualTo(77L);
+        verify(aiClient).correct(any(), eq(RequestedAiModel.CLAUDE));
+    }
+
+    @Test
     void completedRequestKeyReturnsExistingResultWithoutAiOrCharge() {
         CorrectionRequest existing = existingCorrection();
         when(correctionMapper.findByUserIdAndRequestKey(1L, "correction:test-request")).thenReturn(existing);
@@ -97,7 +118,7 @@ class CorrectionServiceTest {
 
         assertThat(response.id()).isEqualTo(88L);
         assertThat(response.replayed()).isTrue();
-        verify(aiClient, never()).correct(any());
+        verify(aiClient, never()).correct(any(), any());
         verify(usageLogService, never()).recordSuccess(anyLong(), any(), anyString(), any());
         verify(aiChargeService, never()).charge(any());
         verify(notificationService, never()).notify(any());
@@ -108,7 +129,7 @@ class CorrectionServiceTest {
         CorrectionRequest existing = existingCorrection();
         when(correctionMapper.findByUserIdAndRequestKey(1L, "correction:test-request"))
                 .thenReturn(null, existing);
-        when(aiClient.correct(any())).thenReturn(payload());
+        when(aiClient.correct(any(), any())).thenReturn(payload());
         when(usageLogService.recordSuccess(1L, null, "CORRECTION_SELF_INTRO", payload().usage()))
                 .thenReturn(502L);
         doThrow(new DataIntegrityViolationException("duplicate request key")).when(correctionMapper).insert(any());
@@ -123,7 +144,7 @@ class CorrectionServiceTest {
 
     @Test
     void aiFailureRecordsFailureWithoutCharging() {
-        when(aiClient.correct(any())).thenThrow(new BusinessException(ErrorCode.AI_UNAVAILABLE, "AI failed"));
+        when(aiClient.correct(any(), any())).thenThrow(new BusinessException(ErrorCode.AI_UNAVAILABLE, "AI failed"));
 
         assertThatThrownBy(() -> service.create(1L, request("AI_USAGE:test-2")))
                 .isInstanceOf(BusinessException.class)
@@ -167,7 +188,7 @@ class CorrectionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT);
 
-        verify(aiClient, never()).correct(any());
+        verify(aiClient, never()).correct(any(), any());
         verify(usageLogService, never()).recordFailure(anyLong(), any(), anyString(), anyString());
     }
 
@@ -182,13 +203,13 @@ class CorrectionServiceTest {
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_INPUT);
 
-        verify(aiClient, never()).correct(any());
+        verify(aiClient, never()).correct(any(), any());
     }
 
     @Test
     void failureLogErrorDoesNotHideOriginalAiFailure() {
         BusinessException aiFailure = new BusinessException(ErrorCode.AI_UNAVAILABLE, "AI failed");
-        when(aiClient.correct(any())).thenThrow(aiFailure);
+        when(aiClient.correct(any(), any())).thenThrow(aiFailure);
         doThrow(new RuntimeException("log failed"))
                 .when(usageLogService).recordFailure(1L, null, "CORRECTION_SELF_INTRO", "AI failed");
 
@@ -199,7 +220,7 @@ class CorrectionServiceTest {
     }
 
     private void stubSuccessfulCorrection() {
-        when(aiClient.correct(any())).thenReturn(payload());
+        when(aiClient.correct(any(), any())).thenReturn(payload());
         when(usageLogService.recordSuccess(1L, null, "CORRECTION_SELF_INTRO", payload().usage()))
                 .thenReturn(501L);
         doAnswer(invocation -> {

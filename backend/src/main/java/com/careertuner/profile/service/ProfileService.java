@@ -2,6 +2,7 @@ package com.careertuner.profile.service;
 
 import java.util.List;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.profile.dto.ProfileAiResponse;
 import com.careertuner.profile.dto.ProfileAnalyzeResponse;
@@ -18,11 +19,27 @@ public interface ProfileService {
 
     UserProfileResponse save(AuthUser authUser, UserProfileRequest request);
 
-    ProfileAiResponse summarize(AuthUser authUser);
+    default ProfileAiResponse summarize(AuthUser authUser) {
+        return summarize(authUser, RequestedAiModel.AUTO);
+    }
 
-    ProfileAiResponse extractSkills(AuthUser authUser);
+    /** 사용자가 AI 모델을 명시 선택하는 프로필 요약(기본 AUTO=현행 폴백). */
+    ProfileAiResponse summarize(AuthUser authUser, RequestedAiModel requestedModel);
 
-    ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser);
+    /** 저장된 프로필 AI 분석 산출물 조회(feature 별 최신). 분석 이력이 없으면 빈 결과. */
+    com.careertuner.profile.dto.ProfileAiAnalysisResponse aiAnalysis(AuthUser authUser);
+
+    default ProfileAiResponse extractSkills(AuthUser authUser) {
+        return extractSkills(authUser, RequestedAiModel.AUTO);
+    }
+
+    ProfileAiResponse extractSkills(AuthUser authUser, RequestedAiModel requestedModel);
+
+    default ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser) {
+        return diagnoseCompleteness(authUser, RequestedAiModel.AUTO);
+    }
+
+    ProfileCompletenessResponse diagnoseCompleteness(AuthUser authUser, RequestedAiModel requestedModel);
 
     List<UserProfileResponse> adminProfiles(AuthUser authUser, String keyword, int limit);
 

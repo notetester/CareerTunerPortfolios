@@ -16,6 +16,7 @@ import com.careertuner.billing.dto.BenefitTransactionResponse;
 import com.careertuner.billing.dto.CreditPurchaseRequest;
 import com.careertuner.billing.dto.MyBillingResponse;
 import com.careertuner.billing.dto.MyBenefitsResponse;
+import com.careertuner.billing.dto.PlanRecommendationResponse;
 import com.careertuner.billing.dto.SubscribeRequest;
 import com.careertuner.billing.dto.SubscriptionPlanResponse;
 import com.careertuner.billing.dto.UsageRow;
@@ -64,6 +65,12 @@ public class BillingController {
     @GetMapping("/usage")
     public ApiResponse<List<UsageRow>> usage(@AuthenticationPrincipal AuthUser authUser) {
         return ApiResponse.ok(billingService.getMonthlyUsage(authUser.id()));
+    }
+
+    /** 사용량 기반 요금제/크레딧 추천(AI #28, 결정론·LLM 미호출·무과금 조회). */
+    @GetMapping("/plan-recommendation")
+    public ApiResponse<PlanRecommendationResponse> planRecommendation(@AuthenticationPrincipal AuthUser authUser) {
+        return ApiResponse.ok(billingService.recommendPlan(authUser.id()));
     }
 
     @GetMapping("/credit-transactions")

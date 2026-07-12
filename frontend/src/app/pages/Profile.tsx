@@ -9,6 +9,7 @@ import { Label } from "../components/ui/label";
 import { Progress } from "../components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
+import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import {
   diagnoseProfileCompleteness,
   deleteProfilePortfolioFile,
@@ -23,6 +24,7 @@ import {
   saveProfile,
   startProfileAnalyze,
   summarizeProfile,
+  getProfileAiAnalysis,
   uploadProfileFile,
   uploadProfilePortfolioFile,
   type ProfileAiResponse,
@@ -231,6 +233,8 @@ export function ProfilePage() {
   const [activeTab, setActiveTab] = useState<ProfileTab>(() => normalizeProfileTab(searchParams.get("tab")));
   const [activeAiView, setActiveAiView] = useState<AiToolType>("summary");
   const [aiLoading, setAiLoading] = useState<AiToolType | null>(null);
+  // 프로필 AI(요약/스킬/완성도) 모델 선택. 기본 AUTO — 배경 자동 진단 호출엔 적용하지 않고 버튼 실행에만 쓴다.
+  const [profileAiModel, setProfileAiModel] = useState<AiModelChoice>("AUTO");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [summaryResult, setSummaryResult] = useState<ProfileAiResponse | null>(null);
@@ -285,6 +289,31 @@ export function ProfilePage() {
     initialCompletenessRequested.current = true;
     void diagnoseProfileCompleteness().then(setCompleteness).catch(() => setCompleteness(null));
   }, [loading, profileAiAllowed]);
+
+  // 저장된 프로필 AI 분석을 불러와 화면에 시드한다(새로고침 후에도 최근 분석이 보이도록).
+  useEffect(() => {
+    if (loading) return;
+    void getProfileAiAnalysis()
+      .then((saved) => {
+        if (!saved.hasAnalysis) return;
+        setSummaryResult((prev) => prev ?? {
+          featureType: "PROFILE_SUMMARY",
+          summary: saved.summary ?? "",
+          extractedSkills: saved.extractedSkills ?? [],
+          strengths: saved.strengths ?? [],
+          gaps: saved.gaps ?? [],
+          recommendations: saved.recommendations ?? [],
+          completenessScore: saved.completenessScore ?? 0,
+          jobFamily: saved.jobFamily ?? undefined,
+          jobFamilyLabel: saved.jobFamilyLabel ?? undefined,
+          criteria: saved.criteria ?? undefined,
+          status: "SUCCESS",
+          aiScore: saved.aiScore ?? undefined,
+          qualityWarnings: saved.qualityWarnings ?? [],
+        });
+      })
+      .catch(() => { /* 저장분 없음/조회 실패는 조용히 무시 — 기존 온디맨드 분석 흐름 유지 */ });
+  }, [loading]);
 
   useEffect(() => {
     setActiveTab(normalizeProfileTab(searchParams.get("tab")));
@@ -399,13 +428,13 @@ export function ProfilePage() {
     setMessage(null);
     try {
       if (type === "summary") {
-        setSummaryResult(await summarizeProfile());
+        setSummaryResult(await summarizeProfile(profileAiModel));
         setMessage("프로필 핵심 요약을 생성했습니다. AI 결과 탭에서 확인해 주세요.");
       } else if (type === "skills") {
-        setSkillsResult(await extractProfileSkills());
+        setSkillsResult(await extractProfileSkills(profileAiModel));
         setMessage("이력에서 직무 역량 키워드를 추출했습니다. AI 결과 탭에서 확인해 주세요.");
       } else {
-        setCompleteness(await diagnoseProfileCompleteness());
+        setCompleteness(await diagnoseProfileCompleteness(profileAiModel));
         setMessage("프로필 완성도와 보완 우선순위를 진단했습니다. AI 결과 탭에서 확인해 주세요.");
       }
     } catch (err) {
@@ -697,6 +726,10 @@ export function ProfilePage() {
                   icon={<CheckCircle2 className="size-4" />}
                   onClick={() => void runAi("completeness", { saveBeforeRun: isDirty })}
                 />
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs text-slate-500">AI 모델</span>
+                  <ModelPicker value={profileAiModel} onChange={setProfileAiModel} disabled={!!aiLoading || !profileAiAllowed} />
+                </div>
               </CardContent>
             </Card>
           </aside>

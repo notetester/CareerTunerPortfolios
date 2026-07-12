@@ -35,9 +35,37 @@ public interface UserAccountMapper {
     /** 로그인 아이디는 아직 미설정(NULL)일 때만 최초 설정한다. */
     int setLoginIdIfAbsent(@Param("userId") Long userId, @Param("loginId") String loginId);
 
-    void updatePhone(@Param("userId") Long userId, @Param("phone") String phone);
+    int updatePhone(@Param("userId") Long userId, @Param("phone") String phone);
 
     void deleteSocial(@Param("userId") Long userId, @Param("provider") String provider);
+
+    /**
+     * 회원 행은 FK 보존을 위해 유지하되 로그인 식별자와 공개 식별 정보를 즉시 제거한다.
+     * 상태 조건을 함께 검사해 중복 탈퇴와 관리자 상태 변경 경합을 감지한다.
+     */
+    int anonymizeAndSoftDeleteOwnAccount(Long userId);
+
+    int deleteAllSocialLinks(Long userId);
+
+    int deleteAllPushSubscriptions(Long userId);
+
+    int expireAllEmailVerifications(Long userId);
+
+    int deleteAllSmsOtpCodes(Long userId);
+
+    int hideAndAnonymizeNicknameProfiles(Long userId);
+
+    int anonymizeChatProfiles(Long userId);
+
+    int clearConversationNicknameProfiles(Long userId);
+
+    int deactivateConversationMemberships(Long userId);
+
+    int cancelPendingFriendRequests(Long userId);
+
+    int cancelPendingConversationInvites(Long userId);
+
+    int deleteDesktopPresence(Long userId);
 
     // ── 이력서 상세 스펙 ──
 

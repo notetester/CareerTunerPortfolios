@@ -8,9 +8,18 @@
 
     <insert id="insertMediaAnalysis" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO interview_media_analysis
-            (interview_session_id, kind, transcript, metrics, score, score_detail)
+            (interview_session_id, question_id, answer_id, kind, transcript, metrics, score, score_detail)
         VALUES
-            (#{interviewSessionId}, #{kind}, #{transcript}, #{metrics}, #{score}, #{scoreDetail})
+            (#{interviewSessionId}, #{questionId}, #{answerId}, #{kind},
+             #{transcript}, #{metrics}, #{score}, #{scoreDetail})
+        ON DUPLICATE KEY UPDATE
+            id = LAST_INSERT_ID(id),
+            question_id = VALUES(question_id),
+            transcript = VALUES(transcript),
+            metrics = VALUES(metrics),
+            score = VALUES(score),
+            score_detail = VALUES(score_detail),
+            created_at = CURRENT_TIMESTAMP
     </insert>
 
     <select id="findBySessionId" resultType="com.careertuner.interview.domain.InterviewMediaAnalysis">

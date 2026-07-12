@@ -8,6 +8,38 @@ import CareerTuner
 Item {
     id: root
 
+    Dialog {
+        id: regenerateQuestionsDialog
+        x: Math.round((root.width - width) / 2)
+        y: Math.round((root.height - height) / 2)
+        width: Math.min(440, root.width - 48)
+        modal: true
+        focus: true
+        title: "예상 질문 다시 생성"
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: win.startQuestionRegeneration()
+        palette.window: Theme.surface
+        palette.windowText: Theme.text
+        palette.base: Theme.surface
+        palette.text: Theme.text
+        palette.button: Theme.raised
+        palette.buttonText: Theme.text
+        background: Rectangle {
+            radius: Theme.radius
+            color: Theme.surface
+            border.color: Theme.border
+        }
+        contentItem: Text {
+            text: "선택한 모델로 기존 미답변 질문을 교체합니다. "
+                  + (win.sessionAnswerDraftPending
+                     ? "작성 중인 텍스트 답변은 생성 성공 후 초기화됩니다. " : "")
+                  + "새 AI 사용으로 별도 차감될 수 있습니다. 계속할까요?"
+            color: Theme.text
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
+        }
+    }
+
     ListView {
         id: list
         anchors.fill: parent
@@ -134,7 +166,7 @@ Item {
                 Text { text: "세션을 불러오는 중…"; color: Theme.muted; font.pixelSize: 12 }
             }
             Rectangle {
-                visible: !session.loading && session.thread.length === 0
+                visible: !session.loading && !session.threadLoadFailed && session.thread.length === 0
                 width: parent.width
                 radius: Theme.radius
                 color: Theme.surface
@@ -155,9 +187,50 @@ Item {
                         color: Theme.muted; font.pixelSize: 12
                         Layout.alignment: Qt.AlignHCenter
                     }
+                    RowLayout {
+                        Layout.alignment: Qt.AlignHCenter
+                        spacing: 8
+                        Text {
+                            text: "AI 모델"
+                            color: Theme.muted
+                            font.pixelSize: 11
+                        }
+                        ComboBox {
+                            id: generationModelPicker
+                            implicitWidth: 184
+                            implicitHeight: 30
+                            enabled: !session.loading
+                            Accessible.name: "질문 생성 AI 모델"
+                            property var modelValues: ["AUTO", "CAREERTUNER", "CLAUDE", "OPENAI"]
+                            model: ["자동 (추천)", "CareerTuner 자체 모델", "Claude Haiku", "OpenAI GPT"]
+                            function syncFromSession() {
+                                currentIndex = Math.max(0, modelValues.indexOf(session.questionGenerationModel))
+                            }
+                            Component.onCompleted: syncFromSession()
+                            onActivated: (index) => session.questionGenerationModel = modelValues[index]
+                            Connections {
+                                target: session
+                                function onQuestionGenerationModelChanged() {
+                                    generationModelPicker.syncFromSession()
+                                }
+                            }
+                        }
+                    }
                     Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         width: genLbl.implicitWidth + 28; height: 32; radius: 8
+                        activeFocusOnTab: visible
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "예상 질문 생성"
+                        border.color: activeFocus ? Theme.accentText : "transparent"
+                        border.width: activeFocus ? 2 : 0
+                        function generateExpectedQuestions() { session.generateQuestions() }
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                generateExpectedQuestions()
+                            }
+                        }
                         gradient: Gradient {
                             GradientStop { position: 0.0; color: Theme.accent2 }
                             GradientStop { position: 1.0; color: Theme.accent }
@@ -165,8 +238,128 @@ Item {
                         Text { id: genLbl; anchors.centerIn: parent; text: "예상 질문 생성"; color: "white"; font.pixelSize: 12; font.bold: true }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                            onClicked: session.generateQuestions()
+                            onClicked: parent.generateExpectedQuestions()
                         }
+                    }
+                }
+            }
+            Rectangle {
+                visible: !session.loading && !session.threadLoadFailed && session.canRegenerateQuestions
+                width: parent.width
+                radius: Theme.radius
+                color: Theme.surface
+                border.color: Theme.border
+                height: regenerateCol.implicitHeight + 28
+                ColumnLayout {
+                    id: regenerateCol
+                    anchors.centerIn: parent
+                    width: parent.width - 40
+                    spacing: 8
+                    Text {
+                        text: "질문을 다른 모델로 다시 만들어 볼까요?"
+                        color: Theme.text; font.pixelSize: 13; font.bold: true
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "답변 전에는 기존 선택을 유지하거나 다른 모델을 골라 미답변 질문을 교체할 수 있습니다."
+                        color: Theme.muted; font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text { text: "AI 모델"; color: Theme.muted; font.pixelSize: 11 }
+                        ComboBox {
+                            id: regenerationModelPicker
+                            Layout.preferredWidth: 184
+                            implicitHeight: 30
+                            enabled: !session.loading
+                            Accessible.name: "질문 재생성 AI 모델"
+                            property var modelValues: ["AUTO", "CAREERTUNER", "CLAUDE", "OPENAI"]
+                            model: ["자동 (추천)", "CareerTuner 자체 모델", "Claude Haiku", "OpenAI GPT"]
+                            function syncFromSession() {
+                                currentIndex = Math.max(0, modelValues.indexOf(session.questionGenerationModel))
+                            }
+                            Component.onCompleted: syncFromSession()
+                            onActivated: (index) => session.questionGenerationModel = modelValues[index]
+                            Connections {
+                                target: session
+                                function onQuestionGenerationModelChanged() {
+                                    regenerationModelPicker.syncFromSession()
+                                }
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Rectangle {
+                            width: regenerateLabel.implicitWidth + 22; height: 32; radius: 8
+                            enabled: !win.sessionAnswerMediaPending
+                            color: Theme.accentSoft
+                            border.color: activeFocus ? Theme.accentText : Theme.accent
+                            activeFocusOnTab: visible && enabled
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "선택 모델로 질문 재생성"
+                            Accessible.description: enabled ? "" : "미제출 녹음·영상 작업을 먼저 정리하세요"
+                            opacity: enabled ? 1 : 0.45
+                            function confirmRegeneration() { regenerateQuestionsDialog.open() }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    confirmRegeneration()
+                                }
+                            }
+                            Text {
+                                id: regenerateLabel
+                                anchors.centerIn: parent
+                                text: "선택 모델로 질문 재생성"
+                                color: Theme.accentText; font.pixelSize: 11; font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                enabled: parent.enabled
+                                onClicked: parent.confirmRegeneration()
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                visible: !session.loading && session.threadLoadFailed
+                width: parent.width
+                radius: Theme.radius
+                color: Theme.surface
+                border.color: Theme.danger
+                height: reloadFailureCol.implicitHeight + 36
+                ColumnLayout {
+                    id: reloadFailureCol
+                    anchors.centerIn: parent
+                    width: parent.width - 48
+                    spacing: 10
+                    Text {
+                        text: "세션 질문과 복기 정보를 불러오지 못했습니다"
+                        color: Theme.text; font.pixelSize: 14; font.bold: true
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                    Text {
+                        text: "중복 답변을 막기 위해 입력을 잠갔습니다. 다시 불러온 뒤 계속하세요."
+                        color: Theme.muted; font.pixelSize: 12
+                        Layout.alignment: Qt.AlignHCenter
+                    }
+                    Rectangle {
+                        Layout.alignment: Qt.AlignHCenter
+                        width: retryLoadLabel.implicitWidth + 28; height: 32; radius: 8
+                        color: Theme.raised
+                        border.color: activeFocus ? Theme.accent : Theme.border
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "면접 세션 다시 불러오기"
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                event.accepted = true
+                                session.retryLoadThread()
+                            }
+                        }
+                        Text { id: retryLoadLabel; anchors.centerIn: parent; text: "다시 불러오기"; color: Theme.text; font.pixelSize: 12; font.bold: true }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: session.retryLoadThread() }
                     }
                 }
             }
@@ -270,6 +463,18 @@ Item {
                             Icon { name: "mic"; size: 10; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
                             Text { text: "음성"; color: Theme.muted; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
                         }
+                        Row {
+                            visible: data_.hasVideo === true
+                            spacing: 5
+                            Icon { name: "video"; size: 10; color: Theme.muted; anchors.verticalCenter: parent.verticalCenter }
+                            Text { text: "영상"; color: Theme.muted; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                        }
+                        Text {
+                            visible: data_.pending === true
+                            text: "저장 중…"
+                            color: Theme.accentText
+                            font.pixelSize: 10
+                        }
                     }
                     Rectangle {
                         Layout.fillWidth: true
@@ -298,6 +503,8 @@ Item {
             property var data_: ({})
             property bool showModel: false
             property bool showImproved: false
+            property bool modelAnswerPending_: session.modelAnswerPendingQuestionIds.indexOf(data_.qid) >= 0
+            property bool followUpPending_: session.followUpPendingQuestionIds.indexOf(data_.qid) >= 0
             width: list.width
             height: card.implicitHeight + 16
 
@@ -346,6 +553,37 @@ Item {
                                         Text {
                                             text: "전달력 " + scoreRoot.data_.voiceScore
                                             color: Theme.accent; font.pixelSize: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    visible: scoreRoot.data_.visualScore >= 0
+                                    height: 20; radius: 10
+                                    width: visualRow.implicitWidth + 16
+                                    color: Theme.accentSoft
+                                    Row {
+                                        id: visualRow; anchors.centerIn: parent
+                                        spacing: 5
+                                        Icon { name: "video"; size: 10; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                                        Text {
+                                            text: "비언어 " + scoreRoot.data_.visualScore
+                                            color: Theme.accent; font.pixelSize: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    visible: scoreRoot.data_.videoScore >= 0
+                                    height: 20; radius: 10
+                                    width: videoTotalRow.implicitWidth + 16
+                                    color: Theme.raised
+                                    Row {
+                                        id: videoTotalRow; anchors.centerIn: parent
+                                        spacing: 5
+                                        Text {
+                                            text: "영상 종합 " + scoreRoot.data_.videoScore
+                                            color: Theme.text; font.pixelSize: 10
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
                                     }
@@ -427,19 +665,36 @@ Item {
                         spacing: 8
                         Rectangle {
                             width: modelBtnLbl.implicitWidth + 20; height: 28; radius: 7
-                            color: Theme.raised; border.color: Theme.border
+                            color: Theme.raised
+                            border.color: activeFocus ? Theme.accent : Theme.border
+                            activeFocusOnTab: !scoreRoot.modelAnswerPending_
+                            Accessible.role: Accessible.Button
+                            Accessible.name: scoreRoot.modelAnswerPending_
+                                             ? "모범답안 생성 중" : "모범답안 보기"
+                            opacity: scoreRoot.modelAnswerPending_ ? 0.55 : 1
+                            function activateModelAnswer() {
+                                if (scoreRoot.modelAnswerPending_) return
+                                if ((scoreRoot.data_.modelAnswer || "") === "")
+                                    session.requestModelAnswer(scoreRoot.data_.qid)
+                                scoreRoot.showModel = !scoreRoot.showModel
+                            }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    activateModelAnswer()
+                                }
+                            }
                             Text {
                                 id: modelBtnLbl; anchors.centerIn: parent
-                                text: scoreRoot.showModel ? "모범답안 접기" : "모범답안 보기"
+                                text: scoreRoot.modelAnswerPending_
+                                      ? "생성 중…"
+                                      : (scoreRoot.showModel ? "모범답안 접기" : "모범답안 보기")
                                 color: Theme.text; font.pixelSize: 11
                             }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if ((scoreRoot.data_.modelAnswer || "") === "")
-                                        session.requestModelAnswer(scoreRoot.data_.qid)
-                                    scoreRoot.showModel = !scoreRoot.showModel
-                                }
+                                enabled: !scoreRoot.modelAnswerPending_
+                                onClicked: parent.activateModelAnswer()
                             }
                         }
                         Rectangle {
@@ -457,12 +712,62 @@ Item {
                             }
                         }
                         Rectangle {
+                            visible: session.mode === "PRESSURE" || session.mode === "압박 면접"
                             width: fuBtnLbl.implicitWidth + 20; height: 28; radius: 7
-                            color: Theme.raised; border.color: Theme.border
-                            Text { id: fuBtnLbl; anchors.centerIn: parent; text: "꼬리질문 받기"; color: Theme.text; font.pixelSize: 11 }
+                            color: Theme.raised
+                            border.color: activeFocus ? Theme.accent : Theme.border
+                            activeFocusOnTab: visible && !scoreRoot.followUpPending_
+                            Accessible.role: Accessible.Button
+                            Accessible.name: scoreRoot.followUpPending_
+                                             ? "꼬리질문 생성 중" : "이 답변의 꼬리질문 받기"
+                            opacity: scoreRoot.followUpPending_ ? 0.55 : 1
+                            function activateFollowUp() {
+                                if (!scoreRoot.followUpPending_)
+                                    session.requestFollowUp(scoreRoot.data_.qid)
+                            }
+                            Keys.onPressed: (event) => {
+                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) {
+                                    event.accepted = true
+                                    activateFollowUp()
+                                }
+                            }
+                            Text {
+                                id: fuBtnLbl; anchors.centerIn: parent
+                                text: scoreRoot.followUpPending_ ? "생성 중…" : "꼬리질문 받기"
+                                color: Theme.text; font.pixelSize: 11
+                            }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: session.requestFollowUp()
+                                enabled: !scoreRoot.followUpPending_
+                                onClicked: parent.activateFollowUp()
+                            }
+                        }
+                        Rectangle {
+                            visible: scoreRoot.data_.answerId > 0
+                                     && scoreRoot.data_.hasAudioOriginal === true
+                            width: audioDeleteLbl.implicitWidth + 20; height: 28; radius: 7
+                            color: Theme.raised; border.color: Theme.border
+                            Text {
+                                id: audioDeleteLbl; anchors.centerIn: parent
+                                text: "음성 원본 삭제"; color: Theme.danger; font.pixelSize: 11
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: session.deleteAnswerMedia(scoreRoot.data_.answerId, "AUDIO")
+                            }
+                        }
+                        Rectangle {
+                            visible: scoreRoot.data_.answerId > 0
+                                     && scoreRoot.data_.hasVideoOriginal === true
+                            width: videoDeleteLbl.implicitWidth + 20; height: 28; radius: 7
+                            color: Theme.raised; border.color: Theme.border
+                            Text {
+                                id: videoDeleteLbl; anchors.centerIn: parent
+                                text: "영상 원본 삭제"; color: Theme.danger; font.pixelSize: 11
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: session.deleteAnswerMedia(scoreRoot.data_.answerId, "VIDEO")
                             }
                         }
                     }

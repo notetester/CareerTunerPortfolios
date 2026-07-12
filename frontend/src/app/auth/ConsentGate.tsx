@@ -48,7 +48,11 @@ export function RequiredConsentBoundary({ children }: { children: ReactNode }) {
   const { status, loading, error, refresh } = useConsent();
   const location = useLocation();
 
-  if (!isAuthenticated || authLoading || isRecoveryPath(location.pathname)) return children;
+  // 루트는 비로그인 랜딩이면서 네이티브 로그인 홈이기도 하다. 로그인 홈까지
+  // 공개 복구 경로로 취급하면 필수 동의를 철회한 사용자가 AppHome을 계속 이용하게 된다.
+  if (isRecoveryPath(location.pathname) && location.pathname !== "/") return children;
+  if (authLoading && !isAuthenticated) return <ConsentLoading />;
+  if (!isAuthenticated) return children;
   if (loading && !status) return <ConsentLoading />;
   if (error && !status) return <ConsentLoadFailure error={error} onRetry={refresh} />;
   if (!status) return <ConsentLoading />;
@@ -69,7 +73,10 @@ export function ConsentGate({ requirements, children }: { requirements: ConsentT
     const returnTo = `${location.pathname}${location.search}`;
     return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
-  if (authLoading || (loading && !status)) return <ConsentLoading />;
+  // 재검증(authLoading) 중이라도 이미 확인된 세션(user 존재)이면 children을 유지한다.
+  // AI 과금 성공 → 크레딧 이벤트 → refreshMe() 재검증 순간마다 페이지가 언마운트되어
+  // 면접 세션·입력 상태가 통째로 초기화되던 회귀 방지. 동의 차단 자체는 아래에서 그대로 평가된다.
+  if ((authLoading && !isAuthenticated) || (loading && !status)) return <ConsentLoading />;
   if (error && !status) return <ConsentLoadFailure error={error} onRetry={refresh} />;
   if (!status) return <ConsentLoading />;
   const missing = requirements.filter((type) => !hasConsent(type, status));

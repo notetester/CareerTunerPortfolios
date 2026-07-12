@@ -22,6 +22,7 @@ public class CollaborationMessage {
     private LocalDateTime createdAt;
     private String senderName;
     private String senderEmail;
+    private String senderStatus;
 
     // ── 표시명 해석용 방 전용 프로필/익명 정보(JOIN) ──
     /** 이 방에서 발신자가 익명 참가인지(collaboration_conversation_member.anonymous). */

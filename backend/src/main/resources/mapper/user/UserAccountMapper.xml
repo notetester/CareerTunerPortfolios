@@ -42,15 +42,124 @@
            SET login_id = #{loginId}
          WHERE id = #{userId}
            AND login_id IS NULL
+           AND status = 'ACTIVE'
     </update>
 
     <update id="updatePhone">
-        UPDATE users SET phone = #{phone} WHERE id = #{userId}
+        UPDATE users
+           SET phone = #{phone}
+         WHERE id = #{userId}
+           AND status = 'ACTIVE'
     </update>
 
     <delete id="deleteSocial">
         DELETE FROM user_social
         WHERE user_id = #{userId} AND provider = #{provider}
+    </delete>
+
+    <update id="anonymizeAndSoftDeleteOwnAccount">
+        UPDATE users
+           SET status = 'DELETED',
+               email = NULL,
+               login_id = NULL,
+               phone = NULL,
+               phone_verified = 0,
+               password = NULL,
+               password_enabled = 0,
+               name = '탈퇴한 사용자',
+               email_verified = 0,
+               deleted_at = COALESCE(deleted_at, NOW()),
+               status_changed_at = NOW(),
+               status_changed_by = NULL,
+               blocked_reason = NULL,
+               blocked_until = NULL
+         WHERE id = #{userId}
+           AND status &lt;&gt; 'DELETED'
+    </update>
+
+    <!-- 소셜/푸시/OTP는 인증·전송용 일시 데이터이므로 탈퇴 트랜잭션 안에서 즉시 제거한다. -->
+    <delete id="deleteAllSocialLinks">
+        DELETE FROM user_social WHERE user_id = #{userId}
+    </delete>
+
+    <delete id="deleteAllPushSubscriptions">
+        DELETE FROM push_subscription WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 과거 이메일 인증 행은 감사/FK를 보존하되 토큰과 이메일을 재사용할 수 없도록 익명화·만료한다. -->
+    <update id="expireAllEmailVerifications">
+        UPDATE email_verification
+           SET email = CONCAT('deleted-', id, '@invalid.local'),
+               used = 1,
+               used_at = COALESCE(used_at, NOW()),
+               expired_at = LEAST(expired_at, NOW())
+         WHERE user_id = #{userId}
+    </update>
+
+    <delete id="deleteAllSmsOtpCodes">
+        DELETE FROM sms_otp_code WHERE user_id = #{userId}
+    </delete>
+
+    <!-- 작성 이력의 FK는 그대로 두고 공개 표시 계층만 비활성·비식별화한다. -->
+    <update id="hideAndAnonymizeNicknameProfiles">
+        UPDATE user_nickname_profile
+           SET nickname = CONCAT('deleted-', LEFT(SHA2(CONCAT('careertuner-deleted-profile:', id), 256), 22)),
+               avatar_file_id = NULL,
+               bio = NULL,
+               is_default = 0,
+               status = 'HIDDEN'
+         WHERE user_id = #{userId}
+    </update>
+
+    <update id="anonymizeChatProfiles">
+        UPDATE user_chat_profile
+           SET nickname = '탈퇴한 사용자',
+               avatar_url = NULL,
+               description = NULL,
+               is_default = 0
+         WHERE user_id = #{userId}
+    </update>
+
+    <update id="clearConversationNicknameProfiles">
+        UPDATE conversation_member_profile
+           SET nickname_profile_id = NULL,
+               anonymous = 0,
+               updated_at = NOW()
+         WHERE user_id = #{userId}
+    </update>
+
+    <!-- 탈퇴 계정은 채팅 참여·알림 fan-out 대상에서 즉시 빠지되 메시지와 멤버 FK는 보존한다. -->
+    <update id="deactivateConversationMemberships">
+        UPDATE collaboration_conversation_member
+           SET status = 'LEFT',
+               room_nickname = NULL,
+               room_profile_file_id = NULL,
+               muted = 1,
+               left_at = COALESCE(left_at, NOW())
+         WHERE user_id = #{userId}
+           AND status = 'ACTIVE'
+    </update>
+
+    <update id="cancelPendingFriendRequests">
+        UPDATE collaboration_friend_request
+           SET status = 'CANCELED',
+               responded_at = COALESCE(responded_at, NOW()),
+               updated_at = NOW()
+         WHERE (requester_id = #{userId} OR receiver_id = #{userId})
+           AND status = 'PENDING'
+    </update>
+
+    <update id="cancelPendingConversationInvites">
+        UPDATE collaboration_conversation_invite
+           SET status = 'CANCELED',
+               responded_at = COALESCE(responded_at, NOW()),
+               updated_at = NOW()
+         WHERE (inviter_id = #{userId} OR invitee_id = #{userId})
+           AND status = 'PENDING'
+    </update>
+
+    <delete id="deleteDesktopPresence">
+        DELETE FROM user_desktop_presence WHERE user_id = #{userId}
     </delete>
 
     <!-- ── 이력서 상세 스펙 ── -->

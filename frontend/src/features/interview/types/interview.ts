@@ -24,6 +24,12 @@ export interface InterviewSession {
   mode: InterviewMode;
   startedAt: string | null;
   endedAt: string | null;
+  /** 목록 조회에서 함께 계산되는 전체 질문 수. */
+  totalQuestions: number;
+  /** 답변이 하나 이상 존재하는 질문 수. */
+  answeredQuestions: number;
+  /** 질문이 있고 모든 질문에 답변한 경우에만 true. endedAt 과 독립적이다. */
+  finished: boolean;
   totalScore: number | null;
   /** 답변 점수 평균(목록 조회 계산값). 리포트 미생성으로 totalScore 가 없을 때 카드 점수 폴백용. */
   avgScore: number | null;
@@ -54,6 +60,8 @@ export interface InterviewAnswer {
   score: number | null;
   feedback: string | null;
   improvedAnswer: string | null;
+  clientSubmissionId?: string | null;
+  submissionStatus?: "PENDING" | "COMPLETED" | "FAILED" | null;
   createdAt: string;
 }
 
@@ -76,6 +84,8 @@ export interface InterviewReportQuestionScore {
   question: string;
   score: number | null;
   feedback: string | null;
+  voiceScore?: number | null;
+  visualScore?: number | null;
 }
 
 // ───── 요청 DTO ─────
@@ -98,8 +108,17 @@ export interface SubmitAnswerRequest {
   answerText: string;
   audioUrl?: string | null;
   videoUrl?: string | null;
+  /** 먼저 업로드한 원본을 답변에 원자적으로 연결한다. URL은 서버가 이 ID로 정규화한다. */
+  audioFileId?: number | null;
+  videoFileId?: number | null;
   /** 사용자에게 보여준 모범답안(답안지). 있으면 채점의 만점 기준으로 함께 보낸다. */
   modelAnswer?: string | null;
+  /** 응답 유실 재시도에도 동일하게 유지하는 UUID 멱등키. */
+  clientSubmissionId?: string | null;
+  /** 모바일 캡처 전달력 점수. 답변과 같은 서버 트랜잭션에서 영속한다. */
+  voiceScore?: number | null;
+  /** 모바일 캡처 비언어 점수. 답변과 같은 서버 트랜잭션에서 영속한다. */
+  visualScore?: number | null;
 }
 
 /** 자율 에이전트 진행 단계 (AI 사고과정 트레이스) */
@@ -210,6 +229,8 @@ export interface MediaCapabilities {
 export interface MediaAnalysis {
   id: number;
   interviewSessionId: number;
+  questionId: number | null;
+  answerId: number | null;
   kind: "VOICE" | "AVATAR";
   transcript: TranscriptLine[] | null;
   metrics: Record<string, unknown> | null;
@@ -221,6 +242,9 @@ export interface MediaAnalysis {
 /** 분석 결과 저장 요청 (POST /sessions/{id}/media-results) */
 export interface SaveMediaAnalysisRequest {
   kind: "VOICE" | "AVATAR";
+  /** 답변 단위 모바일 분석일 때 함께 보낸다. 기존 세션 단위 저장은 둘 다 생략한다. */
+  questionId?: number | null;
+  answerId?: number | null;
   transcript: TranscriptLine[] | null;
   metrics: Record<string, unknown> | null;
   score: number;
@@ -255,10 +279,15 @@ export interface SessionReviewItem {
   question: string;
   questionType: string;
   modelAnswer: string | null;
+  answerId: number | null;
   answerText: string | null;
+  audioUrl: string | null;
+  videoUrl: string | null;
   score: number | null;
   feedback: string | null;
   improvedAnswer: string | null;
+  voiceScore?: number | null;
+  visualScore?: number | null;
 }
 
 /** 최근 면접 기록에서 들어가 보는 세션 복기 응답. */

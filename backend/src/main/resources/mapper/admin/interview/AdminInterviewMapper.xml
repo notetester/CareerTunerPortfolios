@@ -26,6 +26,7 @@
                 FROM interview_answer a
                 JOIN interview_question q2 ON q2.id = a.question_id
                 WHERE q2.interview_session_id = s.id
+                  AND a.submission_status = 'COMPLETED'
             ) AS answered_count,
             (s.report IS NOT NULL AND s.report &lt;&gt; '') AS has_report
         FROM interview_session s

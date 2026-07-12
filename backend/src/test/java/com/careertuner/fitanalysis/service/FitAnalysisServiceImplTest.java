@@ -24,6 +24,7 @@ import com.careertuner.fitanalysis.certificate.CertificateEvidenceService;
 import com.careertuner.fitanalysis.domain.FitAnalysisGateResult;
 import com.careertuner.fitanalysis.domain.FitAnalysisGenerationSource;
 import com.careertuner.fitanalysis.domain.FitAnalysisResult;
+import com.careertuner.fitanalysis.dto.CareerRoadmapResponse;
 import com.careertuner.fitanalysis.mapper.FitAnalysisMapper;
 import com.careertuner.notification.service.NotificationService;
 
@@ -40,7 +41,7 @@ class FitAnalysisServiceImplTest {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         ObjectMapper objectMapper = new ObjectMapper();
         var usageLogService = mock(com.careertuner.applicationcase.service.AiUsageLogService.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper, usageLogService, mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), new MockFitAnalysisAiService(), new EvidenceGateService(), mock(NotificationService.class), objectMapper, usageLogService, mock(CertificateEvidenceService.class), transactionTemplate());
         FitAnalysisGenerationSource source = source();
         FitAnalysisResult previous = FitAnalysisResult.builder()
                 .id(10L).applicationCaseId(20L).fitScore(60)
@@ -69,7 +70,7 @@ class FitAnalysisServiceImplTest {
     void generatePersistsEvidenceGateWithoutMutatingScoreOrDecision() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
         FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(
-                mapper, new MockFitAnalysisAiService(), new EvidenceGateService(),
+                mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), new MockFitAnalysisAiService(), new EvidenceGateService(),
                 mock(NotificationService.class), new ObjectMapper(),
                 mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         when(mapper.findGenerationSource(1L, 20L)).thenReturn(source());
@@ -105,7 +106,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void scoreBreakdownNeverExceedsEachMaximumAndSumsToFitScore() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         FitAnalysisResult result = FitAnalysisResult.builder()
                 .id(11L).applicationCaseId(20L).fitScore(100)
                 .conditionMatrix("[]").gapRecommendations("[]").strategyActions("[]")
@@ -122,7 +123,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void careerStrategyExcludesHeldCertsAndMarksThemAsStrengths() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         var profile = new com.careertuner.fitanalysis.domain.CareerProfileSource();
         profile.setDesiredJob("데이터 엔지니어");
         profile.setProfileCertificates("[\"SQLD\"]");
@@ -143,7 +144,7 @@ class FitAnalysisServiceImplTest {
     @Test
     void careerStrategyWithoutDesiredJobDegradesHonestly() {
         FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
-        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class), new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(), mock(com.careertuner.applicationcase.service.AiUsageLogService.class), mock(CertificateEvidenceService.class), transactionTemplate());
         when(mapper.findCareerProfile(1L)).thenReturn(null);
 
         var strategy = service.careerCertificateStrategy(1L);
@@ -179,5 +180,69 @@ class FitAnalysisServiceImplTest {
                 return action.doInTransaction(mock(TransactionStatus.class));
             }
         };
+    }
+
+    @Test
+    void careerRoadmapPlacesOnlyVerifiedDatesAndMarksPlanningBlocks() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        var evidenceService = mock(CertificateEvidenceService.class);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class),
+                new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(),
+                mock(com.careertuner.applicationcase.service.AiUsageLogService.class), evidenceService, transactionTemplate());
+
+        var profile = new com.careertuner.fitanalysis.domain.CareerProfileSource();
+        profile.setDesiredJob("백엔드 개발자");
+        profile.setProfileCertificates("[]");
+        when(mapper.findCareerProfile(1L)).thenReturn(profile);
+
+        java.time.LocalDate deadline = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusDays(20);
+        FitAnalysisResult fit = FitAnalysisResult.builder()
+                .id(11L).applicationCaseId(20L).fitScore(70)
+                .missingSkills("[\"Kubernetes\", \"Kafka\"]")
+                .build();
+        fit.setCompanyName("테스트사");
+        fit.setJobTitle("백엔드");
+        fit.setDeadlineDate(deadline);
+        when(mapper.findLatestByUserId(1L)).thenReturn(List.of(fit));
+
+        String examYmd = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).plusMonths(2)
+                .format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE);
+        var round = new com.careertuner.fitanalysis.certificate.CertificateScheduleEvidence.ScheduleRound(
+                "기사 3회", null, null, examYmd, null, null, null, null);
+        when(evidenceService.collect(any())).thenReturn(List.of(
+                new com.careertuner.fitanalysis.dto.CertificateEvidenceResponse("정보처리기사", "NATIONAL_TECHNICAL",
+                        "VERIFIED_CURRENT", null, "확인됨", "출처", "url", List.of(round)),
+                new com.careertuner.fitanalysis.dto.CertificateEvidenceResponse("SQLD", "PRIVATE_OR_OTHER",
+                        "MANUAL_REQUIRED", null, "주관기관 확인", "출처", "url", List.of())));
+
+        var roadmap = service.careerRoadmap(1L, 12);
+
+        // 확인된 실일정만 날짜로: 시험(VERIFIED) + 지원 마감. MANUAL_REQUIRED(SQLD)는 날짜 항목 없이 노트로만.
+        assertThat(roadmap.items()).anyMatch(item -> item.type().equals("CERT_EXAM") && item.certName().equals("정보처리기사"));
+        assertThat(roadmap.items()).anyMatch(item -> item.type().equals("APPLICATION_DEADLINE") && item.title().contains("테스트사"));
+        assertThat(roadmap.items()).noneMatch(item -> "SQLD".equals(item.certName()));
+        assertThat(roadmap.basisNotes()).anyMatch(note -> note.contains("확인하지 못해"));
+        // 학습 블록은 planningBlock=true 로 실일정과 구분(임의 확정일정 금지 계약).
+        assertThat(roadmap.items()).anyMatch(item -> item.type().equals("SKILL_LEARNING") && item.planningBlock());
+        assertThat(roadmap.items()).filteredOn(item -> !item.planningBlock())
+                .allMatch(item -> item.sourceName() != null);
+        // 시간순 정렬.
+        var starts = roadmap.items().stream().map(CareerRoadmapResponse.RoadmapItem::startDate).toList();
+        assertThat(starts).isSorted();
+    }
+
+    @Test
+    void careerRoadmapWithoutDesiredJobReturnsGuidanceOnly() {
+        FitAnalysisMapper mapper = mock(FitAnalysisMapper.class);
+        FitAnalysisServiceImpl service = new FitAnalysisServiceImpl(mapper, mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class), mock(MockFitAnalysisAiService.class),
+                new EvidenceGateService(), mock(NotificationService.class), new ObjectMapper(),
+                mock(com.careertuner.applicationcase.service.AiUsageLogService.class),
+                mock(CertificateEvidenceService.class), transactionTemplate());
+        when(mapper.findCareerProfile(1L)).thenReturn(null);
+
+        var roadmap = service.careerRoadmap(1L, 12);
+
+        assertThat(roadmap.items()).isEmpty();
+        assertThat(roadmap.basisNotes()).anyMatch(note -> note.contains("희망 직무"));
     }
 }

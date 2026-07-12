@@ -94,7 +94,7 @@
     </update>
 
     <update id="markEmailVerified">
-        UPDATE users SET email_verified = 1 WHERE id = #{id}
+        UPDATE users SET email_verified = 1 WHERE id = #{id} AND status = 'ACTIVE'
     </update>
 
     <update id="updateEmailAndMarkVerified">
@@ -103,13 +103,20 @@
                email_verified = 1,
                updated_at = NOW()
          WHERE id = #{id}
+           AND status = 'ACTIVE'
     </update>
 
     <update id="updatePassword">
-        UPDATE users SET password = #{password}, password_enabled = 1 WHERE id = #{id}
+        UPDATE users
+           SET password = #{password}, password_enabled = 1
+         WHERE id = #{id}
+           AND status = 'ACTIVE'
     </update>
 
     <update id="markPhoneVerified">
-        UPDATE users SET phone = #{phone}, phone_verified = 1 WHERE id = #{id}
+        UPDATE users
+           SET phone = #{phone}, phone_verified = 1
+         WHERE id = #{id}
+           AND status = 'ACTIVE'
     </update>
 </mapper>

@@ -9,8 +9,8 @@ const now = Date.now();
 const iso = (daysAgo: number) => new Date(now - daysAgo * 86_400_000).toISOString();
 
 export const demoInterviewSessions: InterviewSession[] = [
-  { id: 8002, applicationCaseId: 102, mode: "JOB", startedAt: iso(1), endedAt: iso(1), totalScore: 80, avgScore: 78, avgVoiceScore: 72, lastResumedAt: null, createdAt: iso(1) },
-  { id: 8001, applicationCaseId: 101, mode: "BASIC", startedAt: iso(3), endedAt: iso(3), totalScore: 74, avgScore: 71, avgVoiceScore: null, lastResumedAt: iso(0), createdAt: iso(3) },
+  { id: 8002, applicationCaseId: 102, mode: "JOB", startedAt: iso(1), endedAt: iso(1), totalQuestions: 3, answeredQuestions: 3, finished: true, totalScore: 80, avgScore: 78, avgVoiceScore: 72, lastResumedAt: null, createdAt: iso(1) },
+  { id: 8001, applicationCaseId: 101, mode: "BASIC", startedAt: iso(3), endedAt: iso(3), totalQuestions: 2, answeredQuestions: 2, finished: true, totalScore: 74, avgScore: 71, avgVoiceScore: null, lastResumedAt: iso(0), createdAt: iso(3) },
 ];
 
 const sessionQuestions: Record<number, InterviewQuestion[]> = {
@@ -87,7 +87,7 @@ let nextQuestionId = 96000;
 export function createSession(req: CreateInterviewSessionRequest): InterviewSession {
   const session: InterviewSession = {
     id: ++nextSessionId, applicationCaseId: req.applicationCaseId, mode: req.mode,
-    startedAt: new Date().toISOString(), endedAt: null, totalScore: null, avgScore: null, avgVoiceScore: null, lastResumedAt: null, createdAt: new Date().toISOString(),
+    startedAt: new Date().toISOString(), endedAt: null, totalQuestions: 0, answeredQuestions: 0, finished: false, totalScore: null, avgScore: null, avgVoiceScore: null, lastResumedAt: null, createdAt: new Date().toISOString(),
   };
   demoInterviewSessions.unshift(session);
   sessionQuestions[session.id] = [];
@@ -126,6 +126,40 @@ export function realtimeSession(): RealtimeSession {
   return { clientSecret: "demo-realtime-secret", expiresAt: null, model: "mock-realtime", voice: "alloy", realtimeUrl: "" };
 }
 
-export function fileAsset(): FileAsset {
-  return { id: 70001, kind: "AUDIO", refType: "INTERVIEW_ANSWER", refId: null, originalName: "demo-answer.webm", contentType: "audio/webm", sizeBytes: 12345, contentUrl: "", createdAt: new Date().toISOString() };
+const FILE_KINDS: FileAsset["kind"][] = ["AUDIO", "VIDEO", "RESUME", "PORTFOLIO", "POSTING", "ATTACHMENT"];
+const uploadedFiles = new Map<number, FileAsset>();
+let nextFileAssetId = 70000;
+
+function formValue(body: unknown, name: string): FormDataEntryValue | null {
+  return typeof FormData !== "undefined" && body instanceof FormData ? body.get(name) : null;
+}
+
+export function fileAsset(body: unknown): FileAsset {
+  const rawKind = formValue(body, "kind");
+  const requestedKind = typeof rawKind === "string" ? rawKind.toUpperCase() : "";
+  const kind = FILE_KINDS.includes(requestedKind as FileAsset["kind"])
+    ? requestedKind as FileAsset["kind"]
+    : "ATTACHMENT";
+  const rawRefType = formValue(body, "refType");
+  const rawRefId = formValue(body, "refId");
+  const file = formValue(body, "file");
+  const id = ++nextFileAssetId;
+  const parsedRefId = typeof rawRefId === "string" ? Number(rawRefId) : Number.NaN;
+  const asset: FileAsset = {
+    id,
+    kind,
+    refType: typeof rawRefType === "string" && rawRefType ? rawRefType : null,
+    refId: Number.isSafeInteger(parsedRefId) ? parsedRefId : null,
+    originalName: typeof file !== "string" && file && "name" in file ? file.name : "upload",
+    contentType: typeof file !== "string" && file ? file.type || null : null,
+    sizeBytes: typeof file !== "string" && file ? file.size : null,
+    contentUrl: `/api/file/${id}/content`,
+    createdAt: new Date().toISOString(),
+  };
+  uploadedFiles.set(id, asset);
+  return asset;
+}
+
+export function deleteFileAsset(fileId: number): void {
+  uploadedFiles.delete(fileId);
 }

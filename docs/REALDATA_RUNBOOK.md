@@ -148,7 +148,7 @@ VITE_API_BASE_URL=https://<머신>.<tailnet>.ts.net/api
 ```
 
 ```bash
-cd frontend && npm run build && npx cap sync android && cd android && ./gradlew assembleDebug
+cd frontend && npm run build && npm run native:sync -- android && cd android && ./gradlew assembleDebug
 #   → android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -209,7 +209,7 @@ cd frontend && npm run dev                                                # 프�
 # (4090 안) tailscale serve --bg 8080            # HTTPS 노출(권장)
 # 폰: Tailscale 앱 설치 + 같은 계정 로그인  ← 안 하면 100.x 백엔드에 못 닿음
 # frontend/.env.local 에 VITE_API_BASE_URL=https://<머신>.<tailnet>.ts.net/api , VITE_USE_MOCK=false
-cd frontend && npm run build && npx cap sync android && cd android && ./gradlew assembleDebug
+cd frontend && npm run build && npm run native:sync -- android && cd android && ./gradlew assembleDebug
 # 또는 CI: git tag demo-apk-real-1 && git push  → Releases 에서 폰으로 다운(실데이터 변형은 C 합의)
 
 # ── 모드 구분 ──

@@ -65,7 +65,8 @@
     <!-- 반응자 목록 — 익명 리액션은 본인 것만 포함(타인 시점 제외) -->
     <select id="findPostReactors" resultType="com.careertuner.community.domain.PostReaction">
         SELECT pr.*, pr.is_anonymous AS anonymous,
-               u.name AS userName
+               u.name AS userName,
+               u.status AS userStatus
           FROM post_reaction pr
           JOIN users u ON u.id = pr.user_id
          WHERE pr.post_id = #{postId}

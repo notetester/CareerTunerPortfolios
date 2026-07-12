@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.auth.domain.EmailVerification;
+import com.careertuner.auth.domain.NativeAuthHandoff;
 import com.careertuner.auth.domain.RefreshToken;
 import com.careertuner.auth.domain.UserConsent;
 import com.careertuner.auth.domain.UserLoginHistory;
@@ -40,6 +41,15 @@ public interface AuthMapper {
     void revokeRefreshToken(String token);
 
     void revokeAllForUser(Long userId);
+
+    // ── 네이티브 OAuth 일회성 handoff ──
+    void insertNativeAuthHandoff(NativeAuthHandoff handoff);
+
+    NativeAuthHandoff findNativeAuthHandoffForUpdate(@Param("codeHash") String codeHash);
+
+    int consumeNativeAuthHandoff(@Param("id") Long id);
+
+    int deleteExpiredNativeAuthHandoffs();
 
     void insertLoginHistory(UserLoginHistory history);
 

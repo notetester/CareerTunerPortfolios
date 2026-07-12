@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.profile.mapper.ProfileAiAnalysisMapper">
+
+    <resultMap id="ProfileAiAnalysisMap" type="com.careertuner.profile.domain.ProfileAiAnalysis">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="featureType" column="feature_type"/>
+        <result property="summary" column="summary"/>
+        <result property="strengths" column="strengths"/>
+        <result property="gaps" column="gaps"/>
+        <result property="recommendations" column="recommendations"/>
+        <result property="extractedSkills" column="extracted_skills"/>
+        <result property="criteria" column="criteria"/>
+        <result property="jobFamily" column="job_family"/>
+        <result property="completenessScore" column="completeness_score"/>
+        <result property="aiScore" column="ai_score"/>
+        <result property="qualityWarnings" column="quality_warnings"/>
+        <result property="model" column="model"/>
+        <result property="status" column="status"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="Columns">
+        id, user_id, feature_type, summary, strengths, gaps, recommendations,
+        extracted_skills, criteria, job_family, completeness_score, ai_score,
+        quality_warnings, model, status, created_at, updated_at
+    </sql>
+
+    <insert id="upsert">
+        INSERT INTO profile_ai_analysis
+            (user_id, feature_type, summary, strengths, gaps, recommendations,
+             extracted_skills, criteria, job_family, completeness_score, ai_score,
+             quality_warnings, model, status)
+        VALUES
+            (#{userId}, #{featureType}, #{summary}, #{strengths}, #{gaps}, #{recommendations},
+             #{extractedSkills}, #{criteria}, #{jobFamily}, #{completenessScore}, #{aiScore},
+             #{qualityWarnings}, #{model}, #{status})
+        ON DUPLICATE KEY UPDATE
+            summary = VALUES(summary),
+            strengths = VALUES(strengths),
+            gaps = VALUES(gaps),
+            recommendations = VALUES(recommendations),
+            extracted_skills = VALUES(extracted_skills),
+            criteria = VALUES(criteria),
+            job_family = VALUES(job_family),
+            completeness_score = VALUES(completeness_score),
+            ai_score = VALUES(ai_score),
+            quality_warnings = VALUES(quality_warnings),
+            model = VALUES(model),
+            status = VALUES(status)
+    </insert>
+
+    <select id="findByUserId" resultMap="ProfileAiAnalysisMap">
+        SELECT <include refid="Columns"/>
+        FROM profile_ai_analysis
+        WHERE user_id = #{userId}
+        ORDER BY updated_at DESC
+    </select>
+
+    <select id="findByUserIdAndFeature" resultMap="ProfileAiAnalysisMap">
+        SELECT <include refid="Columns"/>
+        FROM profile_ai_analysis
+        WHERE user_id = #{userId} AND feature_type = #{featureType}
+    </select>
+
+</mapper>

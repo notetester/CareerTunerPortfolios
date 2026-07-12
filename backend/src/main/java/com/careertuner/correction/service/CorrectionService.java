@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.applicationcase.domain.ApplicationCase;
 import com.careertuner.applicationcase.service.ApplicationCaseAccessService;
 import com.careertuner.billing.dto.AiChargeCommand;
@@ -63,15 +64,21 @@ public class CorrectionService {
     private final ObjectMapper objectMapper;
 
     public CorrectionResponse create(Long userId, CorrectionCreateRequest request) {
-        return create(userId, request, true);
+        return create(userId, request, RequestedAiModel.AUTO);
     }
 
-    /** AutoPrep은 단계별 결제 고지 계약이 없어 기존 WRITE 동작을 비과금으로 유지한다. */
+    /** 사용자가 첨삭 모델을 명시 선택하는 경로(기본 AUTO=현행 폴백). */
+    public CorrectionResponse create(Long userId, CorrectionCreateRequest request, RequestedAiModel requestedModel) {
+        return create(userId, request, true, requestedModel);
+    }
+
+    /** AutoPrep은 단계별 결제 고지 계약이 없어 기존 WRITE 동작을 비과금으로 유지한다(모델 AUTO). */
     public CorrectionResponse createUnchargedForAutoPrep(Long userId, CorrectionCreateRequest request) {
-        return create(userId, request, false);
+        return create(userId, request, false, RequestedAiModel.AUTO);
     }
 
-    private CorrectionResponse create(Long userId, CorrectionCreateRequest request, boolean chargeRequired) {
+    private CorrectionResponse create(Long userId, CorrectionCreateRequest request, boolean chargeRequired,
+                                      RequestedAiModel requestedModel) {
         String correctionType = normalizeCorrectionType(request == null ? null : request.correctionType());
         String originalText = normalizeOriginalText(request == null ? null : request.originalText());
         String sourceType = normalizeSourceType(request == null ? null : request.sourceType());
@@ -109,7 +116,7 @@ public class CorrectionService {
                     applicationCase,
                     originalText,
                     request == null ? null : request.questionText(),
-                    selfInput));
+                    selfInput), requestedModel);
             validateChargeablePayload(payload);
         } catch (RuntimeException ex) {
             recordFailureBestEffort(userId, applicationCaseId, featureType, ex);

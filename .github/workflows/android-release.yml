@@ -1,10 +1,10 @@
 name: Release Android demo APK
 
-# 태그를 푸시하면(v* 또는 demo-*) mock 데모 APK 를 빌드해 GitHub Release 에 자동 첨부한다.
+# 태그를 푸시하면(v* 또는 demo-*) 시연 전용 release 서명 APK를 빌드해 GitHub Release 에 자동 첨부한다.
 # 팀원은 클론/빌드 없이 Releases 페이지에서 APK 를 받아 BlueStacks 에 드래그&드롭하면 된다.
-#  - 디버그 서명(사이드로드용). 스토어 배포용 서명 아님.
+#  - 시연 전용 release 서명(사이드로드/App Link 검증용). Play Store 최종 서명 키가 아님.
 #  - mock 모드 빌드라 백엔드 없이 자체 동작(로그인은 아무 값이나 통과).
-#  - android/ 네이티브 프로젝트는 .gitignore 대상이라 러너에서 `npx cap add android` 로 재생성.
+#  - android/ 네이티브 프로젝트는 repo에 포함되며, 없을 때만 러너에서 재생성.
 #  - 수동 실행(workflow_dispatch)은 워크플로가 기본 브랜치(main)에 머지된 뒤부터 버튼이 보인다.
 #    태그 트리거는 머지 전에도 동작한다(태그가 가리키는 커밋에 이 파일이 있으면 됨).
 on:
@@ -79,6 +79,52 @@ jobs:
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
           echo "빌드 모드: $MODE"
 
+      - name: Configure demo release signing and verify App Link fingerprint
+        id: signing
+        env:
+          ANDROID_DEMO_KEYSTORE_BASE64: ${{ secrets.ANDROID_DEMO_KEYSTORE_BASE64 }}
+          ANDROID_DEMO_STORE_PASSWORD: ${{ secrets.ANDROID_DEMO_STORE_PASSWORD }}
+          ANDROID_DEMO_KEY_ALIAS: ${{ secrets.ANDROID_DEMO_KEY_ALIAS }}
+          ANDROID_DEMO_KEY_PASSWORD: ${{ secrets.ANDROID_DEMO_KEY_PASSWORD }}
+          ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS: ${{ vars.ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS }}
+        run: |
+          set -euo pipefail
+          missing=""
+          [ -z "$ANDROID_DEMO_KEYSTORE_BASE64" ] && missing="$missing ANDROID_DEMO_KEYSTORE_BASE64"
+          [ -z "$ANDROID_DEMO_STORE_PASSWORD" ] && missing="$missing ANDROID_DEMO_STORE_PASSWORD"
+          [ -z "$ANDROID_DEMO_KEY_ALIAS" ] && missing="$missing ANDROID_DEMO_KEY_ALIAS"
+          [ -z "$ANDROID_DEMO_KEY_PASSWORD" ] && missing="$missing ANDROID_DEMO_KEY_PASSWORD"
+          [ -z "$ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS" ] && missing="$missing ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS"
+          if [ -n "$missing" ]; then
+            echo "::error::시연 release 서명/App Link 설정 누락 →$missing"
+            exit 1
+          fi
+
+          KEYSTORE_PATH="$RUNNER_TEMP/careertuner-demo-release.jks"
+          printf '%s' "$ANDROID_DEMO_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          ACTUAL_FINGERPRINT=$(keytool -exportcert \
+            -alias "$ANDROID_DEMO_KEY_ALIAS" \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass:env ANDROID_DEMO_STORE_PASSWORD \
+            -rfc | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2)
+          ANDROID_SIGNING_SHA256_CERT_FINGERPRINT="$ACTUAL_FINGERPRINT" \
+            node scripts/verify-app-link-signing.mjs
+          echo "keystore_path=$KEYSTORE_PATH" >> "$GITHUB_OUTPUT"
+          echo "fingerprint=$ACTUAL_FINGERPRINT" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed Asset Links before signing APK
+        if: steps.mode.outputs.mode == 'live'
+        env:
+          ANDROID_SIGNING_SHA256_CERT_FINGERPRINT: ${{ steps.signing.outputs.fingerprint }}
+          ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS: ${{ vars.ANDROID_APP_LINK_SHA256_CERT_FINGERPRINTS }}
+          ANDROID_ASSETLINKS_FILE: ${{ runner.temp }}/assetlinks.json
+        run: |
+          curl -fsS --retry 5 --retry-delay 2 \
+            https://careertuner.kro.kr/.well-known/assetlinks.json \
+            -o "$ANDROID_ASSETLINKS_FILE"
+          node scripts/verify-app-link-signing.mjs
+
       - name: Build web (mock=자체데모 / live=실서버 연동)
         run: |
           if [ "${{ steps.mode.outputs.mode }}" = "live" ]; then
@@ -91,13 +137,81 @@ jobs:
         run: test -d android || npx cap add android
 
       - name: Sync web assets + plugins
-        run: npx cap sync android
+        run: npm run native:sync -- android
 
-      - name: Build debug APK
+      - name: Build demo release-signed APK
+        env:
+          CAREERTUNER_ANDROID_STOREFILE: ${{ steps.signing.outputs.keystore_path }}
+          CAREERTUNER_ANDROID_STOREPASSWORD: ${{ secrets.ANDROID_DEMO_STORE_PASSWORD }}
+          CAREERTUNER_ANDROID_KEYALIAS: ${{ secrets.ANDROID_DEMO_KEY_ALIAS }}
+          CAREERTUNER_ANDROID_KEYPASSWORD: ${{ secrets.ANDROID_DEMO_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --warning-mode none
+          # assemble만으로는 API 레벨별 styles.xml 속성 오류가 누락될 수 있다.
+          ./gradlew lintRelease assembleRelease --no-daemon --warning-mode none
+
+      - name: Verify packaged APK signature and security manifest
+        env:
+          EXPECTED_SIGNING_FINGERPRINT: ${{ steps.signing.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          APKANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          test -f "$APK"
+          test -x "$APKSIGNER"
+          test -x "$AAPT2"
+          test -x "$APKANALYZER"
+
+          SIGNING_OUTPUT="$RUNNER_TEMP/apk-signing.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$SIGNING_OUTPUT"
+          ACTUAL=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$SIGNING_OUTPUT" | head -1 | tr '[:upper:]' '[:lower:]')
+          EXPECTED=$(printf '%s' "$EXPECTED_SIGNING_FINGERPRINT" | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          [ -n "$ACTUAL" ] && [ "$ACTUAL" = "$EXPECTED" ] || {
+            echo "::error::패키징된 APK 인증서 지문이 시연 release 키와 일치하지 않습니다."
+            exit 1
+          }
+
+          MANIFEST_XML="$RUNNER_TEMP/apk-manifest.xml"
+          "$APKANALYZER" manifest print "$APK" > "$MANIFEST_XML"
+          grep -Fq 'android:allowBackup="false"' "$MANIFEST_XML"
+          grep -Fq 'android:usesCleartextTraffic="false"' "$MANIFEST_XML"
+          # apkanalyzer는 resource 이름 대신 @ref/0x...를 출력하므로 manifest에서는 속성 존재만 확인하고,
+          # 실제 패키징된 XML 세 파일은 아래 aapt2 dump로 각각 검증한다.
+          grep -Fq 'android:networkSecurityConfig=' "$MANIFEST_XML"
+          grep -Fq 'android:dataExtractionRules=' "$MANIFEST_XML"
+          grep -Fq 'android:fullBackupContent=' "$MANIFEST_XML"
+
+          RESOURCE_TABLE="$RUNNER_TEMP/apk-resources.txt"
+          "$AAPT2" dump resources "$APK" > "$RESOURCE_TABLE"
+          resolve_resource_file() {
+            awk -v target="xml/$1" '
+              $1 == "resource" && $3 == target { found=1; next }
+              found && /\(file\)/ {
+                for (i=1; i<=NF; i++) if ($i ~ /^res\/.*\.xml$/) { print $i; exit }
+              }
+              found && $1 == "resource" { exit 1 }
+            ' "$RESOURCE_TABLE"
+          }
+
+          NETWORK_RESOURCE=$(resolve_resource_file network_security_config)
+          test -n "$NETWORK_RESOURCE"
+          NETWORK_XML="$RUNNER_TEMP/apk-network-security.txt"
+          "$AAPT2" dump xmltree "$APK" --file "$NETWORK_RESOURCE" > "$NETWORK_XML"
+          grep -Fq 'cleartextTrafficPermitted' "$NETWORK_XML"
+          grep -Eq 'cleartextTrafficPermitted.*(0x0|false)' "$NETWORK_XML"
+          ! grep -Eq 'cleartextTrafficPermitted.*(0xffffffff|true)' "$NETWORK_XML"
+
+          for RULES in backup_rules data_extraction_rules; do
+            RULES_RESOURCE=$(resolve_resource_file "$RULES")
+            test -n "$RULES_RESOURCE"
+            RULES_DUMP="$RUNNER_TEMP/apk-$RULES.txt"
+            "$AAPT2" dump xmltree "$APK" --file "$RULES_RESOURCE" > "$RULES_DUMP"
+            grep -Fq 'E: exclude' "$RULES_DUMP"
+            grep -Fq 'A: domain' "$RULES_DUMP"
+          done
 
       - name: Resolve release tag and stage artifacts
         id: meta
@@ -111,7 +225,7 @@ jobs:
             TAG="$MODE-r${{ github.run_number }}"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          cp android/app/build/outputs/apk/debug/app-debug.apk "CareerTuner-$MODE-$TAG.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "CareerTuner-$MODE-$TAG.apk"
           (cd dist && zip -qr "../CareerTuner-web-$MODE-$TAG.zip" .)
           ls -la CareerTuner-*
 
@@ -135,4 +249,9 @@ jobs:
             **모드 안내**
             - `mock`: 백엔드 불필요 자체 데모 — 아무 이메일/비밀번호로 데모 계정("김데모") 진입.
             - `live`: 실서버(https://careertuner.kro.kr) 연동 — 실제 계정으로 로그인, 웹과 데이터 공유.
-            - 디버그 서명이므로 사이드로드 전용입니다(스토어 배포 불가).
+            - 시연 전용 release 키로 서명해 verified App Link를 검증할 수 있지만 Play Store 최종 서명 키는 아닙니다.
+              스토어 전환 시 최종 키 지문으로 Repository variable과 assetlinks.json을 함께 교체해야 합니다.
+
+      - name: Remove temporary demo keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/careertuner-demo-release.jks" "$RUNNER_TEMP/assetlinks.json"

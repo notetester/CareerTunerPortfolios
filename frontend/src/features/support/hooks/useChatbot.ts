@@ -1,6 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { api } from "@/app/lib/api";
+import { useAuth } from "@/app/auth/AuthContext";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { getAccessToken } from "@/app/lib/tokenStore";
+import {
+  deletePendingAutoPrepFile,
+  discardPendingAutoPrepFiles,
+} from "@/app/lib/pendingAutoPrepFiles";
 import { uploadAttachment } from "@/features/autoprep/api/autoPrepApi";
 import { useAutoPrepRun } from "@/features/autoprep/hooks/useAutoPrepRun";
 import { displayCompany, displayJobTitle } from "@/features/autoprep/lib/caseLabels";
@@ -16,9 +22,14 @@ import type {
   IntakeModeOption,
   InterviewReportCard,
 } from "../types/chatbot";
+import {
+  ChatbotRequestScope,
+  chatbotAccountKey,
+  interviewHandoffStorageKey,
+} from "./chatbotAccountScopeCore.mjs";
 
-// 면접 인계 대기 표식(브라우저 저장) — 챗봇에서 면접 페이지로 caseId 를 넘기고, 복귀 시 결과를 재조회한다.
-const LS_AWAIT_INTERVIEW = "tunerbot:awaitInterview";
+// v1의 계정 공용 키는 소유자를 판별할 수 없으므로 읽지 않고 제거만 한다.
+const LEGACY_LS_AWAIT_INTERVIEW = "tunerbot:awaitInterview";
 
 let msgId = 0;
 const nextId = () => `msg-${++msgId}`;
@@ -77,6 +88,10 @@ interface SessionSummaryDto {
 }
 
 export function useChatbot() {
+  const { user } = useAuth();
+  const accountId = user?.id ?? null;
+  const accountKey = chatbotAccountKey(accountId);
+  const [stateAccountKey, setStateAccountKey] = useState(accountKey);
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [botStatus, setBotStatus] = useState<BotStatus>("idle");
@@ -103,7 +118,6 @@ export function useChatbot() {
   const expandToFloating = useCallback(() => setSurface("floating"), []);
   const collapseToCorner = useCallback(() => setSurface("corner"), []);
 
-  const abortRef = useRef<AbortController | null>(null);
   // 서버 발급 대화 ID. 새 대화면 null → 첫 응답에서 받아 보관, 이후 턴마다 재사용.
   const conversationIdRef = useRef<number | null>(null);
   // ③ 인테이크 가이드(스텝 UI)에서 올린 자소서 fileId — ready 시 run 요청에 프론트에서 병합한다.
@@ -119,15 +133,95 @@ export function useChatbot() {
   }, []);
   // 복원은 세션당 1회만 시도 (열 때마다 재호출 방지).
   const restoredRef = useRef(false);
+  const voiceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const accountSwitchCleanupIdsRef = useRef<number[]>([]);
   // ④ 재진입 하이드레이션 — 복원 resume 에 실려 온 확정 수집값(가이드 패널이 소비, 표시용).
   const [onbCollected, setOnbCollected] = useState<OnbCollected | null>(null);
+
+  const requestScopeRef = useRef<ChatbotRequestScope | null>(null);
+  if (requestScopeRef.current == null) {
+    requestScopeRef.current = new ChatbotRequestScope(accountId);
+  }
+  const requestScope = requestScopeRef.current;
+
+  function takePendingAutoPrepFileIds(): number[] {
+    const ids = new Set<number>(pendingAttachmentIdsRef.current);
+    for (const fileId of lastRunRequestRef.current?.attachmentFileIds ?? []) ids.add(fileId);
+    pendingAttachmentIdsRef.current = [];
+    lastRunRequestRef.current = null;
+    return [...ids];
+  }
+
+  function discardOwnedPendingAutoPrepFiles(options: { keepalive?: boolean } = {}): void {
+    const fileIds = takePendingAutoPrepFileIds();
+    if (fileIds.length > 0) void discardPendingAutoPrepFiles(fileIds, options);
+  }
+
+  // AuthContext의 계정 값은 render 중 이미 바뀐다. 이때 request generation과 민감 ref를
+  // 동기 전환해 effect가 실행되기 전 들어오는 이전 계정 응답도 즉시 폐기한다.
+  if (requestScope.switchAccount(accountId)) {
+    accountSwitchCleanupIdsRef.current = [
+      ...new Set([...accountSwitchCleanupIdsRef.current, ...takePendingAutoPrepFileIds()]),
+    ];
+    conversationIdRef.current = null;
+    lastFailedActionRef.current = null;
+    restoredRef.current = false;
+    runStartedRef.current = false;
+    orchRef.current = false;
+    sessionsRef.current = [];
+    if (voiceTimerRef.current != null) {
+      clearTimeout(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+  }
+
+  const runReset = run.reset;
+  const runCancel = run.cancel;
+  useEffect(() => {
+    // state는 계정별로 완전히 비운 뒤 마지막에 scope key를 맞춘다. 그 전 render에서는
+    // return 값이 아래 accountStateCurrent guard로 마스킹돼 이전 계정 UI가 노출되지 않는다.
+    setIsOpen(false);
+    setMessages([]);
+    setBotStatus("idle");
+    setVoiceState("idle");
+    setInterimTranscript("");
+    setSessions([]);
+    setActiveSessionId("");
+    setOrchestrator(false);
+    setRunStarted(false);
+    setRunCaseId(null);
+    setShowExitSheet(false);
+    setSurface("corner");
+    setOnbCollected(null);
+    runReset();
+    const cleanupFileIds = accountSwitchCleanupIdsRef.current;
+    accountSwitchCleanupIdsRef.current = [];
+    if (cleanupFileIds.length > 0) void discardPendingAutoPrepFiles(cleanupFileIds, { keepalive: true });
+    try {
+      localStorage.removeItem(LEGACY_LS_AWAIT_INTERVIEW);
+    } catch {
+      // 저장소 사용 불가 환경은 무시한다.
+    }
+    setStateAccountKey(accountKey);
+  }, [accountKey, runReset]);
+
+  useEffect(() => () => {
+    requestScope.abortAll();
+    runCancel();
+    discardOwnedPendingAutoPrepFiles({ keepalive: true });
+    if (voiceTimerRef.current != null) clearTimeout(voiceTimerRef.current);
+  }, [requestScope, runCancel]);
 
   const restoreRecent = useCallback(() => {
     if (restoredRef.current) return;
     if (!getAccessToken()) return; // 비로그인은 복원 대상 아님
     restoredRef.current = true;
-    api<ChatHistoryResponse | null>("/chatbot/conversations/recent")
+    const request = requestScope.begin("restore");
+    api<ChatHistoryResponse | null>("/chatbot/conversations/recent", {
+      signal: request.controller.signal,
+    })
       .then((data) => {
+        if (!requestScope.isCurrent(request)) return;
         if (!data) return; // 이전 대화 없음
         if (conversationIdRef.current != null) return; // 복원 응답 전에 유저가 대화를 시작함 — 덮지 않음
         // ★F-06: 대화 id 는 messages 유무와 무관하게 입양한다 — ④ 온보딩 턴은 설계상 메모리 미기록이라
@@ -169,20 +263,37 @@ export function useChatbot() {
           });
         }
         if (restored.length === 0) return; // 보여줄 것도 이어갈 스텝도 없음(id 입양만 하고 끝)
-        setMessages((prev) => (prev.length > 0 ? prev : restored));
+        setMessages((prev) => {
+          if (prev.length === 0) return restored;
+          // open()은 최근 대화와 면접 복귀 결과를 병렬 조회한다. 결과 카드가 먼저 도착했을 때도
+          // 복원 history를 잃지 않되, 그 사이 사용자가 실제 발화를 시작했다면 현재 스레드를 보존한다.
+          return prev.every((message) => message.interviewReport != null)
+            ? [...restored, ...prev]
+            : prev;
+        });
         // 넛지/칩 활성 조건(botStatus) 정합 — 진행 중 상태(thinking 등)는 덮지 않는다.
         setBotStatus((s) => (s === "idle" ? "answered" : s));
       })
       .catch((err) => {
+        if (!requestScope.isCurrent(request)) return;
         console.error("이전 대화 복원 실패:", err);
-      });
-  }, []);
+      })
+      .finally(() => requestScope.finish(request));
+  }, [requestScope]);
 
   /* ── 대화 목록(사이드바) 로드 — 로그인 유저의 최근 대화 최대 20건(인테이크+일반 상담). ── */
   const loadSessions = useCallback(() => {
-    if (!getAccessToken()) { setSessions([]); return; }
-    api<SessionSummaryDto[] | null>("/chatbot/conversations")
+    if (!getAccessToken()) {
+      requestScope.cancelLane("sessions");
+      setSessions([]);
+      return;
+    }
+    const request = requestScope.begin("sessions", { conversationBound: false });
+    api<SessionSummaryDto[] | null>("/chatbot/conversations", {
+      signal: request.controller.signal,
+    })
       .then((data) => {
+        if (!requestScope.isCurrent(request)) return;
         setSessions(
           (data ?? []).map((s) => {
             const kind = s.kind === "GENERAL" ? "GENERAL" as const : "INTAKE" as const;
@@ -198,18 +309,28 @@ export function useChatbot() {
           }),
         );
       })
-      .catch((err) => console.error("대화 목록 로드 실패:", err));
-  }, []);
+      .catch((err) => {
+        if (requestScope.isCurrent(request)) console.error("대화 목록 로드 실패:", err);
+      })
+      .finally(() => requestScope.finish(request));
+  }, [requestScope]);
 
   /* ── 세션 클릭 → 그 conversationId 로 전환 + 메시지 로드. 다음 요청부터 백엔드가 슬롯 복원(Phase D). ── */
   const openSession = useCallback((id: string) => {
     const conversationId = Number(id);
     if (!Number.isFinite(conversationId)) return;
+    requestScope.invalidateConversation();
+    run.reset();
+    discardOwnedPendingAutoPrepFiles();
+    restoredRef.current = true;
     // 인테이크(지원건) 세션만 오케 모드+플로팅으로. 일반 상담 대화는 일반 챗 표면 그대로 이어본다.
     const isIntake = (sessionsRef.current.find((s) => s.id === id)?.kind ?? "INTAKE") === "INTAKE";
     conversationIdRef.current = conversationId;
+    lastFailedActionRef.current = null;
     setActiveSessionId(id);
-    run.reset();
+    setMessages([]);
+    setBotStatus("thinking");
+    setOnbCollected(null);
     lastRunRequestRef.current = null; // 다른 세션의 요청으로 재시도하지 않게
     runStartedRef.current = false;
     setRunStarted(false);
@@ -222,8 +343,12 @@ export function useChatbot() {
       collapseToCorner(); // 일반 대화 = 일반 챗 표면(코너). 오케 무대(플로팅)에서 열어도 표면을 정리한다.
     }
     setShowExitSheet(false);
-    api<ChatHistoryResponse | null>(`/chatbot/conversations/${conversationId}/messages`)
+    const request = requestScope.begin("history");
+    api<ChatHistoryResponse | null>(`/chatbot/conversations/${conversationId}/messages`, {
+      signal: request.controller.signal,
+    })
       .then((data) => {
+        if (!requestScope.isCurrent(request) || conversationIdRef.current !== conversationId) return;
         const msgs: ChatMessage[] = (data?.messages ?? []).map((m) => ({
           id: nextId(), role: m.role, text: m.text,
           evidence: [], links: [], quickReplies: [],
@@ -232,26 +357,35 @@ export function useChatbot() {
         setMessages(msgs);
         setBotStatus(msgs.length ? "answered" : "idle");
       })
-      .catch((err) => console.error("세션 로드 실패:", err));
-  }, [run]);
+      .catch((err) => {
+        if (!requestScope.isCurrent(request)) return;
+        console.error("세션 로드 실패:", err);
+        setBotStatus("disconnected");
+      })
+      .finally(() => requestScope.finish(request));
+  }, [requestScope, run]);
 
   // ── 면접 인계: caseId 를 표식으로 남긴다(면접 페이지로 navigate 는 ChatbotWidget 에서). ──
   const markInterviewHandoff = useCallback((caseId: number | null) => {
     if (caseId == null) return;
+    const storageKey = interviewHandoffStorageKey(accountId);
+    if (!storageKey) return;
     try {
-      localStorage.setItem(LS_AWAIT_INTERVIEW, JSON.stringify({ caseId, ts: Date.now() }));
+      localStorage.setItem(storageKey, JSON.stringify({ caseId, ts: Date.now() }));
     } catch {
       /* localStorage 불가 환경 무시 */
     }
-  }, []);
+  }, [accountId]);
 
   // ── 복귀 결과: 면접 완료(리포트 생성)면 챗봇 말풍선에 결과 카드로 표시. ──
   // Push(브라우저 알림)와 별개 — 챗봇이 열릴 때 caseId 로 최근 완료 세션을 찾아 /report 를 재조회한다.
   const checkInterviewResult = useCallback(async () => {
     if (!getAccessToken()) return;
+    const storageKey = interviewHandoffStorageKey(accountId);
+    if (!storageKey) return;
     let pending: { caseId: number; ts: number } | null = null;
     try {
-      const raw = localStorage.getItem(LS_AWAIT_INTERVIEW);
+      const raw = localStorage.getItem(storageKey);
       if (raw) pending = JSON.parse(raw);
     } catch {
       pending = null;
@@ -259,17 +393,20 @@ export function useChatbot() {
     if (!pending) return;
     // 24시간 지나면 대기 해제(무한 재조회 방지).
     if (Date.now() - pending.ts > 24 * 60 * 60 * 1000) {
-      localStorage.removeItem(LS_AWAIT_INTERVIEW);
+      localStorage.removeItem(storageKey);
       return;
     }
+    const request = requestScope.begin("interview-result");
     try {
       // caseId 로 결과 조회 API 가 없어(sessionId 로만) → 세션 목록에서 해당 케이스의 최근 "완료" 세션을 찾는다.
       const page = await listInterviewSessions(0, 20);
+      if (!requestScope.isCurrent(request)) return;
       const done = page.sessions
         .filter((s) => s.applicationCaseId === pending!.caseId && s.totalScore != null)
         .sort((a, b) => b.id - a.id)[0];
       if (!done) return; // 아직 완료 전 → 다음 오픈에 재확인(표식 유지)
       const report = await getInterviewReport(done.id);
+      if (!requestScope.isCurrent(request)) return;
       const card: InterviewReportCard = {
         sessionId: done.id,
         caseId: pending.caseId,
@@ -289,11 +426,15 @@ export function useChatbot() {
         },
       ]);
       setBotStatus("answered");
-      localStorage.removeItem(LS_AWAIT_INTERVIEW);
+      localStorage.removeItem(storageKey);
     } catch (e) {
-      console.error("면접 결과 재조회 실패:", e); // 조용히 — 다음 오픈에 재시도
+      if (requestScope.isCurrent(request)) {
+        console.error("면접 결과 재조회 실패:", e); // 조용히 — 다음 오픈에 재시도
+      }
+    } finally {
+      requestScope.finish(request);
     }
-  }, []);
+  }, [accountId, requestScope]);
 
   const open = useCallback(() => {
     setIsOpen(true);
@@ -305,7 +446,7 @@ export function useChatbot() {
   const close = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
   const minimize = useCallback(() => { setIsOpen(false); setSurface("corner"); }, []);
 
-  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string; silent?: boolean; faqChip?: boolean }) => {
+  const sendMessage = useCallback((text: string, opts?: { selectedCaseId?: number; selectedModeCode?: string; silent?: boolean; faqChip?: boolean; model?: AiModelChoice }) => {
     // silent: 유저 말풍선을 남기지 않는다(가이드 X/여기서-물어보기의 서버 이탈 — UI 제스처지 사용자 발화가 아님).
     //   응답 처리(봇 말풍선·orchestrator·onbPhase 파생)는 그대로 재사용한다.
     if (!opts?.silent) {
@@ -318,11 +459,13 @@ export function useChatbot() {
     }
     setBotStatus("thinking");
 
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    // 사용자가 발화를 시작한 시점부터 복원/세션 history가 현재 스레드를 덮을 수 없다.
+    requestScope.cancelLane("restore");
+    requestScope.cancelLane("history");
+    requestScope.cancelLane("interview-result");
+    const request = requestScope.begin("reply");
 
-    api<ChatbotApiResponse>("/chatbot/ask", {
+    api<ChatbotApiResponse>(`/chatbot/ask${opts?.model && opts.model !== "AUTO" ? `?model=${opts.model}` : ""}`, {
       method: "POST",
       body: JSON.stringify({
         question: text,
@@ -333,10 +476,10 @@ export function useChatbot() {
         // 빈 화면 FAQ 추천 칩 클릭 — 깡통 온보딩 게이트를 그 턴만 우회(자유 입력은 플래그 없이 게이트 유지).
         ...(opts?.faqChip ? { faqChip: true } : {}),
       }),
-      signal: controller.signal,
+      signal: request.controller.signal,
     })
       .then((data) => {
-        if (controller.signal.aborted) return;
+        if (!requestScope.isCurrent(request)) return;
 
         conversationIdRef.current = data.conversationId;
 
@@ -411,13 +554,14 @@ export function useChatbot() {
         }
       })
       .catch((err) => {
-        if (controller.signal.aborted) return;
+        if (!requestScope.isCurrent(request)) return;
         console.error("챗봇 API 오류:", err);
         // 재시도용 보관 — 유저 말풍선은 이미 남아 있으므로 silent 로 조용히 재전송한다.
         lastFailedActionRef.current = () => sendMessage(text, { ...opts, silent: true });
         setBotStatus("disconnected");
-      });
-  }, [run]);
+      })
+      .finally(() => requestScope.finish(request));
+  }, [requestScope, run]);
 
   /* ── ④ 온보딩 완전 이탈(버그2): "그만"(silent)을 서버로 보내 markOnboardingDeclined+clearOnboarding 을 태운다.
      응답 route="온보딩이탈"→onbPhase=null 로 가이드가 닫힌다(서버-먼저·UI-나중 — 낙관적 close 없음이라
@@ -440,11 +584,17 @@ export function useChatbot() {
     }
     setBotStatus("thinking");
 
+    requestScope.cancelLane("restore");
+    requestScope.cancelLane("history");
+    requestScope.cancelLane("interview-result");
+    const request = requestScope.begin("reply");
     api<ChatbotApiResponse>("/chatbot/summarize-posts", {
       method: "POST",
       body: JSON.stringify({ conversationId: conversationIdRef.current, postIds }),
+      signal: request.controller.signal,
     })
       .then((data) => {
+        if (!requestScope.isCurrent(request)) return;
         conversationIdRef.current = data.conversationId;
         if (!data.message || !data.message.trim()) {
           setBotStatus("not_found");
@@ -460,11 +610,13 @@ export function useChatbot() {
         setBotStatus("answered");
       })
       .catch((err) => {
+        if (!requestScope.isCurrent(request)) return;
         console.error("추천 후기 요약 API 오류:", err);
         lastFailedActionRef.current = () => summarizePosts(postIds, { silent: true });
         setBotStatus("disconnected");
-      });
-  }, []);
+      })
+      .finally(() => requestScope.finish(request));
+  }, [requestScope]);
 
   /* ── 칩 선택 → 자연어 메시지로 변환해 전송(③ 슬롯 접지: chooseCase/chooseMode). ── */
   const selectCase = useCallback((c: IntakeCaseCandidate) => {
@@ -494,22 +646,31 @@ export function useChatbot() {
       // 실패 문구를 렌더하게 한다(정상 흐름에선 SKIPPED 카드 = 실행 후라 도달 안 함).
       throw new Error("실행 이력이 없어 첨부할 수 없어요. 준비를 다시 시작해 주세요.");
     }
-    const uploaded = await uploadAttachment(file);
-    const next: AutoPrepRequest = {
-      ...req,
-      attachmentFileIds: [...(req.attachmentFileIds ?? []), uploaded.id],
-    };
-    lastRunRequestRef.current = next; // 이후 재시도도 첨부를 유지하도록 최종본으로 갱신
-    void run.start(next);
-  }, [run]);
+    const request = requestScope.begin("attachment");
+    try {
+      const uploaded = await uploadAttachment(file);
+      if (!requestScope.isCurrent(request)) {
+        await deletePendingAutoPrepFile(uploaded.id).catch(() => {});
+        return;
+      }
+      const next: AutoPrepRequest = {
+        ...req,
+        attachmentFileIds: [...(req.attachmentFileIds ?? []), uploaded.id],
+      };
+      lastRunRequestRef.current = next; // 이후 재시도도 첨부를 유지하도록 최종본으로 갱신
+      void run.start(next);
+    } finally {
+      requestScope.finish(request);
+    }
+  }, [requestScope, run]);
 
   /* ── 모드 이탈: 실행 전이면 백엔드 모드 해제("그만"), 실행 중/후면 로컬 정리만. ── */
   const exitOrchestrator = useCallback(() => {
     setShowExitSheet(false);
     const wasRunning = runStartedRef.current;
-    pendingAttachmentIdsRef.current = []; // 이탈 시 가이드 첨부 병합 예약 해제(다른 세션 오염 방지)
-    lastRunRequestRef.current = null; // 이탈 후 재시도는 무의미(세션 문맥 이탈) — 오발사 방지
+    requestScope.cancelLane("attachment");
     run.reset();
+    discardOwnedPendingAutoPrepFiles();
     runStartedRef.current = false;
     orchRef.current = false;
     setRunStarted(false);
@@ -519,24 +680,32 @@ export function useChatbot() {
     if (!wasRunning) {
       sendMessage("그만"); // 인테이크 단계 → 서버 sticky 해제
     }
-  }, [run, sendMessage, collapseToCorner]);
+  }, [requestScope, run, sendMessage, collapseToCorner]);
 
   const startVoice = useCallback(() => {
+    if (voiceTimerRef.current != null) clearTimeout(voiceTimerRef.current);
+    const request = requestScope.begin("voice");
     setVoiceState("requesting");
-    setTimeout(() => {
+    voiceTimerRef.current = setTimeout(() => {
+      voiceTimerRef.current = null;
+      if (!requestScope.isCurrent(request)) return;
       if (navigator.mediaDevices) {
         setVoiceState("listening");
         setInterimTranscript("");
       } else {
         setVoiceState("denied");
       }
+      requestScope.finish(request);
     }, 500);
-  }, []);
+  }, [requestScope]);
 
   const cancelVoice = useCallback(() => {
+    if (voiceTimerRef.current != null) clearTimeout(voiceTimerRef.current);
+    voiceTimerRef.current = null;
+    requestScope.cancelLane("voice");
     setVoiceState("idle");
     setInterimTranscript("");
-  }, []);
+  }, [requestScope]);
 
   const confirmVoice = useCallback(() => {
     if (interimTranscript) {
@@ -567,51 +736,67 @@ export function useChatbot() {
   }, []);
 
   const newSession = useCallback(() => {
+    requestScope.invalidateConversation();
+    requestScope.cancelLane("attachment");
+    run.reset();
+    discardOwnedPendingAutoPrepFiles();
     setMessages([]);
     setBotStatus("idle");
     conversationIdRef.current = null; // 새 대화 → 서버가 새 ID 발급
-    pendingAttachmentIdsRef.current = [];
-    lastRunRequestRef.current = null;
-    run.reset();
+    lastFailedActionRef.current = null;
     runStartedRef.current = false;
     orchRef.current = false;
     setRunStarted(false);
     setRunCaseId(null);
     setOrchestrator(false);
+    setActiveSessionId("");
+    setOnbCollected(null);
+    if (voiceTimerRef.current != null) clearTimeout(voiceTimerRef.current);
+    voiceTimerRef.current = null;
+    setVoiceState("idle");
+    setInterimTranscript("");
     collapseToCorner();
     setShowExitSheet(false);
-  }, [run, collapseToCorner]);
+  }, [requestScope, run, collapseToCorner]);
+
+  const accountStateCurrent = stateAccountKey === accountKey;
 
   return {
-    isOpen, open, close, minimize, restoreRecent,
-    messages, sendMessage, leaveOnboarding,
-    botStatus, setBotStatus,
-    voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
-    interimTranscript,
+    isOpen: accountStateCurrent ? isOpen : false,
+    open, close, minimize, restoreRecent,
+    messages: accountStateCurrent ? messages : [],
+    sendMessage, leaveOnboarding,
+    botStatus: accountStateCurrent ? botStatus : "idle" as BotStatus,
+    setBotStatus,
+    voiceState: accountStateCurrent ? voiceState : "idle" as VoiceState,
+    startVoice, cancelVoice, confirmVoice, setVoiceState,
+    interimTranscript: accountStateCurrent ? interimTranscript : "",
     retryConnection,
     toggleTts,
-    sessions, activeSessionId, setActiveSessionId, newSession,
+    sessions: accountStateCurrent ? sessions : [],
+    activeSessionId: accountStateCurrent ? activeSessionId : "",
+    setActiveSessionId, newSession,
     loadSessions, openSession,
     // 오케스트레이터
-    orchestrator,
-    runStarted,
-    runParts: run.parts,
-    runRunning: run.running,
-    runPlan: run.plan,
-    runError: run.error,
-    runCaseId,
+    orchestrator: accountStateCurrent ? orchestrator : false,
+    runStarted: accountStateCurrent ? runStarted : false,
+    runParts: accountStateCurrent ? run.parts : [],
+    runRunning: accountStateCurrent ? run.running : false,
+    runPlan: accountStateCurrent ? run.plan : null,
+    runError: accountStateCurrent ? run.error : null,
+    runCaseId: accountStateCurrent ? runCaseId : null,
     retryRun,
     attachCoverLetter,
     selectCase, selectMode,
     setPendingAttachments,
     summarizePosts,
-    onbCollected,
-    showExitSheet,
+    onbCollected: accountStateCurrent ? onbCollected : null,
+    showExitSheet: accountStateCurrent ? showExitSheet : false,
     openExitSheet: () => setShowExitSheet(true),
     closeExitSheet: () => setShowExitSheet(false),
     exitOrchestrator,
     // 표면 크기 전환(morph)
-    surface,
+    surface: accountStateCurrent ? surface : "corner" as const,
     expandToFloating,
     collapseToCorner,
     // 면접 인계/복귀

@@ -15,6 +15,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.careertuner.auth.domain.EmailVerification;
 import com.careertuner.auth.mapper.AuthMapper;
@@ -40,16 +41,72 @@ class UserAccountServiceImplTest {
     private final AuthMapper authMapper = mock(AuthMapper.class);
     private final EmailService emailService = mock(EmailService.class);
     private final FrontendReturnUrlResolver frontendReturnUrlResolver = mock(FrontendReturnUrlResolver.class);
+    private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
     private final UserAccountServiceImpl service = new UserAccountServiceImpl(
             mapper,
             new ObjectMapper(),
             authMapper,
             emailService,
-            frontendReturnUrlResolver);
+            frontendReturnUrlResolver,
+            passwordEncoder);
 
     private User user(Long id, String loginId, String phone) {
         return User.builder().id(id).email("redacted-826b0cff85484558@example.com").name("홍길동")
-                .loginId(loginId).phone(phone).passwordEnabled(true).build();
+                .loginId(loginId).phone(phone).password("encoded")
+                .passwordEnabled(true).status("ACTIVE").build();
+    }
+
+    @Test
+    void deleteOwnAccountAnonymizesThenRevokesEveryAuthenticationAndDeliveryPath() {
+        User user = user(1L, "gildong", null);
+        when(mapper.findByIdForUpdate(1L)).thenReturn(user);
+        when(passwordEncoder.matches("current-password", "encoded")).thenReturn(true);
+        when(mapper.anonymizeAndSoftDeleteOwnAccount(1L)).thenReturn(1);
+
+        service.deleteOwnAccount(1L, "current-password", "회원탈퇴");
+
+        InOrder order = inOrder(mapper, authMapper);
+        order.verify(mapper).anonymizeAndSoftDeleteOwnAccount(1L);
+        order.verify(authMapper).revokeAllForUser(1L);
+        order.verify(mapper).deleteAllSocialLinks(1L);
+        order.verify(mapper).deleteAllPushSubscriptions(1L);
+        order.verify(mapper).expireAllEmailVerifications(1L);
+        order.verify(mapper).deleteAllSmsOtpCodes(1L);
+        order.verify(mapper).hideAndAnonymizeNicknameProfiles(1L);
+        order.verify(mapper).anonymizeChatProfiles(1L);
+        order.verify(mapper).clearConversationNicknameProfiles(1L);
+        order.verify(mapper).deactivateConversationMemberships(1L);
+        order.verify(mapper).cancelPendingFriendRequests(1L);
+        order.verify(mapper).cancelPendingConversationInvites(1L);
+        order.verify(mapper).deleteDesktopPresence(1L);
+    }
+
+    @Test
+    void deleteOwnAccountRejectsWrongPasswordBeforeMutation() {
+        User user = user(1L, "gildong", null);
+        when(mapper.findByIdForUpdate(1L)).thenReturn(user);
+        when(passwordEncoder.matches("wrong", "encoded")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.deleteOwnAccount(1L, "wrong", "회원탈퇴"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode").isEqualTo(ErrorCode.UNAUTHORIZED);
+        verify(mapper, never()).anonymizeAndSoftDeleteOwnAccount(org.mockito.ArgumentMatchers.anyLong());
+        verify(authMapper, never()).revokeAllForUser(org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void socialOnlyAccountUsesExplicitConfirmationWithoutPassword() {
+        User social = user(2L, null, null);
+        social.setPasswordEnabled(false);
+        social.setPassword(null);
+        when(mapper.findByIdForUpdate(2L)).thenReturn(social);
+        when(mapper.anonymizeAndSoftDeleteOwnAccount(2L)).thenReturn(1);
+
+        service.deleteOwnAccount(2L, null, "회원탈퇴");
+
+        verify(mapper).anonymizeAndSoftDeleteOwnAccount(2L);
+        verify(passwordEncoder, never()).matches(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     // ── 로그인 아이디 최초 설정 성공(소문자 정규화) ──
@@ -93,6 +150,7 @@ class UserAccountServiceImplTest {
     void setPhone_normalizesToHyphenated() {
         when(mapper.findById(1L)).thenReturn(user(1L, null, null));
         when(mapper.countByPhone(eq("010-1234-5678"), eq(1L))).thenReturn(0);
+        when(mapper.updatePhone(1L, "010-1234-5678")).thenReturn(1);
         when(mapper.findLinkedProviders(1L)).thenReturn(List.of());
 
         service.setPhone(1L, "01012345678");

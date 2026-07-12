@@ -66,7 +66,8 @@ class ProfileServiceImplTest {
         when(consentService.hasCurrentConsent(7L, "AI_DATA")).thenReturn(true);
         when(consentService.hasCurrentConsent(7L, "RESUME_ANALYSIS")).thenReturn(true);
         when(profileMapper.findByUserId(7L)).thenReturn(profile);
-        when(aiService.evaluate(eq(profile), eq("PROFILE_SUMMARY"))).thenReturn(result("FALLBACK"));
+        when(aiService.evaluate(eq(profile), eq("PROFILE_SUMMARY"), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(result("FALLBACK"));
         ProfileServiceImpl service = newService(
                 profileMapper, usageMapper, consentService, aiService);
 
@@ -131,6 +132,7 @@ class ProfileServiceImplTest {
             ProfileAiService aiService) {
         return new ProfileServiceImpl(
                 profileMapper,
+                mock(com.careertuner.profile.mapper.ProfileAiAnalysisMapper.class),
                 usageMapper,
                 consentService,
                 aiService,

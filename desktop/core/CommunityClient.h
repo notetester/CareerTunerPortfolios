@@ -62,6 +62,8 @@ signals:
 
 private:
     void setLoading(bool loading);
+    void updateLoading();
+    void finishDetailRequest(quint64 generation, qint64 postId);
     void loadComments(qint64 postId);
     QVariantMap postMap(const QJsonObject& post) const;
     QVariantMap commentMap(const QJsonObject& comment) const;
@@ -76,6 +78,11 @@ private:
     int m_total = 0;
     qint64 m_currentPostId = -1;
     bool m_loading = false;
+    quint64 m_postsRequestGeneration = 0;
+    quint64 m_detailRequestGeneration = 0;
+    bool m_postsLoading = false;
+    bool m_mutationLoading = false;
+    int m_detailPendingRequests = 0;
 
     static constexpr int kPageSize = 20;
 };

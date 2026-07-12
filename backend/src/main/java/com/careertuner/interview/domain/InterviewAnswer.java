@@ -15,6 +15,8 @@ public class InterviewAnswer {
 
     private Long id;
     private Long questionId;
+    private String clientSubmissionId;
+    private String submissionStatus;
     private String answerText;
     private String audioUrl;
     private String videoUrl;

@@ -10,13 +10,6 @@ import { Avatar, AvatarFallback } from "@/app/components/ui/avatar";
 import type { Notification } from "../types/notification";
 import type { LucideIcon } from "lucide-react";
 
-/**
- * 미읽음 카운트 폴링 주기(ms).
- * 알림은 SSE 대신 Web Push(VAPID/FCM)로 실발송하고, 앱이 열려 있는 동안의 배지 갱신은
- * 이 폴링이 담당한다(과투자 방지를 위해 SSE 미사용).
- */
-const UNREAD_POLL_INTERVAL_MS = 30_000;
-
 function BellNotiIcon({ n }: { n: Notification }) {
   const meta = typeMeta(n.type);
   const Icon: LucideIcon | undefined = ICON_MAP[meta.icon];
@@ -47,42 +40,11 @@ export function NotificationBell() {
   const ref = useRef<HTMLSpanElement>(null);
   const {
     notifications, unreadCount, preference,
-    fetchNotifications, pollNotifications, markAsRead, markAllAsRead,
+    fetchNotifications, markAsRead, markAllAsRead,
     deleteNotification, deleteAll, fetchPreference, setPushEnabled,
   } = useNotificationStore();
 
   const pushEnabled = preference?.pushEnabled ?? true;
-
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
-
-  // 알림 폴링 (SSE 대신). 새 알림 도착 시 배지 갱신 + 토스트 팝업.
-  // 탭이 숨겨지면 중단하고, 복귀 시 즉시 1회 갱신 후 재개.
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const start = () => {
-      if (timer) return;
-      timer = setInterval(() => { pollNotifications(); }, UNREAD_POLL_INTERVAL_MS);
-    };
-    const stop = () => {
-      if (timer) { clearInterval(timer); timer = undefined; }
-    };
-    const onVisibility = () => {
-      if (document.hidden) {
-        stop();
-      } else {
-        pollNotifications();
-        start();
-      }
-    };
-    if (!document.hidden) start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [pollNotifications]);
 
   // 바깥 클릭 / Esc 닫기
   useEffect(() => {
@@ -178,9 +140,18 @@ export function NotificationBell() {
             ) : (
               recent.map((n) => (
                 <div
-                  className={`ct-belln__row ${!n.isRead ? "unread" : ""}`}
+                  className={`ct-belln__row focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring ${!n.isRead ? "unread" : ""}`}
                   key={n.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handleItem(n)}
+                  onKeyDown={(event) => {
+                    if (event.currentTarget !== event.target) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      void handleItem(n);
+                    }
+                  }}
                 >
                   {!n.isRead && <span className="ct-belln__dot" />}
                   <BellNotiIcon n={n} />

@@ -13,8 +13,8 @@ PlannerOverlayController::PlannerOverlayController(QObject* parent)
     : QObject(parent)
 {
     auto settings = SettingsStore::createSettings();
-    m_enabled = settings->value(QStringLiteral("plannerOverlay/enabled"), true).toBool();
-    m_alwaysOnTop = settings->value(QStringLiteral("plannerOverlay/alwaysOnTop"), true).toBool();
+    m_enabled = settings->value(QStringLiteral("plannerOverlay/enabled"), false).toBool();
+    m_alwaysOnTop = settings->value(QStringLiteral("plannerOverlay/alwaysOnTop"), false).toBool();
     m_clickThrough = settings->value(QStringLiteral("plannerOverlay/clickThrough"), false).toBool();
     m_overlayOpacity = settings->value(QStringLiteral("plannerOverlay/opacity"), 0.92).toDouble();
 }

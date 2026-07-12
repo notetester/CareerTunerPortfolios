@@ -12,11 +12,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.careertuner.ai.common.model.RequestedAiModel;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.common.web.ApiResponse;
 import com.careertuner.consent.domain.ConsentType;
 import com.careertuner.consent.policy.RequiresConsent;
 import com.careertuner.fitanalysis.dto.CareerCertificateStrategyResponse;
+import com.careertuner.fitanalysis.dto.CareerRoadmapResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisDetailResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisHistoryEntryResponse;
 import com.careertuner.fitanalysis.dto.FitAnalysisLearningTaskResponse;
@@ -45,6 +47,17 @@ public class FitAnalysisController {
         return ApiResponse.ok(fitAnalysisService.careerCertificateStrategy(authUser.id()));
     }
 
+    /**
+     * 장기 커리어 로드맵 — 확인된 실일정(자격증 회차·지원 마감) + 월 단위 학습 계획 블록(결정론, LLM 미관여).
+     * months 3~24 클램프(기본 12). 자격증 근거 수집(외부 I/O)이 포함되므로 수 초 걸릴 수 있다.
+     */
+    @GetMapping("/career-roadmap")
+    public ApiResponse<CareerRoadmapResponse> careerRoadmap(
+            @AuthenticationPrincipal AuthUser authUser,
+            @RequestParam(defaultValue = "12") int months) {
+        return ApiResponse.ok(fitAnalysisService.careerRoadmap(authUser.id(), months));
+    }
+
     @GetMapping("/application-cases/{applicationCaseId}")
     public ApiResponse<FitAnalysisDetailResponse> getByApplicationCase(@AuthenticationPrincipal AuthUser authUser,
                                                                        @PathVariable Long applicationCaseId) {
@@ -63,12 +76,17 @@ public class FitAnalysisController {
     /**
      * 적합도 분석 생성/재생성(C 담당 AI 12~15). 공고 분석 결과와 프로필을 비교한다.
      * API 키가 없으면 mock, 있으면 동일 엔드포인트로 실제 구조화 분석이 동작한다.
+     *
+     * <p>{@code model} 로 설명 생성 모델을 명시 선택할 수 있다(AUTO/CAREERTUNER/CLAUDE/OPENAI, 기본 AUTO=현행 폴백).
+     * 선택은 <b>설명 생성 provider 만</b> 바꾸고 판단값(점수·매칭·부족)은 규칙엔진이 소유해 어느 모델이든 동일하다.
      */
     @PostMapping("/application-cases/{applicationCaseId}")
     public ApiResponse<FitAnalysisDetailResponse> generate(@AuthenticationPrincipal AuthUser authUser,
                                                            @PathVariable Long applicationCaseId,
-                                                           @RequestParam(defaultValue = "false") boolean certificateStrategy) {
-        return ApiResponse.ok(fitAnalysisService.generate(authUser.id(), applicationCaseId, certificateStrategy));
+                                                           @RequestParam(defaultValue = "false") boolean certificateStrategy,
+                                                           @RequestParam(required = false) String model) {
+        return ApiResponse.ok(fitAnalysisService.generate(authUser.id(), applicationCaseId, certificateStrategy,
+                RequestedAiModel.parse(model)));
     }
 
     @PatchMapping("/{fitAnalysisId}/learning-tasks/{taskId}")

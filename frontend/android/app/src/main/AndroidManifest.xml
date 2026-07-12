@@ -2,14 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
 
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
@@ -31,13 +33,28 @@
                 <data android:scheme="@string/custom_url_scheme" />
             </intent-filter>
 
-            <!-- 현재 공개 배포 호스트. 정식 release 서명 fingerprint를 assetlinks.json에 게시하기 전까지
-                 OS 선택창을 통한 App Link로 동작하며, 커스텀 careertuner:// 스킴은 항상 직접 처리한다. -->
-            <intent-filter>
+            <!-- 네이티브 OAuth handoff 전용 verified App Link.
+                 release 서명 fingerprint가 careertuner.kro.kr/.well-known/assetlinks.json에 게시되어야
+                 OS가 이 앱만 callback 소유자로 인정한다. 일반 웹 경로는 이 filter가 가로채지 않는다. -->
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="careertuner.kro.kr" />
+                <data
+                    android:scheme="https"
+                    android:host="careertuner.kro.kr"
+                    android:path="/auth/callback" />
+            </intent-filter>
+
+            <!-- 로그인된 사용자의 네이티브 소셜 계정 연결 결과 전용 verified App Link. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="careertuner.kro.kr"
+                    android:path="/profile/detail" />
             </intent-filter>
 
         </activity>

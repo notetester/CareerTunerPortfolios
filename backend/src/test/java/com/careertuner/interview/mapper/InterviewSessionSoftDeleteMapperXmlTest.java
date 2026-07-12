@@ -49,6 +49,18 @@ class InterviewSessionSoftDeleteMapperXmlTest {
                 .contains("ac.deleted_at IS NULL", "s.deleted_at IS NULL");
     }
 
+    @Test
+    void sessionListCalculatesProgressInTheListQueryWithoutPerSessionQueries() throws Exception {
+        String list = statement(INTERVIEW_XML, "select", "findSessionsByUserId");
+
+        assertThat(list)
+                .contains("COUNT(DISTINCT q.id) AS total_questions")
+                .contains("COUNT(DISTINCT CASE WHEN a.id IS NOT NULL THEN q.id END) AS answered_questions")
+                .contains("COALESCE(progress.answered_questions, 0)")
+                .contains("= COALESCE(progress.total_questions, 0)) AS finished")
+                .contains("progress.interview_session_id = s.id");
+    }
+
     private static String statement(String file, String element, String id) throws Exception {
         String xml = Files.readString(Path.of(file));
         int start = xml.indexOf("<" + element + " id=\"" + id + "\"");

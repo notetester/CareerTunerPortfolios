@@ -17,6 +17,7 @@ public class ConversationBanRow {
     private Long userId;
     private String name;
     private String email;
+    private String userStatus;
     private Long bannedBy;
     private String reason;
     private LocalDateTime createdAt;
