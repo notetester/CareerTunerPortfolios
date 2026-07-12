@@ -16,5 +16,6 @@ public class FriendRow {
     private Long userId;
     private String name;
     private String email;
+    private String userStatus;
     private LocalDateTime createdAt;
 }

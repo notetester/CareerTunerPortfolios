@@ -46,6 +46,25 @@ class FrontendReturnUrlResolverTest {
     }
 
     @Test
+    void nativeHeaderIsNamedButGenericLinksUseCanonicalHttpsFrontend() {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getHeader(FrontendReturnUrlResolver.FRONTEND_CLIENT_HEADER)).thenReturn("native");
+
+        FrontendReturnTarget target = resolver.resolve(request);
+
+        assertThat(target.client()).isEqualTo("native");
+        assertThat(target.absoluteUrl("/auth/reset-password?token=opaque"))
+                .isEqualTo("https://careertuner.kro.kr/auth/reset-password?token=opaque");
+        assertThat(target.baseUrl()).startsWith("https://");
+    }
+
+    @Test
+    void storedNativeClientFallsBackToPrimaryForEmailCallback() {
+        assertThat(resolver.resolveStoredClient("native"))
+                .isEqualTo(new FrontendReturnTarget("primary", "https://careertuner.kro.kr"));
+    }
+
+    @Test
     void unknownRequestClientIsRejectedInsteadOfAcceptingAnOrigin() {
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getHeader(FrontendReturnUrlResolver.FRONTEND_CLIENT_HEADER))

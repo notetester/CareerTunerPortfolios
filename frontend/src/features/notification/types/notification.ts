@@ -115,7 +115,7 @@ export interface Notification {
   targetId?: number;
   senderRelation?: SenderRelation;
   actorName?: string;
-  actorId?: number;
+  actorId?: number | null;
   isRead: boolean;
   createdAt: string;
 }

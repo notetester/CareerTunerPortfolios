@@ -16,6 +16,7 @@ endif()
 qt_add_executable(CareerTunerDesktop
     main.cpp
     core/ApiClient.h          core/ApiClient.cpp
+    core/AiChargeCoordinator.h core/AiChargeCoordinator.cpp
     core/SseClient.h          core/SseClient.cpp
     core/AuthService.h        core/AuthService.cpp
     core/SettingsStore.h      core/SettingsStore.cpp
@@ -29,6 +30,7 @@ qt_add_executable(CareerTunerDesktop
     core/AdClient.h           core/AdClient.cpp
     core/CollaborationClient.h core/CollaborationClient.cpp
     core/CommunityClient.h    core/CommunityClient.cpp
+    core/ConsentClient.h      core/ConsentClient.cpp
     core/CameraRecorder.h     core/CameraRecorder.cpp
 )
 
@@ -70,20 +72,51 @@ target_link_libraries(CareerTunerDesktop PRIVATE
     Qt6::Multimedia
 )
 
+# 빌드 디렉터리의 exe만 복사하면 Qt DLL/QML 플러그인이 없어 실행되지 않는다.
+# install 대상은 Qt 공식 deploy script로 런타임까지 모은 실제 배포 가능 디렉터리를 만든다.
+include(GNUInstallDirs)
+install(TARGETS CareerTunerDesktop
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+qt_generate_deploy_qml_app_script(
+    TARGET CareerTunerDesktop
+    OUTPUT_SCRIPT careertuner_deploy_script
+    NO_UNSUPPORTED_PLATFORM_ERROR
+)
+install(SCRIPT ${careertuner_deploy_script})
+
 include(CTest)
 if (BUILD_TESTING)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
     qt_add_executable(CareerTunerDesktopCoreTests
         tests/DesktopCoreTests.cpp
         core/ApiClient.h core/ApiClient.cpp
+        core/AdClient.h core/AdClient.cpp
+        core/AiChargeCoordinator.h core/AiChargeCoordinator.cpp
+        core/AuthService.h core/AuthService.cpp
+        core/AutoPrepRunner.h core/AutoPrepRunner.cpp
+        core/CameraRecorder.h core/CameraRecorder.cpp
+        core/CollaborationClient.h core/CollaborationClient.cpp
+        core/CommunityClient.h core/CommunityClient.cpp
+        core/ConsentClient.h core/ConsentClient.cpp
+        core/InterviewSession.h core/InterviewSession.cpp
+        core/JobModel.h core/JobModel.cpp
+        core/NotificationPoller.h core/NotificationPoller.cpp
         core/SettingsStore.h core/SettingsStore.cpp
+        core/VoiceRecorder.h core/VoiceRecorder.cpp
         core/PlannerOverlayController.h core/PlannerOverlayController.cpp
+        core/PlannerClient.h core/PlannerClient.cpp
     )
     target_include_directories(CareerTunerDesktopCoreTests PRIVATE core)
+    target_compile_definitions(CareerTunerDesktopCoreTests PRIVATE
+        CAREERTUNER_DESKTOP_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
     target_link_libraries(CareerTunerDesktopCoreTests PRIVATE
         Qt6::Test
         Qt6::Network
         Qt6::Widgets
+        Qt6::Multimedia
     )
     if (WIN32)
         target_link_libraries(CareerTunerDesktopCoreTests PRIVATE user32)

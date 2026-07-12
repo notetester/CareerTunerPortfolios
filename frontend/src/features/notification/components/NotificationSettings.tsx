@@ -86,11 +86,13 @@ export function NotificationSettings() {
         if (result === "denied") { toast("브라우저/기기에서 알림 권한이 거부되어 있습니다.", "err"); return; }
         if (result === "unsupported") { toast("이 환경은 푸시를 지원하지 않습니다.", "err"); return; }
         apply(await updateNotificationPreferences({ pushEnabled: true }));
-        toast(result === "subscribed" ? "이 기기로 푸시 알림을 받습니다." : "알림 권한을 허용했습니다.", "ok");
+        toast(result === "subscribed"
+          ? "계정 푸시 알림을 켜고 이 기기를 등록했습니다."
+          : "계정 푸시 알림을 켰습니다. 기기 등록 상태를 확인해 주세요.", "ok");
       } else {
         await disablePush();
         apply(await updateNotificationPreferences({ pushEnabled: false }));
-        toast("푸시 알림을 껐습니다.", "ok");
+        toast("이 계정의 모든 기기에서 푸시 알림을 껐습니다.", "ok");
       }
     } catch {
       toast("푸시 설정 변경에 실패했습니다.", "err");
@@ -186,19 +188,20 @@ export function NotificationSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Smartphone className="size-4 text-blue-600" />
-            푸시 알림
+            계정 푸시 알림
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <label className="flex items-center justify-between rounded-lg border border-border p-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <BellRing className="size-4 text-blue-600" /> 이 기기에서 푸시 받기
+                <BellRing className="size-4 text-blue-600" /> 모든 기기의 푸시 허용
               </div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {!isPushSupported() ? "이 환경은 푸시를 지원하지 않습니다." :
-                  pref?.pushDeviceRegistered ? "이 기기가 푸시 수신 기기로 등록되어 있습니다." :
-                  `알림 권한: ${pushPermission()}`}
+                  pref?.pushDeviceRegistered
+                    ? `이 계정에 등록된 수신 기기가 있습니다. 현재 기기 권한: ${pushPermission()}`
+                    : `등록된 수신 기기가 없습니다. 현재 기기 권한: ${pushPermission()}`}
               </div>
             </div>
             <Checkbox

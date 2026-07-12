@@ -89,6 +89,24 @@ QString SettingsStore::baseUrl() const
     return m_s->value("server/baseUrl", defaultBaseUrl()).toString();
 }
 
+QString SettingsStore::webAppUrl() const
+{
+    // 배포/시연 환경이 API와 웹 origin을 분리할 때 명시적으로 지정한다.
+    const QString configured = normalizedBaseUrl(
+        qEnvironmentVariable("CAREERTUNER_WEB_APP_URL"));
+    if (!configured.isEmpty()) return configured;
+
+    QUrl url(baseUrl());
+    QHostAddress address;
+    const bool loopback = url.host().compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0
+        || (address.setAddress(url.host()) && address.isLoopback());
+    if (loopback && url.scheme() == QStringLiteral("http") && url.port() == 8080) {
+        url.setPort(5173);
+        return url.toString(QUrl::FullyEncoded | QUrl::StripTrailingSlash);
+    }
+    return baseUrl();
+}
+
 QString SettingsStore::normalizedBaseUrl(const QString& v)
 {
     const QUrl url(v.trimmed(), QUrl::StrictMode);
@@ -173,6 +191,14 @@ void SettingsStore::setTrayNotify(bool v)
 {
     if (v == trayNotify()) return;
     m_s->setValue("notify/tray", v);
+    emit changed();
+}
+
+bool SettingsStore::darkTheme() const { return m_s->value("display/darkTheme", true).toBool(); }
+void SettingsStore::setDarkTheme(bool v)
+{
+    if (v == darkTheme()) return;
+    m_s->setValue("display/darkTheme", v);
     emit changed();
 }
 

@@ -59,10 +59,19 @@ public class JwtTokenProvider {
         return new AuthUser(Long.valueOf(c.getSubject()), c.get("email", String.class), c.get("role", String.class));
     }
 
-    public record OauthState(String type, String provider, Long userId, String frontendClient) {
+    public record OauthState(
+            String type,
+            String provider,
+            Long userId,
+            String frontendClient,
+            String handoffChallenge) {
 
         public OauthState(String type, String provider, Long userId) {
-            this(type, provider, userId, null);
+            this(type, provider, userId, null, null);
+        }
+
+        public OauthState(String type, String provider, Long userId, String frontendClient) {
+            this(type, provider, userId, frontendClient, null);
         }
 
         public boolean login() {
@@ -71,6 +80,10 @@ public class JwtTokenProvider {
 
         public boolean link() {
             return "oauth_link_state".equals(type);
+        }
+
+        public boolean nativeLogin() {
+            return "oauth_native_state".equals(type);
         }
     }
 
@@ -92,6 +105,21 @@ public class JwtTokenProvider {
             builder.claim("frontendClient", frontendClient);
         }
         return builder.compact();
+    }
+
+    /** 네이티브 OAuth용 서명 state(5분). PKCE challenge를 앱 클라이언트에 바인딩한다. */
+    public String createNativeOauthState(String provider, String handoffChallenge) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(provider)
+                .id(UUID.randomUUID().toString())
+                .claim("type", "oauth_native_state")
+                .claim("frontendClient", "native")
+                .claim("handoffChallenge", handoffChallenge)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plusSeconds(300)))
+                .signWith(key)
+                .compact();
     }
 
     /** 로그인한 사용자가 소셜 계정을 연동할 때 쓰는 서명 state 토큰(5분). */
@@ -125,12 +153,15 @@ public class JwtTokenProvider {
             Claims c = Jwts.parser().verifyWith(key).build().parseSignedClaims(state).getPayload();
             String type = c.get("type", String.class);
             if (!provider.equals(c.getSubject())
-                    || (!"oauth_state".equals(type) && !"oauth_link_state".equals(type))) {
+                    || (!"oauth_state".equals(type)
+                    && !"oauth_link_state".equals(type)
+                    && !"oauth_native_state".equals(type))) {
                 return null;
             }
             Object userIdClaim = c.get("userId");
             Long userId = userIdClaim instanceof Number n ? n.longValue() : null;
-            return new OauthState(type, c.getSubject(), userId, c.get("frontendClient", String.class));
+            return new OauthState(type, c.getSubject(), userId,
+                    c.get("frontendClient", String.class), c.get("handoffChallenge", String.class));
         } catch (Exception e) {
             return null;
         }

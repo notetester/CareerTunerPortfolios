@@ -55,10 +55,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/register", "/api/auth/login",
                                 "/api/auth/mfa/login/verify",
-                                "/api/auth/refresh", "/api/auth/email/resend",
+                                "/api/auth/refresh", "/api/auth/logout", "/api/auth/logout-all",
+                                "/api/auth/email/resend",
                                 "/api/auth/find-id/request",
                                 "/api/auth/password/reset-request", "/api/auth/password/reset",
-                                "/api/auth/dormant/release-request", "/api/auth/dormant/release").permitAll()
+                                "/api/auth/dormant/release-request", "/api/auth/dormant/release",
+                                "/api/auth/oauth/*/native/start",
+                                "/api/auth/oauth/native/exchange").permitAll()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/auth/verify-email", "/api/auth/find-id/verify",
                                 "/api/auth/check/**", "/api/auth/oauth/**",
@@ -86,7 +89,7 @@ public class SecurityConfig {
                         // 관리자 API는 URL 레벨에서도 관리자 권한을 요구한다.
                         // SUPER_ADMIN은 관리자 권한 체계를 관리하는 상위 역할이므로 일반 관리자 API도 접근 가능하다.
                         .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                        // 그 외(/api/auth/me, /api/auth/logout 및 도메인 API)는 인증 필요
+                        // 그 외(/api/auth/me 및 도메인 API)는 인증 필요
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> securityErrorResponseWriter.unauthorized(res))

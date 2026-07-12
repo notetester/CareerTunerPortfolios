@@ -17,6 +17,7 @@ import org.mockito.ArgumentCaptor;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.nickname.domain.ConversationMemberProfile;
+import com.careertuner.nickname.domain.AccountNameRow;
 import com.careertuner.nickname.domain.NicknameProfile;
 import com.careertuner.nickname.dto.ConversationProfileRequest;
 import com.careertuner.nickname.dto.ConversationProfileResponse;
@@ -182,6 +183,34 @@ class NicknameProfileServiceImplTest {
 
         assertThat(res.nicknameProfileId()).isNull();
         assertThat(res.displayName()).isEqualTo("홍길동");
+    }
+
+    @Test
+    void resolveDisplayName_deletedAccountReturnsUnlinkableTombstone() {
+        when(mapper.findAccountStatus(1L)).thenReturn("DELETED");
+
+        DisplayNameResponse res = service.resolveDisplayName(1L, 5L);
+
+        assertThat(res.accountId()).isNull();
+        assertThat(res.nicknameProfileId()).isNull();
+        assertThat(res.displayName()).isEqualTo("탈퇴한 사용자");
+        assertThat(res.avatarFileId()).isNull();
+        verify(mapper, never()).findById(5L);
+    }
+
+    @Test
+    void bulkResolveDeletedAccountReturnsUnlinkableTombstone() {
+        var query = new com.careertuner.nickname.dto.DisplayNameQuery(1L, null);
+        when(mapper.findDefaultsByUserIds(any())).thenReturn(java.util.List.of());
+        when(mapper.findAccountNames(any())).thenReturn(java.util.List.of(
+                AccountNameRow.builder().userId(1L).name("탈퇴한 사용자").status("DELETED").build()));
+
+        DisplayNameResponse res = service.bulkResolveDisplayNames(java.util.List.of(query)).get(query);
+
+        assertThat(res.accountId()).isNull();
+        assertThat(res.nicknameProfileId()).isNull();
+        assertThat(res.displayName()).isEqualTo("탈퇴한 사용자");
+        assertThat(res.avatarFileId()).isNull();
     }
 
     // ── myProfiles: 프로필이 없으면 기본 프로필을 자동 생성 후 반환 ──

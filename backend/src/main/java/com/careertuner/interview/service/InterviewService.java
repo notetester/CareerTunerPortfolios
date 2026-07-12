@@ -1,6 +1,7 @@
 package com.careertuner.interview.service;
 
 import java.util.List;
+import java.util.UUID;
 
 import com.careertuner.interview.dto.CreateInterviewSessionRequest;
 import com.careertuner.interview.dto.GenerateFollowUpsRequest;
@@ -11,6 +12,7 @@ import com.careertuner.interview.dto.InterviewProgressResponse;
 import com.careertuner.interview.dto.InterviewQuestionResponse;
 import com.careertuner.interview.dto.InterviewReportResponse;
 import com.careertuner.interview.dto.InterviewSessionResponse;
+import com.careertuner.interview.dto.InterviewDispatchTarget;
 import com.careertuner.interview.dto.ModelAnswerResponse;
 import com.careertuner.interview.dto.SessionPageResponse;
 import com.careertuner.interview.dto.SessionReviewResponse;
@@ -29,17 +31,32 @@ public interface InterviewService {
     /** 기존 세션 복원(=복습) 시각 기록. */
     void markResumed(Long userId, Long sessionId);
 
-    /** 데스크탑에서 이 세션을 폰으로 디스패치 — 사용자에게 알림을 남긴다. */
-    void dispatchToPhone(Long userId, Long sessionId);
+    /** 면접 세션을 지정한 플랫폼에서 이어받도록 사용자에게 알림을 남긴다. */
+    void dispatchSession(Long userId, Long sessionId, InterviewDispatchTarget target);
 
-    List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId, GenerateQuestionsRequest request);
+    default List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId,
+                                                              GenerateQuestionsRequest request) {
+        return generateQuestions(userId, sessionId, request, "INTERNAL:" + UUID.randomUUID());
+    }
+
+    List<InterviewQuestionResponse> generateQuestions(Long userId, Long sessionId,
+                                                      GenerateQuestionsRequest request, String operationKey);
 
     List<InterviewQuestionResponse> listQuestions(Long userId, Long sessionId);
 
     /** 특정 질문에 대한 지원자 답변을 바탕으로 꼬리 질문을 생성해 세션 질문 목록에 이어 붙인다. */
-    List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId, GenerateFollowUpsRequest request);
+    default List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId,
+                                                              GenerateFollowUpsRequest request) {
+        return generateFollowUps(userId, questionId, request, "INTERNAL:" + UUID.randomUUID());
+    }
+
+    List<InterviewQuestionResponse> generateFollowUps(Long userId, Long questionId,
+                                                      GenerateFollowUpsRequest request, String operationKey);
 
     InterviewAnswerResponse submitAnswer(Long userId, Long questionId, SubmitAnswerRequest request);
+
+    /** 답변에 연결된 음성 또는 영상 원본을 물리 저장소와 메타데이터에서 함께 삭제한다. */
+    void deleteAnswerMedia(Long userId, Long answerId, String kind);
 
     /** 답변 유무 기반 진행 상태와 다음에 답할 질문을 반환한다. (AI 면접관 대화 진행) */
     InterviewProgressResponse getProgress(Long userId, Long sessionId);

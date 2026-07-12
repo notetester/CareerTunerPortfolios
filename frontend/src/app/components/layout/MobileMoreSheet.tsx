@@ -8,6 +8,7 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { haptic } from "@/platform/haptics";
 import { canPromptInstall, needsManualInstall, promptInstall } from "@/platform/install";
+import { registerNativeOverlayLifecycle } from "@/platform/nativeOverlayLifecycle";
 
 interface MoreItem {
   label: string;
@@ -33,7 +34,15 @@ const MORE_ITEMS: MoreItem[] = [
 ];
 
 /** 모바일 하단탭 "더보기" 시트 — 보조 메뉴 + 계정 + 설치/로그아웃. */
-export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function MobileMoreSheet({
+  open,
+  onClose,
+  alwaysVisible = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  alwaysVisible?: boolean;
+}) {
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
@@ -60,18 +69,23 @@ export function MobileMoreSheet({ open, onClose }: { open: boolean; onClose: () 
     };
   }, [onClose, open]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    return registerNativeOverlayLifecycle({ onBack: onClose, onSuspend: onClose });
+  }, [onClose, open]);
+
   // 닫힌 시트는 포커스·스크린리더 트리에서도 완전히 제거한다.
   if (!open) return null;
 
   return (
     <>
       <div
-        className="fixed inset-0 z-[60] bg-black/40 xl:hidden"
+        className={`fixed inset-0 z-[60] bg-black/40 ${alwaysVisible ? "" : "xl:hidden"}`}
         onClick={onClose}
         aria-hidden="true"
       />
       <div
-        className="fixed inset-x-0 bottom-0 z-[61] max-h-[calc(100dvh-env(safe-area-inset-top)-8px)] overflow-y-auto overscroll-contain rounded-t-2xl bg-card text-card-foreground shadow-2xl xl:hidden"
+        className={`fixed inset-x-0 bottom-0 z-[61] max-h-[calc(100dvh-env(safe-area-inset-top)-8px)] overflow-y-auto overscroll-contain rounded-t-2xl bg-card text-card-foreground shadow-2xl ${alwaysVisible ? "" : "xl:hidden"}`}
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
         role="dialog"
         aria-modal="true"

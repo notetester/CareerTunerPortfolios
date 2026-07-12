@@ -58,18 +58,25 @@ export function pickRecorderMime(kind: RecorderKind): RecorderMimeChoice {
 export function createNegotiatedRecorder(
   stream: MediaStream,
   kind: RecorderKind,
+  bitrate: Pick<MediaRecorderOptions, "audioBitsPerSecond" | "videoBitsPerSecond"> = {},
 ): { recorder: MediaRecorder; format: "webm" | "mp4" } {
   const choice = pickRecorderMime(kind);
   try {
     return {
-      recorder: choice.mimeType
-        ? new MediaRecorder(stream, { mimeType: choice.mimeType })
-        : new MediaRecorder(stream),
+      recorder: new MediaRecorder(stream, {
+        ...bitrate,
+        ...(choice.mimeType ? { mimeType: choice.mimeType } : {}),
+      }),
       format: choice.format,
     };
   } catch {
-    // 협상된 mimeType 으로도 생성 실패(드묾) → 옵션 없이 브라우저 기본 생성.
-    return { recorder: new MediaRecorder(stream), format: choice.format };
+    try {
+      // 일부 WebView는 특정 mimeType만 거부한다. bitrate 제한은 유지한 채 기본 컨테이너로 재시도한다.
+      return { recorder: new MediaRecorder(stream, bitrate), format: choice.format };
+    } catch {
+      // 매우 오래된 WebView의 options 미지원 폴백. 호출부의 길이·실제 Blob 크기 상한이 최종 방어다.
+      return { recorder: new MediaRecorder(stream), format: choice.format };
+    }
   }
 }
 

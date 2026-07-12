@@ -11,10 +11,12 @@ class SettingsStore : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString baseUrl    READ baseUrl    WRITE setBaseUrl    NOTIFY changed)
+    Q_PROPERTY(QString webAppUrl  READ webAppUrl  NOTIFY changed)
     Q_PROPERTY(QString saveDir    READ saveDir    WRITE setSaveDir    NOTIFY changed)
     Q_PROPERTY(bool    autoSave   READ autoSave   WRITE setAutoSave   NOTIFY changed)
     Q_PROPERTY(bool    autoLogin  READ autoLogin  WRITE setAutoLogin  NOTIFY changed)
     Q_PROPERTY(bool    trayNotify READ trayNotify WRITE setTrayNotify NOTIFY changed)
+    Q_PROPERTY(bool    darkTheme  READ darkTheme  WRITE setDarkTheme  NOTIFY changed)
     Q_PROPERTY(bool    portableMode READ isPortableMode CONSTANT)
     Q_PROPERTY(QString settingsPath READ settingsPath CONSTANT)
     // 서버 주소 프리셋 (설정 화면 콤보박스용 — 값은 아래 static 상수의 단일 소스)
@@ -39,6 +41,7 @@ public:
     QString settingsPath() const { return settingsPathForCurrentMode(); }
 
     QString baseUrl() const;
+    QString webAppUrl() const;
     void setBaseUrl(const QString& v);
     Q_INVOKABLE bool applyBaseUrl(const QString& v);
     static QString normalizedBaseUrl(const QString& v);
@@ -54,6 +57,9 @@ public:
 
     bool trayNotify() const;
     void setTrayNotify(bool v);
+
+    bool darkTheme() const;
+    void setDarkTheme(bool v);
 
     // 토큰은 QML 에 노출하지 않고 C++ (AuthService) 만 접근
     QString accessToken() const;

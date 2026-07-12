@@ -20,7 +20,9 @@ public class FriendRequestRow {
     private Long requesterId;
     private String requesterName;
     private String requesterEmail;
+    private String requesterStatus;
     private Long receiverId;
     private String receiverName;
     private String receiverEmail;
+    private String receiverStatus;
 }

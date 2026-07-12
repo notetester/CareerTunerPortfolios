@@ -17,7 +17,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * 관리자 API에서 JWT 발급 당시가 아니라 현재 DB 계정 상태와 역할을 최종 확인한다.
+ * 모든 인증 API에서 JWT 발급 당시가 아니라 현재 DB 계정 상태와 역할을 최종 확인한다.
  * 역할 claim과 현재 역할이 다르면 자동 승격/강등하지 않고 새 토큰 발급을 요구한다.
  */
 public class AdminAccountStateFilter extends OncePerRequestFilter {
@@ -35,7 +35,7 @@ public class AdminAccountStateFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String uri = request.getRequestURI();
-        return uri == null || !(uri.equals("/api/admin") || uri.startsWith("/api/admin/"));
+        return uri == null || !(uri.equals("/api") || uri.startsWith("/api/"));
     }
 
     @Override
@@ -51,7 +51,7 @@ public class AdminAccountStateFilter extends OncePerRequestFilter {
         try {
             currentUser = userMapper.findById(tokenUser.id());
         } catch (RuntimeException ex) {
-            log.error("관리자 현재 계정 상태 조회 실패: userId={}", tokenUser.id(), ex);
+            log.error("현재 계정 상태 조회 실패: userId={}", tokenUser.id(), ex);
             SecurityContextHolder.clearContext();
             errorWriter.serviceUnavailable(response);
             return;
@@ -68,7 +68,9 @@ public class AdminAccountStateFilter extends OncePerRequestFilter {
             errorWriter.unauthorized(response);
             return;
         }
-        if (!"ADMIN".equals(currentUser.getRole()) && !"SUPER_ADMIN".equals(currentUser.getRole())) {
+        String uri = request.getRequestURI();
+        boolean adminPath = uri != null && (uri.equals("/api/admin") || uri.startsWith("/api/admin/"));
+        if (adminPath && !"ADMIN".equals(currentUser.getRole()) && !"SUPER_ADMIN".equals(currentUser.getRole())) {
             SecurityContextHolder.clearContext();
             errorWriter.forbidden(response);
             return;

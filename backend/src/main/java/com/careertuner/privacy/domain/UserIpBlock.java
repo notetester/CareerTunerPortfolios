@@ -23,6 +23,7 @@ public class UserIpBlock {
 
     // JOIN 표시용
     private String sourceUserName;
+    private String sourceUserStatus;
     /** 파생 원본 계정 차단의 masked_label — non-null 이면 표시 이름을 이 라벨로 대체(익명성 유지). */
     private String sourceMaskedLabel;
 }

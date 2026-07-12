@@ -324,6 +324,7 @@ export const privacyRoutes: MockRoute[] = [
 ];
 
 function deriveIpBlock(block: UserBlockResponse): void {
+  if (block.blockedUserId == null) return;
   if (ipBlocks.some((item) => item.sourceUserId === block.blockedUserId)) return;
   const id = nextId(ipBlocks, 4500);
   ipBlocks = [

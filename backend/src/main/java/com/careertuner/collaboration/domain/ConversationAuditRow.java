@@ -18,8 +18,10 @@ public class ConversationAuditRow {
     private Long conversationId;
     private Long actorId;
     private String actorName;
+    private String actorStatus;
     private Long targetUserId;
     private String targetName;
+    private String targetStatus;
     private String action;
     private String detail;
     private LocalDateTime createdAt;

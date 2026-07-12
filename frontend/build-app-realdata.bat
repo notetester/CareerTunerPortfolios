@@ -18,7 +18,7 @@ REM --- 0) .env.local 확인 (백엔드 주소) ---
 if not exist ".env.local" (
   echo [에러] frontend\.env.local 이 없음. 아래 2줄로 만들어라:
   echo   VITE_USE_MOCK=false
-  echo   VITE_API_BASE_URL=http://^<백엔드주소^>:8080/api
+  echo   VITE_API_BASE_URL=https://^<도달가능한-백엔드호스트^>/api
   pause & exit /b 1
 )
 
@@ -26,18 +26,36 @@ REM --- 1) 실데이터 번들 빌드 (.env.local 의 VITE_API_BASE_URL 박힘) 
 echo [1/4] npm run build...
 call npm run build || (echo [에러] vite build 실패 & pause & exit /b 1)
 
-REM --- 2) capacitor 동기화 ---
+REM --- 2) capacitor 동기화 (번들 앱은 HTTPS-only release-safe 프로필) ---
 echo [2/4] cap sync android...
-call npx cap sync android || (echo [에러] cap sync 실패 & pause & exit /b 1)
+call npm run native:sync -- android || (echo [에러] cap sync 실패 & pause & exit /b 1)
 
 REM --- 3) APK 빌드 (cap run 안 씀) ---
-echo [3/4] gradlew assembleDebug...
+REM release 서명 환경변수 4개가 모두 있으면 verified App Link까지 가능한 release를 만든다.
+REM 없으면 일반 API 기능 확인용 debug를 만들되, debug 인증서 지문은 운영 assetlinks에 없으므로 소셜 OAuth는 제외한다.
+set "GRADLE_TASK=assembleRelease"
+set "APK=%HERE%android\app\build\outputs\apk\release\app-release.apk"
+set "APP_LINK_NOTE=verified App Link 검증 가능(release 서명 지문 일치 필요)"
+if "%CAREERTUNER_ANDROID_STOREFILE%"=="" goto use_debug_apk
+if "%CAREERTUNER_ANDROID_STOREPASSWORD%"=="" goto use_debug_apk
+if "%CAREERTUNER_ANDROID_KEYALIAS%"=="" goto use_debug_apk
+if "%CAREERTUNER_ANDROID_KEYPASSWORD%"=="" goto use_debug_apk
+goto build_apk
+
+:use_debug_apk
+set "GRADLE_TASK=assembleDebug"
+set "APK=%HERE%android\app\build\outputs\apk\debug\app-debug.apk"
+set "APP_LINK_NOTE=debug 서명: 비밀번호/API 테스트 전용, 소셜 OAuth App Link 미검증"
+echo [경고] release 서명 환경변수가 없어 debug APK를 만듭니다.
+echo        네이티브 소셜 로그인/연결까지 테스트하려면 Actions live 빌드 또는 release 서명을 사용하세요.
+
+:build_apk
+echo [3/4] gradlew %GRADLE_TASK%...
 cd /d "%HERE%android"
-call .\gradlew.bat assembleDebug || (echo [에러] gradle 빌드 실패 & pause & exit /b 1)
+call .\gradlew.bat %GRADLE_TASK% || (echo [에러] gradle 빌드 실패 & pause & exit /b 1)
 
 REM --- 4) 폰 설치 (연결돼 있으면) ---
 echo [4/4] 폰 설치 시도...
-set "APK=%HERE%android\app\build\outputs\apk\debug\app-debug.apk"
 "%ADB%" get-state 1>nul 2>nul
 if errorlevel 1 (
   echo   기기 없음 - APK 만 생성됨
@@ -52,6 +70,7 @@ echo.
 echo ============================================================
 echo  완료! APK: %APK%
 echo   - 실데이터(.env.local) + repo 관리 AndroidManifest 권한 포함
+echo   - %APP_LINK_NOTE%
 echo   - 폰은 백엔드가 사설망이면 Tailscale 연결 필요
 echo ============================================================
 pause

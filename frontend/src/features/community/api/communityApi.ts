@@ -15,7 +15,7 @@ interface BackendPost {
   title: string;
   content: string;
   tags: string[];
-  author: { id: number; name: string; nicknameProfileId?: number | null; isAnonymous: boolean };
+  author: { id: number | null; name: string; nicknameProfileId?: number | null; isAnonymous: boolean };
   stats: {
     viewCount: number; commentCount: number;
     likeCount: number; dislikeCount?: number;

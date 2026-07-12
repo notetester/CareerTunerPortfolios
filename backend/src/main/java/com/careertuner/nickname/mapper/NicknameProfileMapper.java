@@ -62,4 +62,7 @@ public interface NicknameProfileMapper {
 
     /** 계정 표시명 폴백용(users.name). */
     String findAccountName(Long userId);
+
+    /** 공개 표시명 해석 시 탈퇴 계정의 식별자 링크를 제거하기 위한 현재 상태. */
+    String findAccountStatus(Long userId);
 }

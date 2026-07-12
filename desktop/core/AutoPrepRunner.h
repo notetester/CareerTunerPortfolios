@@ -4,9 +4,12 @@
 #include <QVariantMap>
 #include <QString>
 #include <QByteArray>
+#include <QNetworkAccessManager>
 
 class ApiClient;
 class QNetworkReply;
+class QJsonObject;
+class DesktopCoreTests;
 
 // AI 오케스트레이터(autoprep) 인테이크 + 실행 스트림.
 // - intake(): POST /api/auto-prep/intake — 되묻기(CASE/MODE) 판별
@@ -27,6 +30,7 @@ public:
     Q_INVOKABLE void intake(const QString& query);
     Q_INVOKABLE void run(const QString& query, int caseId, const QString& mode);
     Q_INVOKABLE void cancel();
+    Q_INVOKABLE void clear();
 
 signals:
     void runningChanged();
@@ -35,16 +39,23 @@ signals:
     void intakeReady(const QVariantMap& result);
     void finished(const QString& message);
     void errorOccurred(const QString& message);
+    void cleared();
 
 private:
+    friend class DesktopCoreTests;
     void processBuffer();
     void handleEvent(const QString& type, const QString& data);
+    void startStream(const QJsonObject& body, quint64 generation);
     static QString partLabel(const QString& key);
     int stepIndex(const QString& key) const;
 
     ApiClient* m_api;
+    QNetworkAccessManager m_nam;
     QNetworkReply* m_reply = nullptr;
     QByteArray m_buffer;
     QVariantList m_steps;
     bool m_running = false;
+    bool m_authPreflightPending = false;
+    quint64 m_intakeGeneration = 0;
+    quint64 m_runGeneration = 0;
 };

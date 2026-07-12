@@ -6,8 +6,10 @@
     <insert id="upsert">
         INSERT INTO push_subscription
             (user_id, kind, token, p256dh, auth, user_agent, last_used_at)
-        VALUES
-            (#{userId}, #{kind}, #{token}, #{p256dh}, #{auth}, #{userAgent}, NOW())
+        SELECT u.id, #{kind}, #{token}, #{p256dh}, #{auth}, #{userAgent}, NOW()
+          FROM users u
+         WHERE u.id = #{userId}
+           AND u.status = 'ACTIVE'
         ON DUPLICATE KEY UPDATE
             user_id      = VALUES(user_id),
             kind         = VALUES(kind),
@@ -18,15 +20,26 @@
     </insert>
 
     <select id="findByUserId" resultType="com.careertuner.notification.domain.PushSubscription">
-        SELECT * FROM push_subscription WHERE user_id = #{userId} ORDER BY id DESC
+        SELECT ps.*
+          FROM push_subscription ps
+          JOIN users u ON u.id = ps.user_id AND u.status = 'ACTIVE'
+         WHERE ps.user_id = #{userId}
+         ORDER BY ps.id DESC
     </select>
 
     <delete id="deleteByToken">
         DELETE FROM push_subscription WHERE user_id = #{userId} AND token = #{token}
     </delete>
 
+    <delete id="deleteAllByUserId">
+        DELETE FROM push_subscription WHERE user_id = #{userId}
+    </delete>
+
     <select id="countByUserId" resultType="int">
-        SELECT COUNT(*) FROM push_subscription WHERE user_id = #{userId}
+        SELECT COUNT(*)
+          FROM push_subscription ps
+          JOIN users u ON u.id = ps.user_id AND u.status = 'ACTIVE'
+         WHERE ps.user_id = #{userId}
     </select>
 
 </mapper>

@@ -7,6 +7,8 @@ import com.careertuner.interview.domain.InterviewAnswer;
 public record InterviewAnswerResponse(
         Long id,
         Long questionId,
+        String clientSubmissionId,
+        String submissionStatus,
         String answerText,
         String audioUrl,
         String videoUrl,
@@ -19,6 +21,8 @@ public record InterviewAnswerResponse(
         return new InterviewAnswerResponse(
                 a.getId(),
                 a.getQuestionId(),
+                a.getClientSubmissionId(),
+                a.getSubmissionStatus(),
                 a.getAnswerText(),
                 a.getAudioUrl(),
                 a.getVideoUrl(),

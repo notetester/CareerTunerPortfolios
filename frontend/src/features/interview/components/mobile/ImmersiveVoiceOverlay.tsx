@@ -9,6 +9,11 @@ import {
 import { BrowserSttTracker } from "../../hooks/speechToText";
 import { createNegotiatedRecorder } from "../../hooks/mediaSupport";
 import { scoreVoiceServer, transcribeVoice } from "../../api/interviewApi";
+import {
+  MOBILE_INTERVIEW_AUDIO_BITS_PER_SECOND,
+  MOBILE_INTERVIEW_AUDIO_MAX_SECONDS,
+  validateCapturedMediaSize,
+} from "../../lib/mobileSubmission";
 import { MicLevelMeter } from "../MicLevelMeter";
 import {
   captureAppLockGeneration,
@@ -16,16 +21,22 @@ import {
   keepStreamForAppLock,
   onAppLockState,
 } from "@/platform/appLockEvents";
+import { registerNativeOverlayLifecycle } from "@/platform/nativeOverlayLifecycle";
+import { MediaCaptureExitConfirm } from "./MediaCaptureExitConfirm";
 
 /**
  * 몰입형 음성 답변 (모바일 풀스크린) — Claude 앱식 최소 UI.
  * 진입 즉시 녹음 시작 → 정지 → 전사(serve STT, 실패 시 브라우저 STT 폴백)
  * → 전달력 채점(serve LightGBM, 실패 시 온디바이스 규칙점수)
- * → onResult(전사, 전달력점수) 로 스레드에 돌려준다. 원본 음성은 폐기.
+ * → onResult 로 전사·점수·원본 Blob을 부모에 넘긴다. 부모가 INTERVIEW_ANSWER
+ * pending 파일로 저장하고 표준 answers 요청 성공 시 원자 연결한다.
  */
 export interface VoiceResult {
   transcript: string;
   voiceScore: number | null;
+  audioBlob: Blob | null;
+  audioFormat: string;
+  captureError?: "AUDIO_TOO_LARGE";
 }
 
 type Phase = "recording" | "processing";
@@ -48,6 +59,7 @@ export function ImmersiveVoiceOverlay({
   const [phase, setPhase] = useState<Phase>("recording");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [confirmClose, setConfirmClose] = useState(false);
   // 웨이브폼 시각화용 마이크 스트림 — 실제 음량에 따라 움직인다 (ref 는 리렌더를 못 일으켜 state 로 별도 보관)
   const [micStream, setMicStream] = useState<MediaStream | null>(null);
 
@@ -58,26 +70,73 @@ export function ImmersiveVoiceOverlay({
   const sttRef = useRef<BrowserSttTracker | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const closedRef = useRef(false);
+  const captureAttemptRef = useRef(0);
+  const captureGenerationRef = useRef<number | null>(null);
+  const processingAbortRef = useRef<AbortController | null>(null);
+  const finishRef = useRef<() => void>(() => undefined);
+  const closeRef = useRef<() => void>(() => undefined);
+  const nativeBackRef = useRef<() => void>(() => undefined);
+  const confirmCloseRef = useRef(false);
   /** 녹음 시 협상된 업로드 포맷(webm|mp4) — blob.type 스니핑 대신 이 값을 쓴다. */
   const formatRef = useRef<string>("webm");
 
   const cleanup = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
+    const recorder = recorderRef.current;
     recorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      try {
+        recorder.stop();
+      } catch {
+        /* 이미 종료 중이면 무시 */
+      }
+    }
     micRef.current?.getTracks().forEach((t) => t.stop());
     micRef.current = null;
+    chunksRef.current = [];
+  };
+
+  const close = () => {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    captureAttemptRef.current += 1;
+    processingAbortRef.current?.abort();
+    processingAbortRef.current = null;
+    sttRef.current?.stop();
+    sttRef.current = null;
+    trackerRef.current?.dispose();
+    trackerRef.current = null;
+    cleanup();
+    setConfirmClose(false);
+    onClose();
+  };
+
+  closeRef.current = close;
+  confirmCloseRef.current = confirmClose;
+  nativeBackRef.current = () => {
+    if (confirmCloseRef.current) setConfirmClose(false);
+    else setConfirmClose(true);
   };
 
   // 진입 즉시 녹음 시작 (권한 프리프롬프트는 진입 전에 이미 통과)
   useEffect(() => {
     let cancelled = false;
+    closedRef.current = false;
+    const captureAttempt = ++captureAttemptRef.current;
     const lockGeneration = captureAppLockGeneration();
     if (lockGeneration === null) return undefined;
+    captureGenerationRef.current = lockGeneration;
     void (async () => {
       try {
         const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (cancelled || !keepStreamForAppLock(mic, lockGeneration)) {
+        if (
+          cancelled
+          || captureAttempt !== captureAttemptRef.current
+          || !keepStreamForAppLock(mic, lockGeneration)
+        ) {
           mic.getTracks().forEach((t) => t.stop());
           return;
         }
@@ -92,10 +151,16 @@ export function ImmersiveVoiceOverlay({
         stt.start();
         sttRef.current = stt;
         // 기기별 지원 mimeType 협상(webm/opus → mp4/aac) — WebView 등 webm 미지원 기기 대응.
-        const { recorder, format } = createNegotiatedRecorder(mic, "audio");
+        const { recorder, format } = createNegotiatedRecorder(mic, "audio", {
+          audioBitsPerSecond: MOBILE_INTERVIEW_AUDIO_BITS_PER_SECOND,
+        });
         formatRef.current = format;
         recorder.ondataavailable = (e) => {
-          if (isAppLockGenerationCurrent(lockGeneration) && e.data.size > 0) chunksRef.current.push(e.data);
+          if (
+            captureAttempt === captureAttemptRef.current
+            && isAppLockGenerationCurrent(lockGeneration)
+            && e.data.size > 0
+          ) chunksRef.current.push(e.data);
         };
         recorder.start();
         recorderRef.current = recorder;
@@ -107,16 +172,26 @@ export function ImmersiveVoiceOverlay({
     return () => {
       cancelled = true;
       closedRef.current = true;
+      captureAttemptRef.current += 1;
+      processingAbortRef.current?.abort();
+      processingAbortRef.current = null;
       sttRef.current?.stop();
+      sttRef.current = null;
       trackerRef.current?.dispose();
+      trackerRef.current = null;
       cleanup();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => onAppLockState((locked) => {
-    if (locked) onClose();
-  }), [onClose]);
+    if (locked) closeRef.current();
+  }), []);
+
+  useEffect(() => registerNativeOverlayLifecycle({
+    onBack: () => nativeBackRef.current(),
+    onSuspend: () => closeRef.current(),
+  }), []);
 
   const speakQuestion = () => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
@@ -131,15 +206,39 @@ export function ImmersiveVoiceOverlay({
     if (phase !== "recording") return;
     setPhase("processing");
 
+    const captureAttempt = captureAttemptRef.current;
+    const lockGeneration = captureGenerationRef.current;
+    const controller = new AbortController();
+    processingAbortRef.current?.abort();
+    processingAbortRef.current = controller;
+    const stale = () =>
+      controller.signal.aborted
+      || closedRef.current
+      || captureAttempt !== captureAttemptRef.current
+      || !isAppLockGenerationCurrent(lockGeneration);
+
     const blob = await new Promise<Blob | null>((resolve) => {
+      let settled = false;
+      const settle = (value: Blob | null) => {
+        if (settled) return;
+        settled = true;
+        controller.signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      };
+      const onAbort = () => settle(null);
+      controller.signal.addEventListener("abort", onAbort, { once: true });
       const r = recorderRef.current;
       if (!r || r.state !== "recording") {
-        resolve(chunksRef.current.length ? new Blob(chunksRef.current) : null);
+        settle(chunksRef.current.length ? new Blob(chunksRef.current) : null);
         return;
       }
       r.onstop = () =>
-        resolve(chunksRef.current.length ? new Blob(chunksRef.current, { type: r.mimeType }) : null);
-      r.stop();
+        settle(chunksRef.current.length ? new Blob(chunksRef.current, { type: r.mimeType }) : null);
+      try {
+        r.stop();
+      } catch {
+        settle(null);
+      }
     });
     const tracker = trackerRef.current;
     tracker?.pause();
@@ -148,51 +247,90 @@ export function ImmersiveVoiceOverlay({
     sttRef.current = null;
     cleanup();
 
-    if (!blob || blob.size === 0) {
-      tracker?.dispose();
-      onResult({ transcript: webSpeechText, voiceScore: null });
-      return;
-    }
-
-    const audioBase64 = await blobToBase64(blob).catch(() => "");
-    const audioFormat = formatRef.current; // 녹음 시 협상한 포맷 (blob.type 스니핑 대체)
-
-    // 1) 전사: serve STT 우선, 실패 시 브라우저 STT 폴백
-    let transcript = "";
     try {
-      const stt = await transcribeVoice(sessionId, audioBase64, audioFormat);
-      transcript = stt.text;
-    } catch {
-      transcript = webSpeechText;
-    }
-    const chars = transcript.replace(/\s/g, "").length;
-    const fillers = transcript ? countFillers([transcript]) : 0;
+      if (stale()) return;
+      const validation = blob ? validateCapturedMediaSize(blob.size) : null;
+      if (validation && !validation.ok && validation.reason === "TOO_LARGE") {
+        onResult({
+          transcript: webSpeechText,
+          voiceScore: null,
+          audioBlob: null,
+          audioFormat: formatRef.current,
+          captureError: "AUDIO_TOO_LARGE",
+        });
+        return;
+      }
+      if (!blob || blob.size === 0) {
+        onResult({
+          transcript: webSpeechText,
+          voiceScore: null,
+          audioBlob: null,
+          audioFormat: formatRef.current,
+        });
+        return;
+      }
 
-    // 2) 전달력: serve 우선, 실패 시 온디바이스 규칙점수
-    let voiceScore: number | null = null;
-    try {
-      const server = await scoreVoiceServer(sessionId, {
-        audioBase64,
-        audioFormat,
-        transcriptChars: chars,
-        fillerCount: fillers,
-      });
-      voiceScore = server.score;
-    } catch {
-      const metrics = tracker?.finish(chars, fillers) ?? null;
-      voiceScore = metrics ? computeVoiceScore(metrics).overall : null;
+      const audioBase64 = await blobToBase64(blob).catch(() => "");
+      if (stale()) return;
+      const audioFormat = formatRef.current;
+
+      // 1) 전사: serve STT 우선, 실패 시 브라우저 STT 폴백
+      let transcript = "";
+      try {
+        const stt = await transcribeVoice(sessionId, audioBase64, audioFormat, "ko", controller.signal);
+        if (stale()) return;
+        transcript = stt.text;
+      } catch {
+        if (stale()) return;
+        transcript = webSpeechText;
+      }
+      const chars = transcript.replace(/\s/g, "").length;
+      const fillers = transcript ? countFillers([transcript]) : 0;
+
+      // 2) 전달력: serve 우선, 실패 시 온디바이스 규칙점수
+      let voiceScore: number | null = null;
+      try {
+        const server = await scoreVoiceServer(sessionId, {
+          audioBase64,
+          audioFormat,
+          transcriptChars: chars,
+          fillerCount: fillers,
+        }, controller.signal);
+        if (stale()) return;
+        voiceScore = server.score;
+      } catch {
+        if (stale()) return;
+        const metrics = tracker?.finish(chars, fillers) ?? null;
+        voiceScore = metrics ? computeVoiceScore(metrics).overall : null;
+      }
+
+      if (!stale()) onResult({ transcript, voiceScore, audioBlob: blob, audioFormat });
     } finally {
       tracker?.dispose();
+      if (processingAbortRef.current === controller) processingAbortRef.current = null;
     }
-
-    if (!closedRef.current) onResult({ transcript, voiceScore });
   };
+
+  finishRef.current = () => {
+    void finish();
+  };
+
+  useEffect(() => {
+    if (phase === "recording" && seconds >= MOBILE_INTERVIEW_AUDIO_MAX_SECONDS) {
+      finishRef.current();
+    }
+  }, [phase, seconds]);
 
   const mm = Math.floor(seconds / 60);
   const ss = String(seconds % 60).padStart(2, "0");
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-[#020203]">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="음성 면접 답변 녹음"
+      className="fixed inset-0 z-[60] flex flex-col bg-[#020203]"
+    >
       {/* 앰비언트 */}
       <div
         className="pointer-events-none absolute inset-0"
@@ -213,7 +351,8 @@ export function ImmersiveVoiceOverlay({
           {questionLabel}
         </span>
         <button
-          onClick={onClose}
+          autoFocus
+          onClick={() => setConfirmClose(true)}
           className="ml-auto flex size-9 items-center justify-center rounded-lg text-[#8A8F98] transition-colors hover:bg-white/[0.06]"
           aria-label="닫기"
         >
@@ -235,7 +374,7 @@ export function ImmersiveVoiceOverlay({
         ) : phase === "processing" ? (
           <>
             <div className="size-9 animate-spin rounded-full border-2 border-white/10 border-t-[#5E6AD2]" />
-            <div className="text-[13px] text-[#8A8F98]">전사·채점 중 — 원본은 폐기됩니다</div>
+            <div className="text-[13px] text-[#8A8F98]">전사·채점 중 — 제출 원본을 안전하게 준비합니다</div>
           </>
         ) : (
           <>
@@ -248,7 +387,7 @@ export function ImmersiveVoiceOverlay({
               barClassName="w-1 rounded-[3px] bg-gradient-to-b from-[#7d88de] to-[#5E6AD2] shadow-[0_0_12px_rgba(94,106,210,0.4)]"
             />
             <div className="font-mono text-[26px] font-bold tabular-nums text-[#EDEDEF]">
-              {mm}:{ss}
+              {mm}:{ss} / 3:00
             </div>
             <div className="text-[12.5px] text-[#8A8F98]">듣고 있어요 — 답변이 끝나면 정지를 누르세요</div>
           </>
@@ -278,6 +417,13 @@ export function ImmersiveVoiceOverlay({
         </button>
         <div className="size-14" aria-hidden />
       </div>
+      {confirmClose && (
+        <MediaCaptureExitConfirm
+          processing={phase === "processing"}
+          onKeep={() => setConfirmClose(false)}
+          onDiscard={() => closeRef.current()}
+        />
+      )}
     </div>
   );
 }
