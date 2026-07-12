@@ -2,7 +2,7 @@
 
 > 방향: Linear·Vercel 계열의 **프리미엄 다크 우선** UI. 빽빽한 제품(SaaS)에 어울리고, "AI가 자동 생성한 티"가 안 나는 룩.
 > 모드: **다크 기본 + 라이트 토글, 둘 다 정식 지원.** (기본을 라이트로 바꾸는 건 `<html>`/`<body>` 기본 클래스 하나 차이.)
-> 스택: Tailwind v4(CSS-first `@theme`) + React 18 + shadcn/ui(Radix + CVA). 폰트는 **Wanted Sans**(Pretendard 폴백).
+> 스택: Tailwind v4(CSS-first `@theme`) + React 19 + shadcn/ui(Radix + CVA). 폰트는 **Wanted Sans**(Pretendard 폴백).
 > 출처: Linear 디자인 시스템 토큰, Vercel/Geist, 프리미엄 다크 UI 원칙.
 
 ---

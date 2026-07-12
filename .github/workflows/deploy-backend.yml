@@ -355,11 +355,20 @@ jobs:
             $COMPOSE pull
             $COMPOSE up -d --remove-orphans
             docker image prune -f
-            # 부팅 대기 후 헬스체크 — 실패해도 자동 롤백은 안 한다(포트폴리오 규모, 로그로 원인 확인)
+            # 부팅 대기 후 readiness(DB 왕복 포함)로 상태를 '관측'한다. 단 DB 부재를 배포 실패로 만들지는
+            # 않는다 — 백엔드는 initialization-fail-timeout:-1 로 DB 없이도 부팅하도록 의도 설계됐고(포트폴리오
+            # 규모, 자동 롤백 없음), 공개 데모는 프론트 mock(deploy-demo)이 별도로 커버한다. 대신 기존의
+            # 항상-UP /api/health 대신 readiness 를 써서 "app 은 떴지만 DB 불가"와 "app 자체 미기동"을 구분해
+            # 로그에 분명히 남긴다(과거엔 죽어도 조용히 green 이었음).
             for i in $(seq 1 12); do
-              if curl -fsS http://localhost:8080/api/health >/dev/null; then
-                echo "health OK"; exit 0
+              if curl -fsS http://localhost:8080/api/health/ready >/dev/null; then
+                echo "readiness OK (app + DB up)"; exit 0
               fi
-              echo "health 대기 ${i}/12..."; sleep 5
+              echo "readiness 대기 ${i}/12..."; sleep 5
             done
-            echo "::warning::헬스체크 미응답(60s) — 컨테이너 로그 확인 필요"
+            if curl -fsS http://localhost:8080/api/health >/dev/null; then
+              echo "::warning::app 은 기동했으나 DB readiness 미충족(60s) — 실 DB 연결 확인 필요(배포는 계속: DB 없이 부팅 설계 + mock 백업)"
+            else
+              echo "::warning::app 헬스 미응답(60s) — 컨테이너가 기동하지 못했을 수 있음, 아래 로그 확인"
+              $COMPOSE logs --tail=200 backend || true
+            fi
