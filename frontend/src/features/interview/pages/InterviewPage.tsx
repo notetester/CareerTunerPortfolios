@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
+import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { Badge } from "@/app/components/ui/badge";
 import { useAuth } from "@/app/auth/AuthContext";
 import { useOutageFallback } from "@/app/lib/outageFallback";
@@ -67,6 +68,7 @@ export function InterviewPage() {
   const [selectedMode, setSelectedMode] = useState<InterviewMode | null>(null);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
   const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
+  const [questionGenerationModel, setQuestionGenerationModel] = useState<AiModelChoice>("AUTO");
   // 현재 활성 세션이 새로 시작한 것인지(new), 과거 기록을 복원(복습)한 것인지(resumed).
   const [sessionOrigin, setSessionOrigin] = useState<"new" | "resumed" | null>(null);
   // 디스패치 딥링크로 이어받았을 때 다음 답변 위치 안내.
@@ -86,6 +88,7 @@ export function InterviewPage() {
     setSessionOrigin(null);
     setResumeHint(null);
     setSendingToPhone(false);
+    setQuestionGenerationModel("AUTO");
   }, [user?.id]);
   const requestedCaseId = parseCaseId(searchParams.get("caseId"));
 
@@ -133,6 +136,9 @@ export function InterviewPage() {
 
   // 데모/튜토리얼 모드에서는 실제 세션 없이도 더미 세션으로 흐름을 보여준다.
   const effectiveSession = mockActive ? (activeSession ?? dummySession) : activeSession;
+  useEffect(() => {
+    setQuestionGenerationModel("AUTO");
+  }, [effectiveSession?.id]);
   const activeCase = effectiveSession
     ? cases.applicationCases.find((c) => c.id === effectiveSession.applicationCaseId)
     : undefined;
@@ -352,11 +358,20 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="questions" className="mt-6">
-            <ExpectedQuestionsTab session={effectiveSession} onGoToPractice={() => goTab("practice")} />
+            <ExpectedQuestionsTab
+              session={effectiveSession}
+              generationModel={questionGenerationModel}
+              onGenerationModelChange={setQuestionGenerationModel}
+              onGoToPractice={() => goTab("practice")}
+            />
           </TabsContent>
 
           <TabsContent value="practice" data-tut="tut-panel-practice" className="mt-6">
-            <PracticeTab session={effectiveSession} onGoToReport={() => goTab("report")} />
+            <PracticeTab
+              session={effectiveSession}
+              onGoToQuestions={() => goTab("questions")}
+              onGoToReport={() => goTab("report")}
+            />
           </TabsContent>
 
           <TabsContent value="live" data-tut="tut-panel-live" className="mt-6">
