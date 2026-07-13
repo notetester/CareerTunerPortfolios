@@ -40,6 +40,9 @@ env:
   CORRECTION_AI_BASE_URL: http://localhost:11434/v1
   CORRECTION_AI_MODEL: careertuner-e-correction-3b:delivery-s-f16-20260708
   CORRECTION_AI_PREFLIGHT_REQUIRED: 'false'
+  PUBLIC_FRONTEND_URL: https://careertuner.kro.kr
+  PUBLIC_API_BASE_URL: https://careertuner.kro.kr
+  PUBLIC_CORS_ALLOWED_ORIGINS: https://careertuner.kro.kr,http://localhost,https://localhost,capacitor://localhost
 
 jobs:
   correction-ollama-preflight:
@@ -266,6 +269,79 @@ jobs:
             | sort -u > managed-db-patches.txt
           echo "Managed DB patches:"
           sed 's/^/- /' managed-db-patches.txt
+
+      - name: Update public app and OAuth env on EC2
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          CT_FRONTEND_URL: ${{ env.PUBLIC_FRONTEND_URL }}
+          CT_API_BASE_URL: ${{ env.PUBLIC_API_BASE_URL }}
+          CT_CORS_ALLOWED_ORIGINS: ${{ env.PUBLIC_CORS_ALLOWED_ORIGINS }}
+          CT_KAKAO_CLIENT_ID: ${{ secrets.OAUTH_KAKAO_CLIENT_ID }}
+          CT_KAKAO_CLIENT_SECRET: ${{ secrets.OAUTH_KAKAO_CLIENT_SECRET }}
+          CT_NAVER_CLIENT_ID: ${{ secrets.OAUTH_NAVER_CLIENT_ID }}
+          CT_NAVER_CLIENT_SECRET: ${{ secrets.OAUTH_NAVER_CLIENT_SECRET }}
+          CT_GOOGLE_CLIENT_ID: ${{ secrets.OAUTH_GOOGLE_CLIENT_ID }}
+          CT_GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: CT_FRONTEND_URL,CT_API_BASE_URL,CT_CORS_ALLOWED_ORIGINS,CT_KAKAO_CLIENT_ID,CT_KAKAO_CLIENT_SECRET,CT_NAVER_CLIENT_ID,CT_NAVER_CLIENT_SECRET,CT_GOOGLE_CLIENT_ID,CT_GOOGLE_CLIENT_SECRET
+          script: |
+            set -eu
+            cd ~/careertuner
+            test -f .env
+
+            : "${CT_KAKAO_CLIENT_ID:=}"
+            : "${CT_KAKAO_CLIENT_SECRET:=}"
+            : "${CT_NAVER_CLIENT_ID:=}"
+            : "${CT_NAVER_CLIENT_SECRET:=}"
+            : "${CT_GOOGLE_CLIENT_ID:=}"
+            : "${CT_GOOGLE_CLIENT_SECRET:=}"
+
+            configured=""
+            [ -n "$CT_KAKAO_CLIENT_ID" ] && configured="$configured KAKAO"
+            [ -n "$CT_NAVER_CLIENT_ID" ] && configured="$configured NAVER"
+            [ -n "$CT_GOOGLE_CLIENT_ID" ] && configured="$configured GOOGLE"
+            if [ -z "$configured" ]; then
+              echo "::warning::No OAuth provider secrets are configured; social login endpoints will stay unavailable."
+            fi
+
+            backup=".env.oauth.bak.$(date +%Y%m%d%H%M%S)"
+            cp .env "$backup"
+            upsert_env() {
+              key="$1"
+              value="$2"
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*|${key}=${value}|" .env
+              else
+                printf '%s=%s\n' "$key" "$value" >> .env
+              fi
+            }
+
+            api_base="${CT_API_BASE_URL%/}"
+            upsert_env APP_FRONTEND_URL "${CT_FRONTEND_URL%/}"
+            upsert_env APP_API_BASE_URL "$api_base"
+            upsert_env CAREERTUNER_CORS_ALLOWED_ORIGINS "$CT_CORS_ALLOWED_ORIGINS"
+            upsert_env OAUTH_MOCK_ENABLED "false"
+            if [ -n "$CT_KAKAO_CLIENT_ID" ]; then
+              upsert_env OAUTH_KAKAO_CLIENT_ID "$CT_KAKAO_CLIENT_ID"
+              upsert_env OAUTH_KAKAO_CLIENT_SECRET "$CT_KAKAO_CLIENT_SECRET"
+              upsert_env OAUTH_KAKAO_REDIRECT_URI "$api_base/api/auth/oauth/kakao/callback"
+            fi
+            if [ -n "$CT_NAVER_CLIENT_ID" ]; then
+              upsert_env OAUTH_NAVER_CLIENT_ID "$CT_NAVER_CLIENT_ID"
+              upsert_env OAUTH_NAVER_CLIENT_SECRET "$CT_NAVER_CLIENT_SECRET"
+              upsert_env OAUTH_NAVER_REDIRECT_URI "$api_base/api/auth/oauth/naver/callback"
+            fi
+            if [ -n "$CT_GOOGLE_CLIENT_ID" ]; then
+              upsert_env OAUTH_GOOGLE_CLIENT_ID "$CT_GOOGLE_CLIENT_ID"
+              upsert_env OAUTH_GOOGLE_CLIENT_SECRET "$CT_GOOGLE_CLIENT_SECRET"
+              upsert_env OAUTH_GOOGLE_REDIRECT_URI "$api_base/api/auth/oauth/google/callback"
+            fi
+
+            echo "EC2 OAuth env updated from GitHub secrets for:$configured"
+            echo "EC2 env backup: $backup"
 
       - name: Copy deploy files and database patches to EC2
         uses: appleboy/scp-action@v1.0.0
