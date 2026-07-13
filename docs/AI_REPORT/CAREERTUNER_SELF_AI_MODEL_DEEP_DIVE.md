@@ -1595,13 +1595,13 @@ E에는 embedding, vector DB, chunk, top-k, reranker가 없다. `job_context`와
 ### 10.11 재현 명령 요약
 
 ```powershell
-Push-Location ../..
-git submodule update --init docs/ai-artifacts
-Pop-Location
-
-$expandedRun = "../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-05-expanded-300"
-$deliveryRun = "../../docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/2026-07-08-expedited-followup"
+$expandedRun = $env:CAREERTUNER_E_EXPANDED_RUN
+$deliveryRun = $env:CAREERTUNER_E_DELIVERY_RUN
 $riskSelectiveTrain = $env:CAREERTUNER_E_RISK_SELECTIVE_DATASET
+
+if ([string]::IsNullOrWhiteSpace($expandedRun) -or [string]::IsNullOrWhiteSpace($deliveryRun)) {
+  throw "공개본에는 raw benchmark artifact가 없습니다. 검토한 자체 데이터 경로를 환경 변수로 지정해야 합니다."
+}
 
 # Stage100
 python scripts/finetune_lora.py `

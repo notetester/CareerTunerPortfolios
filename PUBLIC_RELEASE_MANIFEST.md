@@ -7,13 +7,13 @@
 | 항목 | 확정 기준 |
 | --- | --- |
 | 원본 소스 baseline | `d00a57fc8d1e3499ba6c23acec498c47ac0d5d4c` |
-| 정화된 `dev` baseline | `a77e2a45ded374848697176e7a677a3a24f03482` |
+| 정화된 `dev` baseline | `48f294d306e54d12d6f7085e08a417522c6f0c2e` |
 | 정화 이력의 commit 수 | 1,830 |
 | 게시 대상으로 보존한 ref 수 | 157 |
 | 정화 이력의 도달 가능한 고유 blob 수 | 10,235 |
 | 학습 문서 baseline | `eccc5e3f31042b8d09b23a067390299e243ff6b5` |
 | 지식 projection baseline | `87b4986cbbeed88b057b706817050f4cf10c5cf6` |
-| 공개 데모 projection baseline | `b1fb31eb4fd1a61e40d1167db787c6ea8937ecc8` |
+| 공개 데모 projection baseline | `3784252bd5954e69a2e79d98384ef7501e2a40a4` |
 
 ## 게시 전 남은 게이트
 

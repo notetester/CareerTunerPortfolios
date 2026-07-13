@@ -1,6 +1,6 @@
 # CareerTuner — AI 코딩 도구 공통 지침
 
-> **공개 복제본 안내:** 이 저장소에는 비공개 자료를 가리키는 gitlink와 submodule 설정이 없습니다. 아래 원본 팀 저장소용 submodule 초기화·갱신 지시는 이 공개 복제본에서 실행하지 않으며, 같은 경로의 공개 안내 README와 `/Obsidian/` projection을 사용합니다.
+> **공개 복제본 안내:** 이 저장소에는 비공개 자료를 가리키는 gitlink와 submodule 설정이 없습니다. 공개 검토용 설명은 `portfolio-docs/`, 축약 지식 지도는 `/Obsidian/`, 제외 자료의 경계는 각 `docs/*/README.md`에서 확인합니다.
 
 이 파일은 팀원이 사용하는 모든 AI 코딩 도구(Codex, Antigravity, Cursor, Windsurf, Claude Code 등)가 읽는 공통 지침이다.
 도구별 파일(GEMINI.md, .windsurfrules 등)에 룰을 분산하지 말고, 팀 공통 룰은 반드시 이 파일에만 추가한다.
@@ -30,9 +30,9 @@ docs/       기획·아키텍처 문서
 | 소유권 빠른 참조 | `docs/FEATURE_OWNERSHIP.md` |
 | 현재 구현·실행·API 상태 | 런타임 소스와 `backend/README.md`, `frontend/README.md` |
 | UX와 모바일 세부 원칙 | `docs/planning/디자인 분석.md`, `docs/planning/모바일 고려.md` |
-| AI 장문 실험 보고서·누적 해석 | `docs/ai-reports/` 서브모듈 |
-| AI raw output·benchmark artifact | `docs/ai-artifacts/` 서브모듈 |
-| AI agent 장기 맥락·Graphify/LLM Wiki 운용 | `docs/obsidian-vault/` 서브모듈의 `wiki/index.md`, `graphify-out/GRAPH_REPORT.md` |
+| AI 모델·실험의 공개 설명 | `portfolio-docs/ai-integration.md`, `portfolio-docs/model-evidence.md` |
+| 공개 가능한 재현 코드·검증 기준 | `ml/`, `portfolio-docs/verification.md`, `docs/ai-artifacts/README.md` |
+| 공개 축약 지식 지도·Wiki | `Obsidian/`, `portfolio-docs/second-brain.md` |
 
 - 같은 주제에서는 위 표의 담당 문서를 우선한다. 제품 기획이 구현 규칙을, 현재 코드가 목표 제품 범위를 자동으로 덮어쓰지 않는다.
 - 기획·아키텍처 문서는 목표 상태를 포함할 수 있고, 런타임 소스와 모듈 README는 현재 구현 상태를 설명한다.
@@ -100,55 +100,34 @@ push 요청을 받으면 반드시 아래 순서를 따른다:
 | [docs/TEAM_WORK_DISTRIBUTION.md](docs/TEAM_WORK_DISTRIBUTION.md) | 6명 수직 분담·AI 기능·주요 DB |
 | [backend/README.md](backend/README.md) | 백엔드 실행·환경변수·API 목록·시드 계정 |
 | [frontend/README.md](frontend/README.md) | 프런트 실행·스크립트·폴더 구조 |
-| [docs/AI_REPOSITORY_BOUNDARIES.md](docs/AI_REPOSITORY_BOUNDARIES.md) | AI 보고서·artifact 저장소 경계와 서브모듈 운용 |
+| [docs/AI_REPOSITORY_BOUNDARIES.md](docs/AI_REPOSITORY_BOUNDARIES.md) | AI 보고서·artifact의 공개 저장소 경계 |
 
-## AI 보고서·artifact 서브모듈
+## 공개 AI 보고서·artifact 경계
 
-AI 관련 산출물은 본체에 계속 누적하지 않는다.
+이 공개 복제본은 제품 구현을 검토하고 재현하는 데 필요한 자료만 포함한다.
 
-| 경로 | 서브모듈 repo | 용도 |
+| 경로 | 공개본 역할 | 용도 |
 | --- | --- | --- |
-| `docs/ai-reports/` | `notetester/CareerTunerAIDocs` | 장문 실험 보고서, 누적 해석, 사람이 읽는 분석 문서 |
-| `docs/ai-artifacts/` | `notetester/CareerTunerAI` | generated requests, raw model outputs, result JSON, manifests, aggregate summaries, 4090 ops docs/scripts |
-| `docs/obsidian-vault/` | `notetester/CareerTunerObsidian` | Obsidian/AI 장기 맥락, 결정 로그, 작업별 읽기 지도, 템플릿, 첨부 |
+| `docs/ai-reports/` | 경계 안내 README | 장문 원문을 제외하고 공개 설명서 위치를 안내 |
+| `docs/ai-artifacts/` | 경계 안내 README | raw output·반복 benchmark·운영 로그를 제외하고 재현 코드 위치를 안내 |
+| `docs/obsidian-vault/` | 경계 안내 README | 내부 메모를 제외하고 `/Obsidian/` 공개 projection을 안내 |
 
-- `CareerTuner` main repo 에는 제품 코드, 소형 fixture, validator, runner, 짧은 checklist/index, artifact path/commit SHA 만 남긴다.
-- `ml/career-strategy-llm/scripts/` 는 C 영역의 재현용 validator/runner/helper 를 두는 본체 경로다. A~F 공통 AI artifact 와 반복 benchmark artifact 주변 파일은 `CareerTunerAI` submodule 인 `docs/ai-artifacts/` 로 둔다.
-- 4090/Tailscale/OpenSSH/GitHub Actions/MCP/Ollama 운영 문서와 운영 스크립트는 `docs/ai-artifacts/docs/ops/`, `docs/ai-artifacts/scripts/ops/` 에 둔다. `docs/operations/`, `docs/ops/`, `scripts/ops/` 를 본체에 새로 누적하지 않는다.
-- `ml/career-strategy-llm/reports/` 는 본체의 짧은 archive index/호환 안내만 유지한다. 새 장문 보고서는 `docs/ai-reports/areas/c-career-strategy/reports/` 에 추가한다.
-- raw output, generated result, `reports/generated/` 는 `CareerTuner` main repo 에 커밋하지 않는다.
-- submodule 이 비어 있으면 필요한 것만 받는다:
+- 제품 코드, 소형 fixture, validator와 runner는 저장소 본문에 유지한다.
+- raw model output, generated result, 반복 benchmark 산출물, 운영 로그와 개인 환경 자료는 커밋하지 않는다.
+- 공개 설명을 갱신할 때는 `portfolio-docs/`의 근거 SHA와 실제 소스 경로를 함께 교정한다.
 
-```bash
-git submodule update --init docs/ai-reports
-git submodule update --init docs/ai-artifacts
-```
+## 공개 Obsidian projection
 
-- submodule 안에서 수정한 파일은 그 submodule repo 에서 먼저 commit/push 한 뒤, 루트에서 submodule pointer 를 갱신해 PR 한다.
+- `Obsidian/`은 검토를 마친 축약 Graph와 Wiki의 정적 공개본이다.
+- 내부 작업 메모와 원문 vault는 포함하지 않으며 `docs/obsidian-vault/README.md`는 이 경계를 설명한다.
+- projection을 갱신할 때는 공개 경로 존재, Graph-Wiki 대응, 끊어진 링크, 비밀정보와 절대 로컬 경로를 다시 검사한다.
+- 개인 Obsidian workspace 상태, cache, bookmark, recent 파일과 개인 플러그인은 커밋하지 않는다.
 
-## Obsidian overlay vault
+## 공개 스토리보드·화면 자료
 
-이 repo는 필요 시 **repo 루트 `CareerTuner/`를 Obsidian Vault로 열 수 있다.** 이렇게 하면 `README.md`, `AGENTS.md`, `docs/`, `backend/README.md`, `frontend/README.md`, `ml/**/README.md`가 같은 Vault 검색/그래프 대상이 된다.
-
-- Obsidian 전용 장기 맥락, 결정 로그, 작업별 읽기 지도, 템플릿, 첨부는 `docs/obsidian-vault/` submodule에 둔다.
-- 비 trivial 작업에서 해당 맥락이 필요하면 먼저 `docs/obsidian-vault/AI_CONTEXT_MAP.md`를 읽고, 그 문서가 지정한 정본 문서와 모듈별 overlay 문서를 확인한다.
-- 문서·아키텍처·AI/ML·릴리즈처럼 맥락이 넓은 작업은 `docs/obsidian-vault/wiki/index.md`와 `docs/obsidian-vault/graphify-out/GRAPH_REPORT.md`를 먼저 읽어 관련 문서와 source 범위를 좁힌다.
-- Graphify/LLM Wiki 원천 자료는 `docs/obsidian-vault/raw/`, 합성 지식은 `docs/obsidian-vault/wiki/`, 공개 demo용 축약 graph는 `docs/obsidian-vault/graphify-out/public/`에 둔다.
-- `docs/obsidian-vault/AI_CONTEXT_MAP.md`가 없으면 `git submodule update --init --recursive docs/obsidian-vault`로 받은 뒤 진행한다.
-- 새 Obsidian 노트, 캔버스, 템플릿, 첨부는 메인 repo 루트나 일반 `docs/`에 만들지 말고 `docs/obsidian-vault/` 아래에 만든다.
-- `.obsidian/`에는 팀 공통 Vault 설정만 추적한다. `workspace*.json`, cache, graph/bookmark/recent 상태, 개인 플러그인은 커밋하지 않는다.
-- 팀 공통 플러그인 추가는 가능하지만, PR에서 필요성·개선되는 워크플로·생성 파일·필수/선택 여부를 설명한다.
-
-## 스토리보드 문서(서브모듈 · 선택 다운로드)
-
-`docs/storyboard/` 는 **별도 repo [notetester/CareerTunerDocs](https://github.com/notetester/CareerTunerDocs) 를 가리키는 git 서브모듈**이다. 담당자별 산출물(스토리보드·PPTX·PDF·DB 설계서 등)이라 일반 개발에는 필요 없고, 메인을 그냥 클론하면 이 폴더는 **빈 채(포인터만)** 라 본체 용량·개발에 영향이 없다.
-
-- 폴더 구조는 **담당자별** `A/`~`F/`·`TOTAL/` 이고, 각 폴더 안은 `workbench/`(작업대·재현 파이프라인) + `deliverables/`(대표 산출물) 로 나뉜다. **C 작업은 `docs/storyboard/C/` 아래에 전부 있다.**
-- 스토리보드를 보거나 작업할 때만 받는다: `git submodule update --init docs/storyboard` (처음부터 받으려면 `git clone --recursive`).
-- **`dev` pull 시 서브모듈 자동 갱신:** 한 번만 `git config submodule.recurse true` (+ `git config fetch.recurseSubmodules on-demand`) 를 설정하면, 이후 `git pull` 이 `dev` 가 고정한 서브모듈 커밋까지 자동으로 체크아웃한다(수동 `submodule update` 불필요). 이 설정은 로컬(`.git/config`)이라 클론마다 1회 설정한다.
-- 수정은 `docs/storyboard/` **안에서** commit·push 한다(그 폴더가 곧 CareerTunerDocs repo). 새 버전을 메인에 고정하려면 루트에서 `git add docs/storyboard && git commit` 으로 포인터를 갱신해 PR 한다.
-- 폴더 안내는 `docs/storyboard/README.md`, C 재생성 파이프라인·명령은 `docs/storyboard/C/workbench/README.md` 참고. 받은 직후 도구 실행 시 `cd docs/storyboard/C/workbench/tools && npm install`.
-- **AI 도구 안내:** 스토리보드 작업 요청을 받았는데 `docs/storyboard/` 가 비어 있으면, 먼저 위 `submodule update` 로 받은 뒤 진행한다.
+- 원본 작업대와 검토 전 스크린샷은 포함하지 않는다.
+- 공개 사용자 흐름과 기능 설명은 `portfolio-docs/`, 검증된 mock 화면은 `screenshots/`에 둔다.
+- `docs/storyboard/README.md`는 제외 경계와 공개 대체 자료를 안내한다.
 
 ## 개인 설정
 
