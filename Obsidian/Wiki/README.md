@@ -6,7 +6,7 @@
 
 수치는 `wiki-data.js`가 실제 curated page와 graph node를 로드해 계산한 결과다. 최신 제품 source는 `d00a57fc`, 전면 synthesis source는 `2c4b11a9`, synthesis vault merge는 `114b6d91`, latest projection merge는 `248e082b`, full execution evidence baseline은 `30a5511a`로 구분한다.
 
-Live URL: <https://notetester.github.io/CareerTunerPortfolio/Obsidian/Wiki/>
+Live URL: <https://notetester.github.io/CareerTunerPortfolios/Obsidian/Wiki/>
 
 - URL hash는 문서 식별자다. 예: `#systems/agent-memory-protocol`
 - 원문 기반 문서에는 공개 source provenance를 표시한다.

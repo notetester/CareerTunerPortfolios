@@ -8,6 +8,7 @@
 
 | 항목 | 확정 기준 |
 | --- | --- |
+| 공개 대상 저장소 | `notetester/CareerTunerPortfolios` |
 | 원본 소스 baseline | `d00a57fc8d1e3499ba6c23acec498c47ac0d5d4c` |
 | 정화된 `dev` baseline | `48f294d306e54d12d6f7085e08a417522c6f0c2e` |
 | 제품·플랫폼 검증 baseline | `e20cb1287512ba3476cbdc0306c0e69000a623be` |
@@ -68,9 +69,10 @@
 
 ## 아직 남은 외부 게이트
 
-- 기존 공개 저장소를 안전한 rollback용 private legacy로 보존하고, 숨은 `refs/pull/*`이 없는 새 공개 저장소로 전환
-- 정화된 allowlist branch/tag/archive ref와 overlay branch 게시, PR 생성·검토·`dev` 병합
+- 숨은 `refs/pull/*`이 없는 `notetester/CareerTunerPortfolios`에 정화된 allowlist branch/tag/archive ref와 overlay branch 게시
+- 공개 후보 PR 생성·검토·`dev` 병합
 - 새 원격을 fresh clone하여 모든 도달 가능 ref의 이력·secret·identity·네트워크 검사를 다시 통과
 - 실제 GitHub Pages 배포 SHA와 루트, `/docs/`, `/Obsidian/`, `/SecondBrain/`, `/Wiki/` 응답 확인
+- 새 저장소와 Pages 검증이 끝난 뒤 기존 `notetester/CareerTunerPortfolio`를 private rollback 저장소로 전환
 
 위 외부 게이트는 원격 전환과 배포가 실제로 완료된 뒤에만 통과로 갱신합니다. 이후 새 PR은 변경된 기능과 그 의존 경계만 이 기준선에 추가 검증합니다.

@@ -59,4 +59,4 @@ CareerTuner는 프로필·지원 건·업로드 문서·면접 미디어·AI 결
 
 정화 규칙과 원래 비밀값 목록은 비공개 작업 공간에만 둡니다. 공개 tip에서는 비공개 submodule과 내부 운영 문서를 제거하고, 실행 가능한 mock 데모·`/docs/` 설명서·`/Obsidian/` 공개-safe 그래프만 제공합니다.
 
-Pages 데모는 실제 자격증명 없이 브라우저에서 동작하는 시연판입니다. 실제 OAuth·SMS·결제·유료 AI provider의 운영 성공을 의미하지 않습니다. 자세한 구현과 공개 절차는 [보안과 공개 이력 정화](https://notetester.github.io/CareerTunerPortfolio/docs/security)를 참고하세요.
+Pages 데모는 실제 자격증명 없이 브라우저에서 동작하는 시연판입니다. 실제 OAuth·SMS·결제·유료 AI provider의 운영 성공을 의미하지 않습니다. 자세한 구현과 공개 절차는 [보안과 공개 이력 정화](https://notetester.github.io/CareerTunerPortfolios/docs/security)를 참고하세요.

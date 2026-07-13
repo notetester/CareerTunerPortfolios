@@ -13,7 +13,7 @@ hero:
       link: /architecture
     - theme: alt
       text: ▶ 라이브 데모
-      link: https://notetester.github.io/CareerTunerPortfolio/
+      link: https://notetester.github.io/CareerTunerPortfolios/
 features:
   - title: 지원 건(Application Case) 중심
     details: 공고 분석 → 적합도 비교 → 예상 질문 → 모의면접 → 첨삭까지, 하나의 지원 건이 전 과정을 관통합니다.
@@ -41,8 +41,8 @@ CareerTuner는 Spring Boot 4 백엔드와 React 19 프런트엔드로 구성된 
 이 설명서는 **실제 소스 코드를 근거로** 도메인별 구현과 설계 결정을 정리한 것으로,
 왼쪽 사이드바에서 각 기능 영역을 살펴볼 수 있습니다.
 
-- **라이브 데모**: <https://notetester.github.io/CareerTunerPortfolio/> — 백엔드 없이 브라우저 mock 으로 동작
-- **소스 저장소**: <https://github.com/notetester/CareerTunerPortfolio> — 민감정보를 전 이력에서 제거한 공개본
+- **라이브 데모**: <https://notetester.github.io/CareerTunerPortfolios/> — 백엔드 없이 브라우저 mock 으로 동작
+- **소스 저장소**: <https://github.com/notetester/CareerTunerPortfolios> — 민감정보를 전 이력에서 제거한 공개본
 
 > 이 공개본은 비공개 원본의 전체 커밋 이력을 보존하되, API 키·DB 자격증명·내부 IP 등 민감정보를
 > `git filter-repo` 로 모든 이력에서 제거했습니다. 자세한 내용은 [보안 · 공개 전 스크럽](/security) 문서를 참고하세요.

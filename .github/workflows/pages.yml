@@ -74,7 +74,7 @@ jobs:
         env:
           VITE_DEMO_MODE: "true"
           VITE_USE_MOCK: "true"
-          VITE_PUBLIC_BASE: "/CareerTunerPortfolio/"
+          VITE_PUBLIC_BASE: "/CareerTunerPortfolios/"
 
       - name: Install documentation dependencies
         working-directory: portfolio-docs
