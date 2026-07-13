@@ -29,3 +29,5 @@
 ## 실행 경계
 
 GitHub Pages 배포는 `VITE_USE_MOCK=true`인 네트워크 독립 데모를 사용합니다. mock은 운영 장애 시연과 포트폴리오 검토를 위한 명시적 모드이며, 실제 서비스가 정상일 때 운영 API보다 우선하지 않습니다. 실제 OAuth, SMS, 결제, 유료 AI provider의 동작에는 각 운영 환경에서 별도로 주입한 자격증명과 callback 설정이 필요합니다.
+
+`.github/workflows/ios-build.yml`, `deploy-web.yml`, `android-release.yml`은 모바일·App Links 계약과 운영 CI 설계를 검토할 수 있도록 남긴 비실행 참고본입니다. 공개 저장소에서는 각 job을 항상 건너뛰며 자동 push/tag 트리거를 사용하지 않습니다. 활성 배포 경로는 mock 산출물만 게시하는 `.github/workflows/pages.yml` 하나입니다.
