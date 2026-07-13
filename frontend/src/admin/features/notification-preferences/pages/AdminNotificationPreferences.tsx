@@ -55,8 +55,10 @@ export default function AdminNotificationPreferences() {
       icon={MailCheck}
       desc="관리자 업무 알림(신고·문의·가입·기업/공고 검수)의 본인 수신 여부를 설정합니다."
     >
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <div className="flex items-center gap-2 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+      {/* ⚠ theme.css 가 slate 유틸을 시맨틱 토큰으로 재매핑하므로(dark:bg-slate-900 = foreground 로 뒤집힘)
+          표준 dark: 관례 대신 프로젝트 토큰(border/card/foreground)을 쓴다. */}
+      <section className="rounded-lg border border-border bg-card shadow-sm">
+        <div className="flex items-center gap-2 border-b border-border px-5 py-4">
           <BellOff className="size-4 text-slate-500" />
           <div>
             <h2 className="text-sm font-semibold">관리자 업무 알림 수신</h2>
@@ -66,7 +68,7 @@ export default function AdminNotificationPreferences() {
           </div>
         </div>
 
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+        <ul className="divide-y divide-border">
           {ADMIN_NOTIFICATION_CATEGORY_METAS.map((meta) => {
             const enabled = categories ? (categories[meta.type] ?? true) : true;
             const saving = savingType === meta.type;
@@ -84,7 +86,7 @@ export default function AdminNotificationPreferences() {
                   disabled={!categories || saving}
                   onClick={() => handleToggle(meta.type)}
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
-                    enabled ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"
+                    enabled ? "bg-emerald-500" : "bg-slate-300"
                   }`}
                 >
                   <span
@@ -100,7 +102,7 @@ export default function AdminNotificationPreferences() {
       </section>
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-md bg-slate-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-md bg-foreground px-4 py-2 text-sm text-background shadow-lg">
           {toast}
         </div>
       )}
