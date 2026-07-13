@@ -1,7 +1,7 @@
 # CareerTuner 자체 AI 모델 종합 기술 보고서
 
 > 기준일: 2026-07-13
-> 코드 기준점: `origin/dev` `720a48859210fc0637977e9b75350aa648e376f0`
+> 코드 기준점: `origin/dev` `f35ecffbeffdc19f51c907e7491cb130b6b0fd37`
 > 범위: A 프로필, B 공고·OCR, C 커리어 전략, D 면접 텍스트·비언어, E 첨삭, F 커뮤니티·챗봇·검색, 공통 오케스트레이션·검증·서빙
 > 문서 성격: 포트폴리오·기술 면접·인수인계용 근거 중심 보고서
 
@@ -218,7 +218,7 @@ RAG 원 논문은 parametric memory와 non-parametric memory의 결합을 제안
 | A | qwen3:8b resume structurer | 자체 호스팅 OSS | 운영 경로 | 이력서 원문 구조화 |
 | B | `careertuner-b-jobposting-r1` | Qwen3-4B LoRA | backend 기본 local, 학습 log·checkpoint 일부 유실 | 공고 분석 JSON |
 | B | `careertuner-b-jobposting-r2` | Qwen3-4B LoRA | 학습·Ollama 등록, 최종 canonical gate 미완료 | 공고+기업·웹 근거 후보 |
-| B | PP-StructureV3 / PaddleOCR | 자체 호스팅 OSS | 운영 worker | PDF·이미지 OCR·레이아웃 복원 |
+| B | PP-StructureV3 / PaddleOCR | 자체 호스팅 OSS | 운영 연결 가능 worker, source 기본 AI worker OFF | PDF·이미지 OCR·레이아웃 복원 |
 | C | Qwen2.5-3B-Instruct + Career Strategy LoRA | 프로젝트 QLoRA | 학습·평가·연결 완료, source 기본 provider는 OpenAI | 적합도 설명·지원 전략 |
 | C | scoped/evidence-gated RAG variants | retrieval PoC | 현재 단순 RAG 비활성 | 공고·프로필 근거 증강 |
 | D | Qwen2.5-3B-Instruct + Interview LoRA | 프로젝트 QLoRA | F16 60-case 평가, AUTO 생성 비활성·eval 기본 OpenAI | 질문·모범답안·채점 |
@@ -725,6 +725,8 @@ scan PDF/image existing OCR text
 
 Windows CP949, oneDNN crash, cold load, Python 3.14 wheel 부재, PaddleX dependency 누락을 피하기 위해 UTF-8 환경변수, MKLDNN off, persistent cache·warmup, Python 3.12 image, OCR global lock을 적용했다(`README.md:9-64`, worker API `42-90,168-210,288-307`). Global lock 때문에 한 process의 OCR throughput은 사실상 1건이다.
 
+Source 기본값에서는 추출 scheduler와 PaddleOCR worker 호출을 구분해야 한다. 추출 queue scheduler 자체는 활성화되지만 Python AI worker는 `enabled=false`다(`application.yaml:216`, `ApplicationCaseExtractionSchedulingConfig.java:10-27`). 실제 OCR 경로를 사용하려면 OCR dependency를 포함한 image를 만들고 `JOB_POSTING_AI_WORKER_ENABLED=true`를 주어야 한다. 따라서 “항상 운영 중인 OCR”이 아니라 **운영 연결이 구현돼 있으나 flag·OCR image가 필요한 worker**가 정확한 현재 상태다.
+
 #### OCR 품질 점수
 
 ```text
@@ -741,6 +743,12 @@ PASS는 score≥70·text≥500·section hit≥2, REVIEW_REQUIRED는 text≥200·
 Release gate의 PASS+REVIEW≥90%, FAILED≤10%, PASS section missing≤5%, 파일당 180초, 실제 파일 43개는 **문자 정확도 90%가 아니라 downstream usability 기준**이다. 저장소에는 43개 실제 파일·실행 summary·CER/WER가 없으므로 “실파일 OCR 정확도 90%”라고 발표할 수 없다.
 
 또한 높이 4,000px 또는 세로/가로≥3이면 `LONG_IMAGE_TILING`으로 분류하지만 실제 crop/tile loop는 없다. 현재는 긴 이미지 감지 strategy일 뿐 명시적 tiling 구현이 아니다.
+
+#### 비동기 추출 생명주기
+
+지원 건 생성 요청은 OCR·분석 완료를 기다리지 않고 추출 job을 `QUEUED`로 남긴 채 반환한다. Scheduled worker가 최대 5건씩 claim해 `QUEUED → RUNNING → SUCCEEDED/FAILED`로 전이시키며, 품질 판정이 `PASS`일 때만 `application_case` metadata를 갱신하고 B 자동 분석을 이어간다(`ApplicationCaseExtractionWorker.java:50-173`). `REVIEW_REQUIRED`는 사용자가 추출문을 확인·수정하기 전 자동 분석을 중단하고, 실제 검토 확정 endpoint는 `POST`가 아니라 `PATCH`다(`ApplicationCaseController.java:187-204`).
+
+이 구조의 polling 지연은 애플리케이션 시작 후 initial delay, fixed delay, batch 5, queue backlog, 파일 크기, OCR 시간에 좌우된다. 따라서 runbook의 예시 시간을 요청별 worst-case SLA로 인용하면 안 된다. 또한 OCR 자체는 OpenAI를 호출하지 않지만 후속 회사 분석의 기본 provider 체인은 OpenAI→Claude→Local R1이므로 전체 자동 pipeline을 “외부 API 없는 경로”라고 일반화할 수 없다.
 
 ### 7.11 재현 명령
 
@@ -1650,6 +1658,7 @@ F는 공개 가중치 모델을 자체 Ollama provider 경로에 연결하도록
 | 텍스트 검열·tag·면접후기 추출 | `gemma4` | JSON schema, threshold, review queue | 없음 |
 | 이미지 광고·유해·PII | `qwen2.5vl:7b` | image JSON, blur/hide, vision fallback | 없음 |
 | FAQ·커뮤니티 의미검색 | `bge-m3` | 1024d dense cosine | 없음 |
+| 챗봇 마이크 입력 | Browser Web Speech API | `ko-KR` 실시간 전사 후 기존 챗봇 입력 전달 | 프로젝트 모델 아님 |
 | 개인화 feed | 별도 model 없음 | token match+7:3 규칙 | 해당 없음 |
 
 ### 11.2 Qwen3 8B 챗봇·인테이크
@@ -1709,6 +1718,16 @@ OPENAI: OpenAI → Mock
 #### 코드 주석에 보존된 2026-06-24 과거 실측
 
 화행 경계 30문장을 각 5회 호출해 결정성 30/30, 정확도 29/30을 기록했다. FAQ/인테이크 분리 주석에는 비FAQ 최대 .45, 실제 FAQ 최소 .57, 물음표 제거 FAQ40 .668~.734, 유효 slot answer 최대 .609, 낮은 FAQ .511이 기록돼 있다. 그러나 fixture·raw output·실행 script·당시 model digest가 없고 이번 기준점에서 live 재실행하지 않았다. 작은 historical calibration note이며 precision/recall/F1·confusion matrix·다중 seed도 없다.
+
+#### 챗봇 마이크 STT는 F 자체 모델이 아니다
+
+2026-07-11부터 챗봇 위젯은 지원 브라우저의 Web Speech API를 이용한 한국어 음성 입력을 제공한다. 활성 구현은 `features/interview/hooks/speechToText.ts`의 `BrowserSttTracker`를 재사용해 `lang=ko-KR`, `continuous=true`, `interimResults=true`로 전사를 수집하고, 최종 transcript를 기존 `sendMessage` 경로에 전달한다(`frontend/src/features/support/hooks/useChatbot.ts:15,687-735`, `frontend/src/features/interview/hooks/speechToText.ts:37-80`). 따라서 Qwen3 모델·RAG·라우팅 parameter는 바뀌지 않는다.
+
+이 기능은 CareerTuner가 학습·서빙하는 STT 모델이 아니고 브라우저가 vendor 음성 인식 server를 경유할 수 있으므로 완전 offline 자체 AI로 분류하지 않는다. 미지원 브라우저와 면접·원격 microphone 화면에서는 버튼을 숨긴다(`ChatbotWidget.tsx:189-193`). `features/support/hooks/speechToText.ts`의 별도 `ChatSpeechTracker`는 정의돼 있지만 현재 활성 import 경로가 아니다. Chrome/Edge 실제 microphone, Firefox/Safari 제한, 모바일·데스크톱 WebView, 권한 거부·장치 없음·침묵·자동 재시작, latency, CER/WER, vendor 전송 개인정보 고지는 아직 검증·정리해야 한다. D의 `faster-whisper` server STT와도 별개의 입력 표면이다.
+
+#### 대화 삭제와 인테이크 상태 생명주기
+
+최신 경로는 로그인 사용자가 본인 대화를 삭제할 때 소유자를 검증한 뒤 `chatbot_conversation_memory`를 `deleted_at`으로 soft delete하고, 1:1 논리참조인 `chatbot_intake_slot`과 프로세스 내 `IntakeSlotTrace`는 실제 제거한다(`ChatbotController.java:1605-1624`, `ChatMemoryMapper.xml:20-25`, `IntakeAskService.java:391-401`, `IntakeSlotTrace.java:264-273`). 이로써 대화만 비활성화되고 인테이크 상태가 고아로 남아 다음 세션에 영향을 주는 위험을 줄였다. 관리자는 `AI_DELETE` 세부 권한과 감사 로그를 거쳐 같은 정리를 수행한다(`AdminChatbotConversationController.java:49-57`). 지원 건·면접 리포트·자소서처럼 대화 밖 도메인 산출물과 `chatbot_response_log`는 이 경로에서 삭제하지 않으며, 소유자 ID가 없는 익명 대화는 사용자 API로 삭제할 수 없다. 따라서 이를 “전체 대화 관련 데이터의 완전 삭제”라고 표현하면 안 된다. 이는 모델 품질 개선이 아니라 개인정보와 데이터 생명주기 완성도 개선이다.
 
 ### 11.3 Gemma 4 텍스트 검열·추출
 
@@ -1828,7 +1847,7 @@ FAQ·post를 weight에 학습하지 않는 이유는 수정·삭제·최신성·
 
 ### 11.8 과거 audit와 현재 상태
 
-`docs/F_CHATBOT_AUDIT.md`는 2026-07-03 snapshot이다. 이후 없는 모의면접 hallucination 방어, 사용자 model 선택, intake code validation, search trace link grounding, retry model selection, summary injection 방어, quick reply parse 복구가 반영됐다. Audit 모든 항목을 현재 bug로 간주하면 안 된다. 다만 없는 기능 안내와 짧은 긍정 발화 오라우팅 같은 failure class는 평가 set에 계속 남겨야 한다.
+`docs/F_CHATBOT_AUDIT.md`는 2026-07-03 최초 감사에 이후 batch와 수정 결과를 누적한 혼합 시점 문서다. 초기 발견표만 현재 bug 목록으로 읽으면 안 되며 각 항목의 `FIXED`·`부분 FIXED` 상태와 최신 runtime source를 함께 확인해야 한다. 이후 없는 모의면접 hallucination 방어, 사용자 model 선택, intake code validation, search trace link grounding, retry model selection, summary injection 방어, quick reply parse 복구, Web Speech microphone 입력이 반영됐다. 다만 없는 기능 안내와 짧은 긍정 발화 오라우팅 같은 failure class는 평가 set에 계속 남겨야 한다. F-18은 기능적으로 해결됐지만 활성 구현은 인터뷰용 `BrowserSttTracker` 재사용 경로이며, audit에 언급된 support 전용 `ChatSpeechTracker`는 현재 참조되지 않는다.
 
 ### 11.9 저장소에서 확인한 평가 기록·test 자산과 공백
 
@@ -1859,6 +1878,8 @@ Live model quality는 실제 runtime digest와 원격 응답을 확보하지 못
 - VRAM·throughput·concurrency
 - temperature/context/threshold ablation
 - model update regression gate
+- browser·모바일/데스크톱 WebView별 Web Speech microphone·권한·장치·침묵·재시작 matrix와 latency·CER/WER
+- Web Speech vendor 전송에 대한 개인정보 고지·동의 검토
 
 따라서 workflow·failure recovery test는 상당하지만 model 품질 검증이 끝났다고 말할 수 없다.
 
@@ -2458,7 +2479,7 @@ A v4가 local exclude이고, B 학습 package가 main repo 밖 비Git package이
 
 - D: `ml/interview-finetune/`, `ml/interview-nonverbal/`, `backend/src/main/java/com/careertuner/interview/`
 - E: `ml/correction-llm/`, `backend/src/main/java/com/careertuner/correction/`
-- F: `docs/F_CHATBOT_AUDIT.md`, `backend/src/main/java/com/careertuner/ai/chat/`, `backend/src/main/java/com/careertuner/ai/intake/`, `backend/src/main/java/com/careertuner/support/chatbot/`, `backend/src/main/java/com/careertuner/community/moderation/`
+- F: `docs/F_CHATBOT_AUDIT.md`, `backend/src/main/java/com/careertuner/ai/chat/`, `backend/src/main/java/com/careertuner/ai/intake/`, `backend/src/main/java/com/careertuner/support/chatbot/`, `backend/src/main/java/com/careertuner/admin/chatbot/controller/AdminChatbotConversationController.java`, `backend/src/main/java/com/careertuner/community/moderation/`, `frontend/src/features/support/hooks/useChatbot.ts`, `frontend/src/features/interview/hooks/speechToText.ts`, `frontend/src/features/support/hooks/speechToText.ts`
 
 ### 17.6 외부 1차 출처
 
