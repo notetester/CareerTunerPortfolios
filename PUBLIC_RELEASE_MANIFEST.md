@@ -85,7 +85,8 @@
 - 완료: 공개 후보 PR #1 검토·병합 후 정본 identity merge로 `dev`와 `main` 정렬
 - 완료: 새 원격 fresh clone에서 모든 도달 가능 ref의 이력·secret·identity·네트워크·Gitleaks 재검증
 - 완료: GitHub Pages 루트, manifest, service worker, `/docs/`, `/docs/ai-integration`, `/Obsidian/`, `/Obsidian/SecondBrain/`, `/Obsidian/Wiki/` 응답과 artifact hash 확인
-- 남음(저장소 소유자): `github-pages` 환경의 deployment branch 정책에 `dev`를 허용하고 정본 SHA로 workflow를 다시 실행한 뒤 기존 `main` 허용 규칙 제거
-- 남음(저장소 소유자): 정본 SHA 배포 성공을 확인한 뒤 기존 `notetester/CareerTunerPortfolio`를 private rollback 저장소로 전환
+- 완료: 정본 실명 identity와 이 manifest가 포함된 SHA `fda689b00fd5aaf68ea942902fb0c9b7ad164da0`를 Pages run `29254689829`에서 다시 build·deploy하고 두 job의 성공 확인
+- 남음(저장소 소유자): `github-pages` 환경의 deployment branch 정책에 `dev`를 추가하고 첫 `dev` 배포 성공을 확인한 뒤 기존 `main` 허용 규칙 제거
+- 남음(저장소 소유자): 기존 `notetester/CareerTunerPortfolio`를 private rollback 저장소로 전환
 
-현재 성공 배포 run `29252450813`의 head는 교정 전 merge SHA `3bff5554ce341fb1e0b23ac3280f01986bc7575f`지만, tree SHA가 정본 `74fb51dd9121d3d471539367b1534204f7ac70a3`와 동일해 라이브 파일 내용에는 차이가 없습니다. 남은 재실행은 배포 기록의 SHA와 향후 `dev` 자동 배포 정책을 일치시키기 위한 절차입니다. 이후 새 PR은 변경된 기능과 그 의존 경계만 이 기준선에 추가 검증합니다.
+최초 성공 배포 run `29252450813`의 head는 교정 전 merge SHA였지만 tree가 검증 baseline과 동일했고, 후속 run `29254689829`에서 정본 SHA 배포 기록까지 일치시켰습니다. 이 문단을 추가하는 후속 commit은 Pages 조립 대상이 아닌 검증 manifest만 바꾸므로 배포 산출물에는 영향을 주지 않습니다. 이후 새 PR은 변경된 기능과 그 의존 경계만 이 기준선에 추가 검증합니다.
