@@ -323,9 +323,16 @@ export default function AdminAiSupport() {
                         <SearchX />
                         <div className="ais-why__b">
                           {cluster.bestFaqQuestion ? (
-                            <>가장 가까운 FAQ <b>“{cluster.bestFaqQuestion}”</b>와의 유사도가{" "}
-                              <b className="num">{simText(cluster.topSimilarity)}</b>로, 임계값{" "}
-                              <b className="num">{thrFraction.toFixed(2)}</b>에 미치지 못해 답변을 보류했습니다.</>
+                            (cluster.topSimilarity ?? 0) < thrFraction ? (
+                              <>가장 가까운 FAQ <b>“{cluster.bestFaqQuestion}”</b>와의 유사도가{" "}
+                                <b className="num">{simText(cluster.topSimilarity)}</b>로, 임계값{" "}
+                                <b className="num">{thrFraction.toFixed(2)}</b>에 미치지 못해 답변을 보류했습니다.</>
+                            ) : (
+                              /* 임계값은 넘었지만 라우터(FAQ·상담·면접준비 3신호 비교)가 FAQ 즉답 대신 다른 경로를 고른 경우 */
+                              <>가장 가까운 FAQ <b>“{cluster.bestFaqQuestion}”</b>와의 유사도가{" "}
+                                <b className="num">{simText(cluster.topSimilarity)}</b>로 임계값을 넘었지만, 질문 성격상
+                                FAQ 즉답 대신 상담 경로로 응답되어 FAQ 답변으로 이어지지 않았습니다.</>
+                            )
                           ) : (
                             <>참조할 만큼 가까운 FAQ가 없어 답변을 보류했습니다.</>
                           )}
