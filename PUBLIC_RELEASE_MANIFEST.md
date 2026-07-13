@@ -79,14 +79,15 @@
 - PWA 방문 뒤에도 `/docs/`와 `/Obsidian/`이 SPA fallback에 가로채이지 않음을 확인
 - `/docs/`, `/Obsidian/`, `/Obsidian/SecondBrain/`, `/Obsidian/Wiki/`의 desktop/mobile 표시 확인
 
-## 원격 전환 결과와 남은 소유자 게이트
+## 원격 전환 최종 결과
 
 - 완료: `notetester/CareerTunerPortfolios`에 정화된 allowlist branch/tag/archive ref와 공개 overlay 게시
 - 완료: 공개 후보 PR #1 검토·병합 후 정본 identity merge로 `dev`와 `main` 정렬
 - 완료: 새 원격 fresh clone에서 모든 도달 가능 ref의 이력·secret·identity·네트워크·Gitleaks 재검증
 - 완료: GitHub Pages 루트, manifest, service worker, `/docs/`, `/docs/ai-integration`, `/Obsidian/`, `/Obsidian/SecondBrain/`, `/Obsidian/Wiki/` 응답과 artifact hash 확인
 - 완료: 정본 실명 identity와 이 manifest가 포함된 SHA `fda689b00fd5aaf68ea942902fb0c9b7ad164da0`를 Pages run `29254689829`에서 다시 build·deploy하고 두 job의 성공 확인
-- 남음(저장소 소유자): `github-pages` 환경의 deployment branch 정책에 `dev`를 추가하고 첫 `dev` 배포 성공을 확인한 뒤 기존 `main` 허용 규칙 제거
-- 남음(저장소 소유자): 기존 `notetester/CareerTunerPortfolio`를 private rollback 저장소로 전환
+- 완료: 최신 정본 `dev` SHA `0d81d013fbbd5bf4835db30016a151604ccaece2`를 Pages run `29261204607`에서 build·deploy하고 라이브 8개 경로의 HTTP 200 확인
+- 완료: `github-pages` 환경의 deployment branch 정책을 `dev`만 허용하도록 정리
+- 완료: 기존 `notetester/CareerTunerPortfolio`를 private rollback 저장소로 전환하고 새 `notetester/CareerTunerPortfolios`가 public임을 확인
 
-최초 성공 배포 run `29252450813`의 head는 교정 전 merge SHA였지만 tree가 검증 baseline과 동일했고, 후속 run `29254689829`에서 정본 SHA 배포 기록까지 일치시켰습니다. 이 문단을 추가하는 후속 commit은 Pages 조립 대상이 아닌 검증 manifest만 바꾸므로 배포 산출물에는 영향을 주지 않습니다. 이후 새 PR은 변경된 기능과 그 의존 경계만 이 기준선에 추가 검증합니다.
+최초 성공 배포 run `29252450813`의 head는 교정 전 merge SHA였지만 tree가 검증 baseline과 동일했고, 후속 run `29254689829`와 `29261204607`에서 정본 SHA 및 `dev` 배포 기록까지 일치시켰습니다. 이 문단을 추가하는 후속 commit은 Pages 조립 대상이 아닌 검증 manifest만 바꾸므로 배포 산출물에는 영향을 주지 않습니다. 공개 포트폴리오 전환 게이트는 모두 완료됐으며, 이후 새 PR은 변경된 기능과 그 의존 경계만 이 기준선에 추가 검증합니다.
