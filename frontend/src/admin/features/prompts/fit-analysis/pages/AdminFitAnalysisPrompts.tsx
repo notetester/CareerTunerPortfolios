@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { AlertTriangle, CheckCircle2, FileInput, FileOutput, Loader2, Target } from "lucide-react";
+import AdminShell from "../../../../components/AdminShell";
 import { getFitAnalysisPrompts } from "../api/fitAnalysisPromptApi";
 import type { FitAnalysisPromptTemplate } from "../types/fitAnalysisPrompt";
 
@@ -40,19 +41,14 @@ export default function AdminFitAnalysisPromptsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
-        <section>
-          <Badge className="mb-3 bg-blue-600 text-white">Prompt Ops</Badge>
-          <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-            <Target className="size-6 text-blue-600" />
-            적합도 분석 프롬프트 운영 확인
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            공고-스펙 비교, 부족 역량 추천, 지원 전략 생성 프롬프트의 목적과 품질 기준을 확인합니다.
-          </p>
-        </section>
-
+    <AdminShell
+      active="fit-analysis"
+      breadcrumb="적합도 프롬프트"
+      title="적합도 분석 프롬프트 운영 확인"
+      icon={Target}
+      desc="공고-스펙 비교, 부족 역량 추천, 지원 전략 생성 프롬프트의 목적과 품질 기준을 확인합니다."
+    >
+      <div className="space-y-6">
         {loading && (
           <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-2 p-5 text-sm text-slate-500">
@@ -79,7 +75,7 @@ export default function AdminFitAnalysisPromptsPage() {
           </div>
         )}
       </div>
-    </div>
+    </AdminShell>
   );
 }
 

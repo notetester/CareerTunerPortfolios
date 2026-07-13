@@ -25,6 +25,7 @@ import {
   getAdminGateStats,
   updateAdminFitAnalysisMemo,
 } from "../api/adminFitAnalysisApi";
+import AdminShell from "../../../components/AdminShell";
 import GateStatsPanel from "../components/GateStatsPanel";
 import type {
   AdminFitAnalysisDetail,
@@ -310,35 +311,30 @@ export default function AdminFitAnalysisPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
-        <section className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <Badge className="mb-3 bg-blue-600 text-white">Fit Analysis Ops</Badge>
-            <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-              <BarChart3 className="size-6 text-blue-600" />
-              적합도 분석 관리
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              지원 건별 적합도, 매칭/부족 역량, 추천 학습 결과와 운영 메모를 함께 확인합니다.
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
-            {[
-              { label: "분석 결과", value: `${total}건` },
-              { label: "이 페이지 평균 점수", value: `${averageScore}점` },
-              { label: "이 페이지 운영 메모", value: `${memoSummary}건` },
-            ].map((stat) => (
-              <Card key={stat.label} className="border border-slate-200 bg-card">
-                <CardContent className="p-3">
-                  <div className="text-[11px] font-semibold text-slate-400">{stat.label}</div>
-                  <div className="mt-1 text-xl font-black text-slate-900">{stat.value}</div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
-
+    <AdminShell
+      active="fit-analysis"
+      breadcrumb="적합도 분석"
+      title="적합도 분석 관리"
+      icon={BarChart3}
+      desc="지원 건별 적합도, 매칭/부족 역량, 추천 학습 결과와 운영 메모를 함께 확인합니다."
+      actions={(
+        <div className="grid grid-cols-3 gap-2 sm:min-w-[360px]">
+          {[
+            { label: "분석 결과", value: `${total}건` },
+            { label: "이 페이지 평균 점수", value: `${averageScore}점` },
+            { label: "이 페이지 운영 메모", value: `${memoSummary}건` },
+          ].map((stat) => (
+            <Card key={stat.label} className="border border-slate-200 bg-card">
+              <CardContent className="p-3">
+                <div className="text-[11px] font-semibold text-slate-400">{stat.label}</div>
+                <div className="mt-1 text-xl font-black text-slate-900">{stat.value}</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    >
+      <div className="space-y-6">
         {error && (
           <Card className="border border-red-200 bg-red-50">
             <CardContent className="flex items-center gap-2 p-4 text-sm text-red-700">
@@ -703,7 +699,7 @@ export default function AdminFitAnalysisPage() {
           </div>
         </section>
       </div>
-    </div>
+    </AdminShell>
   );
 }
 

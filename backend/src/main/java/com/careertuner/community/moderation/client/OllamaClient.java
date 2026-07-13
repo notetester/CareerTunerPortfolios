@@ -68,17 +68,33 @@ public class OllamaClient {
     }
 
     /**
-     * Ollama /api/chat 호출.
+     * Ollama /api/chat 호출 — 범용 모델({@code ai.ollama.model}). 태깅·면접추출·신고분류가 쓴다.
      *
-     * @param systemPrompt 시스템 프롬프트 (검열 지시)
-     * @param userText     검열 대상 텍스트 (호출 전 8000자 제한은 서비스 계층 책임)
+     * @param systemPrompt 시스템 프롬프트 (작업 지시)
+     * @param userText     대상 텍스트 (호출 전 8000자 제한은 서비스 계층 책임)
      * @param jsonSchema   응답 JSON 스키마 (structured output 강제)
      * @return 응답의 message.content (JSON 문자열)
      * @throws IllegalStateException Ollama 응답이 비정상일 때
      */
     public String chat(String systemPrompt, String userText, Map<String, Object> jsonSchema) {
+        return chatWith(props.getModel(), systemPrompt, userText, jsonSchema);
+    }
+
+    /**
+     * 텍스트 검열 전용 모델({@code ai.ollama.moderation-model}) 호출.
+     *
+     * <p>요청 형식·옵션은 {@link #chat} 과 동일하고 모델명만 다르다. Modelfile 파라미터
+     * (careertuner-mod 의 {@code num_predict=64} 등)는 해당 모델에만 적용되므로,
+     * 긴 JSON 을 뽑는 태깅/면접추출 경로가 검열 모델 교체에 영향받지 않는다.
+     */
+    public String chatModeration(String systemPrompt, String userText, Map<String, Object> jsonSchema) {
+        return chatWith(props.getModerationModel(), systemPrompt, userText, jsonSchema);
+    }
+
+    /** 모델명만 달리하는 공통 요청 조립 — 옵션(temperature/num_ctx)·stream·think 는 모든 경로 동일. */
+    private String chatWith(String model, String systemPrompt, String userText, Map<String, Object> jsonSchema) {
         OllamaChatRequest request = new OllamaChatRequest(
-                props.getModel(),
+                model,
                 false,   // stream: 스트리밍 비활성화
                 false,   // think: thinking 비활성화
                 Map.of("temperature", 0, "num_ctx", 8192),
@@ -89,7 +105,7 @@ public class OllamaClient {
                 )
         );
 
-        log.debug("Ollama 검열 요청: model={}, textLength={}", props.getModel(), userText.length());
+        log.debug("Ollama 요청: model={}, textLength={}", model, userText.length());
         return execute(request);
     }
 

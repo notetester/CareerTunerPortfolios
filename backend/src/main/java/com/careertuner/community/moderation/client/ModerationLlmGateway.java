@@ -2,6 +2,7 @@ package com.careertuner.community.moderation.client;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +14,11 @@ import com.careertuner.community.moderation.dto.ModerationImage;
 import com.careertuner.interview.service.AnthropicProperties;
 
 /**
- * 커뮤니티 검열/태그/추출 LLM 폴백 디스패처: 자체 Ollama(gemma4) → Claude(Haiku) → OpenAI → Mock.
+ * 커뮤니티 검열/태그/추출 LLM 폴백 디스패처: 자체 Ollama → Claude(Haiku) → OpenAI → Mock.
+ *
+ * <p>1차 tier 의 모델은 경로마다 다르다 — 텍스트 검열은 {@code ai.ollama.moderation-model}(careertuner-mod),
+ * 태깅·면접추출·신고분류는 {@code ai.ollama.model}(gemma4), 이미지 검열은 {@code ai.ollama.vision-model}.
+ * 폴백 tier(Claude/OpenAI/Mock)는 세 경로가 공유한다.
  *
  * <p>{@code PostModerationService} 는 이 게이트웨이만 주입받아 provider 를 모른다.
  * 검열은 비동기 이벤트 처리라, 자체 모델이 죽어도 Haiku/OpenAI 로 판정을 이어가고 그마저 안 되면
@@ -58,13 +63,33 @@ public class ModerationLlmGateway {
         this.openAiProperties = openAiProperties;
     }
 
+    /**
+     * 범용 모델({@code ai.ollama.model}) 경로 — 태깅·면접추출·신고분류가 쓴다.
+     */
     public LlmReply chat(String systemPrompt, String userText, Map<String, Object> jsonSchema) {
-        // 1) 자체 Ollama(gemma4) 우선 — OllamaClient 내부 재시도(최대 3회) 포함.
+        return dispatch(ollamaProperties.getModel(),
+                () -> ollama.chat(systemPrompt, userText, jsonSchema),
+                systemPrompt, userText, jsonSchema);
+    }
+
+    /**
+     * 텍스트 검열 전용 모델({@code ai.ollama.moderation-model}) 경로.
+     * 폴백 체인(Claude → OpenAI → Mock)은 {@link #chat} 과 완전히 동일하다 — 1차 tier 의 모델만 다르다.
+     */
+    public LlmReply chatModeration(String systemPrompt, String userText, Map<String, Object> jsonSchema) {
+        return dispatch(ollamaProperties.getModerationModel(),
+                () -> ollama.chatModeration(systemPrompt, userText, jsonSchema),
+                systemPrompt, userText, jsonSchema);
+    }
+
+    /** 폴백 체인 본체 — 1차 tier(자체 Ollama)의 모델·호출만 주입받고 나머지 tier 는 공유한다. */
+    private LlmReply dispatch(String ollamaModel, Supplier<String> ollamaCall,
+                              String systemPrompt, String userText, Map<String, Object> jsonSchema) {
+        // 1) 자체 Ollama 우선 — OllamaClient 내부 재시도(최대 3회) 포함.
         try {
-            return new LlmReply(ollama.chat(systemPrompt, userText, jsonSchema),
-                    ollamaProperties.getModel(), false);
+            return new LlmReply(ollamaCall.get(), ollamaModel, false);
         } catch (RuntimeException ex) {
-            log.warn("검열 Ollama 호출 실패 → Claude 폴백: {}", ex.getMessage());
+            log.warn("검열 Ollama({}) 호출 실패 → Claude 폴백: {}", ollamaModel, ex.getMessage());
         }
         // 2) 1차 폴백: Claude(Haiku) — 공통 키라 가장 안정적.
         if (anthropic.available()) {

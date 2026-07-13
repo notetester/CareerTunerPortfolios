@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/app/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { AlertTriangle, BarChart3, CheckCircle2, FileInput, FileOutput, Loader2 } from "lucide-react";
+import AdminShell from "../../../../components/AdminShell";
 import { getAnalyticsPrompts } from "../api/analyticsPromptApi";
 import type { AnalyticsPromptTemplate } from "../types/analyticsPrompt";
 
@@ -40,19 +41,14 @@ export default function AdminAnalyticsPromptsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
-        <section>
-          <Badge className="mb-3 bg-indigo-600 text-white">Prompt Ops</Badge>
-          <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-            <BarChart3 className="size-6 text-indigo-600" />
-            장기 분석 프롬프트 운영 확인
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            장기 취업 경향, 대시보드 다음 액션, 직무별 준비도 프롬프트의 품질 기준을 확인합니다.
-          </p>
-        </section>
-
+    <AdminShell
+      active="analytics"
+      breadcrumb="장기 분석 프롬프트"
+      title="장기 분석 프롬프트 운영 확인"
+      icon={BarChart3}
+      desc="장기 취업 경향, 대시보드 다음 액션, 직무별 준비도 프롬프트의 품질 기준을 확인합니다."
+    >
+      <div className="space-y-6">
         {loading && (
           <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-2 p-5 text-sm text-slate-500">
@@ -79,7 +75,7 @@ export default function AdminAnalyticsPromptsPage() {
           </div>
         )}
       </div>
-    </div>
+    </AdminShell>
   );
 }
 
