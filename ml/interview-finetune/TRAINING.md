@@ -58,7 +58,7 @@ python finetune_lora.py \
 
 ## 4. 서빙 (학습 후 — merge → GGUF → Ollama) ✅ 2026-06-20 실행 완료
 
-> 환경(실측): 원격 4090 = `C:\Users\careertuner\Desktop\interview`, conda env `interview`, Windows.
+> 환경(실측): 원격 RTX 4090 Windows 환경, conda env `interview`.
 > 실제로 밟은 절차 + 함정을 그대로 적는다(인라인 명령의 빈 곳·소형모델 디코딩 이슈 보강).
 
 ```bash

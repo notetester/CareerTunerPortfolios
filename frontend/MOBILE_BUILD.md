@@ -25,7 +25,7 @@ CareerTuner 프런트엔드를 PWA / Android(APK) / iOS 앱으로 빌드·테스
 
 ### 2.0 원클릭 데모 APK (권장)
 
-웹 데모(`https://notetester.github.io/CareerTunerDemo/`)와 **같은 mock 빌드를 설치형 앱으로** 한 번에 만든다.
+웹 데모(`https://notetester.github.io/CareerTunerPortfolio/`)와 **같은 mock 빌드를 설치형 앱으로** 한 번에 만든다.
 build → sync → assemble 을 한 명령으로 묶고, 산출물을 알기 쉬운 경로로 복사한다.
 
 ```bash

@@ -93,7 +93,7 @@ Get-FileHash .\scripts\test_infer.py -Algorithm SHA256
 Windows CMD 또는 PowerShell에서 실행:
 
 ```bat
-cd C:\Users\<공유계정>\career-strategy-llm
+cd ml\career-strategy-llm
 nvidia-smi
 python -m venv .venv
 .venv\Scripts\activate

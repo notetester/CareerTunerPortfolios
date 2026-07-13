@@ -41,7 +41,7 @@ scripts/assemble_dataset.py
 먼저 **`--help` 로 실제 인자 형식을 확인**한 뒤 실행한다. 인자를 추측하지 말 것.
 
 ```bat
-cd C:\Users\<공유계정>\career-strategy-llm
+cd ml\career-strategy-llm
 .venv\Scripts\activate
 cd scripts
 python test_infer.py --help

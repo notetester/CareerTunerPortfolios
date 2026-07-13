@@ -30,7 +30,7 @@ Quality failure alone must not trigger OpenAI.
 Start the internal worker:
 
 ```powershell
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\15_job_posting_worker_api.py --host 127.0.0.1 --port 8091
+python ml\job-posting-worker\scripts\15_job_posting_worker_api.py --host 127.0.0.1 --port 8091
 ```
 
 Health check:
@@ -242,7 +242,7 @@ Analysis through the B-owned Ollama adapter is **enabled by default** (`B_ANALYS
 Run the 20-file baseline:
 
 ```powershell
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir personal\experiments\b_hybrid_ai\data\real_validation\raw_ocr_inputs_selected_20 --existing-ocr-dir personal\experiments\b_hybrid_ai\data\real_validation\ocr_postings_selected_20 --output-dir .tmp\job_posting_stabilization --report .tmp\job_posting_stabilization\document_pipeline_stabilization.md --min-files 20
+python ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir personal\experiments\b_hybrid_ai\data\real_validation\raw_ocr_inputs_selected_20 --existing-ocr-dir personal\experiments\b_hybrid_ai\data\real_validation\ocr_postings_selected_20 --output-dir .tmp\job_posting_stabilization --report .tmp\job_posting_stabilization\document_pipeline_stabilization.md --min-files 20
 ```
 
 Current release gate:
@@ -263,7 +263,7 @@ Use `--min-files 43` for the production release gate.
 Audit the currently available real-file inventory:
 
 ```powershell
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\20_audit_real_regression_inventory.py --output .tmp\job_posting_real_regression_inventory.json
+python ml\job-posting-worker\scripts\20_audit_real_regression_inventory.py --output .tmp\job_posting_real_regression_inventory.json
 ```
 
 The inventory separates actual job-posting candidates from company-info or tip/reference documents and lists OCR backfill targets. A file counts toward the 43-file production gate only when it is a real job-posting candidate and has usable OCR/text input for the document pipeline.
@@ -271,7 +271,7 @@ The inventory separates actual job-posting candidates from company-info or tip/r
 Import additional real job-posting files and backfill OCR text with the self-hosted OCR pipeline:
 
 ```powershell
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\28_import_real_regression_candidates.py --source-dir "D:\path\to\new_real_postings" --output .tmp\job_posting_real_import.json
+python ml\job-posting-worker\scripts\28_import_real_regression_candidates.py --source-dir "<input-directory>" --output .tmp\job_posting_real_import.json
 ```
 
 The importer skips non-job reference documents, duplicate file content, and filename conflicts. PDF/image files are copied into the raw regression directory only when OCR can produce `PASS` or `REVIEW_REQUIRED` text; OpenAI is not called.
@@ -282,7 +282,7 @@ The inventory audit fingerprints normalized OCR/text output and the regression-s
 Prepare the reproducible real regression input set from the ready audited files:
 
 ```powershell
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\25_prepare_real_regression_set.py --target-count 43 --output .tmp\job_posting_real_regression_set\manifest.json
+python ml\job-posting-worker\scripts\25_prepare_real_regression_set.py --target-count 43 --output .tmp\job_posting_real_regression_set\manifest.json
 ```
 
 The manifest writes copied raw/OCR directories under `.tmp/job_posting_real_regression_set/` and includes the exact `16_run_stabilization_check.py` command for that set.
@@ -291,51 +291,51 @@ The manifest writes copied raw/OCR directories under `.tmp/job_posting_real_regr
 
 ```powershell
 # Python contracts and stabilization helpers
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m unittest discover -s ml\job-posting-worker\tests
+python -m unittest discover -s ml\job-posting-worker\tests
 
 # Real baseline gate
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir personal\experiments\b_hybrid_ai\data\real_validation\raw_ocr_inputs_selected_20 --existing-ocr-dir personal\experiments\b_hybrid_ai\data\real_validation\ocr_postings_selected_20 --output-dir .tmp\job_posting_stabilization --report .tmp\job_posting_stabilization\document_pipeline_stabilization.md --min-files 20
+python ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir personal\experiments\b_hybrid_ai\data\real_validation\raw_ocr_inputs_selected_20 --existing-ocr-dir personal\experiments\b_hybrid_ai\data\real_validation\ocr_postings_selected_20 --output-dir .tmp\job_posting_stabilization --report .tmp\job_posting_stabilization\document_pipeline_stabilization.md --min-files 20
 
 # Worker operational drills
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\17_run_worker_drills.py --output .tmp\job_posting_worker_drills.json
+python ml\job-posting-worker\scripts\17_run_worker_drills.py --output .tmp\job_posting_worker_drills.json
 
 # Repo-owned synthetic 43-file stabilization drill
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\19_run_synthetic_stabilization_fixture.py --count 43 --output-dir .tmp\job_posting_synthetic_stabilization --report .tmp\job_posting_synthetic_stabilization\document_pipeline_stabilization.md
+python ml\job-posting-worker\scripts\19_run_synthetic_stabilization_fixture.py --count 43 --output-dir .tmp\job_posting_synthetic_stabilization --report .tmp\job_posting_synthetic_stabilization\document_pipeline_stabilization.md
 
 # Release readiness evidence
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\18_check_release_readiness.py --include-artifacts --min-files 20 --output .tmp\job_posting_release_readiness.json
+python ml\job-posting-worker\scripts\18_check_release_readiness.py --include-artifacts --min-files 20 --output .tmp\job_posting_release_readiness.json
 
 # Collect all production-readiness evidence in one pass
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\26_run_release_evidence.py --output .tmp\job_posting_release_evidence.json
+python ml\job-posting-worker\scripts\26_run_release_evidence.py --output .tmp\job_posting_release_evidence.json
 
 # Collect release evidence against a non-default staging DB/client
 $env:DB_PASSWORD = "..."
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\26_run_release_evidence.py --db-host 127.0.0.1 --db-name team1_db --db-user root --mysql-bin mysql --output .tmp\job_posting_release_evidence.json
+python ml\job-posting-worker\scripts\26_run_release_evidence.py --db-host 127.0.0.1 --db-name team1_db --db-user root --mysql-bin mysql --output .tmp\job_posting_release_evidence.json
 
 # Release evidence Markdown report
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\27_summarize_release_evidence.py --input .tmp\job_posting_release_evidence.json --output .tmp\job_posting_release_evidence.md
+python ml\job-posting-worker\scripts\27_summarize_release_evidence.py --input .tmp\job_posting_release_evidence.json --output .tmp\job_posting_release_evidence.md
 
 # Real regression inventory audit
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\20_audit_real_regression_inventory.py --output .tmp\job_posting_real_regression_inventory.json
+python ml\job-posting-worker\scripts\20_audit_real_regression_inventory.py --output .tmp\job_posting_real_regression_inventory.json
 
 # Import additional real postings and OCR backfill
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\28_import_real_regression_candidates.py --source-dir "D:\path\to\new_real_postings" --output .tmp\job_posting_real_import.json
+python ml\job-posting-worker\scripts\28_import_real_regression_candidates.py --source-dir "<input-directory>" --output .tmp\job_posting_real_import.json
 
 # Prepare 43-file real regression set
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\25_prepare_real_regression_set.py --target-count 43 --output .tmp\job_posting_real_regression_set\manifest.json
+python ml\job-posting-worker\scripts\25_prepare_real_regression_set.py --target-count 43 --output .tmp\job_posting_real_regression_set\manifest.json
 
 # Full production readiness audit
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\21_audit_production_readiness.py --output .tmp\job_posting_production_readiness.json
+python ml\job-posting-worker\scripts\21_audit_production_readiness.py --output .tmp\job_posting_production_readiness.json
 
 # Worker Docker runtime smoke evidence
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\23_run_worker_docker_smoke.py --output .tmp\job_posting_worker_docker_smoke.json
+python ml\job-posting-worker\scripts\23_run_worker_docker_smoke.py --output .tmp\job_posting_worker_docker_smoke.json
 
 # OCR runtime smoke evidence
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\24_run_ocr_runtime_smoke.py --output .tmp\job_posting_worker_ocr_runtime.json
+python ml\job-posting-worker\scripts\24_run_ocr_runtime_smoke.py --output .tmp\job_posting_worker_ocr_runtime.json
 
 # Staging DB migration evidence
 $env:DB_PASSWORD = "..."
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\22_verify_mysql_pipeline_schema.py --host 127.0.0.1 --database team1_db --user root --output .tmp\application_case_pipeline_db_migration.json
+python ml\job-posting-worker\scripts\22_verify_mysql_pipeline_schema.py --host 127.0.0.1 --database team1_db --user root --output .tmp\application_case_pipeline_db_migration.json
 
 # Backend
 cd backend
@@ -366,7 +366,7 @@ npm.cmd run typecheck
 The final release audit is:
 
 ```powershell
-C:\Users\careertuner\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe ml\job-posting-worker\scripts\21_audit_production_readiness.py --output .tmp\job_posting_production_readiness.json
+python ml\job-posting-worker\scripts\21_audit_production_readiness.py --output .tmp\job_posting_production_readiness.json
 ```
 
 It must pass before this pipeline is considered production-ready. Required evidence:

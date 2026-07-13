@@ -1,72 +1,69 @@
-# 데모 · 릴리즈 가이드
+# 공개 데모 · 로컬 앱 빌드 가이드
 
-CareerTuner 의 데모 산출물(웹 데모 / Android APK / iOS)을 만들고 배포하는 방법.
-세 채널 모두 **mock 데모 모드**(`VITE_USE_MOCK=true`) 빌드를 사용하므로 백엔드 없이 동작한다
-(로그인에 아무 이메일/비밀번호나 입력하면 데모 계정 "김데모"로 진입).
+CareerTuner 공개 복제본은 GitHub Pages에서 웹 데모, 기능 설명서와 지식 지도를 하나의 정적 산출물로 제공합니다. 웹 데모는 `VITE_USE_MOCK=true`인 명시적 mock 모드이므로 운영 백엔드와 자격증명 없이 동작합니다.
 
-| 채널 | 트리거 | 산출물 위치 |
+| 채널 | 실행 방식 | 산출물 |
 | --- | --- | --- |
-| 웹 데모 (GitHub Pages) | `dev` 에 push (자동) | <https://notetester.github.io/CareerTunerDemo/> |
-| Android APK | **`v*` 또는 `demo-*` 태그 push** (자동) | [GitHub Releases](https://github.com/notetester/CareerTuner/releases) |
-| iOS 시뮬레이터 빌드 | Actions 수동 실행 | Actions 아티팩트 (`.app`) |
+| 웹 데모 | `dev` push 또는 수동 workflow 실행 | <https://notetester.github.io/CareerTunerPortfolio/> |
+| 기능 설명서 | 웹 데모와 함께 build | <https://notetester.github.io/CareerTunerPortfolio/docs/> |
+| 지식 지도 | 공개 검토본을 정적 복사 | <https://notetester.github.io/CareerTunerPortfolio/Obsidian/> |
+| Android/iOS | 로컬 명령으로 mock 또는 backend 연동 build | `frontend/`의 네이티브 프로젝트 산출물 |
 
----
+## 1. GitHub Pages
 
-## 1. Android APK 릴리즈 — 태그만 푸시하면 끝
+`.github/workflows/pages.yml`은 다음 순서로 공개 산출물을 만듭니다.
+
+1. 프런트엔드 typecheck와 역할·인증·모바일 계약 테스트 실행
+2. `VITE_PUBLIC_BASE=/CareerTunerPortfolio/`인 네트워크 독립 mock build
+3. VitePress 기능 설명서 audit와 build
+4. `/docs/`와 `/Obsidian/`을 같은 Pages artifact에 조립
+5. 필수 route와 자격증명·내부 네트워크 패턴 검사
+6. pull request에서는 build만 검증하고, `dev` push 또는 수동 실행에서만 배포
+
+로컬에서 동일한 웹 산출물을 확인하려면:
 
 ```bash
-git tag demo-apk-3            # 또는 v0.2.0 등 (v* / demo-* 패턴)
-git push origin demo-apk-3
+cd frontend
+npm ci
+npm run typecheck
+$env:VITE_DEMO_MODE="true"
+$env:VITE_USE_MOCK="true"
+$env:VITE_PUBLIC_BASE="/CareerTunerPortfolio/"
+npm run build
 ```
 
-약 3분 뒤 [Releases](https://github.com/notetester/CareerTuner/releases) 에 자동으로 올라온다:
+기능 설명서는 별도로 검증합니다.
 
-- `CareerTuner-demo-<태그>.apk` — 데모 APK. **BlueStacks 창에 드래그&드롭**하면 설치된다.
-- `CareerTuner-web-demo-<태그>.zip` — 같은 빌드의 웹 번들(정적 호스팅용).
+```bash
+cd portfolio-docs
+npm ci
+npm audit --audit-level=high
+npm run docs:build
+```
 
-동작 방식: `.github/workflows/android-release.yml` 이 ubuntu 러너에서
-`build:mock → cap add android → cap sync → gradlew assembleDebug` 를 수행하고
-`softprops/action-gh-release` 로 Release 를 생성·첨부한다(prerelease 표시).
+## 2. Android mock APK
 
-주의사항:
+JDK 21과 Android SDK가 준비된 환경에서 다음 명령으로 백엔드가 필요 없는 debug APK를 만듭니다.
 
-- **디버그 서명**이므로 사이드로드(테스트) 전용이다. 스토어 배포용 아님.
-- 태그가 가리키는 커밋에 워크플로 파일이 있어야 한다(2026-06 이후 커밋이면 모두 해당).
-- Actions 탭의 수동 실행(workflow_dispatch) 버튼은 워크플로가 **main 에 머지된 뒤** 노출된다.
-- 잘못 만든 태그/릴리즈는 Releases 페이지에서 삭제 후 `git push origin :refs/tags/<태그>` 로 태그도 지운다.
+```bash
+cd frontend
+npm ci
+npm run demo:apk
+```
 
-## 2. 웹 데모 (GitHub Pages) — dev 머지만 하면 자동
+산출물은 `frontend/dist-apk/CareerTuner-demo.apk`입니다. debug 서명이므로 테스트와 포트폴리오 시연용이며 스토어 배포용이 아닙니다. 세부 설정은 [`frontend/MOBILE_BUILD.md`](../frontend/MOBILE_BUILD.md)를 참고하세요.
 
-`frontend/**` 변경이 `dev` 에 머지되면 `.github/workflows/deploy-demo.yml` 이
-typecheck → mock 빌드 → 시크릿 스캔 후, 공개 저장소
-[CareerTunerDemo](https://github.com/notetester/CareerTunerDemo) 에 빌드 결과를 push 한다.
-→ 데모 주소: **<https://notetester.github.io/CareerTunerDemo/>**
+## 3. 실제 백엔드 연동 앱
 
-- 본 저장소(CareerTuner)는 키/비밀번호가 포함돼 비공개이므로, **빌드 산출물만** 공개 저장소로 내보낸다.
-- 내보내기 전에 dist 에서 DB 주소·시크릿 패턴을 grep 으로 검사하며, 발견 시 배포를 중단한다.
-- 인증: 저장소 시크릿 `DEMO_REPO_TOKEN` (CareerTunerDemo 에 Contents R/W 권한의 fine-grained PAT).
-- typecheck 가 깨지면 배포가 중단된다 → PR 전에 `npm run typecheck` 확인.
+번들 앱은 build 시점에 `VITE_API_BASE_URL=https://<reachable-host>/api`를 주입합니다. callback URL, CORS, OAuth app link/universal link와 인증서 서명은 해당 배포 환경에서 별도로 설정해야 하며 값을 저장소에 커밋하지 않습니다.
 
-## 3. iOS — 시뮬레이터 무서명 빌드
+mock은 포트폴리오와 장애 독립 시연을 위한 별도 모드입니다. 운영 서비스가 정상일 때 mock endpoint가 실제 API보다 우선하지 않도록 `VITE_USE_MOCK`을 명시적으로 켠 build에서만 활성화합니다.
 
-Actions 탭 → **Build iOS demo (unsigned simulator)** → Run workflow (main 머지 후 버튼 노출).
-macOS 러너가 무서명(`CODE_SIGNING_ALLOWED=NO`) 시뮬레이터 빌드 후 `.app` 아티팩트를 업로드한다.
+## 4. 자주 겪는 문제
 
-- Apple 계정/서명 불필요. 단, `.app` 실행은 Mac 의 iOS 시뮬레이터에서만 가능.
-- 비공개 저장소에서 macOS 러너는 분당 과금 10배라 **수동 실행으로만** 둔다.
-- 실기기 설치/스토어 배포 등 자세한 분기는 [frontend/MOBILE_BUILD.md](../frontend/MOBILE_BUILD.md) 참고.
-
-## 4. 데모 데이터(mock) 범위
-
-mock 레지스트리는 `frontend/src/app/lib/mock/` 에 있다. 현재 **인증 + C 영역
-(홈/대시보드/취업 분석/적합도)** 이 채워져 있고, 미등록 엔드포인트는 "데모 미제공" 안내가 뜬다.
-자기 도메인 화면을 데모에 포함하려면 `mock/index.ts` 의 `routes` 배열에 핸들러를 추가하면 된다.
-
-## 5. 자주 겪는 문제
-
-| 증상 | 원인/해결 |
+| 증상 | 확인할 항목 |
 | --- | --- |
-| CI 에서 `The Capacitor CLI requires NodeJS >=22` | 워크플로 Node 버전이 22 미만. setup-node `node-version: 22` 확인 |
-| 데모 배포가 typecheck 에서 실패 | `cd frontend && npm run typecheck` 로 에러 파일 확인 후 해당 담당자가 수정 |
-| 릴리즈에 APK 가 안 보임 | Actions 탭에서 해당 태그 run 의 실패 스텝 확인. 태그 커밋에 워크플로 존재 여부 확인 |
-| 웹 데모 화면이 흰 화면 | base 경로 문제. `VITE_PUBLIC_BASE=/CareerTunerDemo/` 로 빌드됐는지 확인 |
+| Pages 화면이 흰 화면 | `VITE_PUBLIC_BASE=/CareerTunerPortfolio/`와 asset URL 확인 |
+| pull request에서 deploy가 생략됨 | 정상 동작. pull request는 build와 검증만 수행 |
+| APK build가 SDK 단계에서 멈춤 | JDK 21, `ANDROID_HOME`, platform/build-tools 설치 확인 |
+| backend 연동 앱에서 API 호출 실패 | HTTPS, CORS, `VITE_API_BASE_URL`과 네이티브 네트워크 정책 확인 |

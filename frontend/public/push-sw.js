@@ -38,8 +38,8 @@ self.addEventListener('push', (event) => {
   }
 
   const title = payload.title || 'CareerTuner';
-  // 서브패스 배포(/CareerTunerDemo/ 등)에서 루트 절대경로는 404 — SW 등록 스코프 기준으로 해석한다.
-  const scope = self.registration.scope; // 예: https://host/CareerTunerDemo/
+  // 서브패스 배포(/CareerTunerPortfolio/ 등)에서 루트 절대경로는 404 — SW 등록 스코프 기준으로 해석한다.
+  const scope = self.registration.scope; // 예: https://host/CareerTunerPortfolio/
   const url = new URL(payload.url || '.', scope).href;
   const options = {
     body: payload.body || '',

@@ -1,5 +1,7 @@
 # CareerTuner — AI 코딩 도구 공통 지침
 
+> **공개 복제본 안내:** 이 저장소에는 비공개 자료를 가리키는 gitlink와 submodule 설정이 없습니다. 아래 원본 팀 저장소용 submodule 초기화·갱신 지시는 이 공개 복제본에서 실행하지 않으며, 같은 경로의 공개 안내 README와 `/Obsidian/` projection을 사용합니다.
+
 이 파일은 팀원이 사용하는 모든 AI 코딩 도구(Codex, Antigravity, Cursor, Windsurf, Claude Code 등)가 읽는 공통 지침이다.
 도구별 파일(GEMINI.md, .windsurfrules 등)에 룰을 분산하지 말고, 팀 공통 룰은 반드시 이 파일에만 추가한다.
 

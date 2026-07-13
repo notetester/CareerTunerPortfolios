@@ -37,7 +37,7 @@ ml/correction-llm/
 ## 검증 및 변환
 
 ```powershell
-cd C:\Users\careertuner\Desktop\CareerTuner_AI_Workspace\projects\CareerTuner\ml\correction-llm
+cd ml\correction-llm
 
 ..\..\.venv-ai\Scripts\python.exe scripts\validate_dataset.py `
   --input data\raw.seed.40.jsonl `
@@ -61,7 +61,7 @@ cd C:\Users\careertuner\Desktop\CareerTuner_AI_Workspace\projects\CareerTuner\ml
 샘플 38개는 품질 평가용이 아니라 파이프라인 검증용이다.
 
 ```powershell
-cd C:\Users\careertuner\Desktop\CareerTuner_AI_Workspace\projects\CareerTuner\ml\correction-llm
+cd ml\correction-llm
 
 ..\..\.venv-ai\Scripts\python.exe scripts\finetune_lora.py `
   --base-model Qwen/Qwen2.5-3B-Instruct `
@@ -96,11 +96,8 @@ cd C:\Users\careertuner\Desktop\CareerTuner_AI_Workspace\projects\CareerTuner\ml
 기존 단문 데이터와 장문 합성 데이터를 함께 학습하는 계약이다. 생성 원본과 평가 결과는 본체에
 커밋하지 않고 `docs/ai-artifacts/benchmarks/e-correction-unified-v2/runs/<run-id>/`에 둔다.
 
-처음 사용하는 클론에서는 artifact 서브모듈을 받는다.
-
-```powershell
-git submodule update --init docs/ai-artifacts
-```
+공개 복제본은 원시 artifact를 포함하지 않는다. 재실행 결과는 gitignore된 `docs/ai-artifacts/` 경로나
+저장소 밖의 별도 출력 디렉터리에 생성하고, 개인정보·자격증명 검토 전에는 커밋하지 않는다.
 
 ### 1. 생성 요청 dry-run
 

@@ -99,12 +99,16 @@ pnpm-debug.log*
 .obsidian/recent-files-obsidian.json
 .obsidian/plugins/
 
-# ----- Submodule working-tree contents -----
-# The parent repo tracks only the gitlink pointer for these paths.
-# Files inside are owned by each submodule repository.
+# ----- 공개 경계 placeholder -----
+# 공개 안내 README만 추적하고, 검토되지 않은 원문이 실수로 추가되지 않게 막는다.
 docs/storyboard/*
+!docs/storyboard/README.md
 docs/ai-reports/*
+!docs/ai-reports/README.md
 docs/ai-artifacts/*
+!docs/ai-artifacts/README.md
+docs/obsidian-vault/*
+!docs/obsidian-vault/README.md
 
 
 # 로컬 키 주입 스크립트 (키 포함 — 절대 커밋 금지)
