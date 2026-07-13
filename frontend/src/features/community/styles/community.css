@@ -53,7 +53,10 @@
 @media (max-width: 980px) { .cv-mobutil { display: flex; } }
 
 /* ===== Compose (v2) ===== */
-.wv-wrap { max-width: 760px; margin: 0 auto; }
+/* 글쓰기 루트는 <main>(flex-col)의 직계 아이템 — auto 마진이 stretch 를 꺼서 fit-content 로
+   쪼그라들므로 width 를 명시한다(cv-page 와 동일 처방). 패딩은 cv-page 와 맞춘다. */
+.wv-wrap { width: 100%; max-width: 760px; margin: 0 auto; padding: 28px 32px 64px; box-sizing: border-box; }
+@media (max-width: 768px) { .wv-wrap { padding: 20px 16px 48px; } }
 .wv-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--av-ink-3);
   text-decoration: none; margin-bottom: 14px; white-space: nowrap; }
 .wv-back:hover { color: var(--av-ink); }
@@ -116,7 +119,13 @@
 .wv-input:focus { outline: none; border-color: var(--av-blue); }
 
 /* ===== Post detail ===== */
-.ct-detail { max-width: 760px; margin: 0 auto; }
+/* 스크랩 상세는 ct-page 를 쓰지만 사이드바가 없어 보상 패딩(왼쪽 284px)을 제거하고
+   flex 부모의 fit-content 수축을 width 로 고정한다(ct-support 와 동일 처방).
+   2클래스로 특이도를 확보해 스타일 주입 순서와 무관하게 만든다. */
+.ct-page.ct-detail { width: 100%; max-width: 760px; margin: 0 auto; box-sizing: border-box; padding-left: 24px; }
+@media (max-width: 768px) {
+  .ct-page.ct-detail { padding: 20px 16px 48px; }
+}
 .ct-detail__back { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; cursor: pointer; font-size: 14px; color: var(--muted-foreground); padding: 4px 0; margin-bottom: 14px; transition: color 180ms; }
 .ct-detail__back:hover { color: var(--foreground); }
 .ct-detail__back svg { width: 16px; height: 16px; stroke-width: 2; }
