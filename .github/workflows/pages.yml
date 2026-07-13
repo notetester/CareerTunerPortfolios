@@ -1,0 +1,145 @@
+name: Deploy portfolio demo, docs and knowledge map
+
+on:
+  pull_request:
+    branches: [dev]
+    paths:
+      - "frontend/**"
+      - "portfolio-docs/**"
+      - "Obsidian/**"
+      - ".github/workflows/pages.yml"
+  push:
+    branches: [dev]
+    paths:
+      - "frontend/**"
+      - "portfolio-docs/**"
+      - "Obsidian/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: career-tuner-portfolio-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout public source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            portfolio-docs/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Verify frontend contracts
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run test:admin-access
+          npm run test:applications-demo
+          npm run test:c-demo-readiness
+          npm run test:e-demo-readiness
+          npm run test:f-demo-readiness
+          npm run test:auth-session-boundaries
+          npm run test:public-demo-login
+          npm run test:sites-worker-outage
+          npm run test:interview-model-retry
+          npm run test:native-oauth
+          npm run test:native-config
+          npm run test:deep-link-runtime
+          npm run test:mobile-platform
+
+      - name: Build network-independent demo
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_DEMO_MODE: "true"
+          VITE_USE_MOCK: "true"
+          VITE_PUBLIC_BASE: "/CareerTunerPortfolio/"
+
+      - name: Install documentation dependencies
+        working-directory: portfolio-docs
+        run: npm ci
+
+      - name: Audit and build documentation
+        working-directory: portfolio-docs
+        run: |
+          npm audit --audit-level=high
+          npm run docs:build
+
+      - name: Assemble one Pages artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf _site
+          mkdir -p _site/docs _site/Obsidian
+          cp -R frontend/dist/. _site/
+          cp frontend/dist/index.html _site/404.html
+          cp -R portfolio-docs/.vitepress/dist/. _site/docs/
+          cp -R Obsidian/. _site/Obsidian/
+          touch _site/.nojekyll
+
+      - name: Verify assembled routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s _site/index.html
+          test -s _site/404.html
+          test -s _site/docs/index.html
+          test -s _site/Obsidian/index.html
+          test -s _site/Obsidian/SecondBrain/index.html
+          test -s _site/Obsidian/Wiki/index.html
+
+      - name: Reject credential and internal-network patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          pattern='-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk-(proj-)?[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|(AKIA|ASIA)[A-Z0-9]{16}|xox[baprs]-[A-Za-z0-9-]{20,}|jdbc:mysql://([0-9]{1,3}\.){3}[0-9]{1,3}|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}|https?://[^/[:space:]@]+:[^/[:space:]@]+@'
+          matches="$(grep -RIlE "$pattern" _site || true)"
+          if [[ -n "$matches" ]]; then
+            echo "Potential secret pattern found in these built files:"
+            printf '%s\n' "$matches"
+            exit 1
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

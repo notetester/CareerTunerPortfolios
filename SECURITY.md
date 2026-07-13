@@ -1,87 +1,62 @@
 # CareerTuner 보안 정책
 
-CareerTuner는 채용공고, 사용자 프로필, 경력/자격증, 자기소개서와 업로드 문서, 면접 음성/영상, AI 분석 로그, 결제/크레딧 데이터를 함께 다루는 AI 취업 전략 플랫폼입니다. 보안 관리는 "누가 어떤 지원 건과 관리자 데이터를 볼 수 있는가", "업로드 파일과 AI 입력/출력이 어디로 흐르는가", "배포와 데모 산출물에 비밀값이 섞이지 않는가"를 중심으로 합니다.
-
-이 문서는 저장소 운영자가 아직 확정하지 않은 장기 지원 버전, 고정 응답 SLA, 보상 프로그램을 임의로 만들지 않습니다. 브랜치와 PR 운영은 [AGENTS.md](AGENTS.md)와 [docs/BRANCHES.md](docs/BRANCHES.md)를 따르고, 보안 수정은 현재 기본 개발선과 실제 데모/배포/릴리즈에 연결된 활성 코드에 우선 적용합니다.
+CareerTuner는 프로필·지원 건·업로드 문서·면접 미디어·AI 결과·결제/크레딧 데이터를 다룹니다. 보안 수정은 현재 개발선과 실제 배포 경로에 연결된 인증, 데이터 소유권, 관리자 권한, 파일, AI provider, 결제 원장을 우선합니다.
 
 ## 비공개 신고
 
-취약점의 세부 내용은 공개 이슈, 공개 PR, 공개 토론에 바로 올리지 마세요.
+취약점의 재현 절차나 실제 비밀값을 공개 Issue·PR·Discussion에 올리지 마세요. 가능하면 GitHub Private vulnerability reporting 또는 Security Advisory를 사용하고, 사용할 수 없다면 저장소 소유자에게 비공개로 전달해 주세요.
 
-가능하면 GitHub의 Private vulnerability reporting 또는 Security Advisory 기능으로 신고합니다. 그 경로를 사용할 수 없다면 저장소 소유자나 프로젝트 관리자에게 직접 전달합니다.
+다음 정보를 마스킹된 형태로 포함하면 확인에 도움이 됩니다.
 
-신고에는 가능한 범위에서 다음을 포함해 주세요.
+- 영향받는 API·화면·workflow·파일 경로
+- 필요한 계정 역할과 세부 권한
+- 최소 재현 절차와 예상/실제 결과
+- 개인정보 노출, 권한 상승, 비용 발생, 데이터 변경, 서비스 중단 등 영향
+- 확인한 완화 방법이나 수정 제안
 
-- 영향받는 기능, API, 화면, 워크플로, 파일 경로
-- 재현 절차와 필요한 권한 수준
-- 예상 영향: 개인정보 노출, 인증 우회, 권한 상승, 결제/크레딧 조작, 파일 접근, 원격 코드 실행, 서비스 중단 등
-- 요청/응답 예시, 로그, 스크린샷, 테스트 계정 조건
-- 이미 확인한 완화 방법이나 수정 제안
-
-실제 사용자 개인정보, 원본 이력서/공고 파일, 면접 음성/영상, 실제 토큰/비밀번호/개인키는 신고 본문에 그대로 붙이지 마세요. 필요한 경우 마스킹한 샘플이나 최소 재현 데이터로 설명합니다.
+실제 토큰·비밀번호·개인키, 사용자 문서, 면접 녹화물, 결제정보는 신고 본문에 첨부하지 마세요.
 
 ## 우선 보호 대상
 
-아래 영역은 CareerTuner의 실제 구현과 운영 문서를 기준으로 우선 보호합니다.
-
-| 영역 | 보안상 중요한 이유 |
+| 영역 | 주요 경계 |
 | --- | --- |
-| 인증/세션 | Spring Security stateless JWT, refresh token 회전/폐기, OAuth callback/state, BCrypt 비밀번호 해시 |
-| 사용자 지원 건 | `application_case` 중심으로 프로필, 공고 revision, 기업/직무/적합도 분석, 면접, 첨삭이 연결됨 |
-| 업로드 파일 | 공고 PDF/이미지, 첨부 파일, 면접 미디어가 로컬 `.uploads/**` 경로와 DB `file_asset` 메타데이터로 관리됨 |
-| 관리자 API | `/api/admin/**`는 URL 레벨에서 ADMIN/SUPER_ADMIN 권한이 필요하며 운영 메모, 회원, 결제, AI 사용량, 프롬프트를 다룸 |
-| AI/ML 처리 | OpenAI, Anthropic, Ollama/4090, RAG/Qdrant, 파인튜닝 JSONL, 프롬프트 템플릿, AI 사용량/크레딧 로그가 포함됨 |
-| 결제/크레딧 | 구독, 사용권, 크레딧 차감, 결제 원장, 관리자 결제 조회가 서비스 권한과 비용에 직접 연결됨 |
-| 배포/릴리즈 | GitHub Pages mock 데모, Android APK 릴리즈, iOS 시뮬레이터 빌드, 4090 trigger workflow, demo repo push token을 사용함 |
-| 구성/비밀값 | `application.yaml`의 개발용 기본값, `.env`, GitHub Actions secrets, VAPID/FCM/APNs, SMTP, DB/JWT/OAuth/OpenAI 키 |
+| 인증·계정 | stateless JWT, refresh 회전/폐기, OAuth state·PKCE handoff, BCrypt, 관리자 계정 상태 재검사 |
+| 사용자 데이터 | `application_case` 소유권, profile version, 업로드 소유자, 소프트 삭제·복구·고아 방지 |
+| 관리자 | `/api/admin/**` 역할 게이트 + 도메인별 READ/CREATE/UPDATE/DELETE + 최고 관리자 guard |
+| AI·검색 | 동의 게이트, provider 목적지 고정, 자체 모델·Claude·OpenAI 폴백, RAG/Qdrant, 학습 샘플 |
+| 결제·크레딧 | 승인 idempotency, 사용권·차감 원장, 관리자 조회·변경 권한 |
+| 배포 | Pages mock 데모, 모바일·Qt 릴리스, GitHub Actions secret, 공개 산출물 검사 |
 
-## 특히 보고해야 할 사례
+특히 다음 사례를 우선 신고해 주세요.
 
-- 다른 사용자의 지원 건, 프로필, 업로드 파일, 면접 결과, 결제/크레딧 내역에 접근할 수 있음
-- 일반 사용자가 관리자 API나 SUPER_ADMIN 기능에 접근할 수 있음
-- JWT, refresh token, OAuth state, 비밀번호 재설정/이메일 인증 토큰을 재사용하거나 우회할 수 있음
-- 파일 업로드/다운로드에서 경로 탈출, 임의 파일 읽기/쓰기, 예상 밖 content type 실행, 과도한 파일 크기 처리가 가능함
-- MyBatis 매퍼나 검색/정렬 파라미터를 통해 SQL injection 또는 권한 없는 데이터 조회가 가능함
-- OpenAI/Anthropic/Ollama/4090/Qdrant 등 외부·내부 AI provider로 민감 데이터가 불필요하게 전송되거나 로그에 남음
-- 프롬프트 주입으로 관리자 기능, 파일, 토큰, 타 사용자 데이터에 접근하거나 시스템 정책을 우회할 수 있음
-- 결제 승인, 구독 상태, 크레딧/사용권 차감, AI 사용량 원장을 조작할 수 있음
-- GitHub Actions secret, demo 배포 token, SSH private key, API key, DB/JWT/OAuth/VAPID private key가 repo, 로그, 공개 demo 산출물에 노출됨
-- 공개 데모(`CareerTunerDemo`)나 mock APK에 실제 DB 주소, 사용자 데이터, 운영 키, 내부 API endpoint가 섞임
+- 다른 사용자의 지원 건, 프로필, 파일, 면접, 결제 내역에 접근 가능
+- 익명·일반 회원 또는 권한 없는 관리자가 관리자 route/API를 사용 가능
+- JWT·refresh·OAuth state·이메일/전화 인증 proof를 재사용하거나 우회 가능
+- 파일 경로 탈출, 임의 파일 읽기/쓰기, 위험한 MIME 실행 가능
+- MyBatis 쿼리에서 SQL injection 또는 소유권 조건 누락 가능
+- prompt injection이나 provider 연동을 통해 토큰·파일·타 사용자 데이터에 접근 가능
+- 결제 승인, 크레딧 차감, AI 사용량을 중복·누락·조작 가능
+- 저장소 이력, workflow log, 공개 데모에 키·비밀번호·내부 주소가 노출
 
-## 개발 기본값과 배포 경계
+단순 오타·스타일·반응형 문제, 공개 mock 데이터 표시 오류, 민감정보가 없는 개발 경고는 보안 취약점이 아닐 수 있지만 일반 버그로 제보할 수 있습니다.
 
-이 저장소는 팀 개발 편의를 위해 일부 개발용 기본값을 `backend/src/main/resources/application.yaml`에 둡니다. 이 값들은 운영 비밀값으로 간주하지 않으며, 실제 배포에서는 동일 이름의 환경변수 또는 GitHub Actions secrets로 반드시 교체합니다.
+## 수정과 검증
 
-비밀값이 노출되면 코드에서 지우는 것만으로 끝내지 않습니다. 해당 키와 토큰을 폐기하거나 회전하고, 영향받은 배포 환경과 로그, 공개 데모 산출물까지 확인합니다.
+확인된 취약점은 공개 재현을 만들기 전에 비공개 브랜치나 Security Advisory에서 수정합니다. 수정은 영향 계층의 회귀 테스트와 함께 검증합니다. 예시는 백엔드 `./gradlew test`, 프런트 `npm run typecheck`와 권한/세션 테스트, 파일·worker 테스트, 배포 산출물 secret scan입니다.
 
-`frontend` mock 데모와 Android debug APK는 백엔드 없이 동작하는 시연 산출물입니다. 데모 빌드는 실제 사용자 데이터, 운영 DB 주소, 운영 API 키, 내부 secret을 포함하지 않아야 합니다. `.github/workflows/deploy-demo.yml`의 dist secret scan이 실패하면 배포를 중단하고 원인을 먼저 제거합니다.
+비밀값이 노출되면 파일에서 지우는 것으로 끝내지 않습니다. 키를 폐기·회전하고, 과거 Git 이력, Actions log/artifact, 배포 사이트와 캐시를 함께 확인합니다.
 
-## 범위 밖 또는 낮은 우선순위
+## 이 공개 포트폴리오의 이력 정화
 
-아래 항목은 민감 정보 노출, 권한 문제, 무단 데이터 변경, 비용 발생, 서비스 장애와 직접 연결되지 않는 한 보안 취약점으로 처리하지 않을 수 있습니다.
+이 저장소는 비공개 팀 저장소를 공개로 전환한 것이 아니라 별도로 만든 공개 미러입니다. 공개 릴리스는 다음 계약을 지킵니다.
 
-- 단순 오타, 스타일, 반응형 레이아웃 문제
-- 공개 가능한 mock 데이터의 표시 오류
-- 민감 정보가 없는 개발용 콘솔 경고
-- 실제 데모/배포와 연결되지 않은 폐기 실험 코드
-- 악용 가능성이 확인되지 않은 일반 의존성 최신화 요청
+- 비공개 원본의 모든 branch·tag 커밋과 PR ref에만 남은 커밋을 공개 archive branch로 보존
+- `git filter-repo`로 blob·commit/tag message의 자격증명, 내부 주소, 의도하지 않은 개인정보를 이력 전체에서 치환
+- 여섯 팀원의 실명·실제 이메일은 author·committer·trailer에서 정규화해 기여 증거로 유지
+- empty/degenerate commit을 가지치기하지 않고, 원본 커밋마다 공개 커밋 하나가 대응하는지 검증
+- 변환 후 새 mirror를 만들어 도달 불가능한 원본 object까지 게시 후보에서 제거
+- `gitleaks`, exact-value 검사, 패턴 검사, 허용 identity 검사 후에만 공개 ref를 교체
 
-## 의존성 업데이트
+정화 규칙과 원래 비밀값 목록은 비공개 작업 공간에만 둡니다. 공개 tip에서는 비공개 submodule과 내부 운영 문서를 제거하고, 실행 가능한 mock 데모·`/docs/` 설명서·`/Obsidian/` 공개-safe 그래프만 제공합니다.
 
-의존성 업데이트는 [.github/dependabot.yml](.github/dependabot.yml)에서 하나의 주간 multi-ecosystem group으로 묶어 관리합니다. 목적은 프런트엔드, 백엔드, ML/OCR, Docker, GitHub Actions 업데이트가 생태계별로 흩어진 PR을 만들지 않게 하는 것입니다.
-
-- `frontend`: React/Vite/TypeScript/Capacitor npm 의존성
-- `backend`: Spring Boot, MyBatis, Spring Security, JWT, OpenAPI, PDF/mail/push 관련 Gradle 의존성
-- `ml`/`docs/ai-training`: Python 모델 학습, OCR, 평가/릴리즈 검증 requirements
-- `docker`: backend image, job-posting worker image (Dockerfile 기준 — docker-compose.yml은 docker ecosystem 대상이 아님)
-- `github-actions`: 데모 배포, 모바일 릴리즈, 4090 trigger, CI workflow actions
-
-실제 악용 가능한 취약점, 공개 CVE, secret 노출, 인증/권한 우회와 연결된 업데이트는 일반 버전 업데이트보다 우선 검토합니다. ML requirements는 재현성과 GPU/4090 실행 환경에 영향을 줄 수 있으므로 통합 PR 안에서도 별도 테스트 결과와 변경 범위를 확인합니다.
-
-런타임 버전 계약은 `dependabot.yml`의 `ignore`로 고정해 자동 PR이 깨뜨리지 못하게 합니다. 백엔드 Java 21(eclipse-temurin major 제외), OCR 워커 Python 3.13(python minor/major 제외 — 3.13→3.14는 paddlepaddle 휠 부재로 OCR이 깨짐), Spring Boot major·langchain4j(beta)·torch/transformers/bitsandbytes major는 자동 범프 대상에서 빼고 수동 마이그레이션으로 다룹니다.
-
-## 수정과 공개
-
-취약점이 확인되면 필요한 범위에서 비공개 브랜치, 제한된 PR, 또는 Security Advisory로 수정 내용을 관리합니다. 패치가 준비되기 전까지 재현 코드와 영향 범위 세부 사항은 공개하지 않습니다.
-
-수정 확인은 가능한 한 영향받은 계층의 테스트와 함께 진행합니다. 예를 들어 백엔드는 `./gradlew test`, 프런트는 `npm run typecheck`, job-posting worker는 해당 Python tests/릴리즈 readiness 스크립트, 배포 산출물은 workflow secret scan과 artifact 확인을 우선 사용합니다.
+Pages 데모는 실제 자격증명 없이 브라우저에서 동작하는 시연판입니다. 실제 OAuth·SMS·결제·유료 AI provider의 운영 성공을 의미하지 않습니다. 자세한 구현과 공개 절차는 [보안과 공개 이력 정화](https://notetester.github.io/CareerTunerPortfolio/docs/security)를 참고하세요.
