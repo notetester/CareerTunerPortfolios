@@ -20,7 +20,7 @@
 | 최종 이력 검증 보고서 SHA-256 | `513fd6738ba9d61d86cb23c63e7ea1158b945dd71b7eedad7b5f4fc377ee360c` |
 | 원본→공개 commit map SHA-256 | `079b3a1424cc6e20c320bc503164d6337faa291507cdd85befaa5c48f76c89fc` |
 
-정화 baseline은 1,830개 commit, 157개 ref, 10,235개 고유 blob을 대상으로 원본 commit의 1:1 매핑과 parent topology를 검증했습니다. 알려진 민감값 29개, commit/tag metadata, blob 경계 패턴, 금지 경로, 비공개 네트워크 식별자와 허용되지 않은 작성자 identity는 모두 0건이었습니다. 공식 Gitleaks 8.30.1 검사도 누출 0건으로 통과했습니다.
+정화 baseline은 1,830개 commit, 157개 ref(일반 head 115개, archive head 21개, tag 21개), 10,235개 고유 blob을 대상으로 원본 commit의 1:1 매핑과 parent topology를 검증했습니다. 알려진 민감값 29개, commit/tag metadata, blob 경계 패턴, 금지 경로, 비공개 네트워크 식별자와 허용되지 않은 작성자 identity는 모두 0건이었습니다. 공식 Gitleaks 8.30.1 검사도 누출 0건으로 통과했습니다.
 
 ## 자동 검증 결과
 
@@ -52,7 +52,7 @@
 ### Android·iOS·데스크톱
 
 - Capacitor Android sync 통과: release-safe 네트워크 정책과 plugin 8개 확인
-- Android `lintDebug testDebugUnitTest assembleDebug`: 512 tasks 성공, unit 1/1 통과, lint 오류 0건(기존 warning 13건)
+- Android `lintDebug testDebugUnitTest assembleDebug`: 512 tasks를 49.98초에 성공, unit 1/1 통과, lint 오류 0건(기존 warning 13건)
 - debug APK: 12,012,162 bytes, APK Signature Scheme v2 확인, SHA-256 `AF9619B91BF6810D3B4295B9FFFC8EAA576BE7C2FC8D483D3BC400EBA3D57239`
 - 데스크톱 Qt 6.11.1 / MinGW 13.1 / CMake 4.4 Release configure·build 성공, CTest 1/1 통과
 - iOS는 Windows에서 실제 Xcode compile을 실행할 수 없어 native 설정·deep link·Associated Domains와 비실행 workflow 계약까지만 정적 검증
@@ -61,7 +61,7 @@
 
 - 일반 사용자와 관리자 원클릭 로그인, dashboard 진입과 mock 데이터 로딩 확인
 - 비로그인 `/admin/policies` 접근은 로그인으로 복귀하고, 일반 사용자는 403 화면으로 차단되는 fail-closed 동작 확인
-- 관리자 모바일 메뉴 drawer, 사용자 모바일 bottom navigation, desktop/mobile 수평 overflow 없음 확인
+- 관리자 모바일 메뉴 drawer, 사용자 모바일 bottom navigation, desktop과 390×844 mobile에서 수평 overflow 없음 확인
 - 사용자·관리자 화면의 light/dark theme 확인
 - PWA 방문 뒤에도 `/docs/`와 `/Obsidian/`이 SPA fallback에 가로채이지 않음을 확인
 - `/docs/`, `/Obsidian/`, `/SecondBrain/`, `/Wiki/`의 desktop/mobile 표시 확인
