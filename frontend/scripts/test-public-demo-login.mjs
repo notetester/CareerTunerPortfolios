@@ -77,3 +77,11 @@ test("로그인 화면은 목 모드 계정 목록과 일회성 자동 진입을
   assert.match(source, /autoDemoEntryAttempted\.current = true/);
   assert.match(source, /handlePublicDemoLogin\(autoEntry\.role, autoEntry\.returnTo\)/);
 });
+
+test("PWA는 공개 설명서와 지식 지도를 SPA 폴백으로 가로채지 않는다", async () => {
+  const viteConfig = await readFile(new URL("../vite.config.ts", import.meta.url), "utf8");
+
+  assert.match(viteConfig, /navigateFallbackDenylist:/);
+  assert.match(viteConfig, /\/\\\/docs\(\?:\\\/\|\$\)\//);
+  assert.match(viteConfig, /\/\\\/Obsidian\(\?:\\\/\|\$\)\//);
+});

@@ -87,9 +87,14 @@ export default defineConfig(async ({ mode }) => {
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff,woff2}'],
         navigateFallback: 'index.html',
-        // /api 와 별도 정적 지식맵은 SPA 폴백/캐시 대상에서 제외한다.
-        // Pages의 /Obsidian/* 요청을 index.html로 돌리면 React Router 404가 노출된다.
-        navigateFallbackDenylist: [/^\/api/, /^\/__backup\//, /\/Obsidian(?:\/|$)/],
+        // /api 와 별도 정적 설명/지식 사이트는 SPA 폴백 대상에서 제외한다.
+        // Pages의 /docs/*·/Obsidian/* 이동을 index.html로 돌리면 React 앱이 서브사이트를 가린다.
+        navigateFallbackDenylist: [
+          /^\/api/,
+          /^\/__backup\//,
+          /\/docs(?:\/|$)/,
+          /\/Obsidian(?:\/|$)/,
+        ],
         cleanupOutdatedCaches: true,
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         // Web Push 핸들러(push/notificationclick)를 생성 SW 에 합친다. public/push-sw.js 참고.
