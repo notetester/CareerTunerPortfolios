@@ -49,8 +49,8 @@ export function safePublicDemoReturnTo(returnTo: string | null, fallback: string
   if (returnTo.includes("\\") || /[\u0000-\u001f\u007f]/.test(returnTo)) return fallback;
 
   try {
-    const parsed = new URL(returnTo, "https://careertuner.local");
-    if (parsed.origin !== "https://careertuner.local") return fallback;
+    const parsed = new URL(returnTo, "https://careertuner.example");
+    if (parsed.origin !== "https://careertuner.example") return fallback;
 
     const decodedPath = decodeURIComponent(parsed.pathname);
     if (decodedPath.startsWith("//") || decodedPath.includes("\\")) return fallback;
