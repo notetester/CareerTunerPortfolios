@@ -19,7 +19,13 @@ import lombok.Setter;
 public class OllamaProperties {
 
     private String baseUrl = "http://localhost:11434";
+    /** 범용 모델. 태깅·면접추출·신고분류가 쓴다. */
     private String model = "gemma4";
+    /** 텍스트 검열(abuse/spam/ad/normal 판정) 전용 파인튜닝 모델.
+     *  careertuner-mod 는 Modelfile 에 num_predict=64 가 박혀 있어 짧은 판정 JSON 에만 적합하다 —
+     *  긴 JSON 을 뽑는 태깅/면접추출이 같은 모델을 쓰면 출력이 잘리므로 {@link #model} 과 분리한다.
+     *  미설치 환경이면 검열 호출이 실패하고 게이트웨이가 Claude/OpenAI 로 폴백한다. */
+    private String moderationModel = "careertuner-mod";
     /** 이미지(vision) 검열 전용 모델. gemma4 는 이미지 속 광고/텍스트 인식이 약해 전용 VL 모델을 쓴다.
      *  미설치 환경이면 vision 호출이 실패하고 게이트웨이가 Claude/OpenAI vision 으로 폴백한다. */
     private String visionModel = "qwen2.5vl:7b";

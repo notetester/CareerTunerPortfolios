@@ -308,7 +308,12 @@ careertuner:
 ai:
   ollama:
     base-url: ${AI_OLLAMA_BASE_URL:http://localhost:11434}
+    # 범용 모델 — 태깅·면접추출·신고분류가 쓴다.
     model: ${AI_OLLAMA_MODEL:gemma4}
+    # 텍스트 검열 전용 파인튜닝 모델. careertuner-mod 는 Modelfile 에 num_predict=64 가 박혀 있어
+    # 긴 JSON 을 뽑는 태깅/면접추출에 쓰면 잘린다 → 검열 경로만 분리해 쓴다.
+    # 미설치 환경이면 검열 호출 실패 → Claude/OpenAI 폴백.
+    moderation-model: ${AI_OLLAMA_MODERATION_MODEL:careertuner-mod}
     # 이미지(vision) 검열 전용 모델 — 텍스트는 gemma4, 이미지는 텍스트/광고 인식이 강한 VL 모델을 쓴다.
     # 미설치 환경이면 vision 호출 실패 → Claude/OpenAI vision 폴백.
     vision-model: "${AI_OLLAMA_VISION_MODEL:qwen2.5vl:7b}"
