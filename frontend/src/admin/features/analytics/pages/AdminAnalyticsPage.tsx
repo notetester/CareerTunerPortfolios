@@ -23,6 +23,7 @@ import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Progress } from "@/app/components/ui/progress";
+import AdminShell from "../../../components/AdminShell";
 import {
   createAdminCareerRunMemo,
   deleteAdminCareerRunMemo,
@@ -472,25 +473,20 @@ export function AdminAnalyticsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
-        <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <Badge className="mb-2 bg-foreground text-background">C 관리자</Badge>
-            <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
-              <BarChart3 className="size-6 text-indigo-600" />
-              분석 통계
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              적합도·부족 역량 통계와 장기 경향·대시보드 요약 AI 실행 이력을 입력/결과 스냅샷까지 확인합니다.
-            </p>
-          </div>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            새로고침
-          </Button>
-        </section>
-
+    <AdminShell
+      active="analytics"
+      breadcrumb="분석 통계"
+      title="분석 통계"
+      icon={BarChart3}
+      desc="적합도·부족 역량 통계와 장기 경향·대시보드 요약 AI 실행 이력을 입력/결과 스냅샷까지 확인합니다."
+      actions={(
+        <Button variant="outline" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          새로고침
+        </Button>
+      )}
+    >
+      <div className="space-y-6">
         {loading && (
           <Card className="border border-slate-200 bg-card">
             <CardContent className="flex items-center gap-3 p-5 text-sm text-slate-600">
@@ -882,7 +878,7 @@ export function AdminAnalyticsPage() {
           </>
         )}
       </div>
-    </div>
+    </AdminShell>
   );
 }
 

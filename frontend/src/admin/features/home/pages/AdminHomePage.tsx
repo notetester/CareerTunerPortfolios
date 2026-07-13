@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { AlertTriangle, ArrowRight, ClipboardList, House, RefreshCw, Sparkles } from "lucide-react";
-import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
+import AdminShell from "../../../components/AdminShell";
 import { getAdminHomeSummary } from "../api/adminHomeApi";
 import type { AdminHomeSummary } from "../types/adminHome";
 
@@ -45,23 +45,20 @@ export function AdminHomePage() {
     : [];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-8 sm:px-6">
-        <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <Badge className="mb-2 bg-foreground text-background">C 관리자</Badge>
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
-              <House className="size-6 text-blue-600" />
-              관리자 홈
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">지금 처리할 적합도 분석 운영 항목과 바로가기입니다.</p>
-          </div>
-          <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-            새로고침
-          </Button>
-        </section>
-
+    <AdminShell
+      active="admin-home"
+      breadcrumb="운영 작업함"
+      title="관리자 홈"
+      icon={House}
+      desc="지금 처리할 적합도 분석 운영 항목과 바로가기입니다."
+      actions={(
+        <Button variant="outline" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
+          새로고침
+        </Button>
+      )}
+    >
+      <div className="space-y-5">
         {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
         {loading ? (
@@ -105,6 +102,6 @@ export function AdminHomePage() {
           </>
         )}
       </div>
-    </div>
+    </AdminShell>
   );
 }
