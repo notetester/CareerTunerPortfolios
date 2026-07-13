@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="CareerTuner 공개 심사용 키워드 지식 그래프" />
+    <title>CareerTuner Public Knowledge Map</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="../" aria-label="CareerTuner 데모 홈">
+        <span class="brand-mark">CT</span>
+        <span>
+          <strong>CareerTuner</strong>
+          <small>Public Knowledge Map</small>
+        </span>
+      </a>
+      <nav class="topnav" aria-label="주요 링크">
+        <a href="Wiki/">Wiki</a>
+        <a href="SecondBrain/">Second Brain</a>
+        <a href="../">Demo</a>
+        <a href="https://github.com/notetester/CareerTunerPortfolio">GitHub Pages Repo</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="overview" aria-labelledby="overview-title">
+        <div class="overview-copy">
+          <p class="eyebrow">Public Knowledge Graph</p>
+          <h1 id="overview-title">
+            <span>키워드로 연결한</span>
+            <span>공개 지식 그래프</span>
+          </h1>
+          <p>
+            내부 API 키, 계정, 실제 endpoint, raw output은 제외하고 제품 구조, 사용자 흐름, 기술 스택,
+            AI/ML, 데이터 모델, 릴리즈, 협업 규칙을 키워드 단위로 연결했습니다.
+          </p>
+        </div>
+        <dl class="metrics" aria-label="공개 요약 지표">
+          <div>
+            <dt id="metricNodes">0</dt>
+            <dd>keyword nodes</dd>
+          </div>
+          <div>
+            <dt id="metricEdges">0</dt>
+            <dd>curated links</dd>
+          </div>
+          <div>
+            <dt id="metricAreas">0</dt>
+            <dd>topic areas</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="control-row" aria-label="지식맵 필터">
+        <label class="search">
+          <span>검색</span>
+          <input id="searchInput" type="search" autocomplete="off" placeholder="지원 건, MyBatis, PWA, fallback..." />
+        </label>
+        <div id="areaFilters" class="segments" role="group" aria-label="영역 필터"></div>
+      </section>
+
+      <section class="workspace" aria-label="공개 지식맵">
+        <section class="panel graph-panel" aria-labelledby="graph-title">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Map</p>
+              <h2 id="graph-title">Keyword Relation Graph</h2>
+            </div>
+            <div class="graph-tools" aria-label="그래프 보기 도구">
+              <button id="zoomOutButton" type="button" aria-label="축소">−</button>
+              <button id="zoomInButton" type="button" aria-label="확대">+</button>
+              <button id="fitButton" type="button">맞춤</button>
+              <button id="focusButton" type="button">선택</button>
+              <span id="resultCount" class="status-pill">0 visible</span>
+              <span id="selectionStatus" class="status-pill selection-status" aria-live="polite">선택: CareerTuner</span>
+            </div>
+          </div>
+          <svg id="graph" viewBox="0 0 1360 860" role="img" aria-label="CareerTuner 공개 지식맵 그래프"></svg>
+          <p class="graph-hint">드래그해서 이동하고, 마우스 휠이나 버튼으로 확대·축소할 수 있습니다.</p>
+        </section>
+
+        <aside class="panel detail-panel" aria-labelledby="detailTitle" aria-live="polite">
+          <p id="detailArea" class="eyebrow">Public</p>
+          <h2 id="detailTitle">CareerTuner</h2>
+          <p id="detailBody" class="detail-body"></p>
+          <ul id="detailPoints" class="point-list"></ul>
+          <div class="neighbor-block">
+            <h3>연결된 키워드</h3>
+            <div id="neighborList" class="neighbor-list"></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="panel" aria-labelledby="cards-title">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">Keyword Index</p>
+            <h2 id="cards-title">공개 키워드 색인</h2>
+          </div>
+        </div>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section class="panel boundary" aria-labelledby="boundary-title">
+        <div>
+          <p class="eyebrow">Boundary</p>
+          <h2 id="boundary-title">공개본과 원본 vault의 역할 분리</h2>
+        </div>
+        <p>
+          공개본은 지식관리 화면처럼 프로젝트의 연결 구조를 보여주는 안내면입니다. 내부 API 키, 계정,
+          실제 endpoint, raw output, 비공개 운영 판단은 원본 Obsidian vault에 남기고, 데모에는 공개 가능한
+          키워드와 관계만 고정합니다. Graphify와 LLM Wiki를 활용한 agent second brain 구조는
+          <a href="SecondBrain/">Second Brain 뷰어</a>에서, 공개 합성 문서는
+          <a href="Wiki/">CareerTuner Wiki</a>에서 확인할 수 있습니다.
+        </p>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
