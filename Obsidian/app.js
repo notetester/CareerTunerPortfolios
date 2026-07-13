@@ -138,7 +138,7 @@ const nodes = [
   ], ["vite", "typescript", "tailwind", "admin-ui", "pwa", "mock-demo-build"]),
   node("vite", "Vite", "frontend", "stack", 16, "개발 서버와 정적 빌드를 담당하며 GitHub Pages base path와 데모 모드를 처리합니다.", [
     "로컬 개발에서는 /api 프록시로 백엔드와 연결됩니다.",
-    "Pages 배포는 /CareerTunerPortfolio/ base path를 사용합니다.",
+    "Pages 배포는 /CareerTunerPortfolios/ base path를 사용합니다.",
     "mock 빌드와 모바일 sync의 출발점입니다.",
   ], ["demo-pages", "mock-demo-build", "capacitor"]),
   node("typescript", "TypeScript", "frontend", "stack", 16, "프런트 타입 안정성과 CI typecheck의 기준입니다.", [
@@ -400,7 +400,7 @@ const nodes = [
     "태그 기반 모바일/데스크톱 release workflow와 연결됩니다.",
     "공개 데모는 Pages에, 앱 산출물은 GitHub Release에 올리는 구조입니다.",
   ], ["demo-pages", "android-apk", "ios-build", "desktop-zip", "installer", "portable-exe", "cross-platform-integration"]),
-  node("demo-pages", "GitHub Pages Demo", "release", "web", 18, "CareerTunerPortfolio 공개 repo에서 정적 mock 또는 AWS-first 장애 demo를 체험하는 웹 채널입니다.", [
+  node("demo-pages", "GitHub Pages Demo", "release", "web", 18, "CareerTunerPortfolios 공개 repo에서 정적 mock 또는 AWS-first 장애 demo를 체험하는 웹 채널입니다.", [
     "정상 상태에서는 AWS API가 먼저이며 실제 readiness 장애에서만 read-only mock으로 전환합니다.",
     "이 Obsidian 공개 지식맵도 /Obsidian/ 하위에 보존됩니다.",
     "SPA fallback과 base path 설정이 필요합니다.",
@@ -441,7 +441,7 @@ const nodes = [
     "읽기 전용 위치에서는 OS 사용자 데이터 경로 폴백을 사용합니다.",
   ], ["desktop-readme", "installer", "release-matrix"]),
   node("github-actions", "GitHub Actions", "release", "ci", 17, "웹 데모, Android, iOS, desktop, backend/frontend CI를 자동화하는 workflow 축입니다.", [
-    "데모 배포는 CareerTunerPortfolio repo의 Pages 산출물을 갱신합니다.",
+    "데모 배포는 CareerTunerPortfolios repo의 Pages 산출물을 갱신합니다.",
     "모바일/데스크톱은 태그 기반 release 흐름과 연결됩니다.",
     "PR 체크 실패는 로그 기반으로 원인을 확인합니다.",
   ], ["frontend-ci", "backend-ci", "demo-pages", "android-apk"]),

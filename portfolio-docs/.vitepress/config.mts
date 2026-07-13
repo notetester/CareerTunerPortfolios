@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 // 데모(Pages 루트)와 한 저장소를 공유하므로 설명서는 /docs/ 하위에 배포된다.
 export default defineConfig({
-  base: '/CareerTunerPortfolio/docs/',
+  base: '/CareerTunerPortfolios/docs/',
   lang: 'ko-KR',
   title: 'CareerTuner 기능 설명서',
   description:
@@ -15,10 +15,10 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '설명서', link: '/overview' },
-      { text: '라이브 데모', link: 'https://notetester.github.io/CareerTunerPortfolio/' },
+      { text: '라이브 데모', link: 'https://notetester.github.io/CareerTunerPortfolios/' },
       { text: '기술 학습', link: 'https://notetester.github.io/CareerTunerLearning/' },
-      { text: '지식 지도', link: 'https://notetester.github.io/CareerTunerPortfolio/Obsidian/' },
-      { text: '소스', link: 'https://github.com/notetester/CareerTunerPortfolio' },
+      { text: '지식 지도', link: 'https://notetester.github.io/CareerTunerPortfolios/Obsidian/' },
+      { text: '소스', link: 'https://github.com/notetester/CareerTunerPortfolios' },
     ],
     sidebar: [
       {
@@ -66,7 +66,7 @@ export default defineConfig({
       },
     ],
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/notetester/CareerTunerPortfolio' },
+      { icon: 'github', link: 'https://github.com/notetester/CareerTunerPortfolios' },
     ],
     footer: {
       message: '민감정보(API 키·DB 자격증명·내부 IP)는 전체 커밋 이력에서 제거된 포트폴리오 공개본입니다.',

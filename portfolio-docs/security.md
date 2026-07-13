@@ -95,4 +95,4 @@ Pages workflow는 다음 순서로 사이트를 조립합니다.
 
 공개 Pages는 브라우저 안에서 mock 데이터로 동작하는 장애 독립 시연판입니다. 운영 AWS가 정상일 때 우선 연결되는 failover endpoint가 아니며, 실제 OAuth·SMS·결제·유료 AI provider의 운영 성공을 증명하지 않습니다. 외부 자격증명이 필요한 항목은 코드/계약 테스트와 provider 콘솔·실환경 검증 상태를 별도로 기록합니다.
 
-보안 문제 제보 방법과 우선 보호 대상은 저장소 루트의 [SECURITY.md](https://github.com/notetester/CareerTunerPortfolio/blob/dev/SECURITY.md)를 참고하세요.
+보안 문제 제보 방법과 우선 보호 대상은 저장소 루트의 [SECURITY.md](https://github.com/notetester/CareerTunerPortfolios/blob/dev/SECURITY.md)를 참고하세요.
