@@ -9,6 +9,8 @@ import type {
 interface CommunityState {
   /* 목록 */
   posts: CommunityPost[];
+  /** 서버 기준 전체 글 수(현재 필터/검색 조건) — Pager 전체 페이지 계산용. 서버 페이지네이션이라 posts 는 현재 페이지만 담는다. */
+  total: number;
   hotPosts: { id: number; title: string; comments: number; views: number }[];
   /** 카테고리 slug → 게시글 수 (탭 뱃지용, 목록과 동일 소스) */
   categoryCounts: Record<string, number>;
@@ -27,7 +29,7 @@ interface CommunityState {
   error: string | null;
 
   /* 액션 */
-  fetchPosts: (category?: CommunityCategory, sort?: string, keyword?: string) => Promise<void>;
+  fetchPosts: (category?: CommunityCategory, sort?: string, keyword?: string, page?: number, size?: number) => Promise<void>;
   /** 챗봇 추천 모아보기(?ids=) — id 목록으로 정확 조회해 posts 를 채운다(추천 순서 보존). */
   fetchPostsByIds: (ids: number[]) => Promise<void>;
   fetchHotPosts: () => Promise<void>;
@@ -109,6 +111,7 @@ const isCurrentComments = (generation: number, sequence: number, postId: number)
 
 export const useCommunityStore = create<CommunityState>((set, get) => ({
   posts: [],
+  total: 0,
   hotPosts: [],
   categoryCounts: {},
   loading: false,
@@ -119,16 +122,16 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
   detailError: null,
   error: null,
 
-  fetchPosts: async (category, sort, keyword) => {
+  fetchPosts: async (category, sort, keyword, page = 0, size = 20) => {
     const generation = communityGeneration;
     const sequence = ++postListSequence;
     set({ loading: true, error: null });
     try {
-      // 검색어는 서버에서 필터(제목·본문·회사·직무·태그 LIKE) — 기존 "최신 100건만 메모리 필터" 누락을 해소.
-      // 단 매칭이 100건을 넘으면 클라 페이지네이션 상한(size=100)에 걸린다 → 서버 페이지네이션은 후속(total 미사용).
-      const posts = await communityApi.getPosts(category, sort, 0, 100, keyword);
+      // 서버 페이지네이션 — 한 페이지(size)만 받고 total 로 전체 페이지를 계산한다.
+      // 정렬·검색·개인화도 서버가 처리하므로 100건 상한 없이 전체 글에 접근한다(클라 재정렬 없음).
+      const { posts, total } = await communityApi.getPostsPage(category, sort, page, size, keyword);
       if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
-      set({ posts, loading: false });
+      set({ posts, total, loading: false });
     } catch (e) {
       if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
       set({ loading: false, error: (e as Error).message });
@@ -140,9 +143,10 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     const sequence = ++postListSequence;
     set({ loading: true, error: null });
     try {
+      // 추천 모아보기는 서버가 매칭 전부(≤20건)를 한 번에 내려준다 — total=현재 글 수(전 건 로드).
       const posts = await communityApi.getPostsByIds(ids);
       if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
-      set({ posts, loading: false });
+      set({ posts, total: posts.length, loading: false });
     } catch (e) {
       if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
       set({ loading: false, error: (e as Error).message });
@@ -228,9 +232,10 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     await communityApi.createPost(data);
     if (!isCurrentGeneration(generation)) return;
     const sequence = ++postListSequence;
-    const posts = await communityApi.getPosts();
+    // 작성 후 첫 페이지(최신)로 갱신 — 새 글이 상단에 온다. 화면은 제출 후 page 1 로 리셋해 정합을 맞춘다.
+    const { posts, total } = await communityApi.getPostsPage();
     if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
-    set({ posts });
+    set({ posts, total });
   },
 
   updatePost: async (id, data) => {
@@ -238,9 +243,9 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     await communityApi.updatePost(id, data);
     if (!isCurrentGeneration(generation)) return;
     const sequence = ++postListSequence;
-    const posts = await communityApi.getPosts();
+    const { posts, total } = await communityApi.getPostsPage();
     if (!isCurrentGeneration(generation) || sequence !== postListSequence) return;
-    set({ posts });
+    set({ posts, total });
   },
 
   toggleReaction: async (targetType, targetId, reactionType) => {

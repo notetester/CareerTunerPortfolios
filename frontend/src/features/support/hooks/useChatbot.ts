@@ -98,6 +98,8 @@ export function useChatbot() {
   const [botStatus, setBotStatus] = useState<BotStatus>("idle");
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [interimTranscript, setInterimTranscript] = useState("");
+  // 브라우저 STT 미지원이면 위젯이 마이크 버튼을 숨긴다. (진행 세션 ref = voiceRecognizerRef)
+  const voiceSupported = isBrowserSttSupported();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   // openSession 이 클릭 시점의 목록에서 kind 를 조회한다 — 상태를 deps 로 끌면 콜백이 목록 갱신마다 재생성돼 ref 로 고정.
   const sessionsRef = useRef<ChatSession[]>([]);
@@ -682,6 +684,8 @@ export function useChatbot() {
     }
   }, [requestScope, run, sendMessage, collapseToCorner]);
 
+  /* ── 음성 입력(STT): Web Speech 세션을 열고 실시간 전사를 interimTranscript 로 흘린다.
+        전송은 confirmVoice → 기존 sendMessage 경로 그대로 — 타이핑 메시지와 동일하게 취급된다. ── */
   const startVoice = useCallback(() => {
     voiceRecognizerRef.current?.dispose();
     voiceRecognizerRef.current = null;
@@ -734,6 +738,22 @@ export function useChatbot() {
     setInterimTranscript("");
   }, [interimTranscript, requestScope, sendMessage]);
 
+  // 위젯 닫힘(닫기/최소화 공통) 시 마이크 정리 — 닫힌 화면 뒤에서 계속 듣지 않게.
+  useEffect(() => {
+    if (!isOpen) {
+      voiceRecognizerRef.current?.dispose();
+      voiceRecognizerRef.current = null;
+      requestScope.cancelLane("voice");
+      setVoiceState("idle");
+      setInterimTranscript("");
+    }
+  }, [isOpen, requestScope]);
+  // 언마운트 시 인식 세션 해제.
+  useEffect(() => () => {
+    voiceRecognizerRef.current?.dispose();
+    voiceRecognizerRef.current = null;
+  }, []);
+
   const retryConnection = useCallback(() => {
     const retry = lastFailedActionRef.current;
     lastFailedActionRef.current = null;
@@ -781,6 +801,22 @@ export function useChatbot() {
 
   const accountStateCurrent = stateAccountKey === accountKey;
 
+  /* ── 대화 삭제(본인 소유만, 서버가 소유 검증) — 목록에서 제거하고, 지금 보던 대화면 새 대화로 리셋.
+        반환값 = 열려 있던 대화를 지웠는지(위젯이 가이드 오버레이 등 로컬 상태를 함께 정리할 신호).
+        실패는 throw 로 전파 — 확인 UI(SessionPanel)가 에러 안내를 맡는다. ── */
+  const deleteSession = useCallback(async (id: string): Promise<boolean> => {
+    const conversationId = Number(id);
+    if (!Number.isFinite(conversationId)) return false;
+    await api<void>(`/chatbot/conversations/${conversationId}`, { method: "DELETE" });
+    // 활성 판정은 activeSessionId 가 아니라 conversationIdRef 로 — 목록을 거치지 않고 새로 시작한
+    // 대화(activeSessionId="")도 지금 열려 있으면 리셋해야 다음 전송이 죽은 id 로 나가지 않는다.
+    const wasCurrent = conversationIdRef.current === conversationId;
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    setActiveSessionId((cur) => (cur === id ? "" : cur));
+    if (wasCurrent) newSession();
+    return wasCurrent;
+  }, [newSession]);
+
   return {
     isOpen: accountStateCurrent ? isOpen : false,
     open, close, minimize, restoreRecent,
@@ -791,12 +827,13 @@ export function useChatbot() {
     voiceState: accountStateCurrent ? voiceState : "idle" as VoiceState,
     startVoice, cancelVoice, confirmVoice, setVoiceState,
     interimTranscript: accountStateCurrent ? interimTranscript : "",
+    voiceSupported,
     retryConnection,
     toggleTts,
     sessions: accountStateCurrent ? sessions : [],
     activeSessionId: accountStateCurrent ? activeSessionId : "",
     setActiveSessionId, newSession,
-    loadSessions, openSession,
+    loadSessions, openSession, deleteSession,
     // 오케스트레이터
     orchestrator: accountStateCurrent ? orchestrator : false,
     runStarted: accountStateCurrent ? runStarted : false,

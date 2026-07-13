@@ -35,6 +35,8 @@ interface BackendPost {
   bookmarked?: boolean;
   scrapped?: boolean;
   subscribed?: boolean;
+  /** 현재 뷰어 본인 글이면 true — 익명 글도 수정/삭제 버튼 게이팅 판정 가능(상세 응답에만 포함). */
+  mine?: boolean;
   /** 뷰어가 차단한 작성자의 글이면 true — 톰스톤 렌더용(조용한 차단). */
   blocked?: boolean;
   /** 신고 누적으로 가려진 글(비작성자에게 블러). */
@@ -88,6 +90,27 @@ function mapPost(p: BackendPost): CommunityPost {
 
 /* ── 게시글 ── */
 
+/**
+ * 목록 한 페이지 조회 — 매핑된 글 + 서버 total(전체 건수)을 함께 반환한다.
+ * 서버 페이지네이션(Pager)이 total 로 전체 페이지 수를 계산하므로 100건 상한 없이 전체 글에 접근한다.
+ */
+export async function getPostsPage(
+  category?: CommunityCategory,
+  sort = "latest",
+  page = 0,
+  size = 20,
+  keyword?: string,
+): Promise<{ posts: CommunityPost[]; total: number }> {
+  const params = new URLSearchParams({ sort, page: String(page), size: String(size) });
+  if (category) params.set("category", categoryToEnum(category));
+  if (keyword && keyword.trim()) params.set("keyword", keyword.trim());
+  // 로그인 사용자면 토큰을 붙여 서버가 뷰어 컨텍스트를 갖게 한다(개인화 sort='personalized'와
+  // 차단 작성자 필터가 뷰어 없이는 동작하지 않는다). 엔드포인트는 permitAll 이라 비로그인은 헤더만 생략된다.
+  const data = await api<PostPageData>(`/community/posts?${params}`, {}, { auth: true });
+  return { posts: data.posts.map(mapPost), total: data.total };
+}
+
+/** 목록 조회(글 배열만). total 이 필요하면 getPostsPage 를 쓴다. */
 export async function getPosts(
   category?: CommunityCategory,
   sort = "latest",
@@ -95,13 +118,7 @@ export async function getPosts(
   size = 20,
   keyword?: string,
 ) {
-  const params = new URLSearchParams({ sort, page: String(page), size: String(size) });
-  if (category) params.set("category", categoryToEnum(category));
-  if (keyword && keyword.trim()) params.set("keyword", keyword.trim());
-  // 로그인 사용자면 토큰을 붙여 서버가 뷰어 컨텍스트를 갖게 한다(개인화 sort='personalized'와
-  // 차단 작성자 필터가 뷰어 없이는 동작하지 않는다). 엔드포인트는 permitAll 이라 비로그인은 헤더만 생략된다.
-  const data = await api<PostPageData>(`/community/posts?${params}`, {}, { auth: true });
-  return data.posts.map(mapPost);
+  return (await getPostsPage(category, sort, page, size, keyword)).posts;
 }
 
 /** 챗봇 추천 모아보기 — id 목록으로 정확 조회(입력 순서 보존, 서버가 차단·블라인드 필터 적용). */

@@ -29,4 +29,7 @@ public interface ChatbotIntakeSlotMapper {
      */
     void markStatus(@Param("conversationId") Long conversationId,
                     @Param("status") String status);
+
+    /** 대화 삭제 동반 정리 — chatbot_conversation_memory 와 FK 없는 논리참조(1:1)라 여기서 지워야 고아 슬롯이 안 남는다. */
+    void deleteByConversation(@Param("conversationId") Long conversationId);
 }

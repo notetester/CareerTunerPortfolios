@@ -24,6 +24,18 @@ function toSortKey(v: string | null): SortKey | null {
   return v === "recent" || v === "likes" || v === "comments" || v === "personalized" ? v : null;
 }
 
+/**
+ * 프론트 정렬 키 → 서버 sort 파라미터. 서버 페이지네이션이라 정렬은 서버(findAll)가 처리한다.
+ * - personalized: 검색어 없을 때만(7:3 혼합 피드). 검색어와 함께면 최신으로 폴백.
+ * - likes → popular(like_count), comments → comment_count, recent → 최신(created_at).
+ */
+function toServerSort(sort: SortKey, keyword: string): string {
+  if (sort === "personalized" && !keyword) return "personalized";
+  if (sort === "likes") return "popular";
+  if (sort === "comments") return "comments";
+  return "latest";
+}
+
 export function CommunityHomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { postId: postIdParam } = useParams();
@@ -41,10 +53,10 @@ export function CommunityHomePage() {
     }
   }, [searchParams]);
 
-  // URL ?sort= 로 진입/변경되면 해당 정렬로 연다(헤더 "인기글" → ?sort=likes 딥링크).
+  // URL ?sort= 로 진입/변경되면 해당 정렬로 연다(헤더 "인기글" → ?sort=likes 딥링크). page 도 1로 리셋.
   useEffect(() => {
     const s = toSortKey(searchParams.get("sort"));
-    if (s) setSort(s);
+    if (s) { setSort(s); setPage(1); }
   }, [searchParams]);
 
   // /community/posts/:postId 딥링크(알림 클릭 등) → 상세 뷰로 진입
@@ -60,9 +72,9 @@ export function CommunityHomePage() {
   const [sort, setSort] = useState<SortKey>(toSortKey(searchParams.get("sort")) ?? "recent");
   const [tag, setTag] = useState("");
   const [page, setPage] = useState(1);
-  const PER = 8;
+  const PER = 20;
 
-  const { posts, loading, error, fetchPosts, fetchPostsByIds, categoryCounts, fetchCategoryCounts } = useCommunityStore();
+  const { posts, total, loading, error, fetchPosts, fetchPostsByIds, categoryCounts, fetchCategoryCounts } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel, isAuthenticated } = useLoginDialog();
 
   // ?ids=1,2,3 — 챗봇 추천 글 모아보기 진입. 서버 정확 조회(fetchPostsByIds)로 posts 를 채운다
@@ -74,31 +86,23 @@ export function CommunityHomePage() {
     return ids.length ? ids : null;
   }, [searchParams]);
 
-  // 검색(keyword)은 서버에서 필터된 posts 로 들어오므로 여기선 정렬만(클라 keyword 필터 제거 — 최신 100건 한정 누락 해소).
-  // 개인화("맞춤")는 서버가 7:3 혼합 순서를 이미 만들어 내려주므로 클라 재정렬을 하지 않는다(서버 순서 보존).
-  const filteredPosts = useMemo(() => {
-    if (recommendedIds) return posts; // 추천 모아보기 — 서버가 추천 순서(FIELD)로 반환, 클라 재정렬 없음
-    if (sort === "personalized") return posts;
-    return posts
-      .slice()
-      .sort((a, b) => {
-        if (sort === "recent") return (a.daysAgo ?? 0) - (b.daysAgo ?? 0);
-        const key = sort === "likes" ? "likeCount" : "commentCount";
-        return (b.stats[key] ?? 0) - (a.stats[key] ?? 0);
-      });
-  }, [posts, sort, recommendedIds]);
-
+  // 정렬·검색·페이지네이션은 모두 서버가 처리한다 → posts 는 현재 페이지 그대로 렌더(클라 재정렬/재슬라이스 없음).
+  // 추천 모아보기(?ids=)만 서버가 매칭 전부(≤20건)를 한 번에 내려주므로 클라에서 페이지로 나눈다.
   // 비로그인 상태에서 개인화가 선택돼 있으면 최신 정렬로 폴백(옵션 자체는 숨김).
   useEffect(() => {
-    if (!isAuthenticated && sort === "personalized") setSort("recent");
+    if (!isAuthenticated && sort === "personalized") { setSort("recent"); setPage(1); }
   }, [isAuthenticated, sort]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredPosts.length / PER));
+  const listCount = recommendedIds ? posts.length : total;
+  const totalPages = Math.max(1, Math.ceil(listCount / PER));
   const cur = Math.min(page, totalPages);
-  const pagePosts = filteredPosts.slice((cur - 1) * PER, cur * PER);
+  const pagePosts = recommendedIds ? posts.slice((cur - 1) * PER, cur * PER) : posts;
 
-  // 탭/정렬/태그가 바뀌면 1페이지로 리셋
-  useEffect(() => { setPage(1); }, [selectedCategory, sort, tag]);
+  // 탭/정렬/태그 변경 시 1페이지로 리셋 — 필터 변경과 page 리셋을 같은 핸들러에서 함께 호출해
+  // (별도 effect로 분리하지 않음) fetch effect가 중간 페이지로 한 번 더 요청하는 레이스를 없앤다.
+  const changeCategory = (v: string) => { setSelectedCategory(v); setPage(1); };
+  const changeSort = (s: SortKey) => { setSort(s); setPage(1); };
+  const changeTag = (t: string) => { setTag(t); setPage(1); };
 
   useEffect(() => {
     // 추천 모아보기(?ids=) — 일반 목록 대신 id 정확 조회. 배너 "전체 글 보기"가 ids 를 지우면 아래 일반 경로로 복귀.
@@ -109,15 +113,15 @@ export function CommunityHomePage() {
     const cat = CATEGORIES.find((c) => c.value === selectedCategory);
     const slug = selectedCategory === "all" ? undefined : cat?.slug;
     const kw = tag.trim();
-    // 개인화("맞춤")만 서버 정렬을 태운다(7:3 혼합). 나머지 정렬은 클라에서 처리하므로 서버엔 미전달(undefined).
-    // 개인화는 검색어와 함께 쓰지 않는다 — 키워드가 있으면 서버가 기존 LIKE 검색 경로로 폴백한다.
-    const serverSort = sort === "personalized" && !kw ? "personalized" : undefined;
-    // 검색어 입력은 디바운스(300ms)로 서버 조회, 카테고리 변경·검색어 클리어·정렬 전환은 즉시.
+    // 정렬은 서버가 처리한다(likes→popular, comments, recent→latest, personalized는 검색어 없을 때만).
+    const serverSort = toServerSort(sort, kw);
+    // 검색어 입력은 디바운스(300ms)로 서버 조회, 카테고리 변경·검색어 클리어·정렬·페이지 전환은 즉시.
+    // page 는 1-based(화면) → 서버는 0-based 이므로 page-1 로 전달. size=PER 로 서버 페이지네이션.
     const t = setTimeout(() => {
-      fetchPosts(slug, serverSort, kw || undefined);
+      fetchPosts(slug, serverSort, kw || undefined, page - 1, PER);
     }, kw ? 300 : 0);
     return () => clearTimeout(t);
-  }, [selectedCategory, tag, sort, fetchPosts, fetchPostsByIds, recommendedIds]);
+  }, [selectedCategory, tag, sort, page, fetchPosts, fetchPostsByIds, recommendedIds]);
 
   // 탭 뱃지용 카테고리별 글 수 (목록과 동일 소스에서 집계)
   useEffect(() => {
@@ -210,18 +214,21 @@ export function CommunityHomePage() {
     );
   }
 
+  // 작성/수정 완료 후 목록 1페이지로 복귀 — 새 글이 최신 첫 페이지에 오고, 서버 페이지네이션과 정합을 맞춘다.
+  const handleSubmitDone = () => { setPage(1); handleBack(); };
+
   if (viewMode === "edit" && editData) {
     return (
       <PostEditorForm
         editData={editData}
         onCancel={handleBack}
-        onSubmit={handleBack}
+        onSubmit={handleSubmitDone}
       />
     );
   }
 
   if (viewMode === "write") {
-    return <PostEditorForm onCancel={handleBack} onSubmit={handleBack} />;
+    return <PostEditorForm onCancel={handleBack} onSubmit={handleSubmitDone} />;
   }
 
   return (
@@ -241,7 +248,7 @@ export function CommunityHomePage() {
           <button
             key={cat.value}
             className={"uv-tab" + (selectedCategory === cat.value ? " on" : "")}
-            onClick={() => setSelectedCategory(cat.value)}
+            onClick={() => changeCategory(cat.value)}
           >
             {cat.label}
             {cat.value !== "all" && categoryCounts[cat.slug] != null && (
@@ -265,13 +272,13 @@ export function CommunityHomePage() {
         <div>
           <PostFilters
             sort={sort} tag={tag}
-            onSortChange={setSort} onTagChange={setTag}
+            onSortChange={changeSort} onTagChange={changeTag}
             showPersonalized={isAuthenticated}
           />
           {recommendedIds && (
             // 챗봇 추천 글 모아보기 배너 — 필터 상태를 드러내고 한 번에 해제할 수 있게.
             <div className="flex items-center justify-between gap-2 mb-3 px-3.5 py-2.5 rounded-xl border border-primary/30 bg-primary/10 text-[13px]">
-              <span className="font-semibold text-primary">챗봇 추천 글 {filteredPosts.length}개만 보고 있어요</span>
+              <span className="font-semibold text-primary">챗봇 추천 글 {posts.length}개만 보고 있어요</span>
               <button
                 onClick={() => setSearchParams((p) => { p.delete("ids"); return p; }, { replace: true })}
                 className="shrink-0 px-2.5 py-1 rounded-lg text-[12px] font-bold text-primary hover:bg-primary/20 transition-colors">
@@ -289,7 +296,7 @@ export function CommunityHomePage() {
             <>
               <PostList posts={pagePosts} onPostClick={handlePostClick} />
               <Pager page={cur} totalPages={totalPages} onPage={setPage} />
-              {filteredPosts.length === 0 && (
+              {pagePosts.length === 0 && (
                 <p className="av-empty">
                   {recommendedIds
                     ? "추천 글이 삭제되었거나 볼 수 없는 상태예요. 전체 글 보기로 돌아가 주세요."

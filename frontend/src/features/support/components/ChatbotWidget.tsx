@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   Sparkles, MessageCircle, Mic, MicOff, ArrowUp, X,
   KeyRound, CreditCard, FileText, FileSearch, Pause, Volume2,
   ArrowUpRight, Shield, SearchX, Headset, PenLine, WifiOff,
   RotateCw, Check, Keyboard, ArrowRight, Play, LogOut, History, Plus,
-  Minimize2, Maximize2, Loader2, SquarePen,
+  Minimize2, Maximize2, Loader2, SquarePen, Trash2,
 } from "lucide-react";
 import { getAccessToken } from "@/app/lib/tokenStore";
 import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
@@ -158,11 +158,11 @@ export function ChatbotPanel({ chatbot, embedded = false }: ChatbotPanelProps) {
   const {
     close, messages, sendMessage, leaveOnboarding, botStatus,
     voiceState, startVoice, cancelVoice, confirmVoice, setVoiceState,
-    interimTranscript, retryConnection, toggleTts,
+    interimTranscript, voiceSupported, retryConnection, toggleTts,
     orchestrator, runStarted, runParts, runRunning, runPlan, runCaseId, runError, retryRun, attachCoverLetter,
     selectCase, selectMode, setPendingAttachments, summarizePosts, onbCollected,
     showExitSheet, openExitSheet, closeExitSheet, exitOrchestrator,
-    sessions, activeSessionId, openSession, newSession, loadSessions,
+    sessions, activeSessionId, openSession, newSession, loadSessions, deleteSession,
     surface, expandToFloating, collapseToCorner, markInterviewHandoff,
   } = chatbot;
   const floating = !embedded && surface === "floating";
@@ -187,6 +187,10 @@ export function ChatbotPanel({ chatbot, embedded = false }: ChatbotPanelProps) {
   };
 
   const navigate = useNavigate();
+  const location = useLocation();
+  // 마이크 노출 가드: 미지원 브라우저(Firefox 등) + 면접 화면(/interview, /mic-remote — 자체 음성
+  // 파이프라인과 페이지당 1개인 SpeechRecognition·마이크를 다투므로) 에서는 숨긴다.
+  const micAvailable = voiceSupported && !/^\/(interview|mic-remote)(\/|$)/.test(location.pathname);
   const [input, setInput] = useState("");
   const [chatModel, setChatModel] = useState<AiModelChoice>("AUTO");
   const [showSessions, setShowSessions] = useState(false);
@@ -572,6 +576,7 @@ export function ChatbotPanel({ chatbot, embedded = false }: ChatbotPanelProps) {
             onChange={setInput}
             onSend={handleSend}
             onMic={startVoice}
+            showMic={micAvailable}
             onKeyDown={handleKeyDown}
             disabled={botStatus === "thinking"}
             orchestrator={orchestrator}
@@ -590,6 +595,10 @@ export function ChatbotPanel({ chatbot, embedded = false }: ChatbotPanelProps) {
           loggedIn={!!getAccessToken()}
           onOpen={(id) => { resetGuideOverlays(); openSession(id); setShowSessions(false); }}
           onNew={() => { resetGuideOverlays(); newSession(); setShowSessions(false); }}
+          onDelete={async (id) => {
+            // 열려 있던 대화를 지웠으면 훅의 newSession 리셋에 더해 위젯 로컬 오버레이도 정리한다.
+            if (await deleteSession(id)) resetGuideOverlays();
+          }}
           onLogin={() => { setShowSessions(false); close(); navigate("/login"); }}
           onClose={() => setShowSessions(false)}
         />
@@ -856,8 +865,8 @@ function ExitSheet({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: (
  * 세션 행(카드형) — design_handoff README 의 SessionRow 스펙(ApplicationChip 확장).
  * [이니셜 아이콘] [ title(굵게) / (모드 배지 · 상대시각) ]. 진행률·안읽음은 범위 밖(제외).
  */
-function SessionRow({ session, active, onClick }: {
-  session: ChatSession; active: boolean; onClick: () => void;
+function SessionRow({ session, active, onClick, onDelete }: {
+  session: ChatSession; active: boolean; onClick: () => void; onDelete?: () => void;
 }) {
   // 세션 제목은 백엔드가 "{회사} {직무}"로 조합 — placeholder 원문이 섞여 있으면 표시만 치환(F-02).
   const title = displayCaseText(session.title);
@@ -895,20 +904,50 @@ function SessionRow({ session, active, onClick }: {
           {when && <span className="text-[11px] text-muted-foreground">{when}</span>}
         </span>
       </span>
+      {/* 삭제 — 행 루트가 button 이라 중첩 button 불가 → span[role=button]. 상시 노출(터치 기기는 hover 없음). */}
+      {onDelete && (
+        <span
+          role="button" tabIndex={0} aria-label="대화 삭제" title="대화 삭제"
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onDelete(); }
+          }}
+          className="w-[26px] h-[26px] rounded-lg flex items-center justify-center shrink-0 text-muted-foreground hover:text-red-600 hover:bg-secondary transition-colors">
+          <Trash2 size={13} />
+        </span>
+      )}
     </button>
   );
 }
 
-/** 세션 사이드바(오버레이): 인테이크 세션 목록 + 전환 + 새 세션. */
-function SessionPanel({ sessions, activeSessionId, loggedIn, onOpen, onNew, onLogin, onClose }: {
+/** 세션 사이드바(오버레이): 인테이크 세션 목록 + 전환 + 새 세션 + 삭제(행 내 2단계 확인). */
+function SessionPanel({ sessions, activeSessionId, loggedIn, onOpen, onNew, onDelete, onLogin, onClose }: {
   sessions: ChatSession[];
   activeSessionId: string;
   loggedIn: boolean;
   onOpen: (id: string) => void;
   onNew: () => void;
+  onDelete: (id: string) => Promise<void>;
   onLogin: () => void;
   onClose: () => void;
 }) {
+  // 삭제 확인은 별도 시트 대신 그 행을 확인 카드로 치환(패널 안에서 자기완결). busy 중 재클릭 방지.
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const handleDelete = async () => {
+    if (!confirmId || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onDelete(confirmId);
+      setConfirmId(null);
+    } catch {
+      setError("삭제하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="absolute inset-0 z-10 flex flex-col" style={{ background: "rgba(20,16,40,0.42)" }}
       onClick={onClose}>
@@ -946,10 +985,36 @@ function SessionPanel({ sessions, activeSessionId, loggedIn, onOpen, onNew, onLo
               아직 대화 내역이 없어요.<br />궁금한 걸 묻거나 “면접 준비해줘”라고 시작하면 여기에 쌓여요.
             </div>
           ) : (
-            sessions.map((s) => (
-              <SessionRow key={s.id} session={s} active={s.id === activeSessionId}
-                onClick={() => onOpen(s.id)} />
-            ))
+            sessions.map((s) =>
+              s.id === confirmId ? (
+                // 삭제 확인 카드(행 치환) — 대화 기록만 지워지고 지원 건·면접 리포트는 남는다.
+                <div key={s.id} className="rounded-[13px] px-3 py-2.5"
+                  style={{ border: "1.5px solid rgba(225,29,72,0.55)", background: "rgba(225,29,72,0.06)" }}>
+                  <div className="text-[12.5px] font-bold text-foreground truncate">
+                    “{displayCaseText(s.title)}” 대화를 삭제할까요?
+                  </div>
+                  <div className="text-[11.5px] leading-[1.5] text-muted-foreground mt-0.5 mb-2">
+                    대화 기록은 되돌릴 수 없어요. 지원 건·면접 결과는 지워지지 않아요.
+                  </div>
+                  {error && <div className="text-[11.5px] font-semibold text-red-600 mb-2">{error}</div>}
+                  <div className="flex gap-1.5">
+                    <button onClick={() => void handleDelete()} disabled={busy}
+                      className="flex-1 h-[32px] rounded-lg bg-red-600 text-white text-[12px] font-bold hover:opacity-90 transition-opacity disabled:opacity-60">
+                      {busy ? "삭제 중…" : "삭제"}
+                    </button>
+                    <button onClick={() => { setConfirmId(null); setError(null); }} disabled={busy}
+                      className="flex-1 h-[32px] rounded-lg text-[12px] font-semibold text-muted-foreground hover:bg-secondary transition-colors"
+                      style={{ border: "1px solid var(--border)" }}>
+                      취소
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <SessionRow key={s.id} session={s} active={s.id === activeSessionId}
+                  onClick={() => onOpen(s.id)}
+                  onDelete={() => { setError(null); setConfirmId(s.id); }} />
+              ),
+            )
           )}
         </div>
       </div>
@@ -1507,9 +1572,11 @@ function MicDeniedView({ onRetry, onTextMode }: { onRetry: () => void; onTextMod
   );
 }
 
-function InputBar({ value, onChange, onSend, onMic, onKeyDown, disabled, orchestrator }: {
+function InputBar({ value, onChange, onSend, onMic, showMic = true, onKeyDown, disabled, orchestrator }: {
   value: string; onChange: (v: string) => void;
   onSend: () => void; onMic: () => void;
+  /** 마이크 버튼 노출 여부 — STT 미지원 브라우저·면접 라우트에서 false(기본 true: 기존 호출측 호환). */
+  showMic?: boolean;
   onKeyDown: (e: React.KeyboardEvent) => void;
   disabled: boolean; orchestrator?: boolean;
 }) {
@@ -1528,7 +1595,7 @@ function InputBar({ value, onChange, onSend, onMic, onKeyDown, disabled, orchest
           disabled={disabled}
         />
         {/* mic 은 일반 모드에서만(오케스트레이터 모드는 입력 집중). */}
-        {!orchestrator && (
+        {!orchestrator && showMic && (
           <button onClick={onMic}
             className="w-[30px] h-[30px] rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary transition-colors">
             <Mic size={16} />

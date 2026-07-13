@@ -73,6 +73,19 @@ let demoJobPostingFallbackSetting = {
   source: "DEFAULT",
 };
 
+// 공고 업로드 한도 — 관리자 GET/PATCH 와 사용자 GET(/application-cases/upload-limit)이 이 상태를 공유한다.
+const UPLOAD_LIMIT_MB = 1024 * 1024;
+let demoUploadLimitBytes = 10 * UPLOAD_LIMIT_MB; // 백엔드 기본 10MB
+let demoUploadLimitSource = "PROPERTIES";
+function demoUploadLimitSetting() {
+  return {
+    maxBytes: demoUploadLimitBytes,
+    minBytes: 1 * UPLOAD_LIMIT_MB,
+    maxAllowedBytes: 20 * UPLOAD_LIMIT_MB,
+    source: demoUploadLimitSource,
+  };
+}
+
 const demoAdminUser = {
   ...demoUser,
   id: 9101,
@@ -203,6 +216,29 @@ const coreRoutes: MockRoute[] = [
         source: "DATABASE",
       };
       return demoJobPostingFallbackSetting;
+    },
+  },
+  // 공고 업로드 한도 — 사용자 GET + 관리자 GET/PATCH 가 같은 상태(demoUploadLimitBytes)를 공유한다.
+  {
+    method: "GET",
+    pattern: /^\/application-cases\/upload-limit$/,
+    handler: () => ({ maxBytes: demoUploadLimitBytes }),
+  },
+  {
+    method: "GET",
+    pattern: /^\/admin\/ai-settings\/upload-size$/,
+    handler: () => demoUploadLimitSetting(),
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/admin\/ai-settings\/upload-size$/,
+    handler: ({ body }) => {
+      const request = body as { maxBytes?: number };
+      if (typeof request?.maxBytes === "number") {
+        demoUploadLimitBytes = Math.max(1 * UPLOAD_LIMIT_MB, Math.min(20 * UPLOAD_LIMIT_MB, request.maxBytes));
+        demoUploadLimitSource = "DATABASE";
+      }
+      return demoUploadLimitSetting();
     },
   },
 

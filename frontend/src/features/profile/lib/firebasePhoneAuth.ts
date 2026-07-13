@@ -76,7 +76,7 @@ export async function sendFirebaseOtp(
 }
 
 /** reCAPTCHA 위젯을 정리한다(재시도 시 중복 렌더 방지). */
-export function resetFirebaseRecaptcha(): void {
+export function resetFirebaseRecaptcha(containerId?: string): void {
   if (verifierRef) {
     try {
       verifierRef.clear();
@@ -84,6 +84,12 @@ export function resetFirebaseRecaptcha(): void {
       // 이미 정리된 경우 무시.
     }
     verifierRef = null;
+  }
+  // clear() 가 발송 실패 시점에 따라 위젯 잔재를 남길 수 있어
+  // ("reCAPTCHA has already been rendered in this element") 컨테이너를 직접 비운다.
+  if (containerId) {
+    const container = document.getElementById(containerId);
+    if (container) container.innerHTML = "";
   }
 }
 

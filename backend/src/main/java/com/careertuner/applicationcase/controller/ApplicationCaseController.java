@@ -30,6 +30,8 @@ import com.careertuner.jobanalysis.dto.JobAnalysisResponse;
 import com.careertuner.jobanalysis.dto.JobAnalysisReviewRequest;
 import com.careertuner.jobposting.dto.JobPostingRequest;
 import com.careertuner.jobposting.dto.JobPostingResponse;
+import com.careertuner.jobposting.dto.JobPostingUploadLimitResponse;
+import com.careertuner.jobposting.service.JobPostingUploadLimitPolicy;
 import com.careertuner.applicationcase.dto.UpdateApplicationCaseRequest;
 import com.careertuner.applicationcase.service.ApplicationCaseService;
 import com.careertuner.common.security.AuthUser;
@@ -46,6 +48,13 @@ import lombok.RequiredArgsConstructor;
 public class ApplicationCaseController {
 
     private final ApplicationCaseService applicationCaseService;
+    private final JobPostingUploadLimitPolicy uploadLimitPolicy;
+
+    /** 사용자 화면용 현재 공고 업로드 한도(관리자 설정 반영). 프런트 사전 검증·표기를 서버 값에 맞춘다. */
+    @GetMapping("/upload-limit")
+    public ApiResponse<JobPostingUploadLimitResponse> uploadLimit() {
+        return ApiResponse.ok(new JobPostingUploadLimitResponse(uploadLimitPolicy.currentMaxBytes()));
+    }
 
     @PostMapping
     public ApiResponse<ApplicationCaseResponse> create(@AuthenticationPrincipal AuthUser authUser,

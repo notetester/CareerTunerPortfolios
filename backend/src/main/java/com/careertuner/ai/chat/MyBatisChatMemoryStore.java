@@ -114,6 +114,16 @@ public class MyBatisChatMemoryStore implements ChatMemoryStore {
     }
 
     /**
+     * 대화 행 자체를 삭제(제목·소유·바인딩 포함). SQL 은 deleteMessages 와 같지만 "메시지 비우기"가 아닌
+     * "대화 삭제" 의도를 이름으로 고정한다. 소유 검증은 호출부(컨트롤러) 책임.
+     */
+    public void deleteConversation(Long conversationId) {
+        if (conversationId != null) {
+            mapper.delete(conversationId);
+        }
+    }
+
+    /**
      * 새 대화 행을 만들고 발급된 conversationId 를 반환.
      * @param userId 로그인 유저 id(소유자). 비로그인이면 null → 익명 대화(복원 대상 아님).
      */
