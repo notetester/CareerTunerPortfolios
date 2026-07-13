@@ -43,6 +43,39 @@ Spring Boot **4.1.0** / Java **21** / **MyBatis** / **MySQL 8** REST API 서버.
 - 서버 `http://localhost:8080` · 헬스 `GET /api/health` · Swagger `http://localhost:8080/swagger-ui.html`
 - HikariCP `initialization-fail-timeout: -1` 로 **MySQL 없이도 부팅**된다(헬스 체크 가능).
 
+## 테스트
+
+전체 테스트에는 단위 테스트와 함께 MySQL 전용 SQL·트랜잭션·동시성을 확인하는 통합 테스트가 포함된다.
+따라서 `gradlew test`는 H2로 대체하지 않고, **운영·공유 DB와 분리된 빈 MySQL 8 데이터베이스**에서 실행한다.
+`data.sql`에는 알려진 비밀번호의 데모 계정이 있으므로 운영·공유 DB에는 절대 주입하지 않는다.
+
+```bash
+# 예: 별도 로컬 DB에 스키마와 데모 시드를 한 번 주입
+mysql -h 127.0.0.1 -P 3306 -u root -p -e \
+  "DROP DATABASE IF EXISTS careertuner_test; CREATE DATABASE careertuner_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+mysql -h 127.0.0.1 -P 3306 -u root -p careertuner_test < src/main/resources/db/schema.sql
+mysql -h 127.0.0.1 -P 3306 -u root -p careertuner_test < src/main/resources/db/data.sql
+
+DB_HOST=127.0.0.1 DB_PORT=3306 DB_NAME=careertuner_test \
+DB_USERNAME=root DB_PASSWORD='<local-test-password>' ./gradlew test
+```
+
+Windows PowerShell에서는 같은 값을 현재 셸에 설정한 뒤 실행한다.
+
+```powershell
+$env:DB_HOST = '127.0.0.1'
+$env:DB_PORT = '3306'
+$env:DB_NAME = 'careertuner_test'
+$env:DB_USERNAME = 'root'
+$env:DB_PASSWORD = '<local-test-password>'
+.\gradlew.bat test
+```
+
+DB 주소·계정이 잘못되면 테스트 전용 Hikari 설정이 각 연결 획득 대기를 3초로 제한한다. 이는 동일한
+환경 오류가 테스트 컨텍스트마다 30초씩 누적되지 않게 하며, 정상 DB의 연결·트랜잭션 검증 범위는 바꾸지 않는다.
+Gradle 캐시와 무관하게 전체 소스와 테스트를 다시 검증해야 할 때는
+`.\gradlew.bat clean test --no-build-cache --rerun-tasks`(macOS/Linux는 `./gradlew`)를 사용한다.
+
 ### 환경 프로파일 (local / tailscale / aws / domain)
 
 호스트 기본값 묶음(DB·Ollama·API 주소)을 이름으로 전환한다 — `application-<이름>.yaml` 이 호스트 관련 키만 오버라이드한다.
