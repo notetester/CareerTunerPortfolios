@@ -60,7 +60,7 @@ export default function NoticeListPage() {
   }
 
   return (
-    <div className="ct-page ct-notices">
+    <div className="ct-page ct-support ct-notices">
       <div className="ct-pagehead">
         <h1>공지사항</h1>
         <p>서비스 업데이트와 점검·이벤트 소식을 안내해드립니다.</p>

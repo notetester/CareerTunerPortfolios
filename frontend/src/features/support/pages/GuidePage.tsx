@@ -39,7 +39,7 @@ const GUIDE_TIPS: GuideTip[] = [
 
 export default function GuidePage() {
   return (
-    <div className="ct-page">
+    <div className="ct-page ct-support">
       <div className="ct-pagehead">
         <h1>사용 가이드</h1>
         <p>CareerTuner의 주요 기능별 사용법과 활용 팁을 한곳에 모았어요.</p>

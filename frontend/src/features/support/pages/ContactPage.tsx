@@ -115,12 +115,12 @@ export function ContactPage() {
   const canSubmit = title.trim() && category && body.trim().length >= 10;
 
   if (authLoading) {
-    return <div className="ct-page"><div className="ct-faq__empty">로그인 상태를 확인하는 중입니다.</div></div>;
+    return <div className="ct-page ct-support"><div className="ct-faq__empty">로그인 상태를 확인하는 중입니다.</div></div>;
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="ct-page">
+      <div className="ct-page ct-support">
         <div className="ct-pagehead">
           <h1>문의하기</h1>
           <p>문의 내용과 답변 내역을 안전하게 연결하려면 로그인이 필요합니다.</p>
@@ -171,7 +171,7 @@ export function ContactPage() {
   }
 
   return (
-    <div className="ct-page">
+    <div className="ct-page ct-support">
       <div className="ct-pagehead">
         <div className="ct-pagehead__row">
           <div>

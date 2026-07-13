@@ -48,7 +48,7 @@ export default function SupportHomePage() {
   };
 
   return (
-    <div className="ct-page">
+    <div className="ct-page ct-support">
       {/* Hero */}
       <div className="ct-hero">
         <h1>무엇을 도와드릴까요?</h1>

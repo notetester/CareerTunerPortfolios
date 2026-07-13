@@ -245,10 +245,24 @@ public class PostModerationService {
     }
 
     /**
-     * 판정 + 실제 응답한 provider 정보. 파이프라인(moderate/moderateComment/classify)이
+     * 검열 판정 + 실제 응답한 provider 정보. 검열 파이프라인(judge/moderate/moderateComment)이
      * 결과 저장 모델 기록과 mock placeholder 의 UNMODERATED 분리에 쓴다.
+     * 판정은 검열 전용 파인튜닝 모델(ai.ollama.moderation-model)이 맡는다.
      */
     private Judgment judgeWithProvider(String title, String content) {
+        return judgeInternal(title, content, true);
+    }
+
+    /**
+     * 신고 참고용 분류 — 프롬프트·스키마는 검열과 동일하지만 <b>범용 모델</b>(ai.ollama.model)을 쓴다.
+     * 검열 전용 모델을 분리하면서 신고 분류의 기존 동작을 그대로 보존하기 위한 의도적 구분이다.
+     */
+    private Judgment classifyWithProvider(String title, String content) {
+        return judgeInternal(title, content, false);
+    }
+
+    /** 판정 본문 — 입력 조립·펜스·스키마는 공통이고, 1차 tier 모델만 갈린다. */
+    private Judgment judgeInternal(String title, String content, boolean useModerationModel) {
         String text = "제목: " + title + "\n본문: " + content;
         if (text.length() > MAX_TEXT_LENGTH) {
             text = text.substring(0, MAX_TEXT_LENGTH);
@@ -259,7 +273,9 @@ public class PostModerationService {
         String fenced = USER_CONTENT_BEGIN + "\n" + text + "\n" + USER_CONTENT_END;
 
         String prompt = buildSystemPrompt();
-        ModerationLlmGateway.LlmReply reply = moderationLlmGateway.chat(prompt, fenced, MODERATION_SCHEMA);
+        ModerationLlmGateway.LlmReply reply = useModerationModel
+                ? moderationLlmGateway.chatModeration(prompt, fenced, MODERATION_SCHEMA)
+                : moderationLlmGateway.chat(prompt, fenced, MODERATION_SCHEMA);
         return new Judgment(parseResult(reply.json()), reply.model(), reply.mock());
     }
 
@@ -440,7 +456,8 @@ public class PostModerationService {
             Strictness currentStrictness = settingService.getStrictness();
             double currentThreshold = settingService.getHideThreshold();
 
-            Judgment judgment = judgeWithProvider(post.getTitle(), post.getContent());
+            // 신고 분류는 검열 전용 모델이 아닌 범용 모델을 쓴다(기존 동작 보존).
+            Judgment judgment = classifyWithProvider(post.getTitle(), post.getContent());
             ModerationResult result = judgment.result();
 
             // 판정 불성립 — 신고 참고용 분류도 가짜 COMPLETED 를 남기지 않는다.
