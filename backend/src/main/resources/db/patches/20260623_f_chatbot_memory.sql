@@ -11,7 +11,7 @@
 --  ⚠️ 공유 DB 변경 → 팀 합의 후 적용. IF NOT EXISTS 로 재실행 안전.
 --  실행: mysql -h <host> -u <user> -p <db> < 20260623_f_chatbot_memory.sql
 --
---  ☐ 적용 이력: (미적용) 운영 공유 DB(team1_db @ localhost) 적용 후 날짜 기록할 것.
+--  ☐ 적용 이력: (미적용) 운영 공유 DB(team1_db @ 54.116.80.214) 적용 후 날짜 기록할 것.
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS chatbot_conversation_memory (

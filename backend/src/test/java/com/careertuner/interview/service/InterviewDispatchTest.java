@@ -69,7 +69,7 @@ class InterviewDispatchTest {
         assertCommonContract(notification.getValue(), 12L, 102L);
         assertThat(notification.getValue().getTitle()).isEqualTo("모바일에서 면접 세션을 보냈어요");
         assertThat(notification.getValue().getMessage()).isEqualTo("직무 면접 세션을 데스크톱에서 이어받을 수 있어요.");
-        assertThat(notification.getValue().getLink()).isEqualTo("/interview?session=102");
+        assertThat(notification.getValue().getLink()).isEqualTo("/interview/questions?session=102");
         assertThat(notification.getValue().getDestinationPlatform())
                 .isEqualTo(NotificationDestinationPlatform.DESKTOP);
     }

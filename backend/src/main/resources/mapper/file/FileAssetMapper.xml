@@ -139,6 +139,29 @@
            AND created_at &lt; #{cutoff}
     </delete>
 
+    <select id="findStalePendingProfileImports"
+            resultType="com.careertuner.file.domain.FileAsset">
+        SELECT *
+          FROM file_asset
+         WHERE kind = 'RESUME'
+           AND ref_type = 'PROFILE_IMPORT_PENDING'
+           AND ref_id IS NULL
+           AND created_at &lt; #{cutoff}
+         ORDER BY created_at, id
+         LIMIT #{limit}
+    </select>
+
+    <!-- 가져오기 중 앱이 종료될 수 있으므로 삭제 순간에도 소유자·용도·TTL을 전부 재검사한다. -->
+    <delete id="deleteStalePendingProfileImport">
+        DELETE FROM file_asset
+         WHERE id = #{id}
+           AND owner_user_id = #{ownerUserId}
+           AND kind = 'RESUME'
+           AND ref_type = 'PROFILE_IMPORT_PENDING'
+           AND ref_id IS NULL
+           AND created_at &lt; #{cutoff}
+    </delete>
+
     <select id="findStalePendingInterviewMedia"
             resultType="com.careertuner.file.domain.FileAsset">
         SELECT *

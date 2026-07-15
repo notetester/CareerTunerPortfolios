@@ -17,7 +17,7 @@
 실제 A/B run artifact:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
+docs/ai-artifacts/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
 ```
 
 기록된 run commit:
@@ -29,7 +29,7 @@ D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
 offline evaluator artifact:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_20260630_1635_r3_semantic_eval
+docs/ai-artifacts/benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_20260630_1635_r3_semantic_eval
 ```
 
 기록된 evaluation commit:
@@ -41,7 +41,7 @@ D:/dev/CareerTunerAI/benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_2026063
 Qwen2.5 7B independent judge artifact:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/judge-results/rag_hardcase_v1_20260630_1635_semantic_judge
+docs/ai-artifacts/benchmarks/rag-hardcase/judge-results/rag_hardcase_v1_20260630_1635_semantic_judge
 ```
 
 기록된 Qwen judge commit:
@@ -67,13 +67,13 @@ ml/career-strategy-llm/scripts/build_rag_hardcase_top_llm_judge_pack.py
 전체 24건 pack:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/top-llm-judge-packs/rag_hardcase_v1_20260630_1635_top_llm_judge_pack
+docs/ai-artifacts/benchmarks/rag-hardcase/top-llm-judge-packs/rag_hardcase_v1_20260630_1635_top_llm_judge_pack
 ```
 
 disagreement13 독립 subset pack:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/top-llm-judge-packs/rag_hardcase_v1_20260630_1635_top_llm_judge_pack_disagreement13
+docs/ai-artifacts/benchmarks/rag-hardcase/top-llm-judge-packs/rag_hardcase_v1_20260630_1635_top_llm_judge_pack_disagreement13
 ```
 
 CareerTunerAI commit:
@@ -87,7 +87,7 @@ CareerTunerAI commit:
 장문 계획 문서:
 
 ```text
-D:/dev/CareerTunerAIDocs/areas/c-career-strategy/reports/75_rag_hardcase_top_llm_judge_pack_plan.md
+docs/ai-reports/areas/c-career-strategy/reports/75_rag_hardcase_top_llm_judge_pack_plan.md
 ```
 
 CareerTunerAIDocs commit:

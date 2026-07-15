@@ -2,6 +2,8 @@ package com.careertuner.ai.autoprep;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -67,5 +69,20 @@ class AutoPrepPlannerResolveCaseTest {
 
         PrepPlan plan = planner.plan(1L, ambiguous());
         assertThat(plan.slots().applicationCaseId()).isNull();
+    }
+
+    @DisplayName("명시 지원 건은 목록 대신 소유권 검증 단건 조회로 확정")
+    @Test
+    void explicitCase_usesOwnedGet() {
+        ApplicationCaseResponse c = mock(ApplicationCaseResponse.class);
+        when(c.id()).thenReturn(9L);
+        when(c.companyName()).thenReturn("카카오");
+        when(c.jobTitle()).thenReturn("서버");
+        when(caseService.get(1L, 9L)).thenReturn(c);
+
+        PrepPlan plan = planner.plan(1L, new AutoPrepRequest(null, 9L, null, null, null));
+
+        assertThat(plan.slots().applicationCaseId()).isEqualTo(9L);
+        verify(caseService, never()).list(1L, null, false);
     }
 }

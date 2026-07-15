@@ -9,8 +9,8 @@ export const SERVER_PRESETS: ServerPreset[] = [
   { value: "default", label: "기본값 (빌드 설정 사용)", url: null },
   { value: "emulator", label: "Android 에뮬레이터 (호스트 PC)", url: "http://10.0.2.2:8080/api" },
   { value: "local-web", label: "로컬 웹 브라우저", url: "http://localhost:8080/api" },
-  { value: "tailscale", label: "Tailscale (개발 PC 원격)", url: "https://careertuner-dev.example.invalid/api" },
-  { value: "aws", label: "AWS 통합 배포", url: "https://careertuner.kro.kr/api" },
+  { value: "tailscale", label: "Tailscale (개발 PC 원격)", url: "https://localhost/api" },
+  { value: "aws", label: "AWS 통합 배포", url: "https://careertuner.example.com/api" },
   { value: "custom", label: "직접 입력", url: undefined },
 ];
 

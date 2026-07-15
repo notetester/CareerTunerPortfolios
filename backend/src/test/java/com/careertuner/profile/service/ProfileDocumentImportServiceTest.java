@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -81,22 +82,27 @@ class ProfileDocumentImportServiceTest {
                 .userId(7L)
                 .selfIntro("기존 자소서")
                 .skills("[\"Python\"]")
+                .versionNo(3)
                 .build();
         UserProfile after = UserProfile.builder()
                 .userId(7L)
                 .selfIntro("기존 자소서")
                 .skills("[\"Python\"]")
                 .resumeText("Resume body Java Spring")
+                .versionNo(4)
                 .build();
-        // RMW 조회 → 저장 후 조회
-        when(profileMapper.findByUserId(7L)).thenReturn(existing, after);
+        // 잠금 RMW 조회 → 저장 후 조회
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(existing);
+        when(profileMapper.findByUserId(7L)).thenReturn(after);
         doAnswer(inv -> null).when(profileMapper).upsert(any());
 
         ProfileImportResponse response = service.importDocument(
-                USER, new ProfileDocumentImportRequest(11L, "RESUME_TEXT"));
+                USER, new ProfileDocumentImportRequest(11L, "RESUME_TEXT", 3));
 
         assertThat(response.truncated()).isFalse();
         ArgumentCaptor<UserProfile> captor = ArgumentCaptor.forClass(UserProfile.class);
+        verify(profileMapper).insertEmptyIfAbsent(7L);
+        verify(profileMapper).findByUserIdForUpdate(7L);
         verify(profileMapper).upsert(captor.capture());
         verify(profileMapper).insertVersionFromCurrent(7L, "DOCUMENT_IMPORT");
         UserProfile saved = captor.getValue();
@@ -122,7 +128,7 @@ class ProfileDocumentImportServiceTest {
         stubDownload(12L, "old.doc", "application/msword", new byte[] { 1, 2, 3 });
 
         assertThatThrownBy(() -> service.importDocument(
-                USER, new ProfileDocumentImportRequest(12L, "RESUME_TEXT")))
+                USER, new ProfileDocumentImportRequest(12L, "RESUME_TEXT", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("지원하지 않는 형식");
     }
@@ -130,7 +136,7 @@ class ProfileDocumentImportServiceTest {
     @Test
     void nullFileId_throwsSelectFileMessage() {
         assertThatThrownBy(() -> service.importDocument(
-                USER, new ProfileDocumentImportRequest(null, "RESUME_TEXT")))
+                USER, new ProfileDocumentImportRequest(null, "RESUME_TEXT", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("가져올 파일을 선택");
     }
@@ -138,7 +144,7 @@ class ProfileDocumentImportServiceTest {
     @Test
     void invalidTarget_throws() {
         assertThatThrownBy(() -> service.importDocument(
-                USER, new ProfileDocumentImportRequest(1L, "OTHER")))
+                USER, new ProfileDocumentImportRequest(1L, "OTHER", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("잘못된 요청");
     }
@@ -147,16 +153,89 @@ class ProfileDocumentImportServiceTest {
     void truncatesLongText() {
         String longText = "x".repeat(ProfileServiceImpl.MAX_IMPORT_CHARS + 50);
         stubDownload(13L, "big.txt", "text/plain", longText);
-        when(profileMapper.findByUserId(7L)).thenReturn(UserProfile.builder().userId(7L).build());
+        when(profileMapper.findByUserIdForUpdate(7L))
+                .thenReturn(UserProfile.builder().userId(7L).versionNo(1).build());
+        when(profileMapper.findByUserId(7L))
+                .thenReturn(UserProfile.builder().userId(7L).versionNo(2).build());
         doAnswer(inv -> null).when(profileMapper).upsert(any());
 
         ProfileImportResponse response = service.importDocument(
-                USER, new ProfileDocumentImportRequest(13L, "SELF_INTRO"));
+                USER, new ProfileDocumentImportRequest(13L, "SELF_INTRO", 1));
 
         assertThat(response.truncated()).isTrue();
         ArgumentCaptor<UserProfile> captor = ArgumentCaptor.forClass(UserProfile.class);
         verify(profileMapper).upsert(captor.capture());
         assertThat(captor.getValue().getSelfIntro()).hasSize(ProfileServiceImpl.MAX_IMPORT_CHARS);
+    }
+
+    @Test
+    void brandNewEmptyProfileAllowsNullBaseVersion() {
+        stubDownload(14L, "resume.txt", "text/plain", "첫 이력서");
+        UserProfile empty = UserProfile.builder()
+                .userId(7L)
+                .versionNo(1)
+                .build();
+        UserProfile after = UserProfile.builder()
+                .userId(7L)
+                .resumeText("첫 이력서")
+                .versionNo(2)
+                .build();
+        when(profileMapper.insertEmptyIfAbsent(7L)).thenReturn(1);
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(empty);
+        when(profileMapper.findByUserId(7L)).thenReturn(after);
+
+        ProfileImportResponse response = service.importDocument(
+                USER, new ProfileDocumentImportRequest(14L, "RESUME_TEXT", null));
+
+        assertThat(response.profile().versionNo()).isEqualTo(2);
+        verify(profileMapper).initialize(any(UserProfile.class));
+        verify(profileMapper, never()).upsert(any(UserProfile.class));
+        verify(profileMapper).insertVersionFromCurrent(7L, "DOCUMENT_IMPORT");
+    }
+
+    @Test
+    void existingNonEmptyProfileRejectsNullBaseVersionWithoutWrites() {
+        stubDownload(15L, "resume.txt", "text/plain", "뒤늦은 이력서");
+        UserProfile current = UserProfile.builder()
+                .userId(7L)
+                .desiredJob("백엔드 개발자")
+                .versionNo(4)
+                .build();
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(current);
+
+        assertThatThrownBy(() -> service.importDocument(
+                USER, new ProfileDocumentImportRequest(15L, "RESUME_TEXT", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("최신 내용을 다시 불러온 뒤")
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(com.careertuner.common.exception.ErrorCode.CONFLICT);
+
+        verify(profileMapper, never()).initialize(any(UserProfile.class));
+        verify(profileMapper, never()).upsert(any(UserProfile.class));
+        verify(profileMapper, never()).insertVersionFromCurrent(7L, "DOCUMENT_IMPORT");
+    }
+
+    @Test
+    void staleBaseVersionRejectsImportWithoutUpsertOrVersionSnapshot() {
+        stubDownload(16L, "resume.txt", "text/plain", "오래된 화면의 이력서");
+        UserProfile current = UserProfile.builder()
+                .userId(7L)
+                .resumeText("다른 화면에서 저장한 최신 이력서")
+                .versionNo(5)
+                .build();
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(current);
+
+        assertThatThrownBy(() -> service.importDocument(
+                USER, new ProfileDocumentImportRequest(16L, "RESUME_TEXT", 4)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("최신 내용을 다시 불러온 뒤")
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(com.careertuner.common.exception.ErrorCode.CONFLICT);
+
+        verify(profileMapper, never()).initialize(any(UserProfile.class));
+        verify(profileMapper, never()).upsert(any(UserProfile.class));
+        verify(profileMapper, never()).insertVersionFromCurrent(7L, "DOCUMENT_IMPORT");
+        verify(profileMapper, never()).findByUserId(7L);
     }
 
     private void stubDownload(Long fileId, String name, String contentType, String text) {

@@ -1,18 +1,24 @@
-import { api, apiRaw, createOutageMutationUncertainError } from "@/app/lib/api";
+import {
+  api,
+  apiRaw,
+  ApiError,
+  createOutageMutationUncertainError,
+  type ApiEnvelope,
+} from "@/app/lib/api";
 import {
   activateOutageFallbackIfConfirmed,
   isNetworkOutageError,
-  isOutageFallbackActive,
   isOutageStatus,
+  shouldUseMockData,
 } from "@/app/lib/outageFallback";
 import type {
+  AutoPrepExtractionStatus,
   AutoPrepIntakeResponse,
   AutoPrepRequest,
   PrepAttachedFile,
   PrepEvent,
 } from "../types/autoPrep";
 import {
-  discardPendingAutoPrepFiles,
   trackPendingAutoPrepUpload,
 } from "@/app/lib/pendingAutoPrepFiles";
 
@@ -20,10 +26,19 @@ import {
 // 베이스 URL 은 apiBase() 단일 소스를 사용한다(런타임 오버라이드 반영).
 
 /** 인테이크: 한 줄 요청 해석 + 슬롯 확인(미리보기). ready=true 면 그대로 run. */
-export function intake(req: AutoPrepRequest) {
+export function intake(req: AutoPrepRequest, signal?: AbortSignal) {
   return api<AutoPrepIntakeResponse>("/auto-prep/intake", {
     method: "POST",
     body: JSON.stringify(req),
+    signal,
+  });
+}
+
+/** 공고 추출 상태만 조회한다. EXTRACTING 대기 중 인테이크 LLM을 반복 호출하지 않는다. */
+export function getJobPostingExtraction(applicationCaseId: number, signal?: AbortSignal) {
+  return api<AutoPrepExtractionStatus | null>(`/application-cases/${applicationCaseId}/job-posting/extraction`, {
+    method: "GET",
+    signal,
   });
 }
 
@@ -36,22 +51,69 @@ export function uploadAttachment(file: File) {
   return trackPendingAutoPrepUpload(api<PrepAttachedFile>("/file/upload", { method: "POST", body: fd }));
 }
 
+/**
+ * 공고 파일(이미지/PDF) → 지원 건 생성(비동기 OCR·회사·직무 추출 큐잉) → 생성된 지원 건 id.
+ * 이미지/스캔 공고는 텍스트 첨부 추출로 읽을 수 없으므로 AutoPrep 전용 경계에서 자소서와 합산 한도를
+ * 먼저 검증하고 B 지원 건 생성 서비스를 호출한다. pendingFileId는 응답 유실 재전송의 멱등키다.
+ */
+export async function createJobPostingCaseFromFile(
+  file: File,
+  sourceType: "PDF" | "IMAGE",
+  pendingFileId: number,
+  attachmentFileIds: number[],
+): Promise<number> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("sourceType", sourceType);
+  fd.append("pendingFileId", String(pendingFileId));
+  attachmentFileIds.forEach((fileId) => fd.append("attachmentFileIds", String(fileId)));
+  const res = await api<{ applicationCaseId: number }>(
+    "/auto-prep/job-posting-case/upload",
+    { method: "POST", body: fd },
+  );
+  return res.applicationCaseId;
+}
+
+/** 브라우저 fetch abort와 별도로 서버의 사용자 범위 실행 토큰을 취소한다. */
+export function cancelAutoPrepRun(runId: string, keepalive = false): Promise<void> {
+  return api<void>("/auto-prep/run/cancel", {
+    method: "POST",
+    body: JSON.stringify({ runId }),
+    keepalive,
+  });
+}
+
+/** terminal event 없이 끊긴 stream만 서버 취소한다. 명시 abort는 abort listener/호출 액션이 담당한다. */
+export async function cancelOrphanedAutoPrepRun(
+  req: AutoPrepRequest,
+  terminalReceived: boolean,
+  signal?: AbortSignal,
+  cancel: (runId: string, keepalive?: boolean) => Promise<void> = cancelAutoPrepRun,
+): Promise<boolean> {
+  if (terminalReceived || signal?.aborted || !req.runId) return false;
+  await cancel(req.runId).catch(() => undefined);
+  return true;
+}
+
 /** SSE 실행. plan/part-start/substep/part-done/done 이벤트를 on 콜백으로 흘려보낸다. */
 export async function runStream(
   req: AutoPrepRequest,
   on: (event: PrepEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  if (isOutageFallbackActive()) {
+  if (signal && req.runId) {
+    signal.addEventListener("abort", () => {
+      void cancelAutoPrepRun(req.runId as string, true).catch(() => undefined);
+    }, { once: true });
+  }
+  if (shouldUseMockData()) {
     await runOutageDemoStream(req, on, signal);
-    if (req.attachmentFileIds?.length) {
-      await discardPendingAutoPrepFiles(req.attachmentFileIds);
-    }
     return;
   }
 
+  let terminalReceived = false;
+  let streamOpened = false;
   try {
-    let completed = false;
     const rawResponse = await apiRaw("/auto-prep/run/stream", {
       method: "POST",
       headers: {
@@ -63,43 +125,57 @@ export async function runStream(
     });
     const res = rawResponse.response;
     try {
-    if (isOutageStatus(res.status) && await activateOutageFallbackIfConfirmed()) {
-      throw createOutageMutationUncertainError();
-    }
-    if (!res.ok || !res.body) {
-      throw new Error(`자동 준비 실행에 실패했습니다 (${res.status})`);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      rawResponse.assertSessionCurrent();
-      buffer += decoder.decode(value, { stream: true });
-      let sep: number;
-      while ((sep = buffer.indexOf("\n\n")) >= 0) {
-        const rawEvent = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        const evt = parseEvent(rawEvent);
-        if (evt) {
-          // 계정 전환과 같은 이벤트 루프에서 도착한 마지막 조각도 UI에 반영하지 않는다.
-          rawResponse.assertSessionCurrent();
-          on(evt);
-          if (evt.type === "done") completed = true;
+      if (isOutageStatus(res.status) && await activateOutageFallbackIfConfirmed()) {
+        throw createOutageMutationUncertainError();
+      }
+      if (!res.ok) {
+        const envelope = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+        throw new ApiError(
+          envelope?.message ?? `자동 준비 실행에 실패했습니다 (${res.status})`,
+          envelope?.code ?? "ERROR",
+          res.status,
+        );
+      }
+      streamOpened = true;
+      if (!res.body) {
+        throw new Error("자동 준비 실행 응답을 읽을 수 없습니다.");
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        rawResponse.assertSessionCurrent();
+        buffer += decoder.decode(value, { stream: true });
+        let sep: number;
+        while ((sep = buffer.indexOf("\n\n")) >= 0) {
+          const rawEvent = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const evt = parseEvent(rawEvent);
+          if (evt) {
+            // 계정 전환과 같은 이벤트 루프에서 도착한 마지막 조각도 UI에 반영하지 않는다.
+            rawResponse.assertSessionCurrent();
+            const terminal = evt.type === "done" || evt.type === "error";
+            if (terminal) terminalReceived = true;
+            on(evt);
+            if (terminal) {
+              // terminal event가 계약상 완료 신호다. 서버 cancel tombstone을 만들지 않고 reader만 닫는다.
+              await reader.cancel().catch(() => undefined);
+              return;
+            }
+          }
         }
       }
-    }
-    if (completed) {
-      // 첨부는 실행 입력으로만 쓰이며 산출물의 영속 참조가 아니다. 정상 완료 뒤 즉시 회수한다.
-      if (req.attachmentFileIds?.length) {
-        await discardPendingAutoPrepFiles(req.attachmentFileIds);
-      }
-    }
     } finally {
       rawResponse.dispose();
     }
+    // clean EOF라도 terminal event가 없으면 서버 작업이 고아가 될 수 있다.
+    await cancelOrphanedAutoPrepRun(req, terminalReceived, signal);
   } catch (error) {
+    if (streamOpened || isNetworkOutageError(error)) {
+      await cancelOrphanedAutoPrepRun(req, terminalReceived, signal);
+    }
     if (isNetworkOutageError(error) && await activateOutageFallbackIfConfirmed()) {
       throw createOutageMutationUncertainError();
     }

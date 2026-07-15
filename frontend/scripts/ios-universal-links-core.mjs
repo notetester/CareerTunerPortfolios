@@ -1,5 +1,5 @@
 export const IOS_APP_BUNDLE_ID = "com.careertuner.app";
-export const IOS_APP_LINK_HOST = "careertuner.kro.kr";
+export const IOS_APP_LINK_HOST = "careertuner.example.com";
 export const IOS_ASSOCIATED_DOMAINS_ENTITLEMENT = `applinks:${IOS_APP_LINK_HOST}`;
 export const IOS_ENTITLEMENTS_PROJECT_PATH = "App/App.entitlements";
 export const IOS_CUSTOM_URL_SCHEME = "careertuner";

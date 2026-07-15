@@ -42,6 +42,7 @@ Spring integration:
 ```properties
 JOB_POSTING_AI_WORKER_ENABLED=true
 JOB_POSTING_AI_WORKER_BASE_URL=http://127.0.0.1:8091
+# application.yaml 기본값. docker-compose.yml은 배포 기본값을 30s로 덮어쓴다.
 JOB_POSTING_AI_WORKER_TIMEOUT=120s
 JOB_POSTING_AI_CACHE_DIR=/tmp/careertuner-job-posting-worker-cache
 ```
@@ -174,7 +175,8 @@ python ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir p
 
 ## Production Notes
 
-- OpenAI fallback is controlled by Spring admin settings and remains disabled by default.
+- OpenAI OCR fallback is controlled by Spring admin settings. The current application default enables it only for
+  `JOB_POSTING_PDF_OCR` and `JOB_POSTING_IMAGE_OCR`; a DB runtime policy can override both enabled state and allowlist.
 - Scanned PDF/image extraction uses existing OCR text first, then local PaddleOCR/PyMuPDF when installed.
 - The HTTP health endpoint starts before OCR model warm-up; model initialization continues in the background.
 - Set `JOB_POSTING_AI_CACHE_DIR` to a writable persistent path for PaddleOCR/PaddleX model files. Docker Compose mounts the `job_posting_ai_cache` volume there automatically.

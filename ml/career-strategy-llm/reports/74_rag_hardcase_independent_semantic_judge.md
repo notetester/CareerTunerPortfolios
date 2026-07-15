@@ -15,7 +15,7 @@
 실제 A/B run artifact:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
+docs/ai-artifacts/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
 ```
 
 기록된 run commit:
@@ -27,7 +27,7 @@ D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
 offline evaluator artifact:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_20260630_1635_r3_semantic_eval
+docs/ai-artifacts/benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_20260630_1635_r3_semantic_eval
 ```
 
 기록된 evaluation commit:
@@ -41,13 +41,13 @@ D:/dev/CareerTunerAI/benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_2026063
 judge packet:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/judge-packets/rag_hardcase_v1_20260630_1635_judge_packets.jsonl
+docs/ai-artifacts/benchmarks/rag-hardcase/judge-packets/rag_hardcase_v1_20260630_1635_judge_packets.jsonl
 ```
 
 manifest:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/judge-packets/rag_hardcase_v1_20260630_1635_judge_packets.manifest.json
+docs/ai-artifacts/benchmarks/rag-hardcase/judge-packets/rag_hardcase_v1_20260630_1635_judge_packets.manifest.json
 ```
 
 CareerTunerAI commit:
@@ -61,13 +61,13 @@ CareerTunerAI commit:
 judge result:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/judge-results/rag_hardcase_v1_20260630_1635_semantic_judge
+docs/ai-artifacts/benchmarks/rag-hardcase/judge-results/rag_hardcase_v1_20260630_1635_semantic_judge
 ```
 
 aggregate summary:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/judge-results/rag_hardcase_v1_20260630_1635_semantic_judge/aggregate_judge_summary.json
+docs/ai-artifacts/benchmarks/rag-hardcase/judge-results/rag_hardcase_v1_20260630_1635_semantic_judge/aggregate_judge_summary.json
 ```
 
 CareerTunerAI commit:
@@ -81,7 +81,7 @@ CareerTunerAI commit:
 장문 분석:
 
 ```text
-D:/dev/CareerTunerAIDocs/areas/c-career-strategy/reports/74_rag_hardcase_v1_independent_semantic_judge.md
+docs/ai-reports/areas/c-career-strategy/reports/74_rag_hardcase_v1_independent_semantic_judge.md
 ```
 
 CareerTunerAIDocs commit:
@@ -94,7 +94,7 @@ CareerTunerAIDocs commit:
 
 ```text
 provider=ollama
-baseUrl=http://localhost:11434
+baseUrl=<private-tailnet-endpoint>
 model=qwen2.5:7b-instruct
 ```
 

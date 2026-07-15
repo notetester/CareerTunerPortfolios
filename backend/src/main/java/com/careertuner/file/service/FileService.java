@@ -200,6 +200,24 @@ public class FileService {
         return deleted;
     }
 
+    /** 강제 종료 등으로 import 완료 후 즉시 삭제되지 못한 프로필 문서 원본을 제한 배치로 회수한다. */
+    public int cleanupStalePendingProfileImports(int olderThanHours, int requestedLimit) {
+        int safeHours = Math.max(24, olderThanHours);
+        int limit = Math.max(1, Math.min(100, requestedLimit));
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(safeHours);
+        int deleted = 0;
+        for (FileAsset asset : fileAssetMapper.findStalePendingProfileImports(cutoff, limit)) {
+            try {
+                if (pendingFileCleanupWorker.deleteStaleProfileImport(asset, cutoff)) {
+                    deleted++;
+                }
+            } catch (RuntimeException ex) {
+                log.warn("전송 대기 프로필 문서 원본 정리에 실패했습니다. fileId={}", asset.getId(), ex);
+            }
+        }
+        return deleted;
+    }
+
     /** 앱 강제 종료 등으로 답변에 연결되지 못한 음성·영상 원본만 제한 배치로 회수한다. */
     public int cleanupStalePendingInterviewMedia(int olderThanHours, int requestedLimit) {
         int safeHours = Math.max(24, olderThanHours);

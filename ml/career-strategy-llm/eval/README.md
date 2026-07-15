@@ -4,7 +4,7 @@ C 자체모델(`careertuner-c-career-strategy-3b`)을 **서비스 계약 기준*
 C 모델은 점수를 만들지 않으므로(뉴로-심볼릭: 점수/판단은 규칙엔진), 평가는 **점수 정답이 아니라 설명 JSON 계약 위반 여부**를 본다.
 
 ## 파일
-- `golden_fit_cases.jsonl` — 1줄 = 1케이스(현재 **12건**, 목표 40~60건).
+- `golden_fit_cases.jsonl` — 1줄 = 1케이스(현재 **60건**).
 - 하니스: `../scripts/eval_fit_model.py` (이 골든셋을 입력으로 실행).
 
 ## 케이스 스키마
@@ -27,21 +27,16 @@ C 모델은 점수를 만들지 않으므로(뉴로-심볼릭: 점수/판단은 
 - `input` 은 `assemble_dataset.build_fit_user` 가 받는 seed dict(회사·직무·요구/보유 스킬 + 규칙엔진 사전계산값 fitScore/applyDecision/matched/missing). 하니스가 그대로 user 프롬프트로 만들고, system 은 `synth_prompts.FIT_EXPLAIN_SYS`(학습/서빙과 동일).
 - `allowedSkills` 밖 스킬을 `learningTaskReasons` 에 언급하면 환각(HALLUCINATED_SKILL)으로 본다.
 
-## 커버리지 (12건)
-| 분류 | id |
+## 커버리지 (60건)
+
+| 축 | 현재 분포 |
 | --- | --- |
-| IT APPLY | case-it-backend-apply-001 |
-| IT COMPLEMENT | case-it-frontend-complement-001 |
-| IT HOLD | case-it-data-hold-001 |
-| 비IT APPLY | case-nonit-marketing-apply-001 |
-| 비IT COMPLEMENT | case-nonit-sales-complement-001 |
-| 비IT HOLD | case-nonit-design-hold-001 |
-| 경계 점수(58, HOLD) | case-it-boundary-058-001 |
-| 부족역량 명확 | case-it-clear-gap-001 |
-| 보유역량 애매(연관·비일치) | case-it-ambiguous-skills-001 |
-| 환각 유발(희소 입력) | case-it-hallucination-bait-001 |
-| 비IT인데 IT 용어 금지 | case-nonit-finance-noleak-001 |
-| HOLD인데 지원 권장 금지 | case-it-hold-tone-001 |
+| 의사결정 | APPLY 10 · COMPLEMENT_BEFORE_APPLY 21 · HOLD 29 |
+| 직무군 | IT_SOFTWARE 20 · DATA_AI 7 · TRADE_LOGISTICS 5 · HR_RECRUITING 4 · IT_INFRA_CLOUD_SECURITY 4 · SALES 4 · 그 외 10개 비IT 직무군 16 |
+| 안전·경계 | 점수 경계, 명확한 부족역량, 연관·비일치 보유역량, 희소 입력 환각 유발, 비IT 용어 누출, HOLD 지원 권장 금지 포함 |
+
+첫 12개 핵심 케이스를 유지하면서 직무군·판정·난도를 60개로 확장했다. 정확한 행 정본은 JSONL이며,
+건수나 분포를 바꾸면 이 표와 모델 평가 보고서를 함께 갱신한다.
 
 ## 하니스가 측정하는 지표
 `json_parse_rate · required_key_rate · forbidden_key_rate · cjk_leak_rate · hallucination_flag_rate · avg/p95_latency_ms · success_count · failure_reasons`
@@ -59,6 +54,7 @@ python scripts/eval_fit_model.py --cases eval/golden_fit_cases.jsonl --mock --ou
 ```
 결과(`out/eval/*.json`)는 gitignore 됨 — **커밋하지 않는다**. 요약 수치만 `docs/ai-reports/areas/c-career-strategy/reports/`의 장문 보고서에 옮긴다.
 
-## 확장 TODO
-- 40~60건으로 확대 + **사람 검증**(특히 비IT는 직무/HR 관점 SME 리뷰).
-- mustMention/allowedSkills 정교화, 경계·환각 케이스 보강.
+## 유지·검증 TODO
+
+- 60건의 **사람 재검토**를 주기적으로 수행한다(특히 비IT는 직무/HR 관점 SME 리뷰).
+- mustMention/allowedSkills를 정교화하고, 새 실패가 발견될 때 경계·환각 회귀 케이스를 추가한다.

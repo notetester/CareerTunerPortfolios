@@ -18,12 +18,10 @@ import { isNativeApp, platformName } from "./capacitor";
 import { toAppPath } from "./deepLink";
 import { isNativePushRegistrationConfigured } from "./nativePushConfiguration";
 
-// 개발용 기본 VAPID 공개키(비밀 아님) — 백엔드 careertuner.push.vapid.public-key 기본값과 반드시 동일.
-// 운영/배포는 VITE_VAPID_PUBLIC_KEY 로 교체하면 코드 변경 없이 적용된다(.env.example 참고).
-const DEV_VAPID_PUBLIC_KEY =
-  "BIHnlq45n0TUTYx1XCkGjMpap8v_GHYBKqUjrx9O3npe7HL2Nz1TU28u0Kh17q4QjP3w8ZXGJn1RIRQ25SR5Elk";
+// 환경별 백엔드 키쌍과 일치하는 공개키를 명시적으로 주입한다.
+// 키가 없으면 권한만 받고 구독을 만들지 않으며, 소스에 개발용 키쌍을 남기지 않는다.
 const VAPID_PUBLIC_KEY =
-  (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) || DEV_VAPID_PUBLIC_KEY;
+  (import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined) || "";
 
 export type PushRegisterResult =
   | "subscribed"        // 백엔드에 기기 등록 완료

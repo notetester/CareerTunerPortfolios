@@ -165,7 +165,7 @@ public class InterviewServiceImpl implements InterviewService {
                         ? " 세션을 데스크톱에서 이어받을 수 있어요."
                         : " 세션을 폰에서 이어받을 수 있어요."))
                 .link(toDesktop
-                        ? "/interview?session=" + sessionId
+                        ? "/interview/questions?session=" + sessionId
                         : "/m/session/" + sessionId)
                 .build());
     }
@@ -235,12 +235,21 @@ public class InterviewServiceImpl implements InterviewService {
         final ApplicationCase bgCase = applicationCase;
         final String bgModeLabel = modeLabel;
         final List<InterviewQuestion> bgQuestions = inserted;
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
+        Runnable modelAnswerJob = () ->
                 backgroundExecutor.run(() -> storeModelAnswers(bgUserId, bgSession, bgCase, bgModeLabel, bgQuestions));
-            }
-        });
+        // 트랜잭션 동기화가 활성일 때만 커밋 이후로 미룬다. autoprep 백그라운드 스레드처럼 활성 트랜잭션이
+        // 없는 경로에서는 registerSynchronization 이 예외를 던지므로(질문은 이미 오토커밋됨) 즉시 실행한다.
+        // (FileService·PendingFileCleanupWorker 와 동일한 isSynchronizationActive 가드 패턴.)
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    modelAnswerJob.run();
+                }
+            });
+        } else {
+            modelAnswerJob.run();
+        }
 
         // 예상 질문 생성이 성공하면 사용자에게 완료 알림을 남긴다.
         notificationService.notify(Notification.builder()
@@ -250,7 +259,7 @@ public class InterviewServiceImpl implements InterviewService {
                 .targetId(sessionId)
                 .title("면접 예상 질문이 준비되었습니다")
                 .message("%s 예상 질문 %d개가 생성되었습니다.".formatted(modeLabel, inserted.size()))
-                .link("/interview?session=" + sessionId)
+                .link("/interview/questions?session=" + sessionId)
                 .build());
 
         return listQuestions(userId, sessionId);
@@ -773,7 +782,7 @@ public class InterviewServiceImpl implements InterviewService {
                 .targetId(sessionId)
                 .title("면접 리포트가 준비되었습니다")
                 .message("%s 리포트 · 종합 %d점".formatted(modeLabel, payload.totalScore()))
-                .link("/interview?session=" + sessionId + "&tab=report")
+                .link("/interview/reports?session=" + sessionId)
                 .build());
 
         return response;
@@ -784,7 +793,8 @@ public class InterviewServiceImpl implements InterviewService {
     public ModelAnswerResponse getModelAnswer(Long userId, Long questionId) {
         // 동일 문항의 모바일·웹·데스크톱 중복 클릭을 직렬화한다. 잠금 대기 뒤
         // 저장값을 다시 확인하므로 실제 모델 호출과 과금은 최초 요청 한 번만 수행된다.
-        InterviewQuestion question = lockOwnedQuestion(userId, questionId);
+        // 질문 행만 잠근다(세션 락 제외) — 같은 세션/케이스의 다른 질문 요청과 경합하지 않도록.
+        InterviewQuestion question = lockOwnedQuestionRowOnly(userId, questionId);
         InterviewSession session = requireSession(userId, question.getInterviewSessionId());
         ApplicationCase applicationCase = accessService.requireOwned(userId, session.getApplicationCaseId());
         String modeLabel = MODE_LABELS.getOrDefault(session.getMode(), session.getMode());
@@ -908,6 +918,22 @@ public class InterviewServiceImpl implements InterviewService {
         lockOwnedSession(userId, snapshot.getInterviewSessionId());
         InterviewQuestion locked = interviewMapper.lockQuestionByIdAndUserId(questionId, userId);
         if (locked == null || !snapshot.getInterviewSessionId().equals(locked.getInterviewSessionId())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "면접 질문을 찾을 수 없습니다.");
+        }
+        return locked;
+    }
+
+    /**
+     * 모범답안 조회 전용: 질문 행만 잠근다(세션 락을 잡지 않는다).
+     * 모범답안 생성은 세션 구조를 바꾸지 않고 질문의 model_answer 만 갱신하며, 저장은 first-writer-wins
+     * (updateQuestionModelAnswer 가 model_answer IS NULL 일 때만 기록)라 세션 락이 없어도 표시·채점 기준이 일치한다.
+     * lockOwnedQuestion 처럼 세션 행까지 잠그면 같은 세션·케이스의 다른 질문을 동시에 요청할 때
+     * 뒤 요청이 공통 세션/케이스 행 락을 AI 생성(수십초) 내내 기다리다 statement-timeout(30s)으로 500 난다.
+     * 질문 행만 잠그므로 동일 문항 중복 클릭만 직렬화되고(AI 1회), 세션 락을 아예 잡지 않아 락 순서 정책과도 무관하다.
+     */
+    private InterviewQuestion lockOwnedQuestionRowOnly(Long userId, Long questionId) {
+        InterviewQuestion locked = interviewMapper.lockQuestionByIdAndUserId(questionId, userId);
+        if (locked == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "면접 질문을 찾을 수 없습니다.");
         }
         return locked;

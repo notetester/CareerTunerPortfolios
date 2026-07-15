@@ -224,7 +224,8 @@ export interface CategoryInfo {
 export const CATEGORIES: CategoryInfo[] = [
   { value: "all", label: "전체", slug: "job-review", colorClass: "" },
   { value: "job", label: "취업후기", slug: "job-review", colorClass: "cat-job" },
-  { value: "recruit", label: "채용공고", slug: "recommended-job", colorClass: "cat-recruit" },
+  // 채용공고 탭 제거 — 커뮤니티에 채워지는 파이프가 없어 항상 0건. 공고는 /jobs 게시판이 정본이며
+  // 커뮤니티 헤더의 '채용공고 보러가기' 버튼으로 연결한다. (CATEGORY_META 의 배지 매핑은 유지)
   { value: "interview", label: "면접후기", slug: "interview-review", colorClass: "cat-interview" },
   { value: "role", label: "직무질문", slug: "job-question", colorClass: "cat-role" },
   { value: "pass", label: "합격전략", slug: "success-strategy", colorClass: "cat-pass" },

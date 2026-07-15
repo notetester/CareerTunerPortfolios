@@ -167,12 +167,10 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     const generation = communityGeneration;
     const sequence = ++categoryCountSequence;
     try {
-      // 탭 뱃지는 목록과 동일 소스(community_post)를 봐야 한다.
-      // 전체 게시글을 한 번 받아 카테고리별로 집계(목록도 size 100 상한과 동일).
-      const all = await communityApi.getPosts(undefined, "latest", 0, 100);
+      // 탭 뱃지는 서버 전수 집계를 쓴다 — 최신 100건 표본 집계는 오래된 카테고리 글이
+      // 표본 밖으로 밀리면 뱃지가 사라지거나 수가 모자라는 문제가 있었다.
+      const counts = await communityApi.getCategoryCounts();
       if (!isCurrentGeneration(generation) || sequence !== categoryCountSequence) return;
-      const counts: Record<string, number> = {};
-      for (const p of all) counts[p.category] = (counts[p.category] ?? 0) + 1;
       set({ categoryCounts: counts });
     } catch { /* 카운트 실패는 무시 */ }
   },

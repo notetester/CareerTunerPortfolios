@@ -257,7 +257,7 @@ export const legalDocs: Record<string, LegalDocument> = {
               { term: "직책", desc: "개인정보보호책임자(CPO)" },
               {
                 term: "연락처",
-                desc: "privacy@careertuner.kr / 02-1234-5678",
+                desc: "privacy@careertuner.example.com / 02-1234-5678",
               },
             ],
           },

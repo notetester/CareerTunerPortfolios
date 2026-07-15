@@ -43,8 +43,8 @@ class SitesFinancialMutationInterceptorTest {
     @BeforeEach
     void setUp() {
         CareerTunerProperties props = new CareerTunerProperties();
-        props.getApp().setFrontendUrl("https://careertuner.kro.kr");
-        props.getApp().setSitesFrontendUrl("https://careertuner.career-tuner-4654.chatgpt.site");
+        props.getApp().setFrontendUrl("https://careertuner.example.com");
+        props.getApp().setSitesFrontendUrl("https://sites.example.com");
         interceptor = new SitesFinancialMutationInterceptor(new FrontendReturnUrlResolver(props));
     }
 
@@ -61,8 +61,6 @@ class SitesFinancialMutationInterceptorTest {
                 Arguments.of(PaymentController.class, "ready"),
                 Arguments.of(PaymentController.class, "confirm"),
                 Arguments.of(PaymentController.class, "cancel"),
-                Arguments.of(BillingController.class, "subscribe"),
-                Arguments.of(BillingController.class, "purchaseCredits"),
                 Arguments.of(BillingController.class, "cancelSubscription"),
                 Arguments.of(RefundRequestController.class, "create"),
                 Arguments.of(RewardController.class, "redeem"),

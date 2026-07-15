@@ -1,6 +1,11 @@
 # E Correction LLM Evaluation Summary
 
-## 최종 로컬 결과
+> **보존 상태:** 이 문서는 2026-06-27 seed360 후보 비교 기록이다. 당시의 Qwen3-8B 주력 후보
+> 결론은 폐기되었으며, 현재 서비스 기준은
+> [`careertuner-e-correction-3b:delivery-s-f16-20260708`](../model-card.md)이다. 아래 수치는 과거
+> 후보의 재현 근거로만 사용하고 현재 라우팅·배포 판단에 사용하지 않는다.
+
+## 당시 로컬 후보 평가
 
 평가일: 2026-06-27
 
@@ -49,6 +54,9 @@ Qwen3-8B 경고:
 - `.venv-ai/`
 - 기타 개인 로컬 실행 산출물
 
-## 결론
+## 현재 해석
 
-Qwen3-8B LoRA가 E 첨삭 주력 후보로 적합하다. Qwen2.5-3B LoRA는 경량 fallback 및 파이프라인 검증 기준으로 유지한다. 서비스 연결 전에는 백엔드에서 JSON schema 검증과 extra key 차단을 반드시 구현해야 한다.
+이 평가만 놓고 보면 Qwen3-8B가 하드케이스 1건 앞섰지만, 이것만으로 운영 모델 승격을 정당화하지
+않는다. 현재는 팀 공통 3B 기준, 고정 서비스 태그, strict schema 검증, repair와 provider fallback을
+포함한 전체 런타임 계약으로 배포를 판단한다. Qwen3-8B와 남아 있는 과거 태그는 서비스 라우팅에서
+제외하며, 최신 운영 판단과 알려진 한계는 [model-card](../model-card.md)를 따른다.

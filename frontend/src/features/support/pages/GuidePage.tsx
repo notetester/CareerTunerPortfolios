@@ -24,7 +24,7 @@ interface GuideTip {
 
 const GUIDE_FEATURES: GuideFeature[] = [
   { icon: Briefcase, t: "공고 분석", d: "채용공고 URL이나 텍스트를 붙여넣으면 AI가 필수·우대 역량, 난이도, 핵심 키워드를 자동으로 구조화해요.", link: "공고 분석하기", href: "/applications/new", tone: "var(--cat-job-bg)", fg: "var(--cat-job-fg)" },
-  { icon: Target, t: "내 스펙 비교", d: "프로필에 등록한 역량과 공고 요구사항을 나란히 비교해 강점과 보완할 역량을 시각적으로 보여줘요.", link: "스펙 비교하기", href: "/applications?tab=fit", tone: "var(--cat-interview-bg)", fg: "var(--cat-interview-fg)" },
+  { icon: Target, t: "내 스펙 비교", d: "프로필에 등록한 역량과 공고 요구사항을 나란히 비교해 강점과 보완할 역량을 시각적으로 보여줘요.", link: "스펙 비교하기", href: "/applications/compare", tone: "var(--cat-interview-bg)", fg: "var(--cat-interview-fg)" },
   { icon: MessageSquare, t: "AI 가상 면접", d: "직무·인성·실전·음성 면접을 시뮬레이션하고, 답변마다 AI 피드백과 개선 포인트를 바로 확인할 수 있어요.", link: "면접 연습하기", href: "/interview", tone: "var(--cat-role-bg)", fg: "var(--cat-role-fg)" },
   { icon: PenLine, t: "AI 첨삭", d: "자기소개서, 면접 답변, 이력서, 포트폴리오 설명을 AI가 분석해 더 설득력 있는 문장으로 다듬어줘요.", link: "첨삭 받기", href: "/correction", tone: "var(--cat-pass-bg)", fg: "var(--cat-pass-fg)" },
   { icon: TrendingUp, t: "취업 분석", d: "여러 지원 건의 데이터를 종합해 지원 경향, 강·약점, 장기 전략 리포트를 한눈에 확인할 수 있어요.", link: "분석 보기", href: "/analysis", tone: "var(--cat-portfolio-bg)", fg: "var(--cat-portfolio-fg)" },

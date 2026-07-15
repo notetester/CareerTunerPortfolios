@@ -100,7 +100,7 @@ export const demoDashboardSummary: DashboardSummary = {
   },
   recentNotifications: [
     { id: 9101, type: "ANALYSIS_DONE", title: "네이버 적합도 분석이 완료되었습니다 (84점)", message: null, link: "/applications/102", read: false, createdAt: iso(2) },
-    { id: 9102, type: "INTERVIEW_REPORT", title: "모의면접 리포트가 준비되었습니다", message: null, link: "/interview?tab=report", read: false, createdAt: iso(1) },
+    { id: 9102, type: "INTERVIEW_REPORT", title: "모의면접 리포트가 준비되었습니다", message: null, link: "/interview/reports", read: false, createdAt: iso(1) },
     { id: 9103, type: "NOTICE", title: "CareerTuner 데모에 오신 것을 환영합니다", message: null, link: null, read: true, createdAt: iso(5) },
   ],
   readiness: {

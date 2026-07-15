@@ -44,7 +44,7 @@ export function BillingFailPage() {
           </div>
           <div className="flex gap-2">
             <Button asChild className="flex-1">
-              <Link to={`/billing?tab=${returnTab}`}>다시 시도</Link>
+              <Link to={`/billing/${returnTab}`}>다시 시도</Link>
             </Button>
             <Button asChild variant="outline" className="flex-1">
               <Link to="/billing">결제 관리</Link>

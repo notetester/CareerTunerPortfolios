@@ -10,9 +10,11 @@ interface StrategyPanelProps {
   analyses: FitAnalysisDetail[];
   loading: boolean;
   error: string | null;
+  /** 집계 페이지처럼 상위에서 이미 제목을 그릴 때 패널 자체 제목을 숨긴다. */
+  hideHeading?: boolean;
 }
 
-export function StrategyPanel({ analyses, loading, error }: StrategyPanelProps) {
+export function StrategyPanel({ analyses, loading, error, hideHeading = false }: StrategyPanelProps) {
   if (loading) return <StateCard title="지원 전략을 불러오는 중입니다." />;
   if (error) return <StateCard title={error} tone="error" />;
   if (analyses.length === 0) {
@@ -21,10 +23,12 @@ export function StrategyPanel({ analyses, loading, error }: StrategyPanelProps) 
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-lg font-bold text-slate-900">지원 전략</h2>
-        <p className="mt-1 text-sm text-slate-500">최신 적합도 분석의 전략 문구를 지원 건별로 정리합니다.</p>
-      </div>
+      {!hideHeading && (
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">지원 전략</h2>
+          <p className="mt-1 text-sm text-slate-500">최신 적합도 분석의 전략 문구를 지원 건별로 정리합니다.</p>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {analyses.map((analysis) => {

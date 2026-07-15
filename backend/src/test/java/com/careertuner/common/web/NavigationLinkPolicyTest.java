@@ -21,13 +21,13 @@ class NavigationLinkPolicyTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/community/posts/1", "/billing?tab=history", "/#section"})
+    @ValueSource(strings = {"/community/posts/1", "/billing/history", "/#section"})
     void internalPathKeepsLegitimateRoutes(String value) {
         assertThat(NavigationLinkPolicy.optionalInternalPath(value, "링크")).isEqualTo(value);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"https://careertuner.kro.kr/pricing", "http://localhost:5173/demo", "/applications"})
+    @ValueSource(strings = {"https://careertuner.example.com/pricing", "http://localhost:5173/demo", "/applications"})
     void webOrInternalKeepsSupportedAdvertisementTargets(String value) {
         assertThat(NavigationLinkPolicy.optionalWebOrInternal(value, "광고 링크")).isEqualTo(value);
     }

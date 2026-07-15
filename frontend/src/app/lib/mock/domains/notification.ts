@@ -85,7 +85,7 @@ const demoNotifications: BackendNotification[] = [
     targetId: 77,
     title: "새 채팅이 도착했어요",
     message: "스터디 채팅방에 새 메시지가 올라왔습니다.",
-    link: "/messenger",
+    link: "/messenger/rooms",
     read: false,
     createdAt: iso(2),
     actor: { id: 84, name: "스터디장", avatarUrl: undefined },

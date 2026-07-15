@@ -72,7 +72,7 @@ public class JobPostingNotifyListener {
                     .targetId(event.postingId())
                     .title(title)
                     .message(message)
-                    .link("/company")
+                    .link("/company/manage")
                     .build());
         } catch (Exception ex) {
             log.error("공고 검토 결과 알림 실패 postingId={}", event.postingId(), ex);

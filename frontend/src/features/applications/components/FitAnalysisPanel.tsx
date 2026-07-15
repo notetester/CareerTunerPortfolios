@@ -22,15 +22,22 @@ interface FitAnalysisPanelProps {
   /** 적합도 분석 생성/재생성 요청이 진행 중일 때 단계별 진행 상태를 보여준다(디자인 분석 §9). */
   generating?: boolean;
   error: string | null;
+  /** 집계 페이지처럼 상위에서 이미 제목을 그릴 때 패널 자체 제목을 숨긴다. */
+  hideHeading?: boolean;
 }
 
-export function FitAnalysisPanel({ analyses, loading, generating = false, error }: FitAnalysisPanelProps) {
+export function FitAnalysisPanel({ analyses, loading, generating = false, error, hideHeading = false }: FitAnalysisPanelProps) {
+  // 상세 페이지는 분석이 1개뿐 — 2열 그리드로 두면 오른쪽 절반이 비어 잘린 것처럼 보인다.
+  // 단일이면 전폭 카드 + 카드 내부를 2열로 나눠 넓은 폭을 채운다(집계 뷰는 기존 2열 유지).
+  const single = analyses.length === 1;
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-lg font-bold text-slate-900">내 스펙과 공고 비교</h2>
-        <p className="mt-1 text-sm text-slate-500">지원 건별 최신 적합도 분석을 기준으로 강점과 부족 역량을 확인합니다.</p>
-      </div>
+      {!hideHeading && (
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">내 스펙과 공고 비교</h2>
+          <p className="mt-1 text-sm text-slate-500">지원 건별 최신 적합도 분석을 기준으로 강점과 부족 역량을 확인합니다.</p>
+        </div>
+      )}
 
       {generating && <FitAnalysisProgress />}
       {!generating && loading && <StateCard title="적합도 분석을 불러오는 중입니다." />}
@@ -39,7 +46,7 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
         <StateCard title="아직 적합도 분석 결과가 없습니다." description="공고문 분석을 먼저 실행하면 지원 건별 비교 결과가 표시됩니다." />
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className={`grid gap-4 ${single ? "" : "lg:grid-cols-2"}`}>
         {analyses.map((analysis) => {
           const matchedSkills = parseJsonList(analysis.matchedSkills);
           const missingSkills = parseJsonList(analysis.missingSkills);
@@ -113,28 +120,34 @@ export function FitAnalysisPanel({ analyses, loading, generating = false, error 
                   </div>
                 )}
 
-                <ConditionMatrixTable rows={conditionMatrix} />
-                <FitImpactSimulator currentScore={analysis.fitScore ?? 0} rows={conditionMatrix} />
-
-                <SkillList title="매칭된 역량" icon="match" items={matchedSkills} />
-                <SkillList title="부족한 역량" icon="gap" items={missingSkills} />
-                <DetailList title="점수 산정 근거" items={scoreBasis} />
-                <ScoreBreakdownCard items={analysis.scoreBreakdown ?? []} score={analysis.fitScore ?? 0} />
-                <div>
-                  <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
-                    <AlertCircle className="size-4 text-amber-600" />
-                    보완 우선순위
+                {/* 본문 상세 — 단일 분석(상세 페이지)에서는 2열로 넓은 폭을 채운다. */}
+                <div className={single ? "grid gap-4 lg:grid-cols-2" : "space-y-4"}>
+                  <div className="min-w-0 space-y-4">
+                    <ConditionMatrixTable rows={conditionMatrix} />
+                    <FitImpactSimulator currentScore={analysis.fitScore ?? 0} rows={conditionMatrix} />
                   </div>
-                  <div className="space-y-2">
-                    {gaps.length > 0 ? gaps.map((gap) => (
-                      <div key={`${gap.category}-${gap.skill}`} className="rounded-lg border border-slate-100 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-slate-800">{gap.skill}</span>
-                          <Badge variant="outline">{priorityLabel(gap.priority)}</Badge>
-                        </div>
-                        <div className="mt-1 text-xs text-slate-500">{categoryLabel(gap.category)} · {gap.reason}</div>
+                  <div className="min-w-0 space-y-4">
+                    <SkillList title="매칭된 역량" icon="match" items={matchedSkills} />
+                    <SkillList title="부족한 역량" icon="gap" items={missingSkills} />
+                    <DetailList title="점수 산정 근거" items={scoreBasis} />
+                    <ScoreBreakdownCard items={analysis.scoreBreakdown ?? []} score={analysis.fitScore ?? 0} />
+                    <div>
+                      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+                        <AlertCircle className="size-4 text-amber-600" />
+                        보완 우선순위
                       </div>
-                    )) : <span className="text-xs text-slate-400">분석된 보완 항목 없음</span>}
+                      <div className="space-y-2">
+                        {gaps.length > 0 ? gaps.map((gap) => (
+                          <div key={`${gap.category}-${gap.skill}`} className="rounded-lg border border-slate-100 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold text-slate-800">{gap.skill}</span>
+                              <Badge variant="outline">{priorityLabel(gap.priority)}</Badge>
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">{categoryLabel(gap.category)} · {gap.reason}</div>
+                          </div>
+                        )) : <span className="text-xs text-slate-400">분석된 보완 항목 없음</span>}
+                      </div>
+                    </div>
                   </div>
                 </div>
 

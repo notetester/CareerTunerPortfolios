@@ -28,7 +28,12 @@ export interface AutoPrepRequest {
   applicationCaseId?: number | null;
   mode?: string | null;
   coverLetterText?: string | null;
+  /** 자소서 첨부 fileId — WRITE(자소서 교정)가 소비. */
   attachmentFileIds?: number[];
+  /** 공고(텍스트/PDF-텍스트/docx) 첨부 fileId — 지원 건이 없으면 인테이크가 본문을 뽑아 지원 건을 자동 생성. */
+  jobPostingFileIds?: number[];
+  /** SSE 실행 한 건의 client-generated id. 서버 명시적 취소 레지스트리에서 사용자 범위로만 사용한다. */
+  runId?: string;
 }
 
 /** 인테이크 응답의 지원 건 후보(백엔드 ApplicationCaseResponse 의 필요한 필드만). */
@@ -49,10 +54,20 @@ export interface AutoPrepIntakeResponse {
   plan: PrepPlan;
   ready: boolean;
   message: string;
-  /** 다음 물을 슬롯: "CASE"(지원 건) | "MODE"(면접 모드) | null(ready). */
-  nextAsk: "CASE" | "MODE" | null;
+  /** 다음 물을 슬롯: "CASE"(지원 건) | "MODE"(면접 모드) | "EXTRACTING"(공고 추출 중 — 폴링) | null(ready). */
+  nextAsk: "CASE" | "MODE" | "EXTRACTING" | null;
   candidates: PrepCaseCandidate[];
   modes: PrepModeOption[];
+  /** EXTRACTING 응답에서 갓 만든(또는 추출 진행 중인) 지원 건 id — 다음 턴에 재전송한다. */
+  applicationCaseId?: number | null;
+}
+
+/** 공고 추출 상태 전용 폴링 응답. 인테이크/LLM을 다시 호출하지 않고 이 값만 확인한다. */
+export interface AutoPrepExtractionStatus {
+  applicationCaseId: number;
+  status: "QUEUED" | "RUNNING" | "SUCCEEDED" | "FAILED" | string;
+  errorMessage?: string | null;
+  qualityStatus?: "PASS" | "REVIEW_REQUIRED" | "FAILED" | string | null;
 }
 
 /** 업로드된 첨부 파일(백엔드 FileAssetResponse). */

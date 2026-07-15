@@ -87,7 +87,7 @@ export const INQUIRIES: Inquiry[] = [
     memo: "제휴팀(박지호) 전달 완료.",
     msgs: [
       { who: "user", name: "최민호", time: "06.05 11:00", text: "대학 취업지원센터와의 제휴를 문의드리고 싶습니다. 담당자 연결 부탁드려요." },
-      { who: "admin", name: "김운영", time: "06.05 13:40", text: "관심 가져주셔서 감사합니다. 제휴팀에 전달했으며 영업일 기준 2일 이내에 redacted-7bf5be73595323c7@example.com로 연락드리겠습니다." },
+      { who: "admin", name: "김운영", time: "06.05 13:40", text: "관심 가져주셔서 감사합니다. 제휴팀에 전달했으며 영업일 기준 2일 이내에 partnership@careertuner.example.com로 연락드리겠습니다." },
     ],
   },
 ];

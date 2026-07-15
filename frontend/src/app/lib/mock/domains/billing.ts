@@ -10,7 +10,6 @@ import type {
   Payment,
   UsageRow,
   CreditTransaction,
-  BillingCycle,
 } from "@/features/billing/api/billingApi";
 import type { CurrentRefundPolicy } from "@/features/billing/api/refundPolicyApi";
 import type { AiChargePreview } from "@/features/billing/api/aiChargePreviewApi";
@@ -197,15 +196,6 @@ const currentRefundPolicy: CurrentRefundPolicy = {
 
 const refundRequests: RefundRequestRow[] = [];
 
-interface SubscribeBody {
-  planCode?: string;
-  cycle?: BillingCycle;
-}
-
-interface PurchaseBody {
-  productCode?: string;
-}
-
 interface AiChargePreviewBody {
   featureType?: string;
   creditCost?: number;
@@ -341,58 +331,6 @@ export const billingRoutes: MockRoute[] = [
       };
       refundRequests.unshift(row);
       return row;
-    },
-  },
-
-  // ── 구독 신청: planCode 로 현재 플랜을 갱신하고 갱신된 MyBilling 반환 ──
-  {
-    method: "POST",
-    pattern: /^\/billing\/subscribe$/,
-    handler: ({ body }: MockContext) => {
-      const request = body as SubscribeBody | undefined;
-      const target = plans.find((plan) => plan.code === request?.planCode);
-      if (target) {
-        myBilling.currentPlanCode = target.code;
-        myBilling.currentPlanName = target.name;
-        myBilling.subscriptionStatus = target.code === "FREE" ? "FREE" : "ACTIVE";
-        myBilling.periodEnd = target.code === "FREE" ? null : iso(-30);
-      }
-      return { ...myBilling };
-    },
-  },
-
-  // ── 크레딧 충전: productCode 의 creditAmount 만큼 잔액 증가 후 MyBilling 반환 ──
-  {
-    method: "POST",
-    pattern: /^\/billing\/credits\/purchase$/,
-    handler: ({ body }: MockContext) => {
-      const request = body as PurchaseBody | undefined;
-      const product = creditProducts.find((item) => item.code === request?.productCode);
-      if (product) {
-        myBilling.creditBalance += product.creditAmount;
-        creditTransactions.unshift({
-          id: 6000 + creditTransactions.length + 1,
-          type: "CHARGE",
-          amount: product.creditAmount,
-          balanceAfter: myBilling.creditBalance,
-          reason: `${product.name} 충전`,
-          createdAt: new Date().toISOString(),
-        });
-        payments.unshift({
-          id: 5000 + payments.length + 1,
-          provider: "TOSS",
-          productType: "CREDIT",
-          productCode: product.code,
-          orderId: `ORD-DEMO-${product.code}-${5000 + payments.length + 1}`,
-          amount: product.price,
-          plan: null,
-          creditAmount: product.creditAmount,
-          status: "PAID",
-          paidAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-        });
-      }
-      return { ...myBilling };
     },
   },
 

@@ -1,7 +1,11 @@
 package com.careertuner.ai.autoprep;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
@@ -13,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import com.careertuner.common.text.DocumentTextExtractor;
 import com.careertuner.billing.domain.SubscriptionBenefitPolicy;
 import com.careertuner.billing.service.BillingPolicyService;
+import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.file.domain.FileAsset;
 import com.careertuner.file.service.FileService;
 import com.careertuner.user.domain.User;
@@ -93,6 +99,69 @@ class AutoPrepAttachmentLoaderDocxTest {
         assertThat(loader.load(USER_ID, List.of(10L, 11L, 12L)))
                 .extracting(PrepAttachment::fileId)
                 .containsExactly(10L, 11L);
+    }
+
+    @Test
+    void loadForRequest_appliesOneCombinedLimitToPostingAndResumeAttachments() throws Exception {
+        User user = mock(User.class);
+        when(user.getPlan()).thenReturn("PRO");
+        when(userMapper.findById(USER_ID)).thenReturn(user);
+        when(billingPolicyService.activeBenefitPolicy("PRO", "AUTOPREP_ATTACHMENT", null))
+                .thenReturn(policy(2));
+        stubDownload(20L, "jd.txt", "text/plain", "채용 공고".getBytes());
+        stubDownload(21L, "resume-a.txt", "text/plain", "자소서 A".getBytes());
+        stubDownload(22L, "resume-b.txt", "text/plain", "자소서 B".getBytes());
+
+        List<PrepAttachment> posting = loader.loadForRequest(
+                USER_ID, List.of(20L), List.of(20L), List.of(21L, 22L));
+        List<PrepAttachment> resumes = loader.loadForRequest(
+                USER_ID, List.of(21L, 22L), List.of(20L), List.of(21L, 22L));
+
+        assertThat(posting).extracting(PrepAttachment::fileId).containsExactly(20L);
+        assertThat(resumes).extracting(PrepAttachment::fileId).containsExactly(21L);
+        verify(fileService, never()).download(USER_ID, 22L);
+    }
+
+    @Test
+    void validateRequestLimit_rejectsFreePostingPlusResumeAsOneRequest() {
+        stubFreeUser();
+
+        assertThatThrownBy(() -> loader.validateRequestLimit(USER_ID, List.of(20L), List.of(21L)))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
+                    assertThat(ex.getMessage()).contains("합해 최대 1개");
+                });
+    }
+
+    @Test
+    void validateRequestLimit_countsMultipartBinaryPostingBeforeCaseCreation() {
+        stubFreeUser();
+
+        assertThatThrownBy(() -> loader.validateRequestLimit(
+                USER_ID, null, List.of(21L), 1))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("공고와 자소서를 합해 최대 1개");
+    }
+
+    @Test
+    void validateRequestLimit_allowsFiveDistinctFilesForMatchingProPolicy() {
+        User user = mock(User.class);
+        when(user.getPlan()).thenReturn("PRO");
+        when(userMapper.findById(USER_ID)).thenReturn(user);
+        when(billingPolicyService.activeBenefitPolicy("PRO", "AUTOPREP_ATTACHMENT", null))
+                .thenReturn(policy(5));
+
+        assertThatCode(() -> loader.validateRequestLimit(
+                USER_ID, List.of(20L), List.of(21L, 22L, 23L, 24L)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void validateRequestLimit_countsDuplicateIdOnlyOnceAcrossRoles() {
+        stubFreeUser();
+
+        assertThatCode(() -> loader.validateRequestLimit(USER_ID, List.of(20L), List.of(20L)))
+                .doesNotThrowAnyException();
     }
 
     private void stubFreeUser() {

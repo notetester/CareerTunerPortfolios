@@ -1,8 +1,9 @@
 """
 학습된 프로필 AI 모델을 FastAPI 서버로 실행하는 예시입니다.
 
-Spring Boot 백엔드에서는 이후 FineTunedProfileAiService가 이 서버로 HTTP 요청을 보내는 구조로 연결합니다.
-개발 기본 포트는 8000입니다.
+Spring Boot의 FineTunedProfileAiService가 ``/analyze-profile``로 요청하는 연결은 구현되어 있습니다.
+다만 런타임 기본값은 ``PROFILE_AI_FINETUNED_ENABLED=false``이고, 사용하려면 활성화와
+``PROFILE_AI_FINETUNED_BASE_URL`` 설정이 모두 필요합니다. 개발 기본 포트는 8000입니다.
 
 실행 예:
 uvicorn docs.ai-training.serve_profile_ai_model:app --host 0.0.0.0 --port 8000
@@ -31,8 +32,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 BASE_MODEL = os.getenv("PROFILE_AI_BASE_MODEL", "Qwen/Qwen3-4B-Instruct-2507")
 ADAPTER_DIR = Path(os.getenv("PROFILE_AI_ADAPTER_DIR", "docs/ai-training/output/qwen3-profile-lora"))
-MAX_NEW_TOKENS = int(os.getenv("PROFILE_AI_MAX_NEW_TOKENS", "900"))
-TEMPERATURE = float(os.getenv("PROFILE_AI_TEMPERATURE", "0.2"))
+MAX_NEW_TOKENS = int(os.getenv("PROFILE_AI_MAX_NEW_TOKENS", "1400"))
+TEMPERATURE = float(os.getenv("PROFILE_AI_TEMPERATURE", "0"))
 
 
 SYSTEM_PROMPT = (

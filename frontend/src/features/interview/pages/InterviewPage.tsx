@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { MessageSquare } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs";
 import type { AiModelChoice } from "@/app/components/ai/ModelPicker";
@@ -18,26 +18,22 @@ import { AvatarInterviewTab } from "../components/AvatarInterviewTab";
 import { EvaluationCriteriaTab } from "../components/EvaluationCriteriaTab";
 import { CorrectionInfoTab } from "../components/CorrectionInfoTab";
 import { InterviewReportTab } from "../components/InterviewReportTab";
+import { SessionEntryGate } from "../components/SessionEntryGate";
 import { useTutorialStore } from "../tutorial/tutorialStore";
 import { dummySession } from "../tutorial/dummyData";
 import { TutorialOverlay } from "../tutorial/TutorialOverlay";
 import { TUT_STEPS } from "../tutorial/tutSteps";
 import { getInterviewProgress, listInterviewSessions, markSessionResumed } from "../api/interviewApi";
 import { dispatchToPhone } from "../api/deviceHandoffApi";
+import {
+  INTERVIEW_SECTION_PATHS,
+  interviewSectionHref,
+  parseInterviewTab,
+  type InterviewSection,
+  type InterviewTab,
+} from "../lib/interviewSections";
 import { getInterviewModeLabel } from "../types/interview";
 import type { InterviewMode, InterviewSession } from "../types/interview";
-
-const INTERVIEW_TABS = [
-  "modes",
-  "questions",
-  "practice",
-  "live",
-  "avatar",
-  "evaluation",
-  "correction",
-  "report",
-] as const;
-type InterviewTab = (typeof INTERVIEW_TABS)[number];
 
 function parseCaseId(value: string | null): number | null {
   if (!value || !/^\d+$/.test(value)) return null;
@@ -45,14 +41,9 @@ function parseCaseId(value: string | null): number | null {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function parseInterviewTab(value: string | null): InterviewTab | null {
-  return value && INTERVIEW_TABS.includes(value as InterviewTab)
-    ? value as InterviewTab
-    : null;
-}
-
-export function InterviewPage() {
+export function InterviewPage({ forcedSection }: { forcedSection?: InterviewSection } = {}) {
   const { user, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const mode = useTutorialStore((s) => s.mode);
   const tutStep = useTutorialStore((s) => s.step);
   const startTutorial = useTutorialStore((s) => s.startTutorial);
@@ -92,8 +83,9 @@ export function InterviewPage() {
   }, [user?.id]);
   const requestedCaseId = parseCaseId(searchParams.get("caseId"));
 
-  const requestedTab = parseInterviewTab(searchParams.get("tab"));
+  const requestedTab = forcedSection ?? parseInterviewTab(searchParams.get("tab"));
   const activeTab: InterviewTab = requestedTab ?? "modes";
+  const requestedSessionId = parseCaseId(searchParams.get("session"));
   const autoMode = searchParams.get("auto") === "1" && autoPrompt.length > 0;
 
   // 지원 건 상세·챗봇·AutoPrep가 넘긴 ?caseId 를 실제 모드 선택에 반영한다.
@@ -105,11 +97,29 @@ export function InterviewPage() {
     }
   }, [requestedCaseId, cases.loading, cases.applicationCases]);
 
-  const goTab = (tab: string) => {
-    const next = new URLSearchParams();
-    if (selectedCaseId != null) next.set("caseId", String(selectedCaseId));
-    if (tab !== "modes") next.set("tab", tab);
-    setSearchParams(next);
+  const goTab = (tabValue: string, sessionOverride?: InterviewSession | null) => {
+    const tab = parseInterviewTab(tabValue) ?? "modes";
+    const session = sessionOverride ?? activeSession;
+    const sessionId = session?.id ?? requestedSessionId;
+    const caseId = session?.applicationCaseId ?? selectedCaseId ?? requestedCaseId;
+
+    if (tab === "correction") {
+      const next = new URLSearchParams(searchParams);
+      next.set("tab", "correction");
+      next.delete("auto");
+      if (sessionId != null) next.set("session", String(sessionId));
+      else next.delete("session");
+      if (caseId != null) next.set("caseId", String(caseId));
+      else next.delete("caseId");
+      navigate(`/interview?${next.toString()}`);
+      return;
+    }
+
+    navigate(interviewSectionHref(tab, {
+      sessionId,
+      caseId,
+      preserve: searchParams,
+    }));
   };
 
   /** 진행 중 세션을 폰으로 보내기 — INTERVIEW_DISPATCH 알림, 폰에서 탭하면 딥링크로 이어진다. */
@@ -147,6 +157,21 @@ export function InterviewPage() {
     !mockActive && effectiveSession
       ? `${activeCase ? `${activeCase.companyName} · ${activeCase.jobTitle} · ` : ""}${getInterviewModeLabel(effectiveSession.mode)}`
       : null;
+  const startNewInterviewHref = interviewSectionHref("modes", {
+    caseId: selectedCaseId ?? requestedCaseId,
+    sessionId: null,
+    preserve: searchParams,
+  });
+
+  const selectSessionFromGate = (session: InterviewSession) => {
+    setActiveSession(session);
+    setSessionOrigin("resumed");
+    setSelectedCaseId(session.applicationCaseId);
+    setSelectedMode(session.mode);
+    setResumeHint(null);
+    void markSessionResumed(session.id);
+    goTab(activeTab, session);
+  };
 
   // ?tutorial=1 / ?demo=1 로 진입하면 해당 모드를 자동 시작한다.
   useEffect(() => {
@@ -158,10 +183,9 @@ export function InterviewPage() {
   // 디스패치 알림 딥링크(?session={id}) → 세션 활성화 + 진행 위치 복원.
   // 데스크탑 "폰으로 보내기" 알림을 탭하면 이 경로로 들어온다.
   useEffect(() => {
-    const sidRaw = searchParams.get("session");
-    if (!sidRaw || !isAuthenticated) return;
-    const sid = Number(sidRaw);
-    if (!Number.isFinite(sid)) return;
+    if (requestedSessionId == null || !isAuthenticated) return;
+    if (activeSession?.id === requestedSessionId) return;
+    const sid = requestedSessionId;
     // 리포트 완료 알림처럼 명시된 유효 탭은 복원 뒤에도 유지하고, 누락/오염 값만 질문 탭으로 보정한다.
     const restoredTab = parseInterviewTab(searchParams.get("tab")) ?? "questions";
     let cancelled = false;
@@ -185,12 +209,12 @@ export function InterviewPage() {
         } catch {
           // 진행률 조회 실패는 무시 — 세션 활성화 자체는 유지
         }
-        // session 파라미터만 제거해 뒤로가기 재실행을 막고, 검증한 요청 탭은 보존한다.
-        if (!cancelled) {
+        // 기존 /interview?session=... 호환 링크에서 섹션이 빠진 경우만 질문 탭으로 보정한다.
+        // session 은 새 pathname 섹션을 오가거나 새로고침해도 같은 세션을 복원하도록 URL에 유지한다.
+        if (!cancelled && !forcedSection && parseInterviewTab(searchParams.get("tab")) == null) {
           const next = new URLSearchParams(searchParams);
-          next.delete("session");
-          if (restoredTab === "modes") next.delete("tab");
-          else next.set("tab", restoredTab);
+          next.set("session", String(sid));
+          next.set("tab", restoredTab);
           setSearchParams(next, { replace: true });
         }
       } catch {
@@ -201,7 +225,7 @@ export function InterviewPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, isAuthenticated]);
+  }, [activeSession?.id, forcedSection, isAuthenticated, requestedSessionId, searchParams, setSearchParams]);
 
   // 튜토리얼: 현재 step 에 tab 이 지정돼 있으면 그 탭으로 자동 전환한다.
   useEffect(() => {
@@ -325,9 +349,9 @@ export function InterviewPage() {
                   setActiveSession(session);
                   setSessionOrigin("new");
                   sessionStorage.removeItem("interview.autoPrompt");
-                  goTab("practice");
+                  goTab("practice", session);
                 }}
-                onManual={() => setSearchParams({})}
+                onManual={() => navigate(startNewInterviewHref)}
               />
             ) : (
               <ModeSelectTab
@@ -341,7 +365,7 @@ export function InterviewPage() {
                 onSessionStarted={(session) => {
                   setActiveSession(session);
                   setSessionOrigin("new");
-                  goTab("questions");
+                  goTab("questions", session);
                 }}
                 onResume={(session) => {
                   setActiveSession(session);
@@ -350,7 +374,7 @@ export function InterviewPage() {
                   setSelectedMode(session.mode);
                   // 복원 = 복습. 마지막 복습 시각을 기록한다(실패해도 흐름은 진행).
                   void markSessionResumed(session.id);
-                  goTab("questions");
+                  goTab("questions", session);
                 }}
                 activeSessionLabel={activeSessionLabel}
               />
@@ -358,32 +382,76 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="questions" className="mt-6">
-            <ExpectedQuestionsTab
-              session={effectiveSession}
-              generationModel={questionGenerationModel}
-              onGenerationModelChange={setQuestionGenerationModel}
-              onGoToPractice={() => goTab("practice")}
-            />
+            {effectiveSession ? (
+              <ExpectedQuestionsTab
+                session={effectiveSession}
+                generationModel={questionGenerationModel}
+                onGenerationModelChange={setQuestionGenerationModel}
+                onGoToPractice={() => goTab("practice")}
+              />
+            ) : (
+              <SessionEntryGate
+                section="questions"
+                applicationCases={cases.applicationCases}
+                startHref={startNewInterviewHref}
+                onSelect={selectSessionFromGate}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="practice" data-tut="tut-panel-practice" className="mt-6">
-            <PracticeTab
-              session={effectiveSession}
-              onGoToQuestions={() => goTab("questions")}
-              onGoToReport={() => goTab("report")}
-            />
+            {effectiveSession ? (
+              <PracticeTab
+                session={effectiveSession}
+                onGoToQuestions={() => goTab("questions")}
+                onGoToReport={() => goTab("report")}
+              />
+            ) : (
+              <SessionEntryGate
+                section="practice"
+                applicationCases={cases.applicationCases}
+                startHref={startNewInterviewHref}
+                onSelect={selectSessionFromGate}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="live" data-tut="tut-panel-live" className="mt-6">
-            <VoiceInterviewTab session={effectiveSession} />
+            {effectiveSession ? (
+              <VoiceInterviewTab session={effectiveSession} />
+            ) : (
+              <SessionEntryGate
+                section="live"
+                applicationCases={cases.applicationCases}
+                startHref={startNewInterviewHref}
+                onSelect={selectSessionFromGate}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="avatar" data-tut="tut-panel-avatar" className="mt-6">
-            <AvatarInterviewTab session={effectiveSession} />
+            {effectiveSession ? (
+              <AvatarInterviewTab session={effectiveSession} />
+            ) : (
+              <SessionEntryGate
+                section="avatar"
+                applicationCases={cases.applicationCases}
+                startHref={startNewInterviewHref}
+                onSelect={selectSessionFromGate}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="evaluation" data-tut="tut-panel-evaluation" className="mt-6">
-            <EvaluationCriteriaTab />
+            {!effectiveSession && (
+              <SessionEntryGate
+                section="evaluation"
+                applicationCases={cases.applicationCases}
+                startHref={startNewInterviewHref}
+                onSelect={selectSessionFromGate}
+              />
+            )}
+            <EvaluationCriteriaTab session={effectiveSession} />
           </TabsContent>
 
           <TabsContent value="correction" data-tut="tut-panel-correction" className="mt-6">
@@ -391,11 +459,48 @@ export function InterviewPage() {
           </TabsContent>
 
           <TabsContent value="report" className="mt-6">
-            <InterviewReportTab session={effectiveSession} />
+            {effectiveSession ? (
+              <InterviewReportTab session={effectiveSession} />
+            ) : (
+              <SessionEntryGate
+                section="report"
+                applicationCases={cases.applicationCases}
+                startHref={startNewInterviewHref}
+                onSelect={selectSessionFromGate}
+              />
+            )}
           </TabsContent>
         </Tabs>
       </div>
       <TutorialOverlay />
     </div>
   );
+}
+
+export function InterviewModesPage() {
+  return <InterviewPage forcedSection="modes" />;
+}
+
+export function InterviewQuestionsPage() {
+  return <InterviewPage forcedSection="questions" />;
+}
+
+export function InterviewPracticePage() {
+  return <InterviewPage forcedSection="practice" />;
+}
+
+export function InterviewLivePage() {
+  return <InterviewPage forcedSection="live" />;
+}
+
+export function InterviewAvatarPage() {
+  return <InterviewPage forcedSection="avatar" />;
+}
+
+export function InterviewEvaluationPage() {
+  return <InterviewPage forcedSection="evaluation" />;
+}
+
+export function InterviewReportPage() {
+  return <InterviewPage forcedSection="report" />;
 }

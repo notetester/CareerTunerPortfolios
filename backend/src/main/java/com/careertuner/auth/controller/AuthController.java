@@ -68,8 +68,8 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private static final String NATIVE_OAUTH_CALLBACK = "https://careertuner.kro.kr/auth/callback";
-    private static final String NATIVE_PROFILE_DETAIL = "https://careertuner.kro.kr/profile/detail";
+    private static final String NATIVE_OAUTH_CALLBACK = "https://careertuner.example.com/auth/callback";
+    private static final String NATIVE_PROFILE_DETAIL = "https://careertuner.example.com/profile/detail";
     private static final String BROWSER_OAUTH_CALLBACK_PATH = "/auth/browser-callback";
     private static final String BROWSER_SOCIAL_LINK_CALLBACK_PATH = "/profile/social-callback";
 

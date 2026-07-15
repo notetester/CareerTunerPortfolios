@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import {
   User, PenTool, Users, CreditCard, Settings, LifeBuoy, ShieldCheck,
   LogOut, X, Download, Share, Award, LayoutDashboard, Briefcase, TrendingUp, MessagesSquare,
-  CalendarClock,
+  Building2, CalendarClock,
 } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import { haptic } from "@/platform/haptics";
@@ -21,6 +21,7 @@ interface MoreItem {
 const MORE_ITEMS: MoreItem[] = [
   { label: "대시보드", href: "/dashboard", icon: LayoutDashboard },
   { label: "지원 건", href: "/applications", icon: Briefcase },
+  { label: "직무·자격 카탈로그", href: "/catalog", icon: Award },
   { label: "분석", href: "/analysis", icon: TrendingUp },
   { label: "플래너", href: "/planner", icon: CalendarClock },
   { label: "메신저", href: "/messenger", icon: MessagesSquare },
@@ -28,7 +29,9 @@ const MORE_ITEMS: MoreItem[] = [
   { label: "AI 첨삭", href: "/correction", icon: PenTool },
   { label: "커뮤니티", href: "/community", icon: Users },
   { label: "결제/구독", href: "/billing", icon: CreditCard },
+  { label: "기업 서비스", href: "/company", icon: Building2 },
   { label: "설정", href: "/settings", icon: Settings },
+  { label: "기업 서비스", href: "/company", icon: Building2 },
   { label: "고객센터", href: "/support", icon: LifeBuoy },
   { label: "관리자", href: "/admin", icon: ShieldCheck, adminOnly: true },
 ];
@@ -102,7 +105,7 @@ export function MobileMoreSheet({
         {/* 계정 */}
         {isAuthenticated ? (
           <button
-            onClick={() => go("/settings?tab=account")}
+            onClick={() => go("/settings/account")}
             className="mx-4 mb-2 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl bg-muted p-3 text-left"
           >
             <div className="flex size-11 items-center justify-center rounded-full bg-accent-soft text-base font-bold text-primary">

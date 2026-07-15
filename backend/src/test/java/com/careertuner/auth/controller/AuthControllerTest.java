@@ -32,9 +32,9 @@ class AuthControllerTest {
     private final AuthController controller = new AuthController(authService, mfaService, resolver);
 
     private final FrontendReturnTarget primary =
-            new FrontendReturnTarget("primary", "https://careertuner.kro.kr");
+            new FrontendReturnTarget("primary", "https://careertuner.example.com");
     private final FrontendReturnTarget sites = new FrontendReturnTarget(
-            "sites", "https://careertuner.career-tuner-4654.chatgpt.site");
+            "sites", "https://sites.example.com");
 
     @BeforeEach
     void setUp() {
@@ -51,7 +51,7 @@ class AuthControllerTest {
                 "google", null, "signed-state", "access_denied", request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.career-tuner-4654.chatgpt.site/auth/browser-callback"
+                "https://sites.example.com/auth/browser-callback"
                         + "?error=social_login_cancelled");
         verify(authService, never()).handleOAuthCallback(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
@@ -67,7 +67,7 @@ class AuthControllerTest {
                 "google", null, "invalid-state", "temporarily_unavailable", request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/auth/browser-callback?error=social_login_failed");
+                "https://careertuner.example.com/auth/browser-callback?error=social_login_failed");
     }
 
     @Test
@@ -75,7 +75,7 @@ class AuthControllerTest {
         var response = controller.oauthCallback("google", null, null, null, request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/auth/browser-callback?error=social_login_failed");
+                "https://careertuner.example.com/auth/browser-callback?error=social_login_failed");
     }
 
     @Test
@@ -113,7 +113,7 @@ class AuthControllerTest {
                 "kakao", "provider-code", "native-state", null, request);
 
         String location = response.getHeaders().getLocation().toString();
-        assertThat(location).isEqualTo("https://careertuner.kro.kr/auth/callback?handoffCode=" + handoffCode);
+        assertThat(location).isEqualTo("https://careertuner.example.com/auth/callback?handoffCode=" + handoffCode);
         assertThat(location).doesNotContain("accessToken", "refreshToken", "#");
     }
 
@@ -128,7 +128,7 @@ class AuthControllerTest {
         var response = controller.oauthMockCallback("naver", "native-state", request);
 
         String location = response.getHeaders().getLocation().toString();
-        assertThat(location).isEqualTo("https://careertuner.kro.kr/auth/callback?handoffCode=" + handoffCode);
+        assertThat(location).isEqualTo("https://careertuner.example.com/auth/callback?handoffCode=" + handoffCode);
         assertThat(location).doesNotContain("accessToken", "refreshToken", "mockOAuth");
     }
 
@@ -141,7 +141,7 @@ class AuthControllerTest {
                 "naver", null, "native-state", "access_denied", request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/auth/callback?error=social_login_cancelled");
+                "https://careertuner.example.com/auth/callback?error=social_login_cancelled");
     }
 
     @Test
@@ -172,7 +172,7 @@ class AuthControllerTest {
                 "google", "provider-code", "browser-state", null, request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/auth/browser-callback#accessToken=browser-access"
+                "https://careertuner.example.com/auth/browser-callback#accessToken=browser-access"
                         + "&refreshToken=browser-refresh&expiresIn=1800");
     }
 
@@ -187,7 +187,7 @@ class AuthControllerTest {
                 "google", "provider-code", "native-link-state", null, request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/profile/detail?socialLinked=GOOGLE");
+                "https://careertuner.example.com/profile/detail?socialLinked=GOOGLE");
     }
 
     @Test
@@ -199,7 +199,7 @@ class AuthControllerTest {
                 "kakao", null, "native-link-state", "access_denied", request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/profile/detail?socialLinkError=social_login_cancelled");
+                "https://careertuner.example.com/profile/detail?socialLinkError=social_login_cancelled");
     }
 
     @Test
@@ -215,7 +215,7 @@ class AuthControllerTest {
                 "naver", "provider-code", "native-link-state", null, request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/profile/detail?socialLinkError=social_login_failed");
+                "https://careertuner.example.com/profile/detail?socialLinkError=social_login_failed");
     }
 
     @Test
@@ -229,7 +229,7 @@ class AuthControllerTest {
                 "kakao", "provider-code", "sites-link-state", null, request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.career-tuner-4654.chatgpt.site/profile/social-callback?socialLinked=KAKAO");
+                "https://sites.example.com/profile/social-callback?socialLinked=KAKAO");
     }
 
     @Test
@@ -244,7 +244,7 @@ class AuthControllerTest {
                 "google", "provider-code", "browser-link-state", null, request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/profile/social-callback?socialLinked=GOOGLE");
+                "https://careertuner.example.com/profile/social-callback?socialLinked=GOOGLE");
     }
 
     @Test
@@ -257,7 +257,7 @@ class AuthControllerTest {
                 "google", null, "browser-link-state", "access_denied", request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.kro.kr/profile/social-callback?socialLinkError=social_login_cancelled");
+                "https://careertuner.example.com/profile/social-callback?socialLinkError=social_login_cancelled");
     }
 
     @Test
@@ -269,7 +269,7 @@ class AuthControllerTest {
                 "naver", null, "sites-link-state", "temporarily_unavailable", request);
 
         assertThat(response.getHeaders().getLocation()).hasToString(
-                "https://careertuner.career-tuner-4654.chatgpt.site/profile/social-callback"
+                "https://sites.example.com/profile/social-callback"
                         + "?socialLinkError=social_login_failed");
     }
 

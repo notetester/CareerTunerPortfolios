@@ -39,8 +39,8 @@ export function CorrectionInfoTab({ session }: { session: InterviewSession | nul
     [items, selectedAnswerId],
   );
   const correctionLink = selected?.answerId && session
-    ? `/correction?tab=answer&caseId=${session.applicationCaseId}&sourceRefId=${selected.answerId}`
-    : "/correction?tab=answer";
+    ? `/correction/answer?caseId=${session.applicationCaseId}&sourceRefId=${selected.answerId}`
+    : "/correction/answer";
 
   if (!session) {
     return <EmptyMessage text="면접 세션을 시작하거나 최근 기록을 이어받으면 실제 답변을 첨삭할 수 있습니다." />;

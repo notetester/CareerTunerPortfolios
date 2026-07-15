@@ -15,7 +15,11 @@ public interface ProfileMapper {
 
     UserProfile findByUserIdForUpdate(Long userId);
 
-    void insertEmptyIfAbsent(Long userId);
+    /** @return 새 빈 행을 만든 경우 1, 이미 존재한 경우 0 */
+    int insertEmptyIfAbsent(Long userId);
+
+    /** 방금 생성한 빈 행을 첫 프로필(v1)로 채운다. */
+    int initialize(UserProfile profile);
 
     void upsert(UserProfile profile);
 

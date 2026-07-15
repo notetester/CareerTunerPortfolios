@@ -23,6 +23,28 @@
         VALUES (#{userId}, 1)
     </insert>
 
+    <!-- save()가 같은 트랜잭션에서 새로 만든 빈 행의 첫 저장은 v1을 유지한다. -->
+    <update id="initialize">
+        UPDATE user_profile
+           SET desired_job = #{desiredJob},
+               desired_industry = #{desiredIndustry},
+               education = #{education},
+               career = #{career},
+               projects = #{projects},
+               skills = #{skills},
+               certificates = #{certificates},
+               languages = #{languages},
+               portfolio_links = #{portfolioLinks},
+               resume_text = #{resumeText},
+               self_intro = #{selfIntro},
+               preferences = #{preferences},
+               deleted_at = NULL,
+               updated_at = NOW()
+         WHERE user_id = #{userId}
+           AND version_no = 1
+           AND deleted_at IS NULL
+    </update>
+
     <insert id="upsert">
         INSERT INTO user_profile (
             user_id, desired_job, desired_industry, education, career, projects, skills,

@@ -15,7 +15,7 @@
 입력 run artifact:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
+docs/ai-artifacts/benchmarks/rag-hardcase/runs/rag_hardcase_v1_20260630_1635
 ```
 
 기록된 입력 run commit:
@@ -33,7 +33,7 @@ ml/career-strategy-llm/scripts/evaluate_rag_hardcase_outputs.py
 evaluation output:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_20260630_1635_r3_semantic_eval
+docs/ai-artifacts/benchmarks/rag-hardcase/evaluations/rag_hardcase_v1_20260630_1635_r3_semantic_eval
 ```
 
 CareerTunerAI evaluation commit:
@@ -46,7 +46,7 @@ CareerTunerAI evaluation commit:
 장문 분석:
 
 ```text
-D:/dev/CareerTunerAIDocs/areas/c-career-strategy/reports/73_rag_hardcase_v1_r3_semantic_analysis.md
+docs/ai-reports/areas/c-career-strategy/reports/73_rag_hardcase_v1_r3_semantic_analysis.md
 ```
 
 CareerTunerAIDocs commit:

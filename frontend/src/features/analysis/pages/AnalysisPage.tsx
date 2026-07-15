@@ -18,7 +18,7 @@ import { GuideButton, type TourStep } from "../components/GuideTour";
 
 // 취업분석 페이지 안내(가이드 투어) 스텝. 기본 탭(내 지원 경향)에서 보이는 요소를 가리킨다.
 const ANALYSIS_TOUR_STEPS: TourStep[] = [
-  { selector: "[data-tour='analysis-tabs']", title: "분석 관점 탭", body: "내 지원 경향·자주 부족한 역량·직무별 준비도·적합도 점수 변화·추천 지원 방향 5개 관점을 전환합니다." },
+  { selector: "[data-tour='analysis-tabs']", title: "분석 관점 탭", body: "내 지원 경향·자주 부족한 역량·직무별 준비도·면접 점수 변화·추천 지원 방향 5개 관점을 전환합니다." },
   { selector: "[data-tour='analysis-kpi']", title: "핵심 지표", body: "여러 지원 건을 종합한 평균 적합도·분석 완료·준비 완료·모의면접 수를 한눈에 봅니다." },
   { selector: "[data-tour='analysis-jobdist']", title: "자주 지원하는 직무", body: "직무별 지원 비중과 평균 적합도로 지원 패턴의 쏠림을 진단합니다." },
   { selector: "[data-tour='analysis-weekly']", title: "지난주 변화·3줄 요약", body: "지난주 대비 적합도 변화와 핵심 3줄 요약으로 다음 행동 우선순위를 잡아줍니다." },
@@ -32,14 +32,22 @@ const questionTypeLabel: Record<string, string> = {
   FOLLOW_UP: "꼬리 질문",
 };
 
-const analysisTabs = [
+export const analysisTabs = [
   { key: "trend", label: "내 지원 경향", icon: Briefcase },
   { key: "weakness", label: "자주 부족한 역량", icon: AlertCircle },
   { key: "readiness", label: "직무별 준비도", icon: Target },
-  { key: "score", label: "적합도 점수 변화", icon: BarChart3 },
+  { key: "score", label: "면접 점수 변화", icon: BarChart3 },
   { key: "recommendation", label: "추천 지원 방향", icon: BookOpen },
 ] as const;
-type AnalysisTab = (typeof analysisTabs)[number]["key"];
+export type AnalysisTab = (typeof analysisTabs)[number]["key"];
+
+export const ANALYSIS_SECTION_PATHS: Record<AnalysisTab, string> = {
+  trend: "/analysis/trends",
+  weakness: "/analysis/weaknesses",
+  readiness: "/analysis/readiness",
+  score: "/analysis/interview-scores",
+  recommendation: "/analysis/recommendations",
+};
 
 const roadmapPhases = [
   { phase: "우선 보완", color: "border-red-200 bg-red-50", textColor: "text-red-800" },
@@ -82,7 +90,7 @@ function formatAnalyzedAt(value: string | null) {
   }).format(new Date(value));
 }
 
-export function AnalysisPage() {
+export function AnalysisPage({ section }: { section?: AnalysisTab } = {}) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState<AnalysisSummary | null>(null);
@@ -92,7 +100,15 @@ export function AnalysisPage() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [selectedTone, setSelectedTone] = useState("ACTION");
   const requestedTab = searchParams.get("tab") ?? "trend";
-  const activeTab: AnalysisTab = analysisTabs.some((tab) => tab.key === requestedTab) ? (requestedTab as AnalysisTab) : "trend";
+  const legacyTab: AnalysisTab = analysisTabs.some((tab) => tab.key === requestedTab) ? (requestedTab as AnalysisTab) : "trend";
+  const activeTab = section ?? legacyTab;
+  const selectSection = (next: AnalysisTab) => {
+    if (section) {
+      navigate(ANALYSIS_SECTION_PATHS[next]);
+      return;
+    }
+    setSearchParams(next === "trend" ? {} : { tab: next });
+  };
   const stats = summary?.stats;
   const skillGapData = summary?.skillGaps ?? [];
   const jobReadiness = summary?.jobReadiness ?? [];
@@ -126,6 +142,7 @@ export function AnalysisPage() {
   const strengthTrends = summary?.strengthTrends ?? [];
   const jobDistribution = summary?.jobDistribution ?? [];
   const answerThemes = summary?.answerThemes ?? [];
+  const interviewTrend = summary?.interviewTrend ?? null;
   const period = summary?.period ?? null;
   const monthlyFitTrend = summary?.monthlyFitTrend ?? [];
   const applicationTiers = summary?.applicationTiers ?? [];
@@ -246,7 +263,7 @@ export function AnalysisPage() {
           {analysisTabs.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setSearchParams(tab.key === "trend" ? {} : { tab: tab.key })}
+              onClick={() => selectSection(tab.key)}
               className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
                 activeTab === tab.key ? "bg-green-600 text-white" : "text-slate-600 hover:bg-slate-50 hover:text-green-600"
               }`}
@@ -513,46 +530,83 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          {/* Score history bar chart (visual) */}
+          {/* 지원 적합도 추이는 지원 경향의 보조 근거이며 면접 점수 화면과 분리한다. */}
           <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "score" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <BarChart3 className="size-4 text-purple-600" />
-                적합도 점수 변화
+                면접 점수 변화
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(interviewTrend?.totalSessions ?? 0) > 0 ? (
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-purple-50 p-4">
+                      <div className="text-xs font-semibold text-purple-700">세션 평균 점수</div>
+                      <div className="mt-1 text-3xl font-black text-purple-900">{interviewTrend?.averageSessionScore ?? 0}점</div>
+                      <Progress value={interviewTrend?.averageSessionScore ?? 0} className="mt-3 h-2" />
+                      <div className="mt-2 text-xs text-purple-700">완료한 면접 {interviewTrend?.totalSessions ?? 0}회</div>
+                    </div>
+                    <div className="rounded-xl bg-indigo-50 p-4">
+                      <div className="text-xs font-semibold text-indigo-700">답변 평균 점수</div>
+                      <div className="mt-1 text-3xl font-black text-indigo-900">{interviewTrend?.averageAnswerScore ?? 0}점</div>
+                      <Progress value={interviewTrend?.averageAnswerScore ?? 0} className="mt-3 h-2" />
+                      <div className="mt-2 text-xs text-indigo-700">평가된 답변 {interviewTrend?.totalAnswers ?? 0}개</div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div className="flex items-center gap-2 font-semibold text-slate-700">
+                      {weeklyChange?.interviewScoreDelta != null ? (
+                        <>
+                          {weeklyChange.interviewScoreDelta >= 0 ? <ArrowUp className="size-4 text-green-600" /> : <ArrowDown className="size-4 text-red-500" />}
+                          지난주 대비 <span className={weeklyChange.interviewScoreDelta >= 0 ? "text-green-700" : "text-red-600"}>{weeklyChange.interviewScoreDelta >= 0 ? "+" : ""}{weeklyChange.interviewScoreDelta}점</span>
+                        </>
+                      ) : (
+                        <span className="text-slate-500">지난주와 비교할 면접 기록이 더 필요합니다.</span>
+                      )}
+                    </div>
+                    <RouterLink to="/interview/reports" className="font-bold text-purple-700 hover:text-purple-800">면접 리포트 보기</RouterLink>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+                  <p>아직 면접 기록이 없어 면접 점수 변화는 분석할 수 없습니다.</p>
+                  <RouterLink to="/interview/modes" className="mt-3 inline-flex font-bold text-purple-700 hover:text-purple-800">면접 모드 선택하기</RouterLink>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "trend" ? "hidden" : ""}`}>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <BarChart3 className="size-4 text-blue-600" />
+                지원 적합도 변화
               </CardTitle>
             </CardHeader>
             <CardContent>
               {scoreHistory.length > 0 ? (
                 <>
-                  {/* 포인트 수 무제한 + nowrap 라벨이라 좁은 화면에서 카드 밖으로 넘침 → 차트만 내부 가로 스크롤 */}
                   <div className="overflow-x-auto">
-                  <div className="flex items-end gap-3 h-32 pt-2 min-w-fit">
-                    {scoreHistory.map((s, i) => (
-                      <div key={`${s.label}-${i}`} className="flex-1 flex flex-col items-center gap-1">
-                        <div className="text-xs font-black text-slate-700">{s.score}</div>
-                        <div
-                          className={`w-full rounded-t-lg transition-all ${i === scoreHistory.length - 1 ? "bg-blue-600" : "bg-blue-200"}`}
-                          style={{ height: `${Math.max(8, s.score)}px` }}
-                        />
-                        <div className="text-[9px] text-slate-400 text-center whitespace-nowrap">{s.label}</div>
-                      </div>
-                    ))}
-                  </div>
+                    <div className="flex h-32 min-w-fit items-end gap-3 pt-2">
+                      {scoreHistory.map((s, i) => (
+                        <div key={`${s.label}-${i}`} className="flex flex-1 flex-col items-center gap-1">
+                          <div className="text-xs font-black text-slate-700">{s.score}</div>
+                          <div className={`w-full rounded-t-lg ${i === scoreHistory.length - 1 ? "bg-blue-600" : "bg-blue-200"}`} style={{ height: `${Math.max(8, s.score)}px` }} />
+                          <div className="whitespace-nowrap text-center text-[9px] text-slate-400">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   {scoreHistory.length >= 2 && (
                     <div className={`mt-3 flex items-center gap-2 text-xs ${scoreDelta >= 0 ? "text-green-600" : "text-red-500"}`}>
                       {scoreDelta >= 0 ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />}
-                      <span>
-                        {scoreHistory.length}회 분석 기준 {scoreDelta >= 0 ? "+" : ""}{scoreDelta}점 변화 ({firstScore}점 → {lastScore}점)
-                      </span>
+                      <span>{scoreHistory.length}회 분석 기준 {scoreDelta >= 0 ? "+" : ""}{scoreDelta}점 변화 ({firstScore}점 → {lastScore}점)</span>
                     </div>
                   )}
                 </>
-              ) : (
-                <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
-                  점수 변화 그래프를 만들 분석 이력이 아직 없습니다. 지원 건별 적합도 분석을 실행하면 시간순 변화가 표시됩니다.
-                </div>
-              )}
+              ) : <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">지원 건별 적합도 분석을 실행하면 시간순 변화가 표시됩니다.</div>}
             </CardContent>
           </Card>
 
@@ -736,7 +790,7 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          <Card className={`min-w-0 border border-purple-200 bg-card ${activeTab !== "score" ? "hidden" : ""}`}>
+          <Card className={`min-w-0 border border-purple-200 bg-card ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-4 text-purple-600" />답변 첨삭 완료와 적합도 상관</CardTitle></CardHeader>
             <CardContent>
               {correctionCorrelation && (correctionCorrelation.correctedApplications > 0 || correctionCorrelation.uncorrectedApplications > 0) ? (
@@ -775,8 +829,8 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          {/* 월별 평균 적합도 변화 — 준비도의 장기 흐름을 월 단위로 본다. */}
-          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "score" ? "hidden" : ""}`}>
+          {/* 월별 평균 적합도 변화 — 지원 경향의 장기 흐름을 월 단위로 본다. */}
+          <Card className={`min-w-0 border border-slate-200 bg-card ${activeTab !== "trend" ? "hidden" : ""}`}>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="size-4 text-blue-600" />

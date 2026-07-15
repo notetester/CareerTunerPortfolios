@@ -84,12 +84,12 @@ export function JobDetailPage() {
   };
 
   if (loading) {
-    return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-sm text-slate-500">공고를 불러오는 중...</div>;
+    return <div className="mx-auto w-full max-w-[1400px] px-4 py-16 text-center text-sm text-slate-500">공고를 불러오는 중...</div>;
   }
 
   if (!posting) {
     return (
-      <div className="mx-auto max-w-4xl space-y-4 px-4 py-16 text-center">
+      <div className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-16 text-center">
         <p className="text-sm text-slate-500">{error ?? "게시 중인 공고를 찾을 수 없습니다."}</p>
         <Link to="/jobs" className="text-sm text-blue-600 hover:underline">목록으로 돌아가기</Link>
       </div>
@@ -114,7 +114,7 @@ export function JobDetailPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-4 py-8">
+    <div className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-8">
       <Link to="/jobs" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">
         <ArrowLeft className="size-4" />
         공고 목록

@@ -100,7 +100,7 @@ export function BillingSuccessPage() {
 
           <div className="flex gap-2">
             <Button asChild className="flex-1 text-white">
-              <Link to={isSubscription ? "/billing?tab=usage" : "/billing?tab=credits"}>
+              <Link to={isSubscription ? "/billing/usage" : "/billing/credits"}>
                 {isSubscription ? "사용권 확인" : "크레딧 충전"}
               </Link>
             </Button>

@@ -7,8 +7,6 @@
    또 Root 의 <main> 이 flex-col 이라 auto 마진이 stretch 를 꺼서 fit-content 폭으로
    쪼그라들며 모바일처럼 보이므로 width 를 명시해 고정한다. */
 .ct-page.ct-support { width: 100%; box-sizing: border-box; padding-left: 24px; }
-/* FAQ 아코디언은 전폭이면 줄이 너무 길어져 공지 목록과 같은 보드 폭으로 제한 */
-.ct-page.ct-support--narrow { max-width: 860px; }
 @media (max-width: 768px) {
   .ct-page.ct-support { padding: 20px 16px 48px; }
 }
@@ -50,13 +48,15 @@
 
 /* ===== CTA ===== */
 .ct-cta { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;
-  margin-top: 40px; padding: 28px 32px; border-radius: 12px; background: var(--av-ink); color: var(--av-bg); }
+  margin-top: 40px; padding: 28px 32px; border-radius: 12px;
+  background: var(--av-blue-soft); color: var(--av-ink); border: 1px solid var(--av-line); }
 .ct-cta__t h3 { font-size: 20px; font-weight: 700; }
-.ct-cta__t p { font-size: 14px; opacity: 0.72; margin-top: 6px; }
+.ct-cta__t p { font-size: 14px; color: var(--av-ink-2); margin-top: 6px; }
+/* 문의하기 버튼: av-btn--ink 반전 대신 브랜드 파랑 solid (CTA 스코프 한정 오버라이드) */
+.ct-cta .av-btn--ink { background: var(--av-blue); border-color: var(--av-blue); color: #fff; }
+.ct-cta .av-btn--ink:hover { opacity: 0.9; }
 
 /* ===== Notice list ===== */
-/* .ct-page(max-width:1400) 와 동률이면 스타일 주입 순서에 따라 밀릴 수 있어 2클래스로 특이도 확보 */
-.ct-page.ct-notices { max-width: 860px; margin: 0 auto; }
 .ct-ntable { background: var(--av-card); border: 1px solid var(--av-line); border-radius: 10px; overflow: hidden; }
 .ct-ntable__head { display: grid; grid-template-columns: 72px 1fr 116px; gap: 12px; padding: 13px 22px; background: var(--av-track);
   border-bottom: 1px solid var(--av-line); font-size: 13px; font-weight: 600; color: var(--av-ink-3); }
@@ -206,7 +206,10 @@
 .ct-done h3 { font-size: 20px; font-weight: 700; }
 .ct-done p { font-size: 14px; color: var(--av-ink-3); margin-top: 8px; line-height: 1.6; }
 .ct-done__ticket { display: inline-block; margin: 18px 0 22px; padding: 8px 16px; border-radius: 9999px; background: var(--av-track); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; color: var(--av-ink); }
-.ct-done__actions { display: flex; gap: 10px; justify-content: center; }
+.ct-done__actions { display: flex; gap: 10px; justify-content: center; align-items: center; }
+/* .ct-act(40px, 14px)와 .av-btn(30px, 12px)를 나란히 쓰면 높이가 안 맞아 삐뚤어 보임 → 이 영역에서만 통일 */
+.ct-done__actions .ct-act,
+.ct-done__actions .av-btn { height: 40px; padding: 0 20px; font-size: 14px; border-radius: 8px; }
 
 @media (max-width: 900px) {
   .ct-guide__grid, .ct-tipgrid { grid-template-columns: 1fr 1fr; }

@@ -309,7 +309,7 @@ function AppHomeAccount() {
         />
         <button
           className="ah-ic"
-          onClick={() => navigate("/interview?tab=live")}
+          onClick={() => navigate("/interview/live")}
           aria-label="음성 모의면접 시작"
           title="음성 모의면접"
         >

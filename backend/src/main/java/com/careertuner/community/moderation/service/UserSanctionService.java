@@ -89,7 +89,7 @@ public class UserSanctionService {
                     .title("이미지 검열 경고")
                     .message("첨부 이미지가 최근 " + BLUR_WINDOW_DAYS + "일 내 " + blurCount + "회 블러 처리되었습니다. "
                             + BLUR_SANCTION_THRESHOLD + "회 누적 시 커뮤니티 이용이 제한될 수 있습니다.")
-                    .link("/community?view=guidelines")
+                    .link("/community/guidelines")
                     .build());
             log.info("이미지 블러 누적 경고: userId={}, blurCount={}", userId, blurCount);
         }

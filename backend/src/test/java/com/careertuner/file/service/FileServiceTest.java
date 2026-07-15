@@ -151,6 +151,27 @@ class FileServiceTest {
     }
 
     @Test
+    void staleProfileImportCleanupUsesBoundedTtlAndAtomicWorkerDelete() {
+        FileAsset pending = asset(26L, 7L, "PROFILE_IMPORT_PENDING", null, "RESUME");
+        when(mapper.findStalePendingProfileImports(
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class), org.mockito.ArgumentMatchers.eq(100)))
+                .thenReturn(List.of(pending));
+        when(cleanupWorker.deleteStaleProfileImport(
+                org.mockito.ArgumentMatchers.same(pending),
+                org.mockito.ArgumentMatchers.any(LocalDateTime.class))).thenReturn(true);
+
+        int deleted = service.cleanupStalePendingProfileImports(1, 1000);
+
+        org.assertj.core.api.Assertions.assertThat(deleted).isEqualTo(1);
+        ArgumentCaptor<LocalDateTime> cutoff = ArgumentCaptor.forClass(LocalDateTime.class);
+        verify(mapper).findStalePendingProfileImports(cutoff.capture(), org.mockito.ArgumentMatchers.eq(100));
+        verify(cleanupWorker).deleteStaleProfileImport(pending, cutoff.getValue());
+        org.assertj.core.api.Assertions.assertThat(cutoff.getValue())
+                .isBeforeOrEqualTo(LocalDateTime.now().minusHours(24))
+                .isAfter(LocalDateTime.now().minusHours(25));
+    }
+
+    @Test
     void claimsPendingInterviewMediaWithPurposeAndOwnerGuard() {
         FileAsset linked = asset(31L, 7L, "INTERVIEW_ANSWER", 51L, "AUDIO");
         when(mapper.claimOwnedPendingFile(

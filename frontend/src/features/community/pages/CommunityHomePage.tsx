@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams, useParams, useNavigate } from "react-router";
-import { PenLine, Lock, BookOpen, UserRound } from "lucide-react";
+import { useLocation, useSearchParams, useParams, useNavigate } from "react-router";
+import { PenLine, Lock, BookOpen, UserRound, Briefcase, Building2 } from "lucide-react";
+import { useAuth } from "@/app/auth/AuthContext";
 import { PostList } from "../components/PostList";
 import { Pager } from "../components/Pager";
 import { PostFilters, type SortKey } from "../components/PostFilters";
@@ -40,42 +41,56 @@ export function CommunityHomePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { postId: postIdParam } = useParams();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const routeSort: SortKey | null = pathname === "/community/popular" ? "likes" : null;
   const deepLinkPostId = postIdParam ? Number(postIdParam) : null;
-  const initialView = searchParams.get("view") === "guidelines"
+  const guidelinesRoute = pathname === "/community/guidelines";
+  const legacyGuidelinesRoute = searchParams.get("view") === "guidelines";
+  const initialView = guidelinesRoute || legacyGuidelinesRoute
     ? "guidelines" as ViewMode
     : deepLinkPostId != null ? "detail" as ViewMode : "list" as ViewMode;
   const [viewMode, setViewMode] = useState<ViewMode>(initialView);
 
-  // URL ?view=guidelines 변경 감지
+  // pathname 상태를 양방향으로 동기화한다. 같은 컴포넌트가 재사용되므로 가이드/상세에서
+  // 기본·인기 목록으로 이동할 때도 이전 viewMode를 명시적으로 지워야 한다.
   useEffect(() => {
-    if (searchParams.get("view") === "guidelines" && viewMode !== "guidelines") {
+    if (guidelinesRoute || legacyGuidelinesRoute) {
       setViewMode("guidelines");
+      return;
     }
-  }, [searchParams]);
-
-  // URL ?sort= 로 진입/변경되면 해당 정렬로 연다(헤더 "인기글" → ?sort=likes 딥링크). page 도 1로 리셋.
-  useEffect(() => {
-    const s = toSortKey(searchParams.get("sort"));
-    if (s) { setSort(s); setPage(1); }
-  }, [searchParams]);
-
-  // /community/posts/:postId 딥링크(알림 클릭 등) → 상세 뷰로 진입
-  useEffect(() => {
     if (deepLinkPostId != null && !Number.isNaN(deepLinkPostId)) {
       setViewMode("detail");
       window.scrollTo(0, 0);
+      return;
     }
-  }, [deepLinkPostId]);
+    if (pathname === "/community" || pathname === "/community/popular") {
+      setViewMode("list");
+      setSelectedPost(null);
+      setEditData(null);
+    }
+  }, [deepLinkPostId, guidelinesRoute, legacyGuidelinesRoute, pathname]);
+
+  // pathname 또는 URL ?sort= 변경을 항상 반영한다. 인기글에서 기본 목록으로 돌아오면
+  // 명시값이 없어도 recent 로 복원해 이전 likes 상태가 남지 않게 한다.
+  useEffect(() => {
+    const s = routeSort ?? toSortKey(searchParams.get("sort"));
+    setSort(s ?? "recent");
+    setPage(1);
+  }, [routeSort, searchParams]);
+
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedPost, setSelectedPost] = useState<CommunityPost | null>(null);
   const [editData, setEditData] = useState<PostEditData | null>(null);
-  const [sort, setSort] = useState<SortKey>(toSortKey(searchParams.get("sort")) ?? "recent");
+  const [sort, setSort] = useState<SortKey>(routeSort ?? toSortKey(searchParams.get("sort")) ?? "recent");
   const [tag, setTag] = useState("");
   const [page, setPage] = useState(1);
   const PER = 20;
 
   const { posts, total, loading, error, fetchPosts, fetchPostsByIds, categoryCounts, fetchCategoryCounts } = useCommunityStore();
   const { showLoginDialog, requireAuth, onLoginConfirm, onLoginCancel, isAuthenticated } = useLoginDialog();
+  const { user } = useAuth();
+  // 기업 계정에게만 공고 등록 진입점을 노출 — 커뮤니티 글쓰기로는 채용공고를 못 쓰는 정책(서버 403)의 안내 동선.
+  const isCompanyAccount = user?.role === "COMPANY";
 
   // ?ids=1,2,3 — 챗봇 추천 글 모아보기 진입. 서버 정확 조회(fetchPostsByIds)로 posts 를 채운다
   // (최신 100건 상한과 무관하게 오래된 추천 글도 정확히 조회, 차단·블라인드 필터는 서버가 동일 적용).
@@ -101,7 +116,12 @@ export function CommunityHomePage() {
   // 탭/정렬/태그 변경 시 1페이지로 리셋 — 필터 변경과 page 리셋을 같은 핸들러에서 함께 호출해
   // (별도 effect로 분리하지 않음) fetch effect가 중간 페이지로 한 번 더 요청하는 레이스를 없앤다.
   const changeCategory = (v: string) => { setSelectedCategory(v); setPage(1); };
-  const changeSort = (s: SortKey) => { setSort(s); setPage(1); };
+  const changeSort = (s: SortKey) => {
+    setSort(s);
+    setPage(1);
+    if (s === "likes") navigate("/community/popular");
+    else navigate(s === "recent" ? "/community" : `/community?sort=${s}`);
+  };
   const changeTag = (t: string) => { setTag(t); setPage(1); };
 
   useEffect(() => {
@@ -165,7 +185,7 @@ export function CommunityHomePage() {
   const goActivity = () => requireAuth(() => navigate("/community/activity"));
   const goGuidelines = () => {
     setViewMode("guidelines");
-    window.history.pushState({ view: "guidelines" }, "");
+    navigate("/community/guidelines");
     window.scrollTo(0, 0);
   };
   const goWrite = () => requireAuth(() => {
@@ -238,9 +258,19 @@ export function CommunityHomePage() {
           <h1>커뮤니티</h1>
           <p>익명으로 취업·이직·면접 이야기를 나눠보세요</p>
         </div>
-        <button className="av-btn av-btn--ink" style={{ height: 34, padding: "0 14px" }} onClick={goWrite}>
-          <PenLine /> 글쓰기
-        </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="av-btn" style={{ height: 34, padding: "0 14px" }} onClick={() => navigate("/jobs")}>
+            <Briefcase /> 채용공고 보러가기
+          </button>
+          {isCompanyAccount && (
+            <button className="av-btn" style={{ height: 34, padding: "0 14px" }} onClick={() => navigate("/company/manage")}>
+              <Building2 /> 채용공고 등록
+            </button>
+          )}
+          <button className="av-btn av-btn--ink" style={{ height: 34, padding: "0 14px" }} onClick={goWrite}>
+            <PenLine /> 글쓰기
+          </button>
+        </div>
       </div>
 
       <div className="uv-tabs">

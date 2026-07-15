@@ -13,7 +13,7 @@
 - 관리자 기능은 `frontend/src/admin/features/<feature>`에 둔다.
 - 백엔드는 도메인 단위로 `backend/src/main/java/com/careertuner/<domain>`에 둔다.
 - MyBatis XML은 `backend/src/main/resources/mapper/<domain>`에 둔다.
-- 공통 인프라는 `common`, AI 공통은 `ai/common`, 프롬프트는 `ai/prompt`에 둔다.
+- 공통 인프라는 `common`, AI 교차 기반은 `ai/common`에 둔다. `ai/prompt`는 향후 공통 프롬프트 엔진의 예약 경계이며 현재는 `package-info.java`만 있다. 실행 프롬프트는 각 기능 도메인에 둔다.
 - 사용자 기능이 릴리스 완료로 표시되려면 관련 관리자 화면과 관리자 API도 같은 릴리스 기준으로 완료해야 한다.
 - 공통 영역의 Owner는 팀장이며, 라우팅·공통 컴포넌트·공통 API·DB·인증/권한·AI 프롬프트 공통 엔진·공통 로그 구조 변경은 팀장 승인 또는 팀 합의 후 진행한다.
 
@@ -25,6 +25,7 @@
 | `home` | 홈 | `home` | `home` | 1차 |
 | `dashboard` | 대시보드 | `dashboard` | `dashboard` | 1차 |
 | `profile` | 내 프로필 | `profile` | `profile` | 1차 |
+| `catalog` | 직무·자격 카탈로그 | `catalog` | `catalog` | 2차 |
 | `applications` | 지원 건 관리 | `applications` | `applicationcase`, `jobposting`, `jobanalysis`, `companyanalysis`, `fitanalysis` | 1차 핵심 / 기업·파일 분석 2차 |
 | `interview` | AI 가상 면접 | `interview` | `interview` | 1차 |
 | `correction` | AI 첨삭 | `correction` | `correction` | 1차 답변 첨삭 / 문서 고급 첨삭 2~3차 |
@@ -150,9 +151,13 @@ backend/src/main/resources/mapper/<domain>/
 backend/src/main/resources/mapper/admin/<domain>/
 ```
 
-초기에는 모든 하위 계층을 구현하지 않아도 된다. 하지만 폴더는 기능별 담당자가 바로 확장할 수 있게 유지한다.
+모든 표준 하위 계층을 빈 폴더로 미리 만들 필요는 없다. 실제 코드가 생길 때 표준 레이어 이름을 사용하고,
+경로 표만으로 구현 완료 여부를 판단하지 않는다.
 
 ## 5. 담당자별 확정 분담
+
+아래 표는 **목표 기능의 소유권**을 정한다. 현재 구현 여부나 현재 기본 provider를 뜻하지 않으며, 실행 상태는
+각 모듈 README와 소스를 기준으로 판단한다.
 
 | 담당자 | 사용자 기능 | AI 기능 | 관리자 기능 |
 | --- | --- | --- | --- |
@@ -165,6 +170,18 @@ backend/src/main/resources/mapper/admin/<domain>/
 
 담당자별 상세 사용자 기능, 예시 AI 출력, 주요 DB, 포트폴리오 설명 포인트는
 `TEAM_WORK_DISTRIBUTION.md`에 둔다. 이 문서에서는 충돌을 줄이기 위한 실제 경로만 유지한다.
+
+현재 AI 런타임의 빠른 지도는 다음과 같다. 같은 담당 안에서도 작업 종류에 따라 기본 체인이 다르므로
+이 표를 단일 전역 순서로 해석하지 않는다.
+
+| 담당 | 현재 런타임 연결 | 기본/안전망 요약 |
+| --- | --- | --- |
+| A | 프로필 평가 LoRA 선택 경로, Ollama 이력서 구조화 | 평가 LoRA는 기본 비활성; Claude → OpenAI → 규칙. 이력서 구조화는 로컬 Ollama → hosted → 최소 추출 |
+| B | Ollama 공고·기업 분석, Claude/OpenAI 어댑터 | 공고는 LOCAL 우선, 기업은 OpenAI 우선; 최종 `self-rules-v1` |
+| C | 적합도 설명용 커리어 전략 3B 선택 경로 | OSS는 설정 시 사용; Claude → OpenAI → 결정적 mock |
+| D | 면접 생성/채점 OSS 선택 경로, Claude/OpenAI, Realtime | 생성은 Claude/OpenAI/mock, 채점은 OpenAI 기본·OSS 선택 가능 |
+| E | 버전 고정 첨삭 3B와 repair | OpenAI 기본; self 선택 시 자체 3B → Anthropic → OpenAI |
+| F | Ollama 텍스트·이미지 검열, 챗봇/지원 초안 | 로컬 모델 우선; 기능별로 Claude/OpenAI/mock 안전망 사용 |
 
 ### 교차 기능 책임 경계
 
@@ -225,6 +242,7 @@ C 소유 컴포넌트는 아래 C 담당 경로를 우선한다.
 frontend/src/features/home
 frontend/src/features/analysis
 frontend/src/features/dashboard
+frontend/src/features/catalog
 frontend/src/features/applications/components/FitAnalysisPanel.tsx
 frontend/src/features/applications/components/StrategyPanel.tsx
 frontend/src/features/applications/components/LearningRecommendationPanel.tsx
@@ -234,6 +252,7 @@ frontend/src/admin/features/dashboard
 frontend/src/admin/features/fit-analysis
 
 backend/src/main/java/com/careertuner/home
+backend/src/main/java/com/careertuner/catalog
 backend/src/main/java/com/careertuner/fitanalysis
 backend/src/main/java/com/careertuner/analysis
 backend/src/main/java/com/careertuner/dashboard
@@ -319,39 +338,39 @@ AI 기능을 모든 담당자가 한 폴더에서 직접 수정하면 충돌이 
 ```text
 backend/src/main/java/com/careertuner/ai/
  ├─ common/
- │   ├─ AiClient
- │   ├─ AiRequest
- │   ├─ AiResponse
- │   └─ AiFeatureType
- │
- └─ prompt/
-     ├─ PromptTemplate
-     ├─ PromptTemplateMapper
-     └─ PromptTemplateService
+ │   ├─ budget/             전체 체인 시간예산
+ │   ├─ gpu/                공유 GPU 동시성 permit
+ │   ├─ model/              provider tier와 사용자 모델 선택
+ │   ├─ ollama/             endpoint probe/fallback
+ │   └─ settings/           DB 기반 런타임 설정 조회
+ └─ prompt/                 공통 프롬프트 엔진의 예약 경계(현재 package-info만 유지)
 ```
 
 도메인별 AI 서비스는 각자 자기 도메인 안에 둔다.
 
 ```text
-profile/service/ProfileAiService
-jobanalysis/service/JobAnalysisAiService
-companyanalysis/service/CompanyAnalysisAiService
-fitanalysis/service/FitAnalysisAiService
-interview/service/InterviewAiService
-correction/service/CorrectionAiService
-community/service/CommunityAiService
-support/service/SupportAiService
+profile/ai
+applicationcase/service                    B 공고·기업 분석 실행 체인
+fitanalysis/ai · analysis/ai · dashboard/ai
+interview/service · interview/ai
+correction/ai
+community/moderation · support/chatbot · ai/chat
 ```
 
-자체 LLM provider도 같은 원칙을 따른다. 공통 `AiClient`는 provider(`oss`, `openai`, `rule`, `mock`, `cache`)와 사용량 로그 규약만 담당하고,
-도메인별 prompt builder, JSON schema validator, fallback 정책은 각 담당 도메인 안에 둔다. 현재 F 커뮤니티 검열의 Ollama client는
-`community/moderation`에 구현되어 있으며, 이를 `ai/common`으로 승격할 때는 8번 공통 파일 규칙을 적용한다.
+자체 LLM provider도 같은 원칙을 따른다. 공통 `ai/common`은 provider tier, 시간예산, GPU permit,
+Ollama endpoint 해석 같은 교차 기반만 담당하고, transport·prompt builder·JSON schema validator·fallback 정책은
+각 담당 도메인 안에 둔다. F 커뮤니티 검열의 Ollama client는 `community/moderation`에, 챗봇 provider 체인은
+`ai/chat`과 `support/chatbot`에 구현되어 있다. 공통 계약을 확장할 때는 8번 공통 파일 규칙을 적용한다.
 
-모델 학습·평가 산출물은 런타임 소스와 분리해 `ml/<domain>` 하위에 둔다. 예: `ml/correction-llm`, `ml/community-llm`.
-대용량 adapter/GGUF 파일은 용량과 라이선스를 확인한 뒤 git LFS 또는 별도 보관소 사용 여부를 팀에서 결정한다.
+재현 가능한 소형 학습·평가 코드와 fixture는 현재 존재하는 `ml/career-strategy-llm`, `ml/correction-llm`,
+`ml/interview-finetune`, `ml/interview-nonverbal`, `ml/job-posting-worker`, `ml/ncs-catalog`에 둔다.
+장문 실험 보고서는 `docs/ai-reports`, raw output·benchmark artifact·운영 모델 산출물은 `docs/ai-artifacts`
+서브모듈에 둔다. 대용량 adapter/GGUF와 반복 생성 결과를 메인 저장소나 임의의 새 `ml/<domain>` 폴더에
+커밋하지 않는다. 상세 경계는 `AI_REPOSITORY_BOUNDARIES.md`를 따른다.
 
-도메인별 프롬프트와 프롬프트 관리 화면도 같은 원칙을 따른다. 공통 프롬프트 엔진과 타입은
-`ai/prompt`에서 관리하지만, 기능별 프롬프트 내용은 각 담당자의 하위 폴더에 둔다.
+도메인별 프롬프트와 프롬프트 관리 화면도 같은 원칙을 따른다. 현재 `ai/prompt`에는 공통 엔진이나 타입이
+구현되어 있지 않고 `package-info.java`만 있다. 실행 중인 prompt builder·catalog·validator와 기능별 프롬프트
+내용은 각 담당자의 도메인 하위 또는 해당 도메인의 `resources/prompts`에 둔다.
 
 ```text
 backend/src/main/java/com/careertuner/<domain>/ai/prompt/
@@ -359,8 +378,8 @@ backend/src/main/java/com/careertuner/admin/prompt/<feature>/
 frontend/src/admin/features/prompts/<feature>/
 ```
 
-예를 들어 B는 `jobanalysis`, `companyanalysis` 프롬프트 하위 폴더를, C는 `fitanalysis`, `analytics`
-프롬프트 하위 폴더를 담당한다. 공통 프롬프트 엔진 자체를 바꾸는 경우에만 8번 공통 파일 규칙을 따른다.
+예를 들어 B는 공고·기업 분석 실행 체인의 프롬프트를, C는 `fitanalysis`·`analysis`·`dashboard`의 프롬프트를
+담당한다. 미래에 실제 공통 프롬프트 엔진이나 타입을 `ai/prompt`에 도입할 때만 8번 공통 파일 규칙을 따른다.
 
 ## 8. 공통 파일 소유권
 
@@ -386,7 +405,7 @@ backend/build.gradle
 backend/src/main/resources/application.yaml
 backend/src/main/java/com/careertuner/common/config/SecurityConfig.java
 backend/src/main/java/com/careertuner/ai/common
-backend/src/main/java/com/careertuner/ai/prompt       공통 엔진만 해당
+backend/src/main/java/com/careertuner/ai/prompt       예약 경계(현재 package-info만, 향후 공통 엔진)
 backend/src/main/java/com/careertuner/admin/prompt    루트 셸만 공통, 하위 <feature>는 담당자 소유
 ```
 
@@ -407,20 +426,22 @@ Owner: 팀장
 `backend/src/main/java/com/careertuner/serviceinfo`는 같은 기능의 백엔드 도메인이다.
 프런트 폴더명을 `serviceinfo`로 새로 만들지 않는다.
 
-## 9. 먼저 둔 골격의 담당 분배
+## 9. 공유·관리자 패키지 소유권
 
-아래 기능은 아직 API나 DB가 완성되지 않았더라도 곧 필요해질 가능성이 높아서 골격을 먼저 둔다.
-골격의 구현은 각 기능 담당자가 한다.
+`notification`, `file`, `credit`, `consent`는 더 이상 미래 골격이 아니라 controller/service/mapper와 DB 계약을
+가진 런타임 도메인이다. `ai/common`에도 시간예산·GPU permit·provider tier·Ollama endpoint 기반이 구현되어
+있고, `ai/prompt`는 공통 엔진을 위한 예약 경계만 유지한다. 관리자 패키지는 기능별 구현량이 서로 다르므로
+아래 표는 **소유권과 표준 경로**만 나타내며, 완료 여부는 해당 소스와 사용자/관리자 API를 함께 확인한다.
 팀장은 8번 공통 파일 소유권에 해당하는 공통 기반 변경을 관리한다.
 
-| 골격 | 담당 | 비고 |
+| 표준 경로 | 담당 | 비고 |
 | --- | --- | --- |
 | `notification` | F | 알림 도메인과 알림 설정 API |
 | `file` | D | 파일 도메인. 공통 업로드/미디어 컴포넌트 수정은 8번 규칙 적용 |
 | `credit` | E | 크레딧 장부와 사용 내역 |
 | `consent` | A | 사용자 동의 이력 |
-| `ai/common` | 8번 공통 규칙 | 공통 AI 클라이언트와 타입만 해당. 도메인 AI 서비스는 각 담당자 소유 |
-| `ai/prompt` | 8번 공통 규칙 | 공통 프롬프트 엔진만 해당. 기능별 프롬프트는 각 담당자 하위 폴더 |
+| `ai/common` | 8번 공통 규칙 | provider tier·시간예산·GPU permit·Ollama endpoint·런타임 설정. 도메인 AI 서비스는 각 담당자 소유 |
+| `ai/prompt` | 8번 공통 규칙 | 현재 공통 엔진의 예약 경계. 기능별 프롬프트는 각 담당자 하위 폴더 |
 | `admin/user` | A | 회원 관리 |
 | `admin/auth` | A | 관리자 인증·권한 보조 |
 | `admin/profile` | A | 사용자 프로필 운영 확인 |
@@ -470,5 +491,5 @@ backend/src/main/java/com/careertuner/admin/<domain>/log
 분석 통계 백엔드 표준 경로는 `backend/src/main/java/com/careertuner/admin/analytics`다.
 관리자 분석 통계 패키지는 위 표준 경로만 사용한다.
 
-골격만 있는 패키지나 폴더는 `package-info.java` 또는 `.gitkeep`만 있어도 정상이다.
-실제 구현은 담당 기능 작업이 시작될 때 해당 담당자가 채운다.
+일부 관리자 표준 경로에는 여전히 `package-info.java`만 있을 수 있다. 이 경우 표의 존재를 구현 완료 근거로
+쓰지 않으며, 실제 controller/service/mapper, 프런트 라우트, 권한 테스트가 갖춰졌을 때만 완료로 판단한다.

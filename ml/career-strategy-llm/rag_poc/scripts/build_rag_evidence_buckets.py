@@ -31,6 +31,8 @@ BUCKET_MAP = {
     "user_profile_summary": "userEvidence",
     "job_posting": "jobRequirements",
     "job_requirement": "jobRequirements",
+    "ncs_unit": "jobRequirements",       # NCS 능력단위 = 직무 표준 요구(보유 아님) → jobRequirements
+    "ncs_element": "jobRequirements",     # NCS 능력단위요소도 동일
     "skill_catalog": "catalogFacts",
     "certification_catalog": "catalogFacts",
     "company_research_summary": "companyContext",

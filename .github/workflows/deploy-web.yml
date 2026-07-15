@@ -3,7 +3,7 @@ name: Deploy web frontend to EC2
 # 공개 포트폴리오에서는 운영 배포 설계와 계약 테스트만 보존한다.
 # 실제 배포를 막기 위해 수동 트리거만 남기고 job도 항상 건너뛴다.
 
-# dev 에 프런트 변경이 push 되면 웹(careertuner.kro.kr) 정적 산출물을 갱신한다:
+# dev 에 프런트 변경이 push 되면 웹(careertuner.example.com) 정적 산출물을 갱신한다:
 #   ① 러너에서 dist 빌드(기본 모드 — nginx 가 같은 도메인에서 서빙하므로 상대경로 /api)
 #   ② dist 를 EC2 스테이징으로 전송 → nginx root 를 탐지해 원자적으로 교체
 #
@@ -114,12 +114,12 @@ jobs:
             NGINX_CONFIGS=$(sudo grep -RlsE 'server_name[^;]*careertuner\.kro\.kr' \
               /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null || true)
             if [ -z "$NGINX_CONFIGS" ]; then
-              echo "::error::careertuner.kro.kr nginx server 설정을 찾지 못했습니다."
+              echo "::error::careertuner.example.com nginx server 설정을 찾지 못했습니다."
               exit 1
             fi
             # shellcheck disable=SC2086 -- 파일 목록은 grep이 반환한 고정 nginx 경로이며 Python이 다시 검증한다.
             AASA_SETUP=$(sudo python3 "$HOME/careertuner/.github/scripts/ensure_aasa_nginx_location.py" \
-              --hostname careertuner.kro.kr $NGINX_CONFIGS)
+              --hostname careertuner.example.com $NGINX_CONFIGS)
             echo "$AASA_SETUP"
             ROOT=$(printf '%s\n' "$AASA_SETUP" | sed -n 's/^CAREERTUNER_ROOT=//p')
             if [ -z "$ROOT" ] || [ ! -f "$ROOT/index.html" ]; then
@@ -158,9 +158,9 @@ jobs:
             fi
             trap cleanup_aasa_probe EXIT
             sudo install -D -m 0644 "$STAGING/$AASA_REL" "$AASA_LIVE"
-            AASA_PROBE_URL="https://careertuner.kro.kr/.well-known/apple-app-site-association?deploy-probe=$(date +%s)-$$"
+            AASA_PROBE_URL="https://careertuner.example.com/.well-known/apple-app-site-association?deploy-probe=$(date +%s)-$$"
             if ! curl -fsS --retry 2 --retry-delay 1 -D "$AASA_HEADERS" \
-              --resolve 'careertuner.kro.kr:443:127.0.0.1' \
+              --resolve 'careertuner.example.com:443:127.0.0.1' \
               -H 'Cache-Control: no-cache' "$AASA_PROBE_URL" \
               -o "$AASA_BODY" \
               || ! grep -Eq '^HTTP/[^ ]+ 200' "$AASA_HEADERS" \
@@ -193,14 +193,14 @@ jobs:
       - name: Verify public App Links metadata deployment
         run: |
           curl -fsS --retry 5 --retry-delay 2 -D /tmp/assetlinks.headers \
-            https://careertuner.kro.kr/.well-known/assetlinks.json \
+            https://careertuner.example.com/.well-known/assetlinks.json \
             -o /tmp/assetlinks.deployed.json
           grep -Eq '^HTTP/[^ ]+ 200' /tmp/assetlinks.headers
           grep -Eiq '^content-type:[[:space:]]*application/json' /tmp/assetlinks.headers
           cmp frontend/dist/.well-known/assetlinks.json /tmp/assetlinks.deployed.json
           curl -fsS --retry 5 --retry-delay 2 -D /tmp/aasa.headers \
             -H 'Cache-Control: no-cache' \
-            "https://careertuner.kro.kr/.well-known/apple-app-site-association?deploy-verify=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            "https://careertuner.example.com/.well-known/apple-app-site-association?deploy-verify=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             -o /tmp/aasa.deployed.json
           grep -Eq '^HTTP/[^ ]+ 200' /tmp/aasa.headers
           grep -Eiq '^content-type:[[:space:]]*application/json' /tmp/aasa.headers

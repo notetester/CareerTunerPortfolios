@@ -1,33 +1,118 @@
-# AI 자료의 공개 저장소 경계
+# AI 저장소 경계와 서브모듈 작업 절차
 
-CareerTuner의 AI 관련 자료는 제품 재현에 필요한 코드와 공개 가능한 설명만 이 저장소에 포함합니다. 개인정보, 운영 정보 또는 원시 출력이 섞일 수 있는 자료는 공개하지 않습니다. 저장소 전체의 기준은 [`PUBLIC_REPOSITORY_BOUNDARIES.md`](../PUBLIC_REPOSITORY_BOUNDARIES.md)를 따릅니다.
+> 최종 대조 기준: `origin/dev` `23bb4d22` (2026-07-14)
 
-## 공개 복제본에 포함하는 자료
+CareerTuner의 AI 관련 자료는 제품 코드, 사람이 읽는 보고서, 반복 실행 artifact, 장기 맥락을 분리한다. 모든 경로는 clone 위치와 무관한 **저장소 상대경로**로 표기한다.
 
-| 경로 | 공개 역할 |
-| --- | --- |
-| `backend/`, `frontend/`, `desktop/`, `ml/` | 제품 실행 코드와 재현 가능한 모델 연결·검증 코드 |
-| `ml/career-strategy-llm/scripts/` | 제품과 평가 재현에 필요한 validator, runner, deterministic helper |
-| `portfolio-docs/ai-integration.md` | 멀티 provider, 자체 모델, RAG와 폴백 구조 설명 |
-| `portfolio-docs/model-evidence.md` | 공개 근거 수준과 확인 가능한 한계 |
-| `Obsidian/` | 공개 가능성을 검토한 축약 graph와 Wiki |
-| `docs/ai-reports/`, `docs/ai-artifacts/`, `docs/obsidian-vault/` | 제외 범위를 알리는 공개 안내 README |
+## 저장소 역할
 
-소형 synthetic fixture와 validator는 기능 재현에 필요하고 실제 사용자 데이터가 없을 때만 제품 경로에 둡니다.
+| 현재 repo 경로 | 연결 저장소/역할 | 포함하는 것 | 포함하지 않는 것 |
+| --- | --- | --- | --- |
+| repo root, `backend/`, `frontend/`, `desktop/`, `ml/` | `CareerTuner` 제품 repo | 런타임 코드, 재현용 validator/runner, 작은 synthetic fixture, 짧은 상태 문서와 artifact commit 링크 | 반복 raw output, 대용량 generated 결과, 비밀값 |
+| `docs/ai-reports/` | `CareerTunerAIDocs` submodule | 장문 실험 보고서, 누적 해석, 사람이 읽는 AI 모델 분석 | raw model response와 대용량 benchmark 결과 |
+| `docs/ai-artifacts/` | `CareerTunerAI` submodule | generated request/response, result JSON, manifest, aggregate summary, 4090 운영 문서·스크립트 | 제품 런타임 코드 |
+| `docs/storyboard/` | `CareerTunerDocs` submodule | A~F/TOTAL 스토리보드와 대표 산출물 | 현재 API·런타임 상태의 정본 |
+| `docs/obsidian-vault/` | `CareerTunerObsidian` submodule | Obsidian overlay, 결정 로그, LLM Wiki 원천/합성 지식, Graphify report, 공개용 sanitized graph | 제품 비밀값과 비공개 raw 개인정보 |
 
-## 공개하지 않는 자료
+서브모듈 연결과 추적 브랜치는 [`.gitmodules`](../.gitmodules)가 기준이다. 로컬 절대 경로나 특정 개발자 장비 경로를 문서·스크립트·보고서에 넣지 않는다.
 
-- 사용자 입력이나 운영 로그를 포함할 수 있는 raw model output과 generated result
-- 반복 benchmark의 대용량 artifact와 cache
-- 내부 장비, 네트워크, 원격 실행과 자격증명 운용 자료
-- 사람 식별 정보가 포함될 수 있는 원본 지식 노트와 첨부 파일
-- 공개용으로 다시 검토하지 않은 장문 보고서와 화면 캡처
+## 제품 repo에 남는 AI 코드
 
-위 자료를 가리키는 gitlink나 submodule 설정도 공개 tip에는 두지 않습니다. 필요한 설명은 공개 문서에서 사실과 한계를 재서술하며, 비공개 자료의 위치나 초기화 명령을 노출하지 않습니다.
+다음은 artifact가 아니라 빌드·배포·재현에 필요한 제품 자산이므로 본체에 둔다.
+
+- `backend/src/main/java/**`: AI 오케스트레이션, 공급자 adapter, 폴백, API와 영속 경계
+- `frontend/src/**`, `desktop/**`: AI 기능을 호출하고 결과를 표시하는 클라이언트
+- `ml/job-posting-worker/**`: Compose에서 별도 서비스로 배포되는 공고 추출/OCR 런타임
+- `ml/*/scripts/**`: 제품·평가 재현에 필요한 validator, runner, deterministic helper
+- 작고 검토 가능한 synthetic fixture와 계약 테스트
+- 현재 상태를 설명하는 짧은 README/model card/checklist
+
+Qdrant·Ollama·외부 모델의 실행 데이터나 모델 weight를 본체에 커밋하지 않는다. DB dump, 실사용 입력, 개인 식별정보, 자격증명도 어느 저장소에도 올리지 않는다.
 
 ## C career-strategy-llm 기준
 
-- `ml/career-strategy-llm/scripts/`에는 validator, runner와 deterministic helper만 둡니다.
-- `ml/career-strategy-llm/reports/`는 짧은 archive index와 호환 안내만 유지합니다.
-- raw output, generated result와 반복 실행 artifact를 제품 저장소에 커밋하지 않습니다.
-- 공개 문서에서 실험 결과를 설명할 때는 기준 모델, 데이터 범위, 평가 방법, 실패 조건과 확인 가능한 SHA를 함께 기록합니다.
+- `ml/career-strategy-llm/scripts/`에는 제품/평가 재현에 필요한 validator, runner, deterministic helper만 둔다.
+- 반복 실행 artifact, raw output, generated result JSON은 `docs/ai-artifacts/`에 둔다.
+- 4090/Tailscale/OpenSSH/GitHub Actions/MCP/Ollama 운영 문서와 스크립트는 `docs/ai-artifacts/docs/ops/`, `docs/ai-artifacts/scripts/ops/`에 둔다.
+- 장문 실험 보고서와 누적 분석은 `docs/ai-reports/areas/<area-slug>/reports/`에 둔다. C 영역은 `docs/ai-reports/areas/c-career-strategy/reports/`를 사용한다.
+- `ml/career-strategy-llm/reports/`는 짧은 archive index/호환 안내만 유지한다.
+- 본체에 `reports/generated/`, raw response, 반복 benchmark 산출물을 커밋하지 않는다.
+
+다른 영역도 같은 원칙을 적용한다. 영역별 정본 위치는 해당 submodule의 `areas/<area-slug>/README.md`에서 안내한다.
+
+## 필요한 서브모듈만 받기
+
+일반 개발은 모든 서브모듈을 내려받을 필요가 없다.
+
+```bash
+git submodule update --init docs/ai-reports
+git submodule update --init docs/ai-artifacts
+git submodule update --init docs/storyboard
+git submodule update --init docs/obsidian-vault
+```
+
+전체가 필요한 문서/포트폴리오 작업만 다음을 사용한다.
+
+```bash
+git submodule update --init --recursive
+```
+
+메인 repo가 가리키는 정확한 commit을 재현하려면 임의로 submodule 최신 branch를 pull하지 않고 먼저 `git submodule update --init <path>`를 실행한다.
+
+## 서브모듈 수정: branch와 PR 필수
+
+서브모듈의 `main`에 직접 commit/push하지 않는다. 작업 순서는 다음과 같다.
+
+### 1. 메인 repo 개인 브랜치 준비
+
+```bash
+git switch dev
+git pull --ff-only origin dev
+git switch -c <personal-branch>
+git submodule update --init <submodule-path>
+```
+
+### 2. 서브모듈 개인 브랜치에서 수정
+
+```bash
+cd <submodule-path>
+git switch -c <submodule-branch>
+git add <files>
+git commit -m "docs: <한국어 변경 요약>"
+git push -u origin <submodule-branch>
+```
+
+해당 submodule 저장소의 `main`을 대상으로 PR을 만들고 검증·리뷰 후 merge한다. 보고서와 artifact PR에도 비밀값, 개인정보, raw 불필요 파일이 없는지 확인한다.
+
+### 3. merge된 commit으로 본체 pointer 갱신
+
+```bash
+cd <submodule-path>
+git fetch origin
+git switch main
+git pull --ff-only origin main
+
+cd ../..  # 실제 깊이에 맞게 CareerTuner repo root로 이동
+git add <submodule-path>
+git commit -m "docs: <서브모듈 변경 요약>"
+git push -u origin <personal-branch>
+```
+
+마지막으로 CareerTuner repo에서 `dev` 대상 PR을 만든다. 본체 PR에는 다음을 적는다.
+
+- 바뀐 submodule과 고정 commit SHA
+- submodule PR 링크
+- 본체에서 함께 바꾼 짧은 인덱스/상태 링크
+- 재현 또는 검증한 명령
+
+즉, 쓰기 흐름은 **submodule 개인 branch → submodule PR/merge → 본체 pointer commit → 본체 `dev` PR/merge**다. 어느 단계에서도 보호 브랜치에 직접 push하지 않는다.
+
+## 이동·삭제 체크리스트
+
+- [ ] 문서가 장문 해석인지 raw artifact인지 제품 재현 코드인지 분류했다.
+- [ ] 메인 repo와 서브모듈 안의 상대 링크를 모두 갱신했다.
+- [ ] raw output과 generated 결과가 본체 git index에 남지 않았다.
+- [ ] 이메일/API key/token/내부 장비 경로/개인 데이터 패턴을 검사했다.
+- [ ] submodule PR이 merge된 commit을 본체가 가리킨다.
+- [ ] 본체 변경은 개인 브랜치에서 `dev` 대상 PR로 올렸다.
+- [ ] `git diff --submodule=log`로 pointer 변경 범위를 확인했다.

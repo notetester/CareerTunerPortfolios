@@ -27,9 +27,9 @@ public:
     explicit SettingsStore(QObject* parent = nullptr);
 
     // 기본 서버 주소의 단일 소스 — ApiClient 기본값·설정 화면 프리셋이 전부 여기를 쓴다
-    static QString defaultBaseUrl() { return QStringLiteral("https://careertuner.kro.kr"); }          // 공개 AWS 통합 서버
+    static QString defaultBaseUrl() { return QStringLiteral("https://careertuner.example.com"); }          // 공개 AWS 통합 서버
     static QString localBaseUrl()   { return QStringLiteral("http://localhost:8080"); }                 // 로컬 시연용
-    static QString tailscaleBaseUrl() { return QStringLiteral("https://careertuner-dev.example.invalid"); } // 팀 개발용
+    static QString tailscaleBaseUrl() { return QStringLiteral("https://localhost"); } // 팀 개발용
     static QString portableDataDir();
     static QString settingsPathForCurrentMode();
     static std::unique_ptr<QSettings> createSettings();

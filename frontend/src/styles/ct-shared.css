@@ -1,13 +1,16 @@
 /* CareerTuner shared design tokens — used across all feature modules */
 
-/* ===== Page container (compensates for missing SubNav sidebar) ===== */
+/* ===== Page container =====
+   SubNav 사이드바가 제거된 뒤에도 남아 있던 232px 보정값 때문에 데스크톱 본문이
+   헤더보다 훨씬 좁고 오른쪽으로 밀렸다. 사용자 페이지는 헤더와 같은 1400px 축을 쓴다. */
 .ct-page {
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 28px 24px 64px calc(232px + 28px + 24px);
+  padding: 28px 24px 64px;
 }
 @media (max-width: 1200px) {
-  .ct-page { padding-left: 48px; }
+  .ct-page { padding-left: 24px; padding-right: 24px; }
 }
 @media (max-width: 768px) {
   .ct-page { padding: 20px 16px 48px; }

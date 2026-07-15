@@ -1,33 +1,70 @@
-# 이중 LLM 판정단 런북 (Claude Opus 4.8 + Codex GPT‑5.5)
+# 독립 이중 LLM 판정 프로토콜
 
-면접 답변 채점(및 게이트 사유 판정)의 골드 기준을 **자체 3B(F16) 자기참조 대신 최상위 LLM 2인의
-독립 합의**로 만든다. F16의 오차를 기준 삼아 부정확을 증폭하는 문제를 막는다.
+면접 답변 채점의 골든 기준을 자체 3B 모델의 자기참조 점수가 아니라 **서로의 답을 보지 않는 두 외부
+판정자**의 합의로 만든다. 특정 사용자 계정, 장비 주소, SSH 키 이름 또는 일시적인 모델 버전에 의존하지
+않는 재현 절차만 이 문서에 둔다.
 
-## 판정자
-- **Claude Opus 4.8** — 메인 에이전트(또는 병렬 서브에이전트)가 루브릭으로 직접 채점.
-- **Codex GPT‑5.5** — 공유 4090에 설치된 Codex CLI 를 SSH 로 호출(AI↔AI 채널).
+4090 접속, Tailscale/OpenSSH, 전원, Ollama 같은 환경별 운영 정보는
+[CareerTunerAI 운영 문서 인덱스](../../../docs/ai-artifacts/docs/ops/README.md)를 따른다. 실제 호스트·계정·키와
+토큰은 승인된 secret 저장소에서만 주입하고 Git에 기록하지 않는다.
 
-## 프로토콜 (파일 기반 — 따옴표 중첩 회피)
-1. **블라인드 입력 준비**: 케이스에서 점수를 제거({id, questionType, question, referenceModelAnswer, answer}),
-   공통 루브릭 `eval/judge_rubric.md`.
-2. **Codex 채점**(4090):
-   - 전송: `scp -i ~/.ssh/careertuner_4090_full_ed25519 judge_rubric.md cases.jsonl hsy82@localhost:ct_judge/`
-   - 실행: `ssh -n -i <key> hsy82@localhost 'codex exec --sandbox danger-full-access --skip-git-repo-check "In folder ct_judge read judge_rubric.md and cases.jsonl, score each candidate answer per the rubric, write one JSON line per case {id,score,reason} to ct_judge/scores.jsonl, print DONE"'`
-   - 회수: `scp -i <key> hsy82@localhost:ct_judge/scores.jsonl .`
-3. **Claude 채점**: 동일 블라인드 케이스를 동일 루브릭으로 채점(대량이면 서브에이전트 병렬, 청크 분할).
-4. **판정단 골드**: `panel = round((claude + codex) / 2)`. `|claude − codex| > 10` 케이스는 격리·재검토.
+## 입력과 출력 계약
 
-## 함정 (실측으로 확인)
-- 원격 셸은 **Windows cmd.exe** — 작은따옴표가 그룹핑이 아니다. **bash 바깥 작은따옴표 + cmd 안쪽 큰따옴표**,
-  프롬프트에 중첩 따옴표를 넣지 말고 **파일 기반**으로. (JSON 인용은 파일에만.)
-- `codex exec` 는 stdin 대기 → **`ssh -n`**(stdin=/dev/null). git repo 밖이면 **`--skip-git-repo-check`**.
-- 키/호스트: `careertuner_4090_full_ed25519` → `hsy82@localhost`(Tailscale). Ollama 는 로컬 터널 `127.0.0.1:11435`.
-- Codex 출력 형식: 헤더 뒤 `codex\n<응답>\ntokens used` — 파일로 쓰게 하면 파싱 불필요.
+입력:
 
-## 관측된 신뢰도 (2026-07-07, 60케이스)
-- Claude ↔ Codex: 평균차 **5.07점**, 10점내 일치 **0.967**. 두 최상위 LLM 이 이 정도로 일치 → 골드 신뢰 가능.
-- 이 방법이 F16 자기참조가 숨긴 사실을 드러냄: 3B(F16·Q4)는 중간 밴드(40~84) 채점 MAE 13~17로 약하다.
+- 블라인드 케이스: `{id, questionType, question, referenceModelAnswer, answer}`
+- 공통 루브릭: [`eval/judge_rubric.md`](../eval/judge_rubric.md)
+- 실행 manifest: 판정자 provider/model ID, 실행 시각, 입력 SHA-256, 루브릭 SHA-256
 
-## 산출물
-- 판정단 점수: `eval/panel_scores.jsonl`(id, panel, claude, codex). 골든셋 expectedScore = panel.
-- raw(개별 응답 원문)은 본체 미커밋 → CareerTunerAI submodule.
+각 판정자 출력은 한 줄에 JSON 하나인 JSONL로 고정한다.
+
+```json
+{"id":"case-id","score":72,"reason":"핵심 개념은 맞지만 구체적 근거가 부족함"}
+```
+
+필수 조건:
+
+- `id`는 입력 케이스와 정확히 일치하고 중복·누락이 없어야 한다.
+- `score`는 0~100 정수다.
+- `reason`은 답변에 근거한 짧은 한국어 판정 사유다.
+- 한 판정자의 입력에 다른 판정자의 점수·사유·모델 출력이 들어가면 해당 실행은 무효다.
+
+## 실행 순서
+
+1. `expectedScore`, 기존 panel 점수, 모델별 결과를 제거한 블라인드 입력을 만든다.
+2. 입력과 루브릭의 SHA-256을 기록하고 두 판정자에게 동일한 파일을 전달한다.
+3. 판정자 A와 B를 서로 독립된 세션에서 실행한다. 순차 실행해도 되지만 첫 결과를 두 번째 프롬프트에
+   포함하지 않는다.
+4. 두 JSONL을 schema 검증하고 입력 ID 집합과 정확히 일치하는지 확인한다.
+5. `panel = round((judgeA + judgeB) / 2)`로 골든 점수를 만든다.
+6. `|judgeA - judgeB| > 10`인 케이스는 자동 평균을 확정하지 않고 재검토 큐로 분리한다.
+7. 판정자 점수와 확정 panel만 `eval/panel_scores.jsonl`에 반영한다. 원문 응답과 실행 로그는 본체에
+   커밋하지 않고 `docs/ai-artifacts/` 경계를 따른다.
+
+## 원격 실행이 필요한 경우
+
+네트워크 전송 방식은 운영 환경에 맞게 선택한다. SSH를 쓸 때도 저장소 문서에는 아래와 같은 placeholder만
+남기고 실제 값을 셸 환경이나 secret manager에서 주입한다. 아래 예시는 `ml/interview-finetune`에서
+실행한다.
+
+```powershell
+$judgeHost = $env:CAREERTUNER_JUDGE_HOST
+$judgeUser = $env:CAREERTUNER_JUDGE_USER
+$judgeKey = $env:CAREERTUNER_JUDGE_SSH_KEY
+$remoteDir = $env:CAREERTUNER_JUDGE_WORKDIR
+
+scp -i $judgeKey eval/judge_rubric.md eval/blind_cases.jsonl "${judgeUser}@${judgeHost}:${remoteDir}/"
+ssh -n -i $judgeKey "${judgeUser}@${judgeHost}" "<approved-judge-command>"
+scp -i $judgeKey "${judgeUser}@${judgeHost}:${remoteDir}/scores.jsonl" eval/judge-b.scores.jsonl
+```
+
+- 원격 명령은 stdin 대기를 막고 비대화형으로 종료돼야 한다.
+- JSON과 긴 프롬프트는 셸 인자에 중첩하지 말고 파일로 전달한다.
+- 실행 전 호스트 지문을 검증하고 최소 권한 키를 사용한다.
+- 키, 토큰, 내부 IP, 사용자 홈 경로가 로그나 manifest에 들어가지 않았는지 산출물 저장 전에 검사한다.
+
+## 2026-07-07 기준 검증 결과
+
+60케이스에서 두 판정자의 평균 점수차는 5.07, 10점 이내 일치는 0.967이었다. 이 panel을 기준으로
+F16과 Q4_K_M을 다시 평가했고 Q4를 운영 후보에서 제외했다. 모델 버전, 밴드별 수치와 최종 결정은
+[LIVE_AB_RESULT](../eval/LIVE_AB_RESULT.md)를 정본으로 본다.

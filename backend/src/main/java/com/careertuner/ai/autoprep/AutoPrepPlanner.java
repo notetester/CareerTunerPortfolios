@@ -116,6 +116,17 @@ public class AutoPrepPlanner {
 
     /** 지원 건 결정: 명시 caseId 우선 → 회사명 매칭 → 회사 모호 시 최근 건 → 없으면 null. */
     private ApplicationCaseResponse resolveCase(Long userId, String company, Long explicit) {
+        // 명시 id는 목록 조회 결과에 우회적으로 의존하지 않는다. 일시적인 목록 조회 실패 때문에 이미 만든
+        // 지원 건 id를 잃으면 첨부 인테이크가 같은 공고로 새 건을 중복 생성할 수 있다.
+        if (explicit != null) {
+            try {
+                ApplicationCaseResponse selected = applicationCaseService.get(userId, explicit);
+                return selected != null && !selected.archived() ? selected : null;
+            } catch (RuntimeException ex) {
+                log.warn("AutoPrep 명시 지원 건 조회 실패 caseId={}: {}", explicit, ex.getMessage());
+                return null;
+            }
+        }
         List<ApplicationCaseResponse> cases;
         try {
             cases = applicationCaseService.list(userId, null, false);
@@ -125,9 +136,6 @@ public class AutoPrepPlanner {
         }
         if (cases == null || cases.isEmpty()) {
             return null;
-        }
-        if (explicit != null) {
-            return cases.stream().filter(c -> explicit.equals(c.id())).findFirst().orElse(null);
         }
         if (company != null && !company.isBlank()) {
             String key = company.trim();

@@ -9,6 +9,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.careertuner.community.domain.CommunityAuthorVisibility;
 import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.domain.RecommendationCandidate;
 import com.careertuner.community.mapper.CommunityPostMapper;
@@ -55,10 +56,14 @@ public class PersonalizedFeedService {
      * @param category 카테고리 필터 (없으면 전체). 기존 정렬과 동일 의미.
      * @param page     0-base 페이지
      * @param size     페이지 크기
+     * @param visibility 뷰어 개인정보 정책으로 숨길 익명·비익명 작성자 집합
      * @return 블렌디드 순서로 정렬된 이 페이지의 글 목록 (표시명 해석 전 원본 CommunityPost)
      */
-    public FeedPage blendedFeed(Long userId, String category, int page, int size) {
+    public FeedPage blendedFeed(Long userId, String category, int page, int size,
+                                CommunityAuthorVisibility visibility) {
         int limit = Math.max(props.getCandidateLimit(), (page + 1) * size);
+        String blockedNamedAuthorIdsJson = visibility.blockedNamedAuthorIdsJson();
+        String blockedAnonymousAuthorIdsJson = visibility.blockedAnonymousAuthorIdsJson();
 
         // 1) 개인화 신호 수집 — 프로필 토큰 + 최근 반응 카테고리
         List<String> tokens = List.of();
@@ -75,15 +80,24 @@ public class PersonalizedFeedService {
 
         // 2) 신호 없으면(비로그인/신규/신호부족) 신선·인기 폴백 — 개인화 스킵
         if (!hasSignal) {
-            List<CommunityPost> fresh = postMapper.findFreshPopular(category, null, limit);
+            List<CommunityPost> fresh = postMapper.findFreshPopular(
+                    category, null,
+                    blockedNamedAuthorIdsJson, blockedAnonymousAuthorIdsJson,
+                    limit);
             return sliceFeed(fresh, page, size, false);
         }
 
         // 3) 두 풀 조회 후 랭크·중복 제거·인터리브
         List<CommunityPost> personalized =
-                postMapper.findPersonalizedCandidates(userId, category, tokens, recentCategories, limit);
+                postMapper.findPersonalizedCandidates(
+                        userId, category, tokens, recentCategories,
+                        blockedNamedAuthorIdsJson, blockedAnonymousAuthorIdsJson,
+                        limit);
         List<Long> excludeIds = personalized.stream().map(CommunityPost::getId).toList();
-        List<CommunityPost> fresh = postMapper.findFreshPopular(category, excludeIds, limit);
+        List<CommunityPost> fresh = postMapper.findFreshPopular(
+                category, excludeIds,
+                blockedNamedAuthorIdsJson, blockedAnonymousAuthorIdsJson,
+                limit);
 
         List<CommunityPost> blended = interleave(personalized, fresh, ratio());
         return sliceFeed(blended, page, size, true);

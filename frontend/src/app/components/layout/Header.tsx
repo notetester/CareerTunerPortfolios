@@ -31,9 +31,10 @@ import {
   LogOut,
   ShieldCheck,
   CalendarClock,
+  Building2,
 } from "lucide-react";
 
-const navItems = [
+export const HEADER_NAV_ITEMS = [
   {
     label: "대시보드",
     href: "/dashboard",
@@ -44,12 +45,13 @@ const navItems = [
     href: "/profile",
     icon: User,
     children: [
-      { label: "기본 정보", href: "/profile?tab=basic" },
-      { label: "이력서 관리", href: "/profile?tab=resume" },
-      { label: "자기소개서 관리", href: "/profile?tab=selfIntro" },
-      { label: "경력/프로젝트 관리", href: "/profile?tab=career" },
-      { label: "기술스택 관리", href: "/profile?tab=skills" },
-      { label: "자격증/학력 관리", href: "/profile?tab=certificates" },
+      { label: "기본 정보", href: "/profile/basic" },
+      { label: "이력서 관리", href: "/profile/resume" },
+      { label: "자기소개서 관리", href: "/profile/self-introduction" },
+      { label: "경력/프로젝트 관리", href: "/profile/experience" },
+      { label: "기술스택 관리", href: "/profile/skills" },
+      { label: "자격증/학력 관리", href: "/profile/credentials" },
+      { label: "AI 프로필 분석", href: "/profile/ai-analysis" },
     ],
   },
   {
@@ -57,11 +59,20 @@ const navItems = [
     href: "/applications",
     icon: Briefcase,
     children: [
-      { label: "전체 지원 건 목록", href: "/applications" },
+      { label: "전체 지원 건 목록", href: "/applications/list" },
       { label: "새 지원 건 만들기", href: "/applications/new" },
-      { label: "내 스펙과 비교", href: "/applications?tab=fit" },
-      { label: "지원 전략", href: "/applications?tab=strategy" },
-      { label: "학습/자격증 추천", href: "/applications?tab=learning" },
+      { label: "내 스펙과 비교", href: "/applications/compare" },
+      { label: "지원 전략", href: "/applications/strategy" },
+      { label: "학습/자격증 추천", href: "/applications/learning" },
+    ],
+  },
+  {
+    label: "직무·자격 카탈로그",
+    href: "/catalog",
+    icon: Award,
+    children: [
+      { label: "NCS 직무능력표준", href: "/catalog/ncs" },
+      { label: "자격증 검색", href: "/catalog/certificates" },
     ],
   },
   {
@@ -69,13 +80,13 @@ const navItems = [
     href: "/interview",
     icon: MessageSquare,
     children: [
-      { label: "면접 모드 선택", href: "/interview?tab=modes" },
-      { label: "예상 면접 질문", href: "/interview?tab=questions" },
-      { label: "복습 테스트", href: "/interview?tab=practice" },
-      { label: "음성 모의면접", href: "/interview?tab=live" },
-      { label: "아바타 화상 면접", href: "/interview?tab=avatar" },
-      { label: "답변 평가", href: "/interview?tab=evaluation" },
-      { label: "면접 리포트", href: "/interview?tab=report" },
+      { label: "면접 모드 선택", href: "/interview/modes" },
+      { label: "예상 면접 질문", href: "/interview/questions" },
+      { label: "복습 테스트", href: "/interview/practice" },
+      { label: "음성 모의면접", href: "/interview/live" },
+      { label: "아바타 화상 면접", href: "/interview/avatar" },
+      { label: "답변 평가", href: "/interview/evaluation" },
+      { label: "면접 리포트", href: "/interview/reports" },
     ],
   },
   {
@@ -83,10 +94,10 @@ const navItems = [
     href: "/correction",
     icon: PenTool,
     children: [
-      { label: "답변 첨삭", href: "/correction?tab=answer" },
-      { label: "자기소개서 첨삭", href: "/correction?tab=cover" },
-      { label: "이력서 첨삭", href: "/correction?tab=resume" },
-      { label: "포트폴리오 설명 첨삭", href: "/correction?tab=portfolio" },
+      { label: "답변 첨삭", href: "/correction/answer" },
+      { label: "자기소개서 첨삭", href: "/correction/cover-letter" },
+      { label: "이력서 첨삭", href: "/correction/resume" },
+      { label: "포트폴리오 설명 첨삭", href: "/correction/portfolio" },
     ],
   },
   {
@@ -94,11 +105,11 @@ const navItems = [
     href: "/analysis",
     icon: TrendingUp,
     children: [
-      { label: "내 지원 경향", href: "/analysis" },
-      { label: "자주 부족한 역량", href: "/analysis?tab=weakness" },
-      { label: "직무별 준비도", href: "/analysis?tab=readiness" },
-      { label: "면접 점수 변화", href: "/analysis?tab=score" },
-      { label: "추천 지원 방향", href: "/analysis?tab=recommendation" },
+      { label: "내 지원 경향", href: "/analysis/trends" },
+      { label: "자주 부족한 역량", href: "/analysis/weaknesses" },
+      { label: "직무별 준비도", href: "/analysis/readiness" },
+      { label: "면접 점수 변화", href: "/analysis/interview-scores" },
+      { label: "추천 지원 방향", href: "/analysis/recommendations" },
     ],
   },
   {
@@ -106,9 +117,9 @@ const navItems = [
     href: "/planner",
     icon: CalendarClock,
     children: [
-      { label: "일정 관리", href: "/planner" },
-      { label: "메모 관리", href: "/planner?tab=memo" },
-      { label: "오버레이 관리", href: "/planner?tab=overlay" },
+      { label: "일정 관리", href: "/planner/schedule" },
+      { label: "메모 관리", href: "/planner/memos" },
+      { label: "오버레이 관리", href: "/planner/overlays" },
     ],
   },
   {
@@ -116,7 +127,7 @@ const navItems = [
     href: "/community",
     icon: Users,
     children: [
-      { label: "인기글", href: "/community?sort=likes" },
+      { label: "인기글", href: "/community/popular" },
       { label: "내 활동", href: "/community/activity" },
     ],
   },
@@ -125,9 +136,9 @@ const navItems = [
     href: "/messenger",
     icon: MessagesSquare,
     children: [
-      { label: "내 채팅방", href: "/messenger" },
-      { label: "공개방 찾기", href: "/messenger?tab=discover" },
-      { label: "친구 관리", href: "/messenger?tab=friends" },
+      { label: "내 채팅방", href: "/messenger/rooms" },
+      { label: "공개방 찾기", href: "/messenger/discover" },
+      { label: "친구 관리", href: "/messenger/friends" },
     ],
   },
   {
@@ -135,10 +146,10 @@ const navItems = [
     href: "/billing",
     icon: CreditCard,
     children: [
-      { label: "요금제", href: "/billing?tab=plans" },
-      { label: "AI 사용량", href: "/billing?tab=usage" },
-      { label: "크레딧 충전", href: "/billing?tab=credits" },
-      { label: "결제 내역", href: "/billing?tab=history" },
+      { label: "요금제", href: "/billing/plans" },
+      { label: "AI 사용량", href: "/billing/usage" },
+      { label: "크레딧 충전", href: "/billing/credits" },
+      { label: "결제 내역", href: "/billing/history" },
     ],
   },
   {
@@ -146,10 +157,21 @@ const navItems = [
     href: "/settings",
     icon: Settings,
     children: [
-      { label: "계정 설정", href: "/settings?tab=account" },
-      { label: "개인정보 관리", href: "/settings?tab=privacy" },
-      { label: "AI 데이터 사용 동의", href: "/settings?tab=ai-consent" },
-      { label: "알림 설정", href: "/settings?tab=notifications" },
+      { label: "계정 설정", href: "/settings/account" },
+      { label: "개인정보 관리", href: "/settings/privacy" },
+      { label: "AI 데이터 사용 동의", href: "/settings/ai-consent" },
+      { label: "알림 설정", href: "/settings/notifications" },
+      { label: "차단 관리", href: "/settings/blocks" },
+      { label: "기업 서비스 안내", href: "/settings/company" },
+    ],
+  },
+  {
+    label: "기업 서비스",
+    href: "/company",
+    icon: Building2,
+    children: [
+      { label: "기업 계정 신청·공고 관리", href: "/company/manage" },
+      { label: "채용공고 게시판", href: "/jobs" },
     ],
   },
   {
@@ -157,7 +179,7 @@ const navItems = [
     href: "/admin",
     icon: ShieldCheck,
     children: [
-      { label: "관리자 대시보드", href: "/admin" },
+      { label: "관리자 대시보드", href: "/admin/dashboard" },
       { label: "지원 건 관리", href: "/admin/application-cases" },
       { label: "회원 관리", href: "/admin/users" },
       { label: "결제 관리", href: "/admin/payments" },
@@ -183,7 +205,7 @@ export function Header() {
 
   const isLoggedIn = isAuthenticated;
   const canSeeAdminMenu = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
-  const visibleNavItems = navItems.filter((item) => item.href !== "/admin" || canSeeAdminMenu);
+  const visibleNavItems = HEADER_NAV_ITEMS.filter((item) => item.href !== "/admin" || canSeeAdminMenu);
   const userInitial = user?.name?.trim()?.charAt(0) ?? user?.email?.charAt(0).toUpperCase() ?? "U";
   const planLabel = user?.plan === "FREE" ? "무료 플랜" : user?.plan === "PRO" ? "프로 플랜" : user?.plan ?? "기본 플랜";
   const credit = user?.credit ?? 0;
@@ -350,7 +372,7 @@ export function Header() {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button variant="outline" onClick={() => { navigate("/profile"); setMobileOpen(false); }}>내 프로필</Button>
-                  <Button variant="outline" onClick={() => { navigate("/billing?tab=credits"); setMobileOpen(false); }}>크레딧</Button>
+                  <Button variant="outline" onClick={() => { navigate("/billing/credits"); setMobileOpen(false); }}>크레딧</Button>
                 </div>
                 <Button variant="outline" className="w-full text-destructive hover:bg-destructive/10" onClick={handleLogout}>
                   로그아웃

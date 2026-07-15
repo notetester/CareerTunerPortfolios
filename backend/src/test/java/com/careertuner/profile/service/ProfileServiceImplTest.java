@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -19,6 +22,7 @@ import com.careertuner.analysis.ai.provider.CareerAnalysisAiUsage;
 import com.careertuner.applicationcase.domain.AiUsageLog;
 import com.careertuner.applicationcase.mapper.ApplicationCaseMapper;
 import com.careertuner.common.exception.BusinessException;
+import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
 import com.careertuner.consent.service.ConsentService;
 import com.careertuner.profile.ai.JobFamily;
@@ -45,7 +49,10 @@ class ProfileServiceImplTest {
     @Test
     void saveCreatesImmutableSnapshotAfterCurrentProfileUpsert() {
         ProfileMapper profileMapper = mock(ProfileMapper.class);
+        UserProfile current = UserProfile.builder().id(11L).userId(7L).desiredJob("서버 개발자").versionNo(1).build();
         UserProfile saved = UserProfile.builder().id(11L).userId(7L).desiredJob("백엔드 개발자").versionNo(2).build();
+        when(profileMapper.insertEmptyIfAbsent(7L)).thenReturn(0);
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(current);
         when(profileMapper.findByUserId(7L)).thenReturn(saved);
         when(profileMapper.findVersions(7L, 20)).thenReturn(List.of());
         ProfileServiceImpl service = newService(
@@ -54,14 +61,150 @@ class ProfileServiceImplTest {
                 mock(ConsentService.class),
                 mock(ProfileAiService.class));
 
-        service.save(USER, new UserProfileRequest(
-                "백엔드 개발자", "IT", null, null, null, null,
-                null, null, null, null, null, null));
+        service.save(USER, request("백엔드 개발자", 1));
 
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(profileMapper);
+        order.verify(profileMapper).insertEmptyIfAbsent(7L);
+        order.verify(profileMapper).findByUserIdForUpdate(7L);
         order.verify(profileMapper).upsert(any(UserProfile.class));
         order.verify(profileMapper).insertVersionFromCurrent(7L, "MANUAL_SAVE");
         assertThat(service.versions(USER, 20)).isEmpty();
+    }
+
+    @Test
+    void firstSaveInitializesTheLockedEmptyRowWithoutSkippingVersionOne() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        UserProfile empty = UserProfile.builder().id(11L).userId(7L).versionNo(1).build();
+        UserProfile saved = UserProfile.builder().id(11L).userId(7L).desiredJob("백엔드 개발자").versionNo(1).build();
+        when(profileMapper.insertEmptyIfAbsent(7L)).thenReturn(1);
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(empty);
+        when(profileMapper.findByUserId(7L)).thenReturn(saved);
+        ProfileServiceImpl service = newService(
+                profileMapper,
+                mock(ApplicationCaseMapper.class),
+                mock(ConsentService.class),
+                mock(ProfileAiService.class));
+
+        var response = service.save(USER, request("백엔드 개발자", null));
+
+        assertThat(response.versionNo()).isEqualTo(1);
+        verify(profileMapper).initialize(any(UserProfile.class));
+        verify(profileMapper, never()).upsert(any(UserProfile.class));
+        verify(profileMapper).insertVersionFromCurrent(7L, "MANUAL_SAVE");
+    }
+
+    @Test
+    void emptyRowCreatedByAnotherProfileFeatureStillAllowsTheFirstNullBaseSave() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        UserProfile empty = UserProfile.builder().id(11L).userId(7L).versionNo(1).build();
+        UserProfile saved = UserProfile.builder().id(11L).userId(7L).desiredJob("백엔드 개발자").versionNo(2).build();
+        when(profileMapper.insertEmptyIfAbsent(7L)).thenReturn(0);
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(empty);
+        when(profileMapper.findByUserId(7L)).thenReturn(saved);
+        ProfileServiceImpl service = newService(
+                profileMapper,
+                mock(ApplicationCaseMapper.class),
+                mock(ConsentService.class),
+                mock(ProfileAiService.class));
+
+        var response = service.save(USER, request("백엔드 개발자", null));
+
+        assertThat(response.versionNo()).isEqualTo(2);
+        verify(profileMapper).upsert(any(UserProfile.class));
+        verify(profileMapper, never()).initialize(any(UserProfile.class));
+    }
+
+    @Test
+    void missingBaseVersionIsRejectedForAnExistingProfile() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        UserProfile current = UserProfile.builder()
+                .id(11L)
+                .userId(7L)
+                .desiredJob("백엔드 개발자")
+                .versionNo(3)
+                .build();
+        when(profileMapper.insertEmptyIfAbsent(7L)).thenReturn(0);
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(current);
+        ProfileServiceImpl service = newService(
+                profileMapper,
+                mock(ApplicationCaseMapper.class),
+                mock(ConsentService.class),
+                mock(ProfileAiService.class));
+
+        assertThatThrownBy(() -> service.save(USER, request("프론트엔드 개발자", null)))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.CONFLICT);
+        verify(profileMapper, never()).upsert(any(UserProfile.class));
+        verify(profileMapper, never()).initialize(any(UserProfile.class));
+        verify(profileMapper, never()).insertVersionFromCurrent(7L, "MANUAL_SAVE");
+    }
+
+    @Test
+    void missingBaseVersionIsRejectedAfterAnExistingProfileWasCleared() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        UserProfile clearedExisting = UserProfile.builder()
+                .id(11L)
+                .userId(7L)
+                .versionNo(2)
+                .build();
+        when(profileMapper.insertEmptyIfAbsent(7L)).thenReturn(0);
+        when(profileMapper.findByUserIdForUpdate(7L)).thenReturn(clearedExisting);
+        ProfileServiceImpl service = newService(
+                profileMapper,
+                mock(ApplicationCaseMapper.class),
+                mock(ConsentService.class),
+                mock(ProfileAiService.class));
+
+        assertThatThrownBy(() -> service.save(USER, request("뒤늦은 저장", null)))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.CONFLICT);
+        verify(profileMapper, never()).upsert(any(UserProfile.class));
+        verify(profileMapper, never()).insertVersionFromCurrent(7L, "MANUAL_SAVE");
+    }
+
+    @Test
+    void secondWriterUsingTheSameReadVersionGetsConflictInsteadOfOverwritingTheFirstWriter() {
+        ProfileMapper profileMapper = mock(ProfileMapper.class);
+        AtomicReference<UserProfile> database = new AtomicReference<>(UserProfile.builder()
+                .id(11L)
+                .userId(7L)
+                .desiredJob("기존 직무")
+                .versionNo(3)
+                .build());
+        when(profileMapper.insertEmptyIfAbsent(7L)).thenReturn(0);
+        when(profileMapper.findByUserIdForUpdate(7L)).thenAnswer(invocation -> database.get());
+        when(profileMapper.findByUserId(7L)).thenAnswer(invocation -> database.get());
+        doAnswer(invocation -> {
+            UserProfile incoming = invocation.getArgument(0);
+            UserProfile before = database.get();
+            database.set(UserProfile.builder()
+                    .id(before.getId())
+                    .userId(before.getUserId())
+                    .desiredJob(incoming.getDesiredJob())
+                    .versionNo(before.getVersionNo() + 1)
+                    .build());
+            return null;
+        }).when(profileMapper).upsert(any(UserProfile.class));
+        ProfileServiceImpl service = newService(
+                profileMapper,
+                mock(ApplicationCaseMapper.class),
+                mock(ConsentService.class),
+                mock(ProfileAiService.class));
+
+        var firstWriter = service.save(USER, request("첫 번째 저장", 3));
+        assertThat(firstWriter.versionNo()).isEqualTo(4);
+        assertThatThrownBy(() -> service.save(USER, request("뒤늦은 두 번째 저장", 3)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("최신 내용을 다시 불러온 뒤")
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.CONFLICT);
+
+        assertThat(database.get().getDesiredJob()).isEqualTo("첫 번째 저장");
+        assertThat(database.get().getVersionNo()).isEqualTo(4);
+        verify(profileMapper, times(1)).upsert(any(UserProfile.class));
+        verify(profileMapper, times(1)).insertVersionFromCurrent(7L, "MANUAL_SAVE");
     }
 
     @Test
@@ -189,6 +332,12 @@ class ProfileServiceImplTest {
 
     private ProfileAiResult result(String status) {
         return result("PROFILE_SUMMARY", status);
+    }
+
+    private static UserProfileRequest request(String desiredJob, Integer baseVersionNo) {
+        return new UserProfileRequest(
+                desiredJob, "IT", null, null, null, null,
+                null, null, null, null, null, null, baseVersionNo);
     }
 
     private ProfileAiResult result(String featureType, String status) {

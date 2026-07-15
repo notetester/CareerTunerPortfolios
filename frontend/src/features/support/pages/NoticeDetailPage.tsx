@@ -80,7 +80,7 @@ export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: Notic
   const notice = currentNotice?.id === noticeId ? currentNotice : sorted[idx];
   if (!notice) {
     return (
-      <div className="ct-page ct-support ct-notices">
+      <div className="ct-page ct-support">
         <button className="ct-ndetail__back" onClick={onBack}>
           <ArrowLeft /> 공지사항 목록
         </button>
@@ -95,7 +95,7 @@ export default function NoticeDetailPage({ noticeId, onBack, onNavigate }: Notic
   const next = sorted[idx + 1] as Notice | undefined;
 
   return (
-    <div className="ct-page ct-support ct-notices">
+    <div className="ct-page ct-support">
       <button className="ct-ndetail__back" onClick={onBack}>
         <ArrowLeft /> 공지사항 목록
       </button>

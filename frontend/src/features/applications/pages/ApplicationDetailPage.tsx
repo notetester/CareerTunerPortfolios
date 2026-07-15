@@ -5,7 +5,9 @@ import {
   BarChart3,
   Briefcase,
   Building2,
+  Compass,
   FileText,
+  GraduationCap,
   Info,
   MessageSquare,
   PenLine,
@@ -52,15 +54,19 @@ import { useApplicationFitAnalysis } from "@/features/analysis/hooks/useApplicat
 import { toast } from "@/features/notification/components/toast";
 import { useNotificationStore } from "@/features/notification/hooks/useNotificationStore";
 
-type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit";
+type DetailTab = "overview" | "posting" | "jobAnalysis" | "companyAnalysis" | "fit" | "strategy" | "learning";
 type DetailMode = "view" | "edit";
 
+// C 담당 3기능(적합도/지원 전략/학습·자격증)은 같은 적합도 분석을 공유하지만 서로 다른 화면이라
+// 각각 독립 탭으로 노출한다(헤더 '지원 건 관리' 하위메뉴가 여기로 딥링크).
 const detailTabs: { key: DetailTab; label: string; icon: typeof Info }[] = [
   { key: "overview", label: "개요", icon: Info },
   { key: "posting", label: "공고문", icon: FileText },
   { key: "jobAnalysis", label: "공고 분석", icon: BarChart3 },
   { key: "companyAnalysis", label: "기업 분석", icon: Building2 },
   { key: "fit", label: "적합도", icon: Target },
+  { key: "strategy", label: "지원 전략", icon: Compass },
+  { key: "learning", label: "학습·자격증", icon: GraduationCap },
 ];
 
 const tabSlugs: Record<DetailTab, string> = {
@@ -69,6 +75,8 @@ const tabSlugs: Record<DetailTab, string> = {
   jobAnalysis: "job-analysis",
   companyAnalysis: "company-analysis",
   fit: "fit",
+  strategy: "strategy",
+  learning: "learning",
 };
 
 const tabKeysBySlug = Object.fromEntries(
@@ -291,7 +299,7 @@ export function ApplicationDetailPage() {
   const handleDelete = async () => {
     if (!id) return;
     await deleteApplicationCase(id);
-    navigate("/applications");
+    navigate("/applications/list");
   };
 
   const handleGenerateJobAnalysis = async (provider: string) => {
@@ -342,7 +350,7 @@ export function ApplicationDetailPage() {
         <Card className="mx-auto max-w-lg border-slate-200 bg-card">
           <CardContent className="space-y-4 p-8 text-center">
             <div className="font-semibold text-slate-900">지원 건 ID가 올바르지 않습니다.</div>
-            <Button onClick={() => navigate("/applications")}>목록으로 이동</Button>
+            <Button onClick={() => navigate("/applications/list")}>목록으로 이동</Button>
           </CardContent>
         </Card>
       </div>
@@ -356,7 +364,7 @@ export function ApplicationDetailPage() {
           <div className="sticky top-20 space-y-4">
             <div className="flex items-center justify-between">
               <Button asChild variant="ghost" className="px-0 text-slate-600 hover:bg-transparent hover:text-blue-700">
-                <Link to="/applications">
+                <Link to="/applications/list">
                   <ArrowLeft className="size-4" />
                   목록
                 </Link>
@@ -399,7 +407,7 @@ export function ApplicationDetailPage() {
           <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
               <Button asChild variant="ghost" className="mb-3 px-0 text-slate-600 hover:bg-transparent hover:text-blue-700 lg:hidden">
-                <Link to="/applications">
+                <Link to="/applications/list">
                   <ArrowLeft className="size-4" />
                   목록
                 </Link>
@@ -513,7 +521,7 @@ export function ApplicationDetailPage() {
                         </div>
                       ) : (
                         <Link
-                          to={`/correction?tab=cover&caseId=${id}`}
+                          to={`/correction/cover-letter?caseId=${id}`}
                           className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 transition-colors hover:border-amber-300 hover:bg-amber-100"
                         >
                           <PenLine className="mb-2 size-4" />
@@ -587,9 +595,10 @@ export function ApplicationDetailPage() {
                 />
               )}
 
-              {activeTab === "fit" && (
+              {(activeTab === "fit" || activeTab === "strategy" || activeTab === "learning") && (
                 <div className="space-y-6">
-                  {/* C 담당: 적합도/전략/학습 추천. 생성 트리거는 fit-analyses 엔드포인트(현재 mock). */}
+                  {/* C 담당: 적합도/전략/학습 추천 — 세 탭이 같은 적합도 분석을 공유하므로 생성/재분석
+                      바는 공통으로 노출한다. 생성 트리거는 fit-analyses 엔드포인트(현재 mock). */}
                   <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm text-slate-600">공고 분석 결과와 내 프로필을 비교해 적합도·부족 역량·학습/자격증·전략을 분석합니다.</p>
                     <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
@@ -604,21 +613,32 @@ export function ApplicationDetailPage() {
                       </Button>
                     </div>
                   </div>
-                  <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} generating={fitGenerating} error={fitAnalysisError} />
-                  <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
-                  <LearningRecommendationPanel
-                    analyses={fitAnalyses}
-                    loading={fitAnalysisLoading}
-                    error={fitAnalysisError}
-                    onReanalyze={() => void generateFit(true, fitModel)}
-                    reanalyzing={fitGenerating}
-                  />
-                  {/* C 담당: 재분석 히스토리(점수·역량 변화 추적). 최신 분석 id가 바뀌면 다시 불러온다. */}
-                  <FitAnalysisHistoryPanel
-                    applicationCaseId={id}
-                    enabled={isAuthenticated && Boolean(applicationCase)}
-                    refreshKey={fitAnalyses[0]?.id ?? null}
-                  />
+
+                  {activeTab === "fit" && (
+                    <>
+                      <FitAnalysisPanel analyses={fitAnalyses} loading={fitAnalysisLoading} generating={fitGenerating} error={fitAnalysisError} />
+                      {/* C 담당: 재분석 히스토리(점수·역량 변화 추적). 최신 분석 id가 바뀌면 다시 불러온다. */}
+                      <FitAnalysisHistoryPanel
+                        applicationCaseId={id}
+                        enabled={isAuthenticated && Boolean(applicationCase)}
+                        refreshKey={fitAnalyses[0]?.id ?? null}
+                      />
+                    </>
+                  )}
+
+                  {activeTab === "strategy" && (
+                    <StrategyPanel analyses={fitAnalyses} loading={fitAnalysisLoading} error={fitAnalysisError} />
+                  )}
+
+                  {activeTab === "learning" && (
+                    <LearningRecommendationPanel
+                      analyses={fitAnalyses}
+                      loading={fitAnalysisLoading}
+                      error={fitAnalysisError}
+                      onReanalyze={() => void generateFit(true, fitModel)}
+                      reanalyzing={fitGenerating}
+                    />
+                  )}
                 </div>
               )}
             </>

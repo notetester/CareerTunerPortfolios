@@ -5,7 +5,7 @@ reports/80 §5 의 갭("R3 gate 는 offline observer 근사, E2E 는 별도")을
 규칙엔진→(provider=oss) 뉴로-심볼릭 프롬프트→E1 hard guard→R3 gate→저장까지 실경로로 측정한다.
 
 서브커맨드:
-  seed-sql  : 픽스처(60케이스)를 dev DB 시드 SQL 로 변환(정적 파일 출력 — ApplySqlPatch 로 적용).
+  seed-sql  : 픽스처를 dev DB 시드 SQL 로 변환(정적 파일 출력 — MySQL client/IDE에서 검토 후 적용).
               synthetic 계정 60개(id 911001~) + profile + application_case(id 910001~) + job_analysis.
               INSERT IGNORE 멱등. 삭제 불필요(사용자 승인: 데이터 생산 자유).
   run       : 케이스별 로그인→POST→응답의 safety/model/status 수집 → 결과 JSON 저장(CareerTunerAI 권장).

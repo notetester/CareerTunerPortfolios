@@ -18,7 +18,7 @@ import nl.martijndwars.webpush.Subscription;
  * 브라우저/PWA 가 만든 구독(endpoint + p256dh + auth)으로 암호화 페이로드를 전송한다.
  */
 @Component
-@ConditionalOnProperty(prefix = "careertuner.push.vapid", name = {"public-key", "private-key"})
+@ConditionalOnProperty(prefix = "careertuner.push.vapid", name = "enabled", havingValue = "true")
 public class VapidWebPushClient {
 
     private final PushService pushService;

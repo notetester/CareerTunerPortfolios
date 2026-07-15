@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router";
-import { Briefcase, Building2, Clock3, Eye, MapPin, Search } from "lucide-react";
+import { Link, useNavigate } from "react-router";
+import { Briefcase, Building2, Clock3, Eye, MapPin, PenLine, Search } from "lucide-react";
+import { useAuth } from "@/app/auth/AuthContext";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent } from "@/app/components/ui/card";
@@ -44,6 +45,10 @@ function deadlineLabel(posting: CompanyJobPosting): string {
 
 /** 공개 채용공고 게시판 — 키워드/직무/지역/고용형태/경력 필터 + 정렬 + 페이징. */
 export function JobBoardPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  // 공고 작성 폼은 /company 허브에 있다(승인 상태 분기 포함) — 기업 계정에게만 진입 버튼을 노출한다.
+  const isCompanyAccount = user?.role === "COMPANY";
   const [keyword, setKeyword] = useState("");
   const [jobRole, setJobRole] = useState("");
   const [location, setLocation] = useState("");
@@ -93,15 +98,23 @@ export function JobBoardPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 px-4 py-8">
-      <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
-          <Briefcase className="size-5" />
-          채용공고
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          기업이 직접 등록한 공고입니다. 마음에 드는 공고는 바로 지원 건으로 만들어 분석할 수 있습니다.
-        </p>
+    <div className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-8 sm:px-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
+            <Briefcase className="size-5" />
+            채용공고
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            기업이 직접 등록한 공고입니다. 마음에 드는 공고는 바로 지원 건으로 만들어 분석할 수 있습니다.
+          </p>
+        </div>
+        {isCompanyAccount && (
+          <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => navigate("/company/manage")}>
+            <PenLine className="size-4" />
+            공고 등록
+          </Button>
+        )}
       </div>
 
       {/* 필터 바 */}

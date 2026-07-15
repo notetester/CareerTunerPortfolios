@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import type { ChangeEvent, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -30,6 +30,14 @@ import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Textarea } from "@/app/components/ui/textarea";
 import { Badge } from "@/app/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/ui/dialog";
 import { cn } from "@/app/components/ui/utils";
 import { listApplicationCases } from "@/features/applications/api/applicationCasesApi";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
@@ -40,7 +48,6 @@ import {
   declineFriendRequest,
   discoverConversations,
   downloadCollaborationAttachment,
-  inviteConversationMembers,
   joinConversation,
   listConversations,
   listFriends,
@@ -97,6 +104,34 @@ const SHARE_MODES: Array<{ value: WebShareMode; description: string }> = [
 
 const MUTE_HELP = "알림 해제 방은 내 이름·키워드 언급 시에만 알림";
 
+type MessengerView = "rooms" | "discover" | "friends";
+
+const MESSENGER_VIEWS: Array<{
+  value: MessengerView;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  { value: "rooms", label: "내 채팅방", description: "참여 중인 대화와 메시지", icon: Inbox },
+  { value: "discover", label: "공개방 찾기", description: "새로운 공개·비공개방 탐색", icon: Globe2 },
+  { value: "friends", label: "친구 관리", description: "친구 검색과 요청 관리", icon: Users },
+];
+
+const VIEW_COPY: Record<MessengerView, { title: string; description: string }> = {
+  rooms: {
+    title: "내 채팅방",
+    description: "참여 중인 방을 선택해 메시지와 파일, 지원 공고를 공유하세요.",
+  },
+  discover: {
+    title: "공개방 찾기",
+    description: "관심 있는 공개방을 검색하거나 비밀번호가 있는 방에 참가하세요.",
+  },
+  friends: {
+    title: "친구 관리",
+    description: "사용자를 찾고 친구 요청을 관리하거나 1:1 대화를 시작하세요.",
+  },
+};
+
 const AVAILABILITY_LABEL: Record<AttachmentAvailability, string> = {
   AVAILABLE: "다운로드 가능",
   EXPIRED: "만료됨",
@@ -105,7 +140,11 @@ const AVAILABILITY_LABEL: Record<AttachmentAvailability, string> = {
 };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "요청을 처리하지 못했습니다.";
+  const message = error instanceof Error ? error.message : "요청을 처리하지 못했습니다.";
+  if (message.includes("(502)") || message === "Failed to fetch") {
+    return "서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요. (502)";
+  }
+  return message;
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -162,7 +201,7 @@ function Panel({
   icon: LucideIcon;
   action?: ReactNode;
   children: ReactNode;
-  /** 헤더 하위메뉴(?tab=friends|discover) 스크롤 앵커용 */
+  /** 메신저 세부 화면의 스크롤 앵커용 */
   id?: string;
 }) {
   return (
@@ -251,16 +290,12 @@ function AttachmentButton({
 export function MessengerPage() {
   const { user, loading: authLoading } = useAuth();
   const accountId = user?.id ?? null;
-  // 헤더 하위메뉴 의도(?tab=friends|discover) 배선 — 단일 뷰라 해당 패널로 스크롤해 초점을 준다.
-  const [searchParams] = useSearchParams();
-  const requestedTab = searchParams.get("tab");
-  useEffect(() => {
-    if (requestedTab !== "friends" && requestedTab !== "discover") return;
-    const anchor = document.getElementById(requestedTab === "friends" ? "messenger-friends" : "messenger-discover");
-    // 데이터 로드로 레이아웃이 잡힌 뒤 스크롤되도록 다음 프레임에 실행.
-    const timer = window.setTimeout(() => anchor?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
-    return () => window.clearTimeout(timer);
-  }, [requestedTab]);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeSegment = location.pathname.split("/").filter(Boolean).at(-1);
+  const activeView: MessengerView = routeSegment === "discover" || routeSegment === "friends"
+    ? routeSegment
+    : "rooms";
   const [conversations, setConversations] = useState<ConversationSummaryResponse[]>([]);
   const [discoverRooms, setDiscoverRooms] = useState<ConversationSummaryResponse[]>([]);
   const [friends, setFriends] = useState<FriendResponse[]>([]);
@@ -280,6 +315,7 @@ export function MessengerPage() {
   const [createDescription, setCreateDescription] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createInviteIds, setCreateInviteIds] = useState<number[]>([]);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const [messageKind, setMessageKind] = useState<MessageKind>("CHAT");
   const [messageText, setMessageText] = useState("");
@@ -293,8 +329,12 @@ export function MessengerPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadWarning, setLoadWarning] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [messageLoading, setMessageLoading] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const accountGeneration = useRef(0);
+  const viewRequestSequence = useRef(0);
   const messageRequestSequence = useRef(0);
   const activeConversationIdRef = useRef<number | null>(null);
   const conversationPanelRef = useRef<HTMLDivElement>(null);
@@ -304,10 +344,8 @@ export function MessengerPage() {
   }, [activeConversationId]);
 
   useEffect(() => {
-    if (requestedTab === "friends" || requestedTab === "discover") {
-      setMobileConversationOpen(false);
-    }
-  }, [requestedTab]);
+    if (activeView !== "rooms") setMobileConversationOpen(false);
+  }, [activeView]);
 
   useEffect(() => {
     if (!mobileConversationOpen) return undefined;
@@ -319,6 +357,7 @@ export function MessengerPage() {
 
   useEffect(() => {
     accountGeneration.current += 1;
+    viewRequestSequence.current += 1;
     messageRequestSequence.current += 1;
     activeConversationIdRef.current = null;
     previousConversationId.current = null;
@@ -335,8 +374,12 @@ export function MessengerPage() {
     setSelectedApplicationIds([]);
     setMessageText("");
     setSettingsOpen(false);
+    setCreateDialogOpen(false);
     setMobileConversationOpen(false);
     setError(null);
+    setLoadWarning(null);
+    setMessageError(null);
+    setMessageLoading(false);
     setNotice(null);
     if (!accountId) setLoading(authLoading);
     // authLoading은 같은 계정의 토큰 갱신 중에도 바뀐다. 계정 ID가 실제로
@@ -364,8 +407,9 @@ export function MessengerPage() {
       conversation,
       ...current.filter((item) => item.id !== conversation.id),
     ]);
+    navigate("/messenger/rooms");
     openConversation(conversation.id);
-  }, [openConversation]);
+  }, [navigate, openConversation]);
 
   const refreshConversations = useCallback(async () => {
     const generation = accountGeneration.current;
@@ -380,15 +424,22 @@ export function MessengerPage() {
 
   const refreshFriendData = useCallback(async () => {
     const generation = accountGeneration.current;
-    const [friendRows, incoming, outgoing] = await Promise.all([
+    const results = await Promise.allSettled([
       listFriends(),
       listIncomingFriendRequests(),
       listOutgoingFriendRequests(),
     ]);
     if (generation !== accountGeneration.current) return;
-    setFriends(friendRows);
-    setIncomingRequests(incoming);
-    setOutgoingRequests(outgoing);
+    const [friendRows, incoming, outgoing] = results;
+    if (friendRows.status === "fulfilled") setFriends(friendRows.value);
+    if (incoming.status === "fulfilled") setIncomingRequests(incoming.value);
+    if (outgoing.status === "fulfilled") setOutgoingRequests(outgoing.value);
+
+    const failedCount = results.filter((result) => result.status === "rejected").length;
+    if (failedCount === results.length) throw (friendRows as PromiseRejectedResult).reason;
+    setLoadWarning(failedCount > 0
+      ? "일부 친구 정보를 불러오지 못했습니다. 표시된 목록은 계속 사용할 수 있습니다."
+      : null);
   }, []);
 
   const refreshDiscoverRooms = useCallback(async () => {
@@ -402,57 +453,108 @@ export function MessengerPage() {
     const sequence = ++messageRequestSequence.current;
     if (!conversationId) {
       setMessages([]);
+      setMessageError(null);
+      setMessageLoading(false);
       return;
     }
     setMessages([]);
-    const rows = await listMessages(conversationId, 120);
-    if (
-      generation === accountGeneration.current
-      && sequence === messageRequestSequence.current
-      && activeConversationIdRef.current === conversationId
-    ) {
-      setMessages(rows);
+    setMessageError(null);
+    setMessageLoading(true);
+    try {
+      const rows = await listMessages(conversationId, 120);
+      if (
+        generation === accountGeneration.current
+        && sequence === messageRequestSequence.current
+        && activeConversationIdRef.current === conversationId
+      ) {
+        setMessages(rows);
+      }
+    } catch (err) {
+      if (
+        generation === accountGeneration.current
+        && sequence === messageRequestSequence.current
+        && activeConversationIdRef.current === conversationId
+      ) {
+        setMessageError(`메시지를 불러오지 못했습니다. ${getErrorMessage(err)}`);
+      }
+    } finally {
+      if (
+        generation === accountGeneration.current
+        && sequence === messageRequestSequence.current
+        && activeConversationIdRef.current === conversationId
+      ) {
+        setMessageLoading(false);
+      }
     }
   }, []);
 
-  const refreshAll = useCallback(async () => {
+  const refreshActiveView = useCallback(async () => {
     if (authLoading || accountId == null) {
       if (!authLoading) setLoading(false);
       return;
     }
     const generation = accountGeneration.current;
+    const sequence = ++viewRequestSequence.current;
+    const isCurrentRequest = () => generation === accountGeneration.current
+      && sequence === viewRequestSequence.current;
     setLoading(true);
     setError(null);
+    setLoadWarning(null);
     try {
-      const [conversationRows, friendRows, incoming, outgoing, cases, rooms] = await Promise.all([
-        listConversations(),
-        listFriends(),
-        listIncomingFriendRequests(),
-        listOutgoingFriendRequests(),
-        listApplicationCases({ view: "ACTIVE" }),
-        discoverConversations("", 30),
-      ]);
-      if (generation !== accountGeneration.current) return;
-      setConversations(conversationRows);
-      setFriends(friendRows);
-      setIncomingRequests(incoming);
-      setOutgoingRequests(outgoing);
-      setApplicationCases(cases);
-      setDiscoverRooms(rooms);
-      setActiveConversationId((current) => {
-        if (current && conversationRows.some((item) => item.id === current)) return current;
-        return conversationRows[0]?.id ?? null;
-      });
+      if (activeView === "rooms") {
+        const [conversationResult, applicationCaseResult] = await Promise.allSettled([
+          listConversations(),
+          listApplicationCases({ view: "ACTIVE" }),
+        ]);
+        if (!isCurrentRequest()) return;
+        if (conversationResult.status === "rejected") throw conversationResult.reason;
+
+        const conversationRows = conversationResult.value;
+        setConversations(conversationRows);
+        setActiveConversationId((current) => {
+          if (current && conversationRows.some((item) => item.id === current)) return current;
+          return conversationRows[0]?.id ?? null;
+        });
+
+        if (applicationCaseResult.status === "fulfilled") {
+          setApplicationCases(applicationCaseResult.value);
+        } else {
+          setApplicationCases([]);
+          setLoadWarning("공유할 지원 공고를 불러오지 못했지만 메시지와 파일 공유는 계속 사용할 수 있습니다.");
+        }
+      } else if (activeView === "friends") {
+        const results = await Promise.allSettled([
+          listFriends(),
+          listIncomingFriendRequests(),
+          listOutgoingFriendRequests(),
+        ]);
+        if (!isCurrentRequest()) return;
+        const [friendRows, incoming, outgoing] = results;
+        if (friendRows.status === "fulfilled") setFriends(friendRows.value);
+        if (incoming.status === "fulfilled") setIncomingRequests(incoming.value);
+        if (outgoing.status === "fulfilled") setOutgoingRequests(outgoing.value);
+        const failedCount = results.filter((result) => result.status === "rejected").length;
+        if (failedCount === results.length) throw (friendRows as PromiseRejectedResult).reason;
+        if (failedCount > 0) {
+          setLoadWarning("일부 친구 정보를 불러오지 못했습니다. 표시된 목록은 계속 사용할 수 있습니다.");
+        }
+      } else {
+        const rooms = await discoverConversations("", 30);
+        if (!isCurrentRequest()) return;
+        setDiscoverRooms(rooms);
+      }
     } catch (err) {
-      if (generation === accountGeneration.current) setError(getErrorMessage(err));
+      if (isCurrentRequest()) {
+        setError(`${VIEW_COPY[activeView].title} 데이터를 불러오지 못했습니다. ${getErrorMessage(err)}`);
+      }
     } finally {
-      if (generation === accountGeneration.current) setLoading(false);
+      if (isCurrentRequest()) setLoading(false);
     }
-  }, [accountId, authLoading]);
+  }, [accountId, activeView, authLoading]);
 
   useEffect(() => {
-    void refreshAll();
-  }, [refreshAll]);
+    void refreshActiveView();
+  }, [refreshActiveView]);
 
   useEffect(() => {
     void loadMessages(activeConversationId);
@@ -502,6 +604,28 @@ export function MessengerPage() {
     }
   }
 
+  const changeView = (view: MessengerView) => {
+    navigate(`/messenger/${view}`);
+    setError(null);
+    setLoadWarning(null);
+    setNotice(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const openCreateConversationDialog = () => {
+    const generation = accountGeneration.current;
+    setCreateDialogOpen(true);
+    void listFriends()
+      .then((rows) => {
+        if (generation === accountGeneration.current) setFriends(rows);
+      })
+      .catch(() => {
+        if (generation === accountGeneration.current) {
+          setLoadWarning("친구 목록을 불러오지 못했습니다. 초대 없이 채팅방을 만들 수 있습니다.");
+        }
+      });
+  };
+
   const searchUserResults = () => execute(async () => {
     setUserResults(userKeyword.trim() ? await searchUsers(userKeyword.trim(), 20) : []);
   });
@@ -522,7 +646,7 @@ export function MessengerPage() {
     setCreateDescription("");
     setCreatePassword("");
     setCreateInviteIds([]);
-    await refreshDiscoverRooms();
+    setCreateDialogOpen(false);
   }, "채팅방을 만들었습니다.");
 
   const requestFriend = (userId: number) => execute(async () => {
@@ -543,18 +667,11 @@ export function MessengerPage() {
 
   const openDirect = (userId: number) => execute(async () => {
     upsertConversation(await openDirectConversation(userId));
-    await refreshConversations();
   });
 
   const joinRoom = (conversation: ConversationSummaryResponse) => execute(async () => {
     upsertConversation(await joinConversation(conversation.id, joinPasswords[conversation.id]));
-    await refreshDiscoverRooms();
   }, "채팅방에 참가했습니다.");
-
-  const inviteFriend = (userId: number) => execute(async () => {
-    if (!activeConversation || activeConversation.type === "DIRECT") return;
-    upsertConversation(await inviteConversationMembers(activeConversation.id, [userId]));
-  }, "친구를 초대했습니다.");
 
   const toggleMute = (conversation: ConversationSummaryResponse) => execute(async () => {
     const updated = await muteConversation(conversation.id, !conversation.muted);
@@ -669,23 +786,61 @@ export function MessengerPage() {
       <div className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-4 sm:px-6 lg:px-8">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
+            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">메신저</div>
             <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-foreground">
-              <MessageSquare className="size-6 text-primary" />
-              메신저
+              {activeView === "rooms" ? <Inbox className="size-6 text-primary" /> : activeView === "discover" ? <Globe2 className="size-6 text-primary" /> : <Users className="size-6 text-primary" />}
+              {VIEW_COPY[activeView].title}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              친구, 단체방, 공개방, 비공개방에서 파일과 지원 공고를 함께 공유합니다.
+              {VIEW_COPY[activeView].description}
             </p>
           </div>
-          <Button type="button" variant="outline" onClick={() => void refreshAll()} disabled={loading || busy}>
+          <Button type="button" variant="outline" onClick={() => void refreshActiveView()} disabled={loading || busy}>
             <RefreshCw className={cn("size-4", loading && "animate-spin")} />
             새로고침
           </Button>
         </div>
 
+        <nav aria-label="메신저 메뉴" className="mb-4 grid gap-2 sm:grid-cols-3">
+          {MESSENGER_VIEWS.map((view) => {
+            const selected = activeView === view.value;
+            return (
+              <button
+                key={view.value}
+                type="button"
+                aria-current={selected ? "page" : undefined}
+                onClick={() => changeView(view.value)}
+                className={cn(
+                  "flex min-w-0 items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors",
+                  selected
+                    ? "border-primary bg-primary/10 text-primary shadow-sm"
+                    : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                <span className={cn("flex size-9 shrink-0 items-center justify-center rounded-md", selected ? "bg-primary text-primary-foreground" : "bg-muted")}>
+                  <view.icon className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold">{view.label}</span>
+                  <span className="hidden truncate text-xs opacity-80 lg:block">{view.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
         {error && (
-          <div className="mb-3 rounded-md border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-            {error}
+          <div className="mb-3 flex flex-col gap-3 rounded-md border border-destructive/25 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+            <span>{error}</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => void refreshActiveView()} disabled={loading || busy}>
+              <RefreshCw className="size-4" />
+              다시 시도
+            </Button>
+          </div>
+        )}
+        {loadWarning && (
+          <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            {loadWarning}
           </div>
         )}
         {notice && (
@@ -694,9 +849,25 @@ export function MessengerPage() {
           </div>
         )}
 
-        <div className="grid min-w-0 gap-4 xl:grid-cols-[320px_minmax(320px,380px)_minmax(0,1fr)]">
-          <div className={cn("min-w-0 space-y-4", mobileConversationOpen && "hidden xl:block")}>
-            <Panel title="내 채팅방" icon={Inbox}>
+        <div className={cn(
+          "min-w-0 gap-4",
+          activeView === "rooms" ? "grid xl:grid-cols-[340px_minmax(0,1fr)]" : "mx-auto max-w-5xl",
+        )}>
+          <div className={cn(
+            "min-w-0 space-y-4",
+            activeView !== "rooms" && "hidden",
+            mobileConversationOpen && "hidden xl:block",
+          )}>
+            <Panel
+              title="내 채팅방"
+              icon={Inbox}
+              action={(
+                <Button type="button" size="sm" onClick={openCreateConversationDialog} disabled={busy}>
+                  <Plus className="size-4" />
+                  새 채팅방
+                </Button>
+              )}
+            >
               <div className="max-h-[520px] space-y-2 overflow-y-auto p-3">
                 {loading ? (
                   <div className="rounded-md border border-border bg-background p-4 text-sm text-muted-foreground">채팅방을 불러오는 중입니다.</div>
@@ -735,68 +906,16 @@ export function MessengerPage() {
                 ))}
               </div>
             </Panel>
-
-            <Panel title="채팅방 만들기" icon={Plus}>
-              <div className="space-y-3 p-3">
-                <div className="grid grid-cols-3 gap-2">
-                  {ROOM_TYPES.map((item) => (
-                    <button
-                      key={item.value}
-                      type="button"
-                      onClick={() => setCreateType(item.value)}
-                      className={cn(
-                        "flex min-h-16 flex-col items-center justify-center gap-1 rounded-md border px-2 text-xs font-semibold",
-                        createType === item.value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-accent",
-                      )}
-                    >
-                      <item.icon className="size-4" />
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-                <Input value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="채팅방 이름" />
-                <Input value={createDescription} onChange={(event) => setCreateDescription(event.target.value)} placeholder="설명(선택)" />
-                {createType === "PRIVATE" && (
-                  <Input
-                    type="password"
-                    value={createPassword}
-                    onChange={(event) => setCreatePassword(event.target.value)}
-                    placeholder="비밀번호(초대만 허용하려면 비워두기)"
-                  />
-                )}
-                {friends.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-xs font-semibold text-muted-foreground">처음 초대할 친구</div>
-                    <div className="flex flex-wrap gap-2">
-                      {friends.slice(0, 8).map((friend) => (
-                        <button
-                          key={friend.user.id}
-                          type="button"
-                          onClick={() => toggleCreateInvite(friend.user.id)}
-                          className={cn(
-                            "rounded-md border px-2.5 py-1.5 text-xs font-medium",
-                            createInviteIds.includes(friend.user.id)
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border text-muted-foreground hover:bg-accent",
-                          )}
-                        >
-                          {friend.user.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <Button type="button" className="w-full" onClick={createRoom} disabled={busy}>
-                  <Plus className="size-4" />
-                  만들기
-                </Button>
-              </div>
-            </Panel>
           </div>
 
-          <div className={cn("min-w-0 space-y-4", mobileConversationOpen && "hidden xl:block")}>
-            <Panel id="messenger-friends" title="친구" icon={Users}>
-              <div className="space-y-3 p-3">
+          <div className={cn("min-w-0 space-y-4", activeView === "rooms" && "hidden")}>
+            {activeView === "friends" && <Panel title="친구 관리" icon={Users}>
+              <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">새 친구 찾기</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">이름이나 이메일로 사용자를 검색하세요.</p>
+                  </div>
                 <div className="flex gap-2">
                   <Input
                     value={userKeyword}
@@ -859,7 +978,9 @@ export function MessengerPage() {
                     ))}
                   </div>
                 )}
+                </section>
 
+                <section className="space-y-4 lg:border-l lg:border-border lg:pl-5">
                 {incomingRequests.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
@@ -886,11 +1007,16 @@ export function MessengerPage() {
                 )}
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-                    <span>친구 목록</span>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">내 친구</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">바로 1:1 대화를 시작할 수 있습니다.</p>
+                    </div>
                     {outgoingRequests.length > 0 && <span>보낸 요청 {outgoingRequests.length}</span>}
                   </div>
-                  {friends.length === 0 ? (
+                  {loading ? (
+                    <div className="rounded-md border border-border bg-background p-4 text-sm text-muted-foreground">친구 정보를 불러오는 중입니다.</div>
+                  ) : friends.length === 0 ? (
                     <div className="rounded-md border border-border bg-background p-4 text-sm text-muted-foreground">친구를 검색해서 연결해 보세요.</div>
                   ) : friends.map((friend) => (
                     <UserLine
@@ -902,11 +1028,6 @@ export function MessengerPage() {
                           <Button type="button" size="icon" variant="outline" onClick={() => openDirect(friend.user.id)} disabled={busy} aria-label="1대1 채팅 열기">
                             <MessageSquare className="size-4" />
                           </Button>
-                          {activeConversation && activeConversation.type !== "DIRECT" && (
-                            <Button type="button" size="icon" variant="outline" onClick={() => inviteFriend(friend.user.id)} disabled={busy} aria-label="현재 채팅방 초대">
-                              <UserPlus className="size-4" />
-                            </Button>
-                          )}
                           <Button
                             type="button"
                             size="icon"
@@ -924,10 +1045,11 @@ export function MessengerPage() {
                     />
                   ))}
                 </div>
+                </section>
               </div>
-            </Panel>
+            </Panel>}
 
-            <Panel id="messenger-discover" title="공개/비공개방 찾기" icon={Globe2}>
+            {activeView === "discover" && <Panel title="공개/비공개방 찾기" icon={Globe2}>
               <div className="space-y-3 p-3">
                 <div className="flex gap-2">
                   <Input
@@ -935,15 +1057,17 @@ export function MessengerPage() {
                     onChange={(event) => setRoomSearch(event.target.value)}
                     placeholder="채팅방 검색"
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") void refreshDiscoverRooms();
+                      if (event.key === "Enter") void execute(refreshDiscoverRooms);
                     }}
                   />
-                  <Button type="button" size="icon" variant="outline" onClick={() => void refreshDiscoverRooms()} disabled={busy} aria-label="채팅방 검색">
+                  <Button type="button" size="icon" variant="outline" onClick={() => void execute(refreshDiscoverRooms)} disabled={busy} aria-label="채팅방 검색">
                     <Search className="size-4" />
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  {discoverRooms.length === 0 ? (
+                  {loading ? (
+                    <div className="rounded-md border border-border bg-background p-4 text-sm text-muted-foreground">참가 가능한 방을 불러오는 중입니다.</div>
+                  ) : discoverRooms.length === 0 ? (
                     <div className="rounded-md border border-border bg-background p-4 text-sm text-muted-foreground">참가 가능한 방이 없습니다.</div>
                   ) : discoverRooms.map((room) => (
                     <div key={room.id} className="rounded-md border border-border bg-background p-3">
@@ -971,7 +1095,7 @@ export function MessengerPage() {
                         size="sm"
                         variant={room.joined ? "outline" : "default"}
                         className="mt-3 w-full"
-                        onClick={() => (room.joined ? openConversation(room.id) : joinRoom(room))}
+                        onClick={() => (room.joined ? upsertConversation(room) : joinRoom(room))}
                         disabled={busy}
                       >
                         {room.joined ? "열기" : "참가"}
@@ -980,12 +1104,19 @@ export function MessengerPage() {
                   ))}
                 </div>
               </div>
-            </Panel>
+            </Panel>}
           </div>
 
           <div
             ref={conversationPanelRef}
-            className={cn("min-w-0 max-w-full", mobileConversationOpen ? "block" : "hidden xl:block")}
+            className={cn(
+              "min-w-0 max-w-full",
+              activeView !== "rooms"
+                ? "hidden"
+                : mobileConversationOpen
+                  ? "block"
+                  : "hidden xl:block",
+            )}
           >
             <Button
               type="button"
@@ -1084,7 +1215,20 @@ export function MessengerPage() {
                   </div>
 
                   <div className="max-h-[520px] min-w-0 flex-1 space-y-3 overflow-y-auto bg-muted/20 p-4">
-                    {messages.length === 0 ? (
+                    {messageLoading ? (
+                      <div className="flex h-48 items-center justify-center rounded-md border border-dashed border-border bg-background text-sm text-muted-foreground">
+                        <RefreshCw className="mr-2 size-4 animate-spin" />
+                        메시지를 불러오는 중입니다.
+                      </div>
+                    ) : messageError ? (
+                      <div className="flex h-48 flex-col items-center justify-center gap-3 rounded-md border border-destructive/25 bg-destructive/5 px-6 text-center text-sm text-destructive">
+                        <span>{messageError}</span>
+                        <Button type="button" size="sm" variant="outline" onClick={() => void loadMessages(activeConversationId)} disabled={busy}>
+                          <RefreshCw className="size-4" />
+                          메시지 다시 불러오기
+                        </Button>
+                      </div>
+                    ) : messages.length === 0 ? (
                       <div className="flex h-48 items-center justify-center rounded-md border border-dashed border-border bg-background text-sm text-muted-foreground">
                         첫 메시지를 보내보세요.
                       </div>
@@ -1280,6 +1424,110 @@ export function MessengerPage() {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => {
+          if (busy && !open) return;
+          setCreateDialogOpen(open);
+          if (!open) setCreateInviteIds([]);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>새 채팅방 만들기</DialogTitle>
+            <DialogDescription>대화 목적에 맞는 방 유형을 선택하고 필요한 친구를 초대하세요.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-2">
+              {ROOM_TYPES.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setCreateType(item.value)}
+                  className={cn(
+                    "flex min-h-20 flex-col items-center justify-center gap-1 rounded-md border px-2 text-xs font-semibold",
+                    createType === item.value
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-accent",
+                  )}
+                >
+                  <item.icon className="size-5" />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="messenger-room-title" className="text-sm font-medium text-foreground">채팅방 이름</label>
+              <Input
+                id="messenger-room-title"
+                value={createTitle}
+                onChange={(event) => setCreateTitle(event.target.value)}
+                placeholder="예: 프론트엔드 취업 준비방"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="messenger-room-description" className="text-sm font-medium text-foreground">설명 <span className="font-normal text-muted-foreground">(선택)</span></label>
+              <Input
+                id="messenger-room-description"
+                value={createDescription}
+                onChange={(event) => setCreateDescription(event.target.value)}
+                placeholder="방의 목적을 간단히 알려주세요"
+              />
+            </div>
+            {createType === "PRIVATE" && (
+              <div className="space-y-2">
+                <label htmlFor="messenger-room-password" className="text-sm font-medium text-foreground">비밀번호 <span className="font-normal text-muted-foreground">(선택)</span></label>
+                <Input
+                  id="messenger-room-password"
+                  type="password"
+                  value={createPassword}
+                  onChange={(event) => setCreatePassword(event.target.value)}
+                  placeholder="초대받은 사람만 허용하려면 비워두세요"
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-foreground">처음 초대할 친구 <span className="font-normal text-muted-foreground">(선택)</span></div>
+              {friends.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+                  초대할 친구가 없어도 채팅방을 바로 만들 수 있습니다.
+                </div>
+              ) : (
+                <div className="flex max-h-36 flex-wrap gap-2 overflow-y-auto rounded-md border border-border p-3">
+                  {friends.map((friend) => (
+                    <button
+                      key={friend.user.id}
+                      type="button"
+                      onClick={() => toggleCreateInvite(friend.user.id)}
+                      className={cn(
+                        "rounded-md border px-2.5 py-1.5 text-xs font-medium",
+                        createInviteIds.includes(friend.user.id)
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-accent",
+                      )}
+                    >
+                      {friend.user.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)} disabled={busy}>취소</Button>
+            <Button type="button" onClick={createRoom} disabled={busy || !createTitle.trim()}>
+              <Plus className="size-4" />
+              채팅방 만들기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {settingsOpen && activeConversation && activeConversation.type !== "DIRECT" && (
         <RoomSettingsSheet

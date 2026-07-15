@@ -62,6 +62,7 @@ public class JobPrepHandler implements PrepStepHandler {
         }
         progress.substep("공고 파싱", "채용공고 본문 구조화");
         progress.substep("핵심 요건 추출", "필수·우대 요건 분석");
+        context.checkActive();
         JobAnalysisResponse result =
                 jobAnalysisService.createJobAnalysis(context.userId(), context.applicationCaseId());
         long ms = (System.nanoTime() - start) / 1_000_000;
@@ -81,6 +82,7 @@ public class JobPrepHandler implements PrepStepHandler {
         long deadline = System.currentTimeMillis() + PIPELINE_WAIT_CAP_MS;
         boolean waiting = false;
         while (true) {
+            context.checkActive();
             String status;
             try {
                 JobAnalysisResponse latest = jobAnalysisService.getJobAnalysis(userId, caseId);

@@ -1,8 +1,9 @@
 """
-면접 브리핑 조립기 (BRIEFING_CONTRACT.md 구현 · 코드, LLM 아님).
+면접 합성 학습용 브리핑 조립기 (BRIEFING_CONTRACT.md 구현 · 코드, LLM 아님).
 
 company_analysis / job_analysis (실DB 또는 합성 가짜) -> 면접 브리핑 텍스트.
-백엔드 InterviewBriefingAssembler 의 Python 버전 — 같은 로직을 Java 로 포팅 예정.
+현재 백엔드 런타임 프롬프트 조립과는 별도 계약이다. 자체 QGEN을 기본 런타임으로 승격하기 전
+Java parity adapter와 고정 fixture 비교 테스트가 필요하다.
 
 압축 규칙: facts 5 / inferences 3 / preferred_skills 8 / 트렁케이트 / 분석 메타 서술 컷 / 옵셔널 폴백.
 """

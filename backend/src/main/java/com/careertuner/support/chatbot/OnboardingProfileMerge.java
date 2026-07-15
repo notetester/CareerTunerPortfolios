@@ -40,7 +40,7 @@ public final class OnboardingProfileMerge {
             return new UserProfileRequest(
                     job, null, null, null, null,
                     mergedSkills.isEmpty() ? null : mergedSkills,
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null, null);
         }
 
         return new UserProfileRequest(
@@ -55,7 +55,8 @@ public final class OnboardingProfileMerge {
                 parseJsonObject(cur.getPortfolioLinks(), objectMapper),
                 blankToNull(cur.getResumeText()),
                 blankToNull(cur.getSelfIntro()),
-                parseJsonObject(cur.getPreferences(), objectMapper));
+                parseJsonObject(cur.getPreferences(), objectMapper),
+                cur.getVersionNo());
     }
 
     /**

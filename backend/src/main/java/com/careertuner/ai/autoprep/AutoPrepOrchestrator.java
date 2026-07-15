@@ -12,6 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -49,6 +50,7 @@ public class AutoPrepOrchestrator {
     private final AutoPrepPlanner planner;
     private final AutoPrepAttachmentLoader attachmentLoader;
     private final List<PrepStepHandler> handlers;
+    private final AutoPrepRunCancellationRegistry cancellationRegistry;
 
     private final ExecutorService sseExecutor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "autoprep-sse");
@@ -76,9 +78,12 @@ public class AutoPrepOrchestrator {
 
     /** 동기 실행 — 병렬로 돌리고 결과를 plan 순서로 정렬해 한 번에 반환. */
     public AutoPrepResponse run(Long userId, AutoPrepRequest request) {
+        AutoPrepCancellation cancellation = new AutoPrepCancellation();
         PrepPlan plan = planner.plan(userId, request);
-        List<PrepAttachment> attachments = attachmentLoader.load(userId, request.attachmentFileIds());
-        List<PrepStepResult> results = executeParallel(userId, request, plan, attachments, NOOP_LISTENER);
+        List<PrepAttachment> attachments = attachmentLoader.loadForRequest(
+                userId, request.attachmentFileIds(), request.jobPostingFileIds(), request.attachmentFileIds());
+        List<PrepStepResult> results = executeParallel(
+                userId, request, plan, attachments, NOOP_LISTENER, cancellation);
         List<PrepStepResult> ordered = new ArrayList<>(results);
         ordered.sort(Comparator.comparingInt(r -> indexOf(plan.steps(), r.key())));
         return new AutoPrepResponse(plan, ordered, summary(results));
@@ -87,69 +92,122 @@ public class AutoPrepOrchestrator {
     /** SSE 실행 — 의존 그래프 병렬 + plan/part-start/substep/part-done/done 실시간 전송. */
     public SseEmitter runStream(Long userId, AutoPrepRequest request) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
-        sseExecutor.execute(() -> {
+        AutoPrepCancellation cancellation = new AutoPrepCancellation();
+        cancellationRegistry.register(userId, request.runId(), cancellation);
+        emitter.onCompletion(cancellation::cancel);
+        emitter.onTimeout(cancellation::cancel);
+        emitter.onError(ignored -> cancellation.cancel());
+
+        Future<?> root = sseExecutor.submit(() -> {
             try {
+                cancellation.checkActive();
                 PrepPlan plan = planner.plan(userId, request);
-                send(emitter, "plan", plan);
-                List<PrepAttachment> attachments = attachmentLoader.load(userId, request.attachmentFileIds());
+                cancellation.checkActive();
+                send(emitter, "plan", plan, cancellation);
+                List<PrepAttachment> attachments = attachmentLoader.loadForRequest(
+                        userId, request.attachmentFileIds(), request.jobPostingFileIds(), request.attachmentFileIds());
+                cancellation.checkActive();
                 executeParallel(userId, request, plan, attachments, new PartListener() {
                     @Override public void onPartStart(String key) {
-                        send(emitter, "part-start", Map.of("key", key));
+                        send(emitter, "part-start", Map.of("key", key), cancellation);
                     }
                     @Override public void onSubstep(String key, String name, String desc) {
-                        send(emitter, "substep", Map.of("key", key, "name", name, "desc", desc == null ? "" : desc));
+                        send(emitter, "substep", Map.of("key", key, "name", name, "desc", desc == null ? "" : desc),
+                                cancellation);
                     }
                     @Override public void onPartDone(PrepStepResult result) {
-                        send(emitter, "part-done", result);
+                        send(emitter, "part-done", result, cancellation);
                     }
-                });
-                send(emitter, "done", Map.of("message", "완료"));
+                }, cancellation);
+                cancellation.checkActive();
+                send(emitter, "done", Map.of("message", "완료"), cancellation);
+                cancellation.finish();
+                cancellationRegistry.unregister(userId, request.runId(), cancellation);
+                emitter.complete();
+            } catch (AutoPrepCancelledException ex) {
+                // 브라우저 abort/연결 종료는 사용자 요청에 따른 정상 취소다. 닫힌 연결에 error 이벤트를 재전송하지 않는다.
+                cancellation.finish();
+                cancellationRegistry.unregister(userId, request.runId(), cancellation);
                 emitter.complete();
             } catch (RuntimeException ex) {
+                if (cancellation.isCancelled()) {
+                    cancellation.finish();
+                    cancellationRegistry.unregister(userId, request.runId(), cancellation);
+                    emitter.complete();
+                    return;
+                }
                 log.warn("AutoPrep 스트림 실패: {}", ex.getMessage());
                 // 클라이언트 계약에 있는 terminal error 이벤트를 먼저 보낸다. 내부 예외/원문은 노출하지 않는다.
                 // 이미 연결이 끊겨 전송할 수 없을 때만 completeWithError로 종료한다.
                 try {
-                    send(emitter, "error", Map.of("message", "자동 준비를 완료하지 못했습니다. 다시 시도해 주세요."));
+                    send(emitter, "error", Map.of("message", "자동 준비를 완료하지 못했습니다. 다시 시도해 주세요."),
+                            cancellation);
+                    cancellation.finish();
+                    cancellationRegistry.unregister(userId, request.runId(), cancellation);
                     emitter.complete();
                 } catch (RuntimeException sendFailure) {
+                    cancellation.cancel();
+                    cancellation.finish();
+                    cancellationRegistry.unregister(userId, request.runId(), cancellation);
                     emitter.completeWithError(ex);
                 }
             }
         });
+        cancellation.register(root);
         return emitter;
+    }
+
+    /** 명시적 cancel API가 사용자 범위 runId의 실행만 중단한다. */
+    public boolean cancel(Long userId, String runId) {
+        return cancellationRegistry.cancel(userId, runId);
     }
 
     /** 의존 그래프 기반 병렬 실행. dep 파트의 future 가 끝난 뒤 시작한다. */
     private List<PrepStepResult> executeParallel(Long userId, AutoPrepRequest request, PrepPlan plan,
-                                                 List<PrepAttachment> attachments, PartListener listener) {
+                                                 List<PrepAttachment> attachments, PartListener listener,
+                                                 AutoPrepCancellation cancellation) {
         Map<String, PrepStepHandler> byKey = byKey();
         Map<String, Object> prior = new ConcurrentHashMap<>();
         List<PrepStepResult> results = Collections.synchronizedList(new ArrayList<>());
         Map<String, CompletableFuture<Void>> futures = new HashMap<>();
 
         for (String key : plan.steps()) {
+            cancellation.checkActive();
             CompletableFuture<?>[] depFutures = DEPS.getOrDefault(key, List.of()).stream()
                     .map(futures::get)
                     .filter(Objects::nonNull)
                     .toArray(CompletableFuture[]::new);
             CompletableFuture<Void> future = CompletableFuture.allOf(depFutures).thenRunAsync(
-                    () -> runPart(userId, key, byKey, plan, attachments, request, prior, results, listener),
+                    () -> runPart(userId, key, byKey, plan, attachments, request, prior, results, listener,
+                            cancellation),
                     sseExecutor);
             futures.put(key, future);
+            cancellation.register(future);
         }
-        CompletableFuture.allOf(futures.values().toArray(new CompletableFuture[0])).join();
+        CompletableFuture<Void> all = CompletableFuture.allOf(
+                futures.values().toArray(new CompletableFuture[0]));
+        cancellation.register(all);
+        try {
+            all.join();
+        } catch (RuntimeException ex) {
+            cancellation.checkActive();
+            throw ex;
+        }
+        cancellation.checkActive();
         return results;
     }
 
     private void runPart(Long userId, String key, Map<String, PrepStepHandler> byKey, PrepPlan plan,
                          List<PrepAttachment> attachments, AutoPrepRequest request,
-                         Map<String, Object> prior, List<PrepStepResult> results, PartListener listener) {
+                         Map<String, Object> prior, List<PrepStepResult> results, PartListener listener,
+                         AutoPrepCancellation cancellation) {
+        cancellation.checkActive();
         listener.onPartStart(key);
         List<String> unavailableDependencies = DEPS.getOrDefault(key, List.of()).stream()
                 .filter(dependency -> !prior.containsKey(dependency))
                 .toList();
         if (!unavailableDependencies.isEmpty()) {
+            cancellation.checkActive();
             PrepStepResult skipped = PrepStepResult.skipped(
                     key,
                     "선행 단계(%s)가 완료되지 않아 건너뜀".formatted(String.join(", ", unavailableDependencies)));
@@ -159,13 +217,20 @@ public class AutoPrepOrchestrator {
         }
         PrepStepHandler handler = byKey.get(key);
         if (handler == null || !handler.enabled()) {
+            cancellation.checkActive();
             PrepStepResult skipped = PrepStepResult.skipped(key, "준비중");
             results.add(skipped);
             listener.onPartDone(skipped);
             return;
         }
-        PrepProgress progress = (name, desc) -> listener.onSubstep(key, name, desc);
-        PrepStepResult result = executeOne(userId, request, plan, attachments, handler, prior, progress);
+        PrepProgress progress = (name, desc) -> {
+            cancellation.checkActive();
+            listener.onSubstep(key, name, desc);
+        };
+        PrepStepResult result = executeOne(
+                userId, request, plan, attachments, handler, prior, progress, cancellation);
+        // 외부 호출이 취소 직전에 시작됐다면 완료될 수 있지만, 그 뒤 결과 누적·후속 의존 파트는 진행하지 않는다.
+        cancellation.checkActive();
         results.add(result);
         accumulate(prior, result);
         listener.onPartDone(result);
@@ -173,13 +238,17 @@ public class AutoPrepOrchestrator {
 
     private PrepStepResult executeOne(Long userId, AutoPrepRequest request, PrepPlan plan,
                                       List<PrepAttachment> attachments, PrepStepHandler handler,
-                                      Map<String, Object> prior, PrepProgress progress) {
+                                      Map<String, Object> prior, PrepProgress progress,
+                                      AutoPrepCancellation cancellation) {
         String key = handler.key();
         long start = System.nanoTime();
         try {
             PrepStepContext context = new PrepStepContext(
-                    userId, plan.slots().applicationCaseId(), plan.slots(), request.coverLetterText(), attachments, prior);
+                    userId, plan.slots().applicationCaseId(), plan.slots(), request.coverLetterText(), attachments, prior,
+                    cancellation);
             return handler.handle(context, progress);
+        } catch (AutoPrepCancelledException ex) {
+            throw ex;
         } catch (BusinessException ex) {
             long ms = (System.nanoTime() - start) / 1_000_000;
             return PrepStepResult.failed(key, ex.getMessage(), ms);
@@ -212,12 +281,14 @@ public class AutoPrepOrchestrator {
     }
 
     /** SSE 전송. 병렬 파트가 동시에 호출하므로 emitter 단위로 동기화한다. */
-    private void send(SseEmitter emitter, String event, Object data) {
+    private void send(SseEmitter emitter, String event, Object data, AutoPrepCancellation cancellation) {
+        cancellation.checkActive();
         try {
             synchronized (emitter) {
                 emitter.send(SseEmitter.event().name(event).data(data, MediaType.APPLICATION_JSON));
             }
         } catch (IOException ex) {
+            cancellation.cancel();
             throw new IllegalStateException("SSE 전송 중단(클라이언트 종료)", ex);
         }
     }

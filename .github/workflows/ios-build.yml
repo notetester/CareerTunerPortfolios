@@ -53,7 +53,7 @@ jobs:
       - name: Configure Associated Domains for regenerated project
         run: |
           npm run ios:configure-links
-          grep -Fq 'applinks:careertuner.kro.kr' ios/App/App/App.entitlements
+          grep -Fq 'applinks:careertuner.example.com' ios/App/App/App.entitlements
           test "$(grep -Fc 'CODE_SIGN_ENTITLEMENTS = App/App.entitlements;' ios/App/App.xcodeproj/project.pbxproj)" -eq 2
           /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes' ios/App/App/Info.plist | grep -Fq 'careertuner'
           /usr/libexec/PlistBuddy -c 'Print :NSCameraUsageDescription' ios/App/App/Info.plist | grep -Fq '사용자가 삭제'

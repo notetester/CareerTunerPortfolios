@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -11,7 +11,6 @@ import { subscribeCreditBalanceChanged } from "../lib/creditBalanceEvents";
 import { useOutageFallback } from "../lib/outageFallback";
 import {
   cancelSubscription, getCreditProducts, getMonthlyUsage, getMyBilling, getMyPayments, getPlanRecommendation, getPlans,
-  subscribe,
   type CreditProduct, type MyBilling, type Payment, type PlanRecommendation, type SubscriptionPlan, type UsageRow,
 } from "@/features/billing/api/billingApi";
 import { cancelTossPayment, readyTossPayment } from "@/features/billing/api/paymentApi";
@@ -66,9 +65,12 @@ function benefitLabel(plan: SubscriptionPlan, fallback: string[]) {
 }
 
 export function BillingPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const requestedTab = searchParams.get("tab") ?? "plans";
-  const activeTab: BillingTab = tabs.includes(requestedTab as BillingTab) ? (requestedTab as BillingTab) : "plans";
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routeSegment = location.pathname.split("/").filter(Boolean).at(-1);
+  const activeTab: BillingTab | "overview" = tabs.includes(routeSegment as BillingTab)
+    ? (routeSegment as BillingTab)
+    : "overview";
   const { isAuthenticated } = useAuth();
   const { sitesPaymentBlocked } = useOutageFallback();
 
@@ -103,39 +105,55 @@ export function BillingPage() {
     return true;
   };
 
+  const loadSafely = async <T,>(
+    request: () => Promise<T>,
+    apply: (value: T) => void,
+    failureMessage?: string,
+  ): Promise<void> => {
+    try {
+      apply(await request());
+    } catch {
+      if (failureMessage) setError((current) => current ?? failureMessage);
+    }
+  };
+
   const loadPublic = async () => {
-    const [p, c] = await Promise.all([getPlans(), getCreditProducts()]);
-    setPlans(p);
-    setProducts(c);
+    const requests: Promise<void>[] = [];
+    if (activeTab === "overview" || activeTab === "plans") {
+      requests.push(loadSafely(getPlans, setPlans, "요금제 정보를 불러오지 못했습니다."));
+    }
+    if (activeTab === "overview" || activeTab === "credits") {
+      requests.push(loadSafely(getCreditProducts, setProducts, "크레딧 상품을 불러오지 못했습니다."));
+    }
+    await Promise.all(requests);
   };
 
   const loadMine = async () => {
     if (!isAuthenticated) return;
-    const [me, u, pay] = await Promise.all([getMyBilling(), getMonthlyUsage(), getMyPayments()]);
-    setBilling(me);
-    setUsage(u);
-    setPayments(pay);
-    try {
-      setRecommendation(await getPlanRecommendation());
-    } catch {
-      setRecommendation(null);
+    const requests: Promise<void>[] = [
+      loadSafely(getMyBilling, setBilling, "현재 구독 정보를 불러오지 못했습니다."),
+    ];
+    if (activeTab === "overview" || activeTab === "usage") {
+      requests.push(loadSafely(getMonthlyUsage, setUsage, "AI 사용량을 불러오지 못했습니다."));
+      requests.push(loadSafely(getPlanRecommendation, setRecommendation));
     }
-    try {
-      setRefundRequests(await getMyRefundRequests());
-    } catch {
-      setRefundRequests([]);
+    if (activeTab === "overview" || activeTab === "history") {
+      requests.push(loadSafely(getMyPayments, setPayments, "결제 내역을 불러오지 못했습니다."));
+      requests.push(loadSafely(getMyRefundRequests, setRefundRequests, "환불 신청 내역을 불러오지 못했습니다."));
     }
+    await Promise.all(requests);
   };
 
   useEffect(() => {
-    void loadPublic().catch(() => setError("요금제 정보를 불러오지 못했습니다."));
-    void loadMine().catch(() => {});
+    void loadPublic();
+    void loadMine();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated]);
+  }, [activeTab, isAuthenticated]);
 
   useEffect(() => subscribeCreditBalanceChanged(() => {
-    void loadMine().catch(() => {});
-  }), [isAuthenticated]);
+    void loadMine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [activeTab, isAuthenticated]);
 
   const doSubscribe = async (planCode: string) => {
     if (rejectSitesPayment()) return;
@@ -143,7 +161,7 @@ export function BillingPage() {
     setError(null);
     try {
       if (planCode === "FREE") {
-        setBilling(await subscribe(planCode, "MONTHLY"));
+        setBilling(await cancelSubscription());
         await loadMine();
       } else {
         const policy = await getCurrentRefundPolicy();
@@ -334,7 +352,7 @@ export function BillingPage() {
         onReasonChange={(reasonCode) => void previewRefundReason(reasonCode)}
         onSubmit={(reasonCode, reasonText) => void submitRefundRequest(reasonCode, reasonText)}
       />
-      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
             <CreditCard className="size-6 text-blue-600" />
@@ -402,7 +420,68 @@ export function BillingPage() {
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
+        {activeTab === "overview" ? (
+          <section className="space-y-5" aria-label="결제 및 구독 기능">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                {
+                  href: "/billing/plans",
+                  title: "요금제",
+                  description: "기능 한도와 혜택을 비교하고 내게 맞는 플랜을 선택합니다.",
+                  value: billing?.currentPlanName ?? "플랜 비교",
+                  icon: CreditCard,
+                },
+                {
+                  href: "/billing/usage",
+                  title: "AI 사용량",
+                  description: "이번 달 기능별 호출 수와 사용한 크레딧을 확인합니다.",
+                  value: `${usage.reduce((sum, row) => sum + row.used, 0).toLocaleString("ko-KR")}회`,
+                  icon: BarChart3,
+                },
+                {
+                  href: "/billing/credits",
+                  title: "크레딧 충전",
+                  description: "보유 잔액을 확인하고 필요한 크레딧 상품을 구매합니다.",
+                  value: `${(billing?.creditBalance ?? 0).toLocaleString("ko-KR")}개`,
+                  icon: Zap,
+                },
+                {
+                  href: "/billing/history",
+                  title: "결제 내역",
+                  description: "결제·취소·환불 요청의 처리 상태를 한 화면에서 추적합니다.",
+                  value: `${payments.length.toLocaleString("ko-KR")}건`,
+                  icon: ReceiptText,
+                },
+              ].map((item) => (
+                <Link
+                  key={item.href}
+                  to={item.href}
+                  className="group flex min-h-52 flex-col rounded-2xl border border-slate-200 bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="flex size-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                      <item.icon className="size-5" />
+                    </span>
+                    <ArrowUpRight className="size-4 text-slate-400 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-blue-600" />
+                  </div>
+                  <h2 className="mt-5 text-lg font-black text-slate-900">{item.title}</h2>
+                  <p className="mt-2 flex-1 text-sm leading-6 text-slate-500">{item.description}</p>
+                  <div className="mt-4 text-2xl font-black text-blue-700">{item.value}</div>
+                </Link>
+              ))}
+            </div>
+            {recommendation && (
+              <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-black text-blue-950">AI 활용 계획 추천</div>
+                  <p className="mt-1 text-sm text-blue-800">{recommendation.headline}</p>
+                </div>
+                <Button asChild variant="outline"><Link to="/billing/usage">추천 근거 보기</Link></Button>
+              </div>
+            )}
+          </section>
+        ) : (
+        <Tabs value={activeTab} onValueChange={(value) => navigate(`/billing/${value}`)}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
             <TabsTrigger value="plans" className={billingTabTriggerClass}>요금제</TabsTrigger>
             <TabsTrigger value="usage" className={billingTabTriggerClass}>AI 사용량</TabsTrigger>
@@ -493,7 +572,7 @@ export function BillingPage() {
                     </div>
                   </div>
                   {recommendation.recommendation === "UPGRADE_PLAN" && recommendation.recommendedPlan && (
-                    <Button className="shrink-0 bg-primary" onClick={() => setSearchParams({ tab: "plans" })}>
+                    <Button className="shrink-0 bg-primary" onClick={() => navigate("/billing/plans")}>
                       {recommendation.recommendedPlan.name} 요금제 보기
                       <ArrowUpRight className="size-4" />
                     </Button>
@@ -501,7 +580,7 @@ export function BillingPage() {
                   {recommendation.recommendation === "BUY_CREDITS" && recommendation.recommendedCreditPack && (
                     <Button
                       className="shrink-0 bg-amber-600 text-white hover:bg-amber-600"
-                      onClick={() => setSearchParams({ tab: "credits" })}
+                      onClick={() => navigate("/billing/credits")}
                     >
                       {recommendation.recommendedCreditPack.name} 충전
                       <ArrowUpRight className="size-4" />
@@ -551,7 +630,7 @@ export function BillingPage() {
                     <div className="text-4xl font-black text-amber-600">{billing?.creditBalance ?? 0}</div>
                     <div className="text-sm text-amber-700">사용 가능 크레딧</div>
                   </div>
-                  <Button className="w-full bg-primary" onClick={() => setSearchParams({ tab: "credits" })}>
+                  <Button className="w-full bg-primary" onClick={() => navigate("/billing/credits")}>
                     충전하러 가기
                   </Button>
                 </CardContent>
@@ -675,6 +754,7 @@ export function BillingPage() {
             </div>
           </TabsContent>
         </Tabs>
+        )}
       </div>
     </div>
   );

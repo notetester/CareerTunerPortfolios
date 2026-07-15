@@ -3,21 +3,17 @@ package com.careertuner.billing.controller;
 import java.util.List;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.careertuner.billing.dto.AiFeatureBenefitPolicyResponse;
 import com.careertuner.billing.dto.BenefitTransactionResponse;
-import com.careertuner.billing.dto.CreditPurchaseRequest;
 import com.careertuner.billing.dto.MyBillingResponse;
 import com.careertuner.billing.dto.MyBenefitsResponse;
 import com.careertuner.billing.dto.PlanRecommendationResponse;
-import com.careertuner.billing.dto.SubscribeRequest;
 import com.careertuner.billing.dto.SubscriptionPlanResponse;
 import com.careertuner.billing.dto.UsageRow;
 import com.careertuner.billing.service.BillingService;
@@ -87,20 +83,6 @@ public class BillingController {
     public ApiResponse<List<BenefitTransactionResponse>> benefitTransactions(@AuthenticationPrincipal AuthUser authUser,
                                                                              @RequestParam(required = false) Integer limit) {
         return ApiResponse.ok(billingService.myBenefitTransactions(authUser.id(), limit == null ? 50 : limit));
-    }
-
-    @SitesFinancialMutation
-    @PostMapping("/subscribe")
-    public ApiResponse<MyBillingResponse> subscribe(@AuthenticationPrincipal AuthUser authUser,
-                                                    @Validated @RequestBody SubscribeRequest request) {
-        return ApiResponse.ok(billingService.subscribe(authUser.id(), request.planCode(), request.cycle()));
-    }
-
-    @SitesFinancialMutation
-    @PostMapping("/credits/purchase")
-    public ApiResponse<MyBillingResponse> purchaseCredits(@AuthenticationPrincipal AuthUser authUser,
-                                                          @Validated @RequestBody CreditPurchaseRequest request) {
-        return ApiResponse.ok(billingService.purchaseCredits(authUser.id(), request.productCode()));
     }
 
     @SitesFinancialMutation

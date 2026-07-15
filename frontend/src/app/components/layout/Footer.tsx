@@ -8,7 +8,7 @@ export const FOOTER_SECTIONS = [
     links: [
       { label: "기능 소개", href: "/features" },
       { label: "AI 가상 면접", href: "/interview" },
-      { label: "공고 분석", href: "/applications" },
+      { label: "공고 분석", href: "/job-analysis" },
       { label: "취업 분석", href: "/analysis" },
       { label: "AI 첨삭", href: "/correction" },
       { label: "커뮤니티", href: "/community" },
@@ -17,11 +17,11 @@ export const FOOTER_SECTIONS = [
   {
     title: "결제/구독",
     links: [
-      { label: "요금제", href: "/billing?tab=plans" },
-      { label: "AI 사용량", href: "/billing?tab=usage" },
-      { label: "크레딧 충전", href: "/billing?tab=credits" },
-      { label: "결제 내역", href: "/billing?tab=history" },
-      { label: "기존 요금제 화면", href: "/pricing" },
+      { label: "요금제", href: "/billing/plans" },
+      { label: "AI 사용량", href: "/billing/usage" },
+      { label: "크레딧 충전", href: "/billing/credits" },
+      { label: "결제 내역", href: "/billing/history" },
+      { label: "요금제 비교", href: "/pricing" },
     ],
   },
   {
@@ -58,10 +58,10 @@ export const FOOTER_SECTIONS = [
 ];
 
 export const FOOTER_SOCIAL_LINKS = [
-  { icon: Video, label: "YouTube", href: "/company/social?channel=youtube" },
-  { icon: Camera, label: "Instagram", href: "/company/social?channel=instagram" },
-  { icon: Send, label: "Twitter", href: "/company/social?channel=twitter" },
-  { icon: MessageCircle, label: "KakaoTalk", href: "/company/social?channel=kakao" },
+  { icon: Video, label: "YouTube", href: "/company/social/youtube" },
+  { icon: Camera, label: "Instagram", href: "/company/social/instagram" },
+  { icon: Send, label: "Twitter", href: "/company/social/twitter" },
+  { icon: MessageCircle, label: "KakaoTalk", href: "/company/social/kakao" },
 ];
 
 export function Footer() {

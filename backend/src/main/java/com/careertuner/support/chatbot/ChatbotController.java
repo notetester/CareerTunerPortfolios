@@ -64,7 +64,6 @@ import com.careertuner.community.search.PostHit;
 import com.careertuner.jobposting.dto.JobPostingResponse;
 import com.careertuner.jobposting.service.JobPostingService;
 import com.careertuner.profile.domain.UserProfile;
-import com.careertuner.profile.dto.UserProfileRequest;
 import com.careertuner.profile.mapper.ProfileMapper;
 import com.careertuner.profile.service.ProfileService;
 
@@ -925,13 +924,14 @@ public class ChatbotController {
     }
 
     /**
-     * (e) 슬롯에 모은 직무·기술을 A.ProfileService.save 로 *한 번* 저장.
+     * (e) 슬롯에 모은 직무·기술을 A.ProfileService.save 로 저장(버전 충돌 때만 최신 기준으로 1회 재시도).
      * ★read-modify-write: 온보딩 전 docs 등에서 채워 둔 컬럼(self_intro/resume_text/education …)을 null 로
      *   덮어쓰지 않는다. skills 는 교체가 아니라 기존∪온보딩 합집합(대소문자 무시).
      * ★skills 변환: 슬롯은 자유텍스트("Java, Spring") → 토큰화해 List 로 넘겨야 JSON *배열*로 저장돼 FIT 가 읽는
      *   배열과 일치한다. JSON 문자열 컬럼은 파싱 후 넘겨 이중 인코딩을 막는다.
      * 저장 실패해도 case 는 이미 만들어졌으므로 CASE_READY 는 진행(로그만).
-     * 경합(다른 탭 PUT)은 last-write-wins — @Transactional 이 lost update 를 막지 않는다.
+     * 현재 versionNo를 기준 버전으로 함께 보낸다. 다른 탭 PUT과 경합하면 최신 프로필을 다시 읽어 한 번만
+     * 재병합하고, 재충돌 시에는 기존 입력을 덮지 않은 채 실패로 닫는다.
      */
     private void saveOnboardingProfile(Long conversationId, AuthUser authUser) {
         IntakeSlotTrace.OnboardingCollected got = intakeSlotTrace.onboarding(conversationId);
@@ -947,9 +947,8 @@ public class ChatbotController {
                                 java.util.LinkedHashMap::new))
                         .values().stream().toList();
         try {
-            UserProfile cur = profileMapper.findByUserId(authUser.id());
-            UserProfileRequest request = OnboardingProfileMerge.merge(cur, desiredJob, skills, objectMapper);
-            profileService.save(authUser, request);
+            OnboardingProfileSave.saveWithSingleConflictRetry(
+                    profileMapper, profileService, authUser, desiredJob, skills, objectMapper);
         } catch (RuntimeException ex) {
             log.warn("온보딩 프로필 저장 실패(case 는 생성됨, CASE_READY 진행): {}", ex.getMessage());
         }

@@ -28,6 +28,7 @@ class OnboardingProfileMergeTest {
                 .resumeText("이력서 원문")
                 .skills("[\"Java\",\"Spring Boot\"]")
                 .education("[{\"school\":\"Korea Univ\",\"major\":\"CS\",\"startDate\":\"2018-03\",\"endDate\":\"2022-02\",\"status\":\"졸업\"}]")
+                .versionNo(4)
                 .build();
 
         UserProfileRequest req = OnboardingProfileMerge.merge(
@@ -39,6 +40,7 @@ class OnboardingProfileMergeTest {
         assertThat(req.selfIntro()).isEqualTo("기존 자기소개서 본문");
         assertThat(req.resumeText()).isEqualTo("이력서 원문");
         assertThat(req.desiredJob()).isEqualTo("경영·기획·전략");
+        assertThat(req.baseVersionNo()).isEqualTo(4);
         assertThat(req.skills()).isInstanceOf(List.class);
         @SuppressWarnings("unchecked")
         List<String> skills = (List<String>) req.skills();
@@ -60,6 +62,7 @@ class OnboardingProfileMergeTest {
         assertThat(req.skills()).isEqualTo(List.of("React", "TypeScript"));
         assertThat(req.selfIntro()).isNull();
         assertThat(req.education()).isNull();
+        assertThat(req.baseVersionNo()).isNull();
     }
 
     @Test

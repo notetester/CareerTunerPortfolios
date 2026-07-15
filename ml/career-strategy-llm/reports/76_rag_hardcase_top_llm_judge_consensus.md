@@ -23,7 +23,7 @@ google_gemini_judge_result.json
 저장 위치:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/top-llm-judge-responses/rag_hardcase_v1_20260630_1635_top_llm_judge_responses
+docs/ai-artifacts/benchmarks/rag-hardcase/top-llm-judge-responses/rag_hardcase_v1_20260630_1635_top_llm_judge_responses
 ```
 
 ## 3. judgeMeta 요약
@@ -58,13 +58,13 @@ google_gemini: itemJudgments=24, pairJudgments=12, unsupported A=0/B=0
 CareerTunerAI response:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/top-llm-judge-responses/rag_hardcase_v1_20260630_1635_top_llm_judge_responses
+docs/ai-artifacts/benchmarks/rag-hardcase/top-llm-judge-responses/rag_hardcase_v1_20260630_1635_top_llm_judge_responses
 ```
 
 CareerTunerAI aggregate:
 
 ```text
-D:/dev/CareerTunerAI/benchmarks/rag-hardcase/top-llm-judge-aggregates/rag_hardcase_v1_20260630_1635_top_llm_judge_aggregate
+docs/ai-artifacts/benchmarks/rag-hardcase/top-llm-judge-aggregates/rag_hardcase_v1_20260630_1635_top_llm_judge_aggregate
 ```
 
 CareerTunerAI commit:
@@ -78,7 +78,7 @@ CareerTunerAI commit:
 장문 분석:
 
 ```text
-D:/dev/CareerTunerAIDocs/areas/c-career-strategy/reports/76_rag_hardcase_top_llm_judge_consensus.md
+docs/ai-reports/areas/c-career-strategy/reports/76_rag_hardcase_top_llm_judge_consensus.md
 ```
 
 CareerTunerAIDocs commit:

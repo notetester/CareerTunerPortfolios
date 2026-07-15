@@ -39,6 +39,12 @@ public class ConsentPolicyInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 실행을 시작한 뒤 동의를 철회해도 사용자는 남아 있는 AI 작업을 즉시 중단할 수 있어야 한다.
+        // 인증은 SecurityConfig에서 계속 요구하고, 이 경로만 동의 검사에서 독립시킨다.
+        if (isConsentIndependentRecoveryRequest(request)) {
+            return true;
+        }
+
         if (!isRecoveryOrPublicRequest(request)
                 && !consentService.hasRequiredConsents(user.id())) {
             throw new BusinessException(
@@ -52,6 +58,11 @@ public class ConsentPolicyInterceptor implements HandlerInterceptor {
             }
         }
         return true;
+    }
+
+    private boolean isConsentIndependentRecoveryRequest(HttpServletRequest request) {
+        return "POST".equalsIgnoreCase(request.getMethod())
+                && "/api/auto-prep/run/cancel".equals(request.getRequestURI());
     }
 
     private Set<ConsentType> requiredConsents(HandlerMethod handlerMethod) {

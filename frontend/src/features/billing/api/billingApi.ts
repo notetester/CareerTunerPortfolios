@@ -100,8 +100,6 @@ export interface PlanRecommendation {
   recommendedCreditPack: { code: string; name: string; price: number; creditAmount: number } | null;
 }
 
-export type BillingCycle = "MONTHLY" | "YEARLY";
-
 export const getPlans = () => api<SubscriptionPlan[]>("/billing/plans", {}, { auth: false });
 export const getCreditProducts = () => api<CreditProduct[]>("/billing/credit-products", {}, { auth: false });
 export const getFeatureBenefitPolicies = () =>
@@ -111,12 +109,6 @@ export const getMyPayments = () => api<Payment[]>("/billing/payments");
 export const getMonthlyUsage = () => api<UsageRow[]>("/billing/usage");
 export const getCreditTransactions = () => api<CreditTransaction[]>("/billing/credit-transactions");
 export const getPlanRecommendation = () => api<PlanRecommendation>("/billing/plan-recommendation");
-
-export const subscribe = (planCode: string, cycle: BillingCycle = "MONTHLY") =>
-  api<MyBilling>("/billing/subscribe", { method: "POST", body: JSON.stringify({ planCode, cycle }) });
-
-export const purchaseCredits = (productCode: string) =>
-  api<MyBilling>("/billing/credits/purchase", { method: "POST", body: JSON.stringify({ productCode }) });
 
 export const cancelSubscription = () =>
   api<MyBilling>("/billing/subscription/cancel", { method: "POST" });

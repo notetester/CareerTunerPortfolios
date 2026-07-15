@@ -30,6 +30,7 @@ function isRecoveryPath(pathname: string): boolean {
     || pathname === "/login"
     || pathname.startsWith("/auth/")
     || pathname === "/settings"
+    || pathname.startsWith("/settings/")
     || pathname.startsWith("/legal/")
     || pathname === "/features"
     || pathname.startsWith("/service/")
@@ -69,7 +70,9 @@ export function AuthenticatedRouteBoundary({ children }: { children: ReactNode }
   const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
 
-  if (loading) return <ConsentLoading />;
+  // 재검증(loading) 중이라도 이미 인증된 세션이면 자식을 유지한다. 결제 성공 등에서 refreshMe()
+  // 재검증마다 페이지가 언마운트→재마운트되며 상태가 초기화(무한 깜빡임)되던 회귀 방지(ConsentGate 와 동일 패턴).
+  if (loading && !isAuthenticated) return <ConsentLoading />;
   if (!isAuthenticated) {
     const returnTo = `${location.pathname}${location.search}`;
     return <Navigate to={`/login?returnTo=${encodeURIComponent(returnTo)}`} replace />;
@@ -136,7 +139,7 @@ function ConsentBlocked({ requirements, requiredServiceConsent = false }: { requ
             ))}
           </ul>
           <div className="flex flex-wrap gap-2">
-            <Button asChild><Link to={`/settings?tab=${settingsTab}`}><ShieldCheck className="size-4" />설정에서 다시 동의</Link></Button>
+            <Button asChild><Link to={`/settings/${settingsTab}`}><ShieldCheck className="size-4" />설정에서 다시 동의</Link></Button>
             <Button asChild variant="outline"><Link to="/support/contact">도움 요청</Link></Button>
           </div>
         </CardContent>

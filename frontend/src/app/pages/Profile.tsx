@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Brain, CheckCircle2, FileText, Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Upload, User, X } from "lucide-react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useBlocker, useSearchParams } from "react-router";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { registerNativeExitGuard } from "@/platform/nativeExitGuard";
+import { ApiError } from "../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,6 +14,7 @@ import { Textarea } from "../components/ui/textarea";
 import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import {
   diagnoseProfileCompleteness,
+  deleteUnlinkedProfileFile,
   deleteProfilePortfolioFile,
   downloadProfilePortfolioFile,
   extractProfileSkills,
@@ -95,6 +98,13 @@ type TabRequirement = "필수" | "권장" | "선택";
 type TabStatusTone = "done" | "warning" | "empty";
 
 const profileTabValues: ProfileTab[] = ["basic", "resume", "selfIntro", "experience", "skills", "certificates", "ai"];
+
+// 자기소개 한도는 문서 가져오기 서버 한도(MAX_IMPORT_CHARS=12000)와 동일해야 한다.
+// 더 작으면 가져오기로 들어온 장문 자소서가 이후 모든 저장 검증에 걸려 계정이 저장 불능이 된다.
+const SELF_INTRO_MAX_LENGTH = 12_000;
+const RESUME_TEXT_MAX_LENGTH = 20_000;
+const UNSAVED_PROFILE_MESSAGE = "저장하지 않은 프로필 변경사항이 있습니다. 이 페이지를 나가면 입력 내용이 사라집니다. 계속할까요?";
+const ACTIVE_PROFILE_OPERATION_MESSAGE = "프로필 저장 또는 문서 처리가 진행 중입니다. 지금 나가면 완료 여부를 확인하기 어렵습니다. 계속할까요?";
 
 const normalizeProfileTab = (value: string | null): ProfileTab => {
   if (value === "career") return "experience";
@@ -226,23 +236,39 @@ const selfIntroTemplate = `지원동기:
 입사 후 포부:
 - 입사 후 어떤 방식으로 기여하고 성장할지 적습니다.`;
 
-export function ProfilePage() {
+export interface ProfilePageProps {
+  mode?: "full" | "ai-analysis";
+}
+
+export function ProfilePage({ mode = "full" }: ProfilePageProps = {}) {
+  const aiOnly = mode === "ai-analysis";
   const { status: consent } = useConsent();
   const [searchParams, setSearchParams] = useSearchParams();
   const [form, setForm] = useState<ProfileForm>(emptyForm);
+  const formRef = useRef(form);
+  formRef.current = form;
   const [loading, setLoading] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [profileWriteConflict, setProfileWriteConflict] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<ProfileTab>(() => normalizeProfileTab(searchParams.get("tab")));
+  const [activeTab, setActiveTab] = useState<ProfileTab>(() => aiOnly ? "ai" : normalizeProfileTab(searchParams.get("tab")));
   const [activeAiView, setActiveAiView] = useState<AiToolType>("summary");
   const [aiLoading, setAiLoading] = useState<AiToolType | null>(null);
   // 프로필 AI(요약/스킬/완성도) 모델 선택. 기본 AUTO — 배경 자동 진단 호출엔 적용하지 않고 버튼 실행에만 쓴다.
   const [profileAiModel, setProfileAiModel] = useState<AiModelChoice>("AUTO");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nonFatalWarning, setNonFatalWarning] = useState<string | null>(null);
   const [summaryResult, setSummaryResult] = useState<ProfileAiResponse | null>(null);
   const [skillsResult, setSkillsResult] = useState<ProfileAiResponse | null>(null);
   const [completeness, setCompleteness] = useState<ProfileCompleteness | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState(() => serializeProfileForm(emptyForm));
+  // 탭 단위 저장의 기준본 — 서버에 마지막으로 반영된 폼. 다른 탭의 미저장(미검증) 편집이 함께 전송되는 걸 막는다.
+  const lastSavedFormRef = useRef<ProfileForm>(emptyForm);
+  const profileVersionNoRef = useRef<number | null>(null);
+  const saveInFlightRef = useRef(false);
+  const profileAnalysisEpochRef = useRef(0);
+  const profileLoadEpochRef = useRef(0);
   const [docImporting, setDocImporting] = useState(false);
   const [analyzeDraft, setAnalyzeDraft] = useState<ProfileAnalyzeDraft | null>(null);
   const [analyzeStatus, setAnalyzeStatus] = useState<"idle" | "running" | "done" | "failed">("idle");
@@ -254,33 +280,70 @@ export function ProfilePage() {
   const resumeFileRef = useRef<HTMLInputElement>(null);
   const selfIntroFileRef = useRef<HTMLInputElement>(null);
   const portfolioFileRef = useRef<HTMLInputElement>(null);
-  const initialCompletenessRequested = useRef(false);
 
   const skillItems = useMemo(() => linesToArray(form.skillsText), [form.skillsText]);
   const selectedSkillSet = useMemo(() => new Set(skillItems.map((item) => item.toLowerCase())), [skillItems]);
   const isDirty = useMemo(() => serializeProfileForm(form) !== savedSnapshot, [form, savedSnapshot]);
+  const profileExitGuardActive = isDirty || saving || docImporting;
+  const profileExitMessage = saving || docImporting ? ACTIVE_PROFILE_OPERATION_MESSAGE : UNSAVED_PROFILE_MESSAGE;
   const tabStatuses = useMemo(() => getProfileTabStatuses(form, summaryResult, skillsResult, completeness), [form, summaryResult, skillsResult, completeness]);
   const aiConsentAgreed = consent?.aiDataAgreed === true;
   const resumeAnalysisAgreed = consent?.resumeAnalysisAgreed === true;
   const profileAiAllowed = aiConsentAgreed && resumeAnalysisAgreed;
+  // 문서 import도 프로필 행/versionNo를 갱신하므로 수동 저장·AI와 직렬화한다.
+  const saveDisabled = loading || !profileLoaded || saving || docImporting || profileWriteConflict;
+
+  const clearProfileAiResults = () => {
+    // 저장 전 프로필을 기준으로 만든 결과가 현재 프로필 결과처럼 보이지 않게 즉시 무효화한다.
+    profileAnalysisEpochRef.current += 1;
+    setSummaryResult(null);
+    setSkillsResult(null);
+    setCompleteness(null);
+  };
 
   const load = async () => {
+    const loadEpoch = ++profileLoadEpochRef.current;
     setLoading(true);
+    setProfileLoaded(false);
+    setProfileWriteConflict(false);
+    profileVersionNoRef.current = null;
     setError(null);
+    setNonFatalWarning(null);
+    clearProfileAiResults();
     try {
-      const [profile, linkedPortfolioFiles, versions] = await Promise.all([
-        getProfile(),
-        listProfilePortfolioFiles(),
-        getProfileVersions(),
-      ]);
+      // 저장 가능 여부는 부가 목록이 아니라 프로필 본문 GET 성공을 기준으로 한다.
+      const profile = await getProfile();
+      if (loadEpoch !== profileLoadEpochRef.current) return;
       const nextForm = toForm(profile);
       setForm(nextForm);
-      setPortfolioFiles(linkedPortfolioFiles);
-      setProfileVersions(versions);
       setSavedSnapshot(serializeProfileForm(nextForm));
+      lastSavedFormRef.current = nextForm;
+      profileVersionNoRef.current = typeof profile.versionNo === "number" ? profile.versionNo : null;
+      setProfileLoaded(true);
+      // 목록 API가 느리거나 실패해도 본문을 읽은 사용자는 즉시 편집·저장할 수 있어야 한다.
+      setLoading(false);
+      void Promise.allSettled([
+        listProfilePortfolioFiles(),
+        getProfileVersions(),
+      ]).then(([portfolioResult, versionsResult]) => {
+        if (loadEpoch !== profileLoadEpochRef.current) return;
+        const warnings: string[] = [];
+        if (portfolioResult.status === "fulfilled") {
+          setPortfolioFiles(portfolioResult.value);
+        } else {
+          warnings.push("연결된 포트폴리오 파일 목록을 불러오지 못했습니다.");
+        }
+        if (versionsResult.status === "fulfilled") {
+          setProfileVersions(versionsResult.value);
+        } else {
+          warnings.push("프로필 저장 이력을 불러오지 못했습니다.");
+        }
+        setNonFatalWarning(warnings.length ? `${warnings.join(" ")} 프로필 편집과 저장은 계속할 수 있습니다.` : null);
+      });
     } catch (err) {
+      if (loadEpoch !== profileLoadEpochRef.current) return;
+      setProfileLoaded(false);
       setError(err instanceof Error ? err.message : "프로필을 불러오지 못했습니다.");
-    } finally {
       setLoading(false);
     }
   };
@@ -289,23 +352,14 @@ export function ProfilePage() {
     void load();
   }, []);
 
-  useEffect(() => {
-    if (loading || !profileAiAllowed || initialCompletenessRequested.current) return;
-    initialCompletenessRequested.current = true;
-    void diagnoseProfileCompleteness()
-      .then(async (result) => {
-        const versions = await getProfileVersions();
-        setProfileVersions(versions);
-        setCompleteness(result);
-      })
-      .catch(() => setCompleteness(null));
-  }, [loading, profileAiAllowed]);
-
+  // 진입 시 AI를 자동 실행하지 않는다 — 완성도 진단은 AI 도구 버튼으로만 실행(무단 GPU 호출·알림 발송 방지).
   // 저장된 프로필 AI 분석을 불러와 화면에 시드한다(새로고침 후에도 최근 분석이 보이도록).
   useEffect(() => {
-    if (loading) return;
+    if (!profileLoaded) return;
+    const analysisEpoch = profileAnalysisEpochRef.current;
     void getProfileAiAnalysis()
       .then((saved) => {
+        if (analysisEpoch !== profileAnalysisEpochRef.current) return;
         if (!saved.hasAnalysis) return;
         setSummaryResult((prev) => prev ?? {
           featureType: "PROFILE_SUMMARY",
@@ -326,14 +380,58 @@ export function ProfilePage() {
         });
       })
       .catch(() => { /* 저장분 없음/조회 실패는 조용히 무시 — 기존 온디맨드 분석 흐름 유지 */ });
-  }, [loading]);
+  }, [profileLoaded]);
 
   useEffect(() => {
-    setActiveTab(normalizeProfileTab(searchParams.get("tab")));
-  }, [searchParams]);
+    setActiveTab(aiOnly ? "ai" : normalizeProfileTab(searchParams.get("tab")));
+  }, [aiOnly, searchParams]);
+
+  // 미저장 변경이 있는 채로 새로고침·창 닫기를 하면 입력이 통째로 유실되므로 브라우저 이탈 확인을 띄운다.
+  useEffect(() => {
+    if (!profileExitGuardActive) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [profileExitGuardActive]);
+
+  // history가 없는 네이티브 cold start/deep link에서는 하드웨어 back이 App.exitApp()으로 직행한다.
+  // 이 경우에도 미저장 폼을 확인 없이 버리지 않도록 종료 직전 가드를 등록한다.
+  useEffect(() => {
+    if (!profileExitGuardActive) return;
+    return registerNativeExitGuard(() => window.confirm(profileExitMessage));
+  }, [profileExitGuardActive, profileExitMessage]);
+
+  // React Router의 링크 이동, 브라우저 뒤로가기, Capacitor가 호출하는 global history.back을 같은 경계에서 막는다.
+  const blocker = useBlocker(({ currentLocation, nextLocation }) =>
+    profileExitGuardActive && currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (window.confirm(profileExitMessage)) {
+      blocker.proceed();
+    } else {
+      blocker.reset();
+    }
+  }, [blocker, profileExitMessage]);
+
+  const refreshProfile = () => {
+    if (docImporting) return;
+    if (isDirty && !window.confirm(UNSAVED_PROFILE_MESSAGE)) return;
+    void load();
+  };
 
   const changeProfileTab = (tab: string) => {
     const nextTab = normalizeProfileTab(tab);
+    // 독립 AI 분석 화면은 literal pathname에 고정한다. AI 결과를 프로필에 반영해도
+    // 숨겨진 CRUD 탭이나 query-tab URL로 이동하지 않는다.
+    if (aiOnly) {
+      setActiveTab("ai");
+      return;
+    }
     setActiveTab(nextTab);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("tab", nextTab);
@@ -360,27 +458,79 @@ export function ProfilePage() {
     setForm((prev) => ({ ...prev, experiences: updateList(prev.experiences, index, key, value) }));
   };
 
-  const save = async (showSuccess = true): Promise<boolean> => {
+  const save = async (showSuccess = true, scope?: Exclude<ProfileTab, "ai">): Promise<boolean> => {
+    if (profileWriteConflict) {
+      setError("다른 화면의 프로필 변경과 현재 편집이 겹쳤습니다. 새로고침으로 최신 내용을 확인한 뒤 다시 저장해 주세요.");
+      return false;
+    }
+    if (!profileLoaded || loading || docImporting || saveInFlightRef.current) {
+      setError("프로필을 정상적으로 불러온 뒤 저장해 주세요.");
+      return false;
+    }
+    saveInFlightRef.current = true;
     setSaving(true);
     setError(null);
+    setNonFatalWarning(null);
     if (showSuccess) setMessage(null);
     try {
-      const validationError = validateProfile(form);
-      if (validationError) {
-        setError(validationError);
-        return false;
+      if (scope) {
+        const tabError = validateProfileTab(form, scope);
+        if (tabError) {
+          setError(`[${profileTabMeta[scope].label}] ${tabError}`);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return false;
+        }
+      } else if (aiOnly) {
+        // AI 결과 화면에서 바꿀 수 있는 필드는 스킬과 자기소개 메모뿐이다.
+        // 다른 독립 CRUD 페이지의 필수값 때문에 AI 반영 저장이 막히지 않게 범위를 제한한다.
+        const selfIntroError = validateProfileTab(form, "selfIntro");
+        if (selfIntroError) {
+          setError(`[${profileTabMeta.selfIntro.label}] ${selfIntroError}`);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return false;
+        }
+      } else {
+        const invalid = validateProfile(form);
+        if (invalid) {
+          setError(`[${profileTabMeta[invalid.tab].label}] ${invalid.message}`);
+          changeProfileTab(invalid.tab);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return false;
+        }
       }
-      await saveProfile(toRequest(form));
-      setProfileVersions(await getProfileVersions());
-      setSavedSnapshot(serializeProfileForm(form));
-      const nextCompleteness = profileAiAllowed ? await diagnoseProfileCompleteness().catch(() => null) : null;
-      setCompleteness(nextCompleteness);
-      if (showSuccess) setMessage("프로필이 저장되었습니다.");
+      // 탭 저장은 마지막 서버 반영본에 해당 탭 필드만 얹어 전송 — 다른 탭의 미검증 편집은 보내지 않는다.
+      const payloadForm: ProfileForm = scope
+        ? { ...lastSavedFormRef.current, ...pickTabFields(form, scope) }
+        : aiOnly
+          ? { ...lastSavedFormRef.current, skillsText: form.skillsText, selfIntro: form.selfIntro }
+          : form;
+      const savedProfile = await saveProfile(toRequest(payloadForm, profileVersionNoRef.current));
+      if (typeof savedProfile.versionNo === "number") {
+        profileVersionNoRef.current = savedProfile.versionNo;
+      }
+      lastSavedFormRef.current = payloadForm;
+      setSavedSnapshot(serializeProfileForm(payloadForm));
+      setProfileWriteConflict(false);
+      clearProfileAiResults();
+      // 저장 본문 성공을 먼저 확정한다. 이력 후조회 실패는 이미 완료된 저장을 실패로 되돌리지 않는다.
+      if (showSuccess) {
+        setMessage(scope ? `${profileTabMeta[scope].label} 탭이 저장되었습니다.` : aiOnly ? "AI 분석에서 반영한 프로필 내용을 저장했습니다." : "프로필이 저장되었습니다.");
+      }
+      void getProfileVersions()
+        .then((versions) => setProfileVersions(versions))
+        .catch(() => setNonFatalWarning("프로필 저장은 완료됐지만 저장 이력을 새로 불러오지 못했습니다. 다음 새로고침에서 다시 확인합니다."));
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "프로필 저장에 실패했습니다.");
+      if (err instanceof ApiError && err.status === 409) {
+        setProfileWriteConflict(true);
+        setError("다른 화면에서 프로필을 먼저 변경했습니다. 현재 입력은 보존했습니다. 새로고침으로 최신 내용을 확인한 뒤 다시 저장해 주세요.");
+      } else {
+        setError(err instanceof Error ? err.message : "프로필 저장에 실패했습니다.");
+      }
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return false;
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   };
@@ -420,6 +570,7 @@ export function ProfilePage() {
   };
 
   const runAi = async (type: AiToolType, options: { saveBeforeRun?: boolean } = {}) => {
+    if (aiLoading || !profileLoaded || loading) return;
     if (!profileAiAllowed) {
       setError(!aiConsentAgreed
         ? "AI 데이터 동의가 꺼져 있어 분석을 실행할 수 없습니다. 설정에서 다시 동의해 주세요."
@@ -431,34 +582,66 @@ export function ProfilePage() {
       setError("저장하지 않은 변경사항이 있습니다. 저장 후 분석을 누르면 최신 프로필 기준으로 AI 분석을 실행합니다.");
       return;
     }
+    // 클릭 즉시 '실행 중' 표시 — 선행 저장 구간에도 로딩·비활성이 걸려 연타(중복 실행)를 막는다.
+    setAiLoading(type);
     if (isDirty && options.saveBeforeRun) {
       const saved = await save(false);
-      if (!saved) return;
+      if (!saved) {
+        setAiLoading(null);
+        return;
+      }
     }
     setActiveAiView(type);
     changeProfileTab("ai");
-    setAiLoading(type);
     setError(null);
     setMessage(null);
+    const analysisEpoch = profileAnalysisEpochRef.current;
+    const acceptAnalysisResult = (resultVersionNo?: number | null) => {
+      if (analysisEpoch !== profileAnalysisEpochRef.current) return false;
+      const currentVersionNo = profileVersionNoRef.current;
+      if (currentVersionNo != null && resultVersionNo != null && currentVersionNo !== resultVersionNo) {
+        return false;
+      }
+      // GET 당시 행이 없었다면 ref는 null로 유지한다. 분석 사이에 온보딩 등이 실데이터 v1을
+      // 만들었을 때 빈 화면이 base v1로 저장돼 그 값을 덮는 일을 막고, 다음 저장을 409로 안전하게 닫는다.
+      return true;
+    };
+    const refreshVersionsAfterAnalysis = () => {
+      void getProfileVersions()
+        .then((versions) => setProfileVersions(versions))
+        .catch(() => setNonFatalWarning("AI 분석은 완료됐지만 저장 이력을 새로 불러오지 못했습니다. 다음 새로고침에서 다시 확인합니다."));
+    };
+    const discardStaleAnalysis = () => {
+      setNonFatalWarning("AI 분석 도중 프로필이 변경되어 이전 버전의 결과는 표시하지 않았습니다. 최신 프로필로 다시 실행해 주세요.");
+    };
     try {
       if (type === "summary") {
         const result = await summarizeProfile(profileAiModel);
-        const versions = await getProfileVersions();
-        setProfileVersions(versions);
+        if (!acceptAnalysisResult(result.profileVersionNo)) {
+          discardStaleAnalysis();
+          return;
+        }
         setSummaryResult(result);
         setMessage("프로필 핵심 요약을 생성했습니다. AI 결과 탭에서 확인해 주세요.");
+        refreshVersionsAfterAnalysis();
       } else if (type === "skills") {
         const result = await extractProfileSkills(profileAiModel);
-        const versions = await getProfileVersions();
-        setProfileVersions(versions);
+        if (!acceptAnalysisResult(result.profileVersionNo)) {
+          discardStaleAnalysis();
+          return;
+        }
         setSkillsResult(result);
         setMessage("이력에서 직무 역량 키워드를 추출했습니다. AI 결과 탭에서 확인해 주세요.");
+        refreshVersionsAfterAnalysis();
       } else {
         const result = await diagnoseProfileCompleteness(profileAiModel);
-        const versions = await getProfileVersions();
-        setProfileVersions(versions);
+        if (!acceptAnalysisResult(result.profileVersionNo)) {
+          discardStaleAnalysis();
+          return;
+        }
         setCompleteness(result);
         setMessage("프로필 완성도와 보완 우선순위를 진단했습니다. AI 결과 탭에서 확인해 주세요.");
+        refreshVersionsAfterAnalysis();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI 기능 실행에 실패했습니다. AI 데이터 동의 상태를 확인해 주세요.");
@@ -475,8 +658,10 @@ export function ProfilePage() {
   const addSkills = (skills: string[]) => {
     const next = mergeUniqueLines(form.skillsText, skills);
     update("skillsText", arrayToLines(next));
-    changeProfileTab("skills");
-    setMessage("선택한 역량 키워드를 내 스킬 목록에 추가했습니다. 저장을 눌러 반영해 주세요.");
+    if (!aiOnly) changeProfileTab("skills");
+    setMessage(aiOnly
+      ? "선택한 역량 키워드를 반영했습니다. 상단의 반영 내용 저장을 눌러 확정해 주세요."
+      : "선택한 역량 키워드를 내 스킬 목록에 추가했습니다. 저장을 눌러 반영해 주세요.");
   };
 
   const removeSkill = (skill: string) => {
@@ -488,8 +673,10 @@ export function ProfilePage() {
     if (!cleaned.length) return;
     const block = [`[${title}]`, ...cleaned.map((value) => `- ${value}`)].join("\n");
     update("selfIntro", [form.selfIntro.trim(), block].filter(Boolean).join("\n\n"));
-    changeProfileTab("selfIntro");
-    setMessage("AI 결과를 자기소개/강점 메모에 추가했습니다. 저장을 눌러 반영해 주세요.");
+    if (!aiOnly) changeProfileTab("selfIntro");
+    setMessage(aiOnly
+      ? "AI 결과를 자기소개 메모에 반영했습니다. 상단의 반영 내용 저장을 눌러 확정해 주세요."
+      : "AI 결과를 자기소개/강점 메모에 추가했습니다. 저장을 눌러 반영해 주세요.");
   };
 
   /** draft → 폼 state 만 반영(DB 저장은 사용자가 저장 버튼). 빈 배열은 건너뜀. */
@@ -532,6 +719,10 @@ export function ProfilePage() {
    * 이력서/자소서 탭 모두 구조화 분석을 돌린다(파일에 학력·경력이 있는 경우 대비).
    */
   const handleDocumentAttach = async (file: File, target: ProfileImportTarget) => {
+    if (!profileLoaded || loading || profileWriteConflict) {
+      setError("프로필을 정상적으로 불러온 뒤 문서를 가져와 주세요.");
+      return;
+    }
     if (!resumeAnalysisAgreed) {
       setError("이력서 분석 개인정보 수집·이용 동의가 필요합니다. 설정에서 동의한 뒤 파일을 가져와 주세요.");
       return;
@@ -542,23 +733,48 @@ export function ProfilePage() {
       const ok = window.confirm("기존 내용을 대체합니다. 계속할까요?");
       if (!ok) return;
     }
+    const importBaseline = lastSavedFormRef.current;
+    const importLocalStart = form;
+    const importedField: keyof ProfileForm = target === "RESUME_TEXT" ? "resumeText" : "selfIntro";
     setDocImporting(true);
     setError(null);
     setMessage(null);
     setAnalyzeError(null);
     setAnalyzeDraft(null);
+    let uploadedFileId: number | null = null;
     try {
       const uploaded = await uploadProfileFile(file, "RESUME");
-      const imported = await importProfileDocument(uploaded.id, target);
-      // 서버는 대상 필드만 갱신했으므로 폼도 대상 필드만 교체 — 다른 탭의 미저장 편집을 지우지 않는다.
-      // 스냅샷은 서버 저장 상태 기준으로 갱신해, 남은 편집이 계속 '저장 안 됨'으로 표시되게 한다.
-      const serverForm = toForm(imported.profile);
-      setSavedSnapshot(serializeProfileForm(serverForm));
-      setForm((prev) =>
-        target === "RESUME_TEXT"
-          ? { ...prev, resumeText: serverForm.resumeText }
-          : { ...prev, selfIntro: serverForm.selfIntro },
+      uploadedFileId = uploaded.id;
+      const imported = await importProfileDocument(
+        uploaded.id,
+        target,
+        profileVersionNoRef.current,
       );
+      clearProfileAiResults();
+      setNonFatalWarning(null);
+      // 서버 응답에는 잠금 RMW 이후의 최신 전체 프로필이 들어 있다. 로컬이 기존 기준본과 같은 필드는
+      // 서버 최신값을 채택하고, import 중 사용자가 바꾼 필드만 보존하는 3-way merge로 동시 변경을 지킨다.
+      const serverForm = toForm(imported.profile);
+      const mergeResult = mergeServerProfileForm(
+        formRef.current,
+        importBaseline,
+        serverForm,
+        importLocalStart,
+        importedField,
+      );
+      setSavedSnapshot(serializeProfileForm(serverForm));
+      lastSavedFormRef.current = serverForm;
+      setForm(mergeResult.form);
+      setProfileWriteConflict(mergeResult.conflicted);
+      if (mergeResult.conflicted) {
+        // 최신 versionNo를 채택하면 다음 저장이 동시 변경을 덮을 수 있으므로 기존 기준 버전을 유지한다.
+        setNonFatalWarning("문서를 가져오는 동안 다른 화면과 같은 프로필 항목이 함께 변경됐습니다. 서버 데이터는 보존했습니다. 새로고침으로 최신 내용을 확인해 주세요.");
+      } else if (typeof imported.profile.versionNo === "number") {
+        profileVersionNoRef.current = imported.profile.versionNo;
+      }
+      void getProfileVersions()
+        .then((versions) => setProfileVersions(versions))
+        .catch(() => setNonFatalWarning("문서 원문은 저장됐지만 저장 이력을 새로 불러오지 못했습니다. 다음 새로고침에서 다시 확인합니다."));
       const dumpMsg = imported.truncated
         ? "일부만 저장했습니다. 긴 문서는 앞부분만 반영됩니다."
         : target === "RESUME_TEXT"
@@ -603,6 +819,15 @@ export function ProfilePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "첨부에 실패했어요. 다시 시도해 주세요.");
     } finally {
+      if (uploadedFileId !== null) {
+        try {
+          await deleteUnlinkedProfileFile(uploadedFileId);
+        } catch {
+          // 브라우저/앱 강제 종료를 포함해 즉시 삭제하지 못한 원본은 서버가 24시간 TTL로 회수한다.
+          setNonFatalWarning((current) => current
+            ?? "처리한 문서 원본을 즉시 정리하지 못했습니다. 서버가 24시간 후 자동으로 정리합니다.");
+        }
+      }
       setDocImporting(false);
     }
   };
@@ -658,33 +883,46 @@ export function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-[1280px] space-y-6 px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-black text-slate-950">
               <User className="size-6 text-blue-600" />
-              프로필/이력서 관리
+              {aiOnly ? "AI 프로필 분석" : "프로필/이력서 관리"}
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              지원서 분석과 AI 추천에 사용할 기본 프로필, 이력서, 직무 역량을 관리합니다.
+              {aiOnly
+                ? "저장된 프로필을 기준으로 핵심 요약, 역량 키워드와 완성도를 분석합니다."
+                : "지원서 분석과 AI 추천에 사용할 기본 프로필, 이력서, 직무 역량을 관리합니다."}
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => void load()} disabled={loading}>
+            <Button variant="outline" onClick={refreshProfile} disabled={loading || saving || docImporting}>
               <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
               새로고침
             </Button>
-            <Button onClick={() => void save()} disabled={saving} className="bg-blue-600 text-white hover:bg-blue-700">
-              <Save className="size-4" />
-              {saving ? "저장 중..." : "저장"}
-            </Button>
+            {!aiOnly && activeTab !== "ai" && (
+              <Button variant="outline" onClick={() => void save(true, activeTab as Exclude<ProfileTab, "ai">)} disabled={saveDisabled}>
+                <Save className="size-4" />
+                이 탭만 저장
+              </Button>
+            )}
+            {(!aiOnly || isDirty) && (
+              <Button onClick={() => void save()} disabled={saveDisabled} className="bg-blue-600 text-white hover:bg-blue-700">
+                <Save className="size-4" />
+                {saving ? "저장 중..." : aiOnly ? "반영 내용 저장" : "전체 저장"}
+              </Button>
+            )}
           </div>
         </div>
 
         {error && <StatusBox tone="error" text={error} />}
         {message && <StatusBox tone="success" text={message} />}
+        {nonFatalWarning && <StatusBox tone="warning" text={nonFatalWarning} />}
         {isDirty && (
-          <StatusBox tone="warning" text="저장하지 않은 변경사항이 있습니다. AI 분석은 저장된 프로필 기준으로 실행되므로, 분석 전 저장을 권장합니다." />
+          <StatusBox tone="warning" text={aiOnly
+            ? "AI 결과에서 프로필에 반영한 내용이 아직 저장되지 않았습니다. 상단의 반영 내용 저장을 눌러 확정해 주세요."
+            : "저장하지 않은 변경사항이 있습니다. AI 분석은 저장된 프로필 기준으로 실행되므로, 분석 전 저장을 권장합니다."} />
         )}
 
         <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
@@ -720,7 +958,7 @@ export function ProfilePage() {
               <CardContent className="space-y-2">
                 <ConsentStatusBox consent={consent} />
                 {isDirty && (
-                  <Button variant="outline" className="w-full justify-start border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" onClick={() => void save()}>
+                  <Button variant="outline" className="w-full justify-start border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" onClick={() => void save()} disabled={saveDisabled}>
                     <Save className="size-4" />
                     저장 후 분석 준비
                   </Button>
@@ -729,7 +967,7 @@ export function ProfilePage() {
                   type="summary"
                   active={activeAiView === "summary"}
                   loading={aiLoading === "summary"}
-                  disabled={!!aiLoading || !profileAiAllowed}
+                  disabled={saveDisabled || !!aiLoading || !profileAiAllowed}
                   icon={<Sparkles className="size-4" />}
                   onClick={() => void runAi("summary", { saveBeforeRun: isDirty })}
                 />
@@ -737,7 +975,7 @@ export function ProfilePage() {
                   type="skills"
                   active={activeAiView === "skills"}
                   loading={aiLoading === "skills"}
-                  disabled={!!aiLoading || !profileAiAllowed}
+                  disabled={saveDisabled || !!aiLoading || !profileAiAllowed}
                   icon={<Brain className="size-4" />}
                   onClick={() => void runAi("skills", { saveBeforeRun: isDirty })}
                 />
@@ -745,13 +983,13 @@ export function ProfilePage() {
                   type="completeness"
                   active={activeAiView === "completeness"}
                   loading={aiLoading === "completeness"}
-                  disabled={!!aiLoading || !profileAiAllowed}
+                  disabled={saveDisabled || !!aiLoading || !profileAiAllowed}
                   icon={<CheckCircle2 className="size-4" />}
                   onClick={() => void runAi("completeness", { saveBeforeRun: isDirty })}
                 />
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-xs text-slate-500">AI 모델</span>
-                  <ModelPicker value={profileAiModel} onChange={setProfileAiModel} disabled={!!aiLoading || !profileAiAllowed} />
+                  <ModelPicker value={profileAiModel} onChange={setProfileAiModel} disabled={saveDisabled || !!aiLoading || !profileAiAllowed} />
                 </div>
               </CardContent>
             </Card>
@@ -760,17 +998,19 @@ export function ProfilePage() {
           {/* min-w-0: 그리드/플렉스 자식이 내용(탭 목록) 최소폭으로 부풀어 페이지 가로 오버플로를 만드는 것 방지 */}
           <section className="min-w-0 space-y-5">
             <Tabs value={activeTab} onValueChange={changeProfileTab}>
-              <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
-                {profileTabValues.map((tab) => (
-                  <TabsTrigger key={tab} value={tab} className="h-auto min-w-fit flex-col items-start gap-1 px-3 py-2">
-                    <span className="flex items-center gap-1.5">
-                      <span>{profileTabMeta[tab].label}</span>
-                      <RequirementBadge requirement={profileTabMeta[tab].requirement} />
-                    </span>
-                    <TabStatusBadge status={tabStatuses[tab]} />
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+              {!aiOnly && (
+                <TabsList className="h-auto w-full justify-start overflow-x-auto border border-slate-200 bg-card p-1">
+                  {profileTabValues.map((tab) => (
+                    <TabsTrigger key={tab} value={tab} className="h-auto min-w-fit flex-col items-start gap-1 px-3 py-2">
+                      <span className="flex items-center gap-1.5">
+                        <span>{profileTabMeta[tab].label}</span>
+                        <RequirementBadge requirement={profileTabMeta[tab].requirement} />
+                      </span>
+                      <TabStatusBadge status={tabStatuses[tab]} />
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              )}
 
               {activeTab === "basic" && (
                 <TabsContent value="basic" className="mt-5">
@@ -833,7 +1073,7 @@ export function ProfilePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={docImporting || !resumeAnalysisAgreed}
+                        disabled={docImporting || !resumeAnalysisAgreed || loading || !profileLoaded || saving || profileWriteConflict}
                         onClick={() => resumeFileRef.current?.click()}
                       >
                         {docImporting ? (
@@ -881,7 +1121,7 @@ export function ProfilePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={docImporting || !resumeAnalysisAgreed}
+                        disabled={docImporting || !resumeAnalysisAgreed || loading || !profileLoaded || saving || profileWriteConflict}
                         onClick={() => selfIntroFileRef.current?.click()}
                       >
                         {docImporting ? (
@@ -905,6 +1145,9 @@ export function ProfilePage() {
                     </div>
                     <Field label="자기소개/강점">
                       <Textarea value={form.selfIntro} onChange={(event) => update("selfIntro", event.target.value)} rows={8} placeholder="지원 직무와 연결되는 경험, 강점, 협업 사례를 정리하세요." />
+                      <p className={`mt-1 text-right text-xs ${form.selfIntro.length > SELF_INTRO_MAX_LENGTH ? "font-semibold text-red-600" : "text-slate-400"}`}>
+                        {form.selfIntro.length.toLocaleString("ko-KR")} / {SELF_INTRO_MAX_LENGTH.toLocaleString("ko-KR")}자
+                      </p>
                     </Field>
                   </CardContent>
                 </Card>
@@ -955,7 +1198,7 @@ export function ProfilePage() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={portfolioUploading}
+                        disabled={portfolioUploading || loading || !profileLoaded || saving}
                         onClick={() => portfolioFileRef.current?.click()}
                       >
                         {portfolioUploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
@@ -1003,7 +1246,7 @@ export function ProfilePage() {
                                 size="sm"
                                 variant="ghost"
                                 aria-label={`${file.originalName} 삭제`}
-                                disabled={portfolioDeletingId != null}
+                                disabled={portfolioDeletingId != null || loading || !profileLoaded || saving}
                                 onClick={() => void deletePortfolio(file)}
                                 className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
                               >
@@ -1219,6 +1462,11 @@ export function ProfilePage() {
   );
 }
 
+/** `/profile/ai-analysis` 전용 엔트리. 기존 프로필 AI 파이프라인을 AI 결과 화면에 고정해 재사용한다. */
+export function ProfileAiAnalysisPage() {
+  return <ProfilePage mode="ai-analysis" />;
+}
+
 function ProfileVersionHistory({
   versions,
   analyzedVersionNo,
@@ -1316,9 +1564,16 @@ function AiToolButton({
       disabled={disabled}
     >
       <span className="mt-0.5 shrink-0 text-blue-600">{loading ? <RefreshCw className="size-4 animate-spin" /> : icon}</span>
-      <span className="min-w-0">
+      <span className="min-w-0 flex-1">
         <span className="block text-sm font-bold">{copy.title}</span>
         <span className="mt-1 block text-xs leading-5 text-slate-500">{copy.description}</span>
+      </span>
+      <span
+        className={`ml-2 shrink-0 self-center rounded-md px-2.5 py-1 text-xs font-semibold ${
+          disabled ? "bg-slate-200 text-slate-500" : "bg-blue-600 text-white"
+        }`}
+      >
+        {loading ? "실행 중" : "실행"}
       </span>
     </Button>
   );
@@ -1455,7 +1710,7 @@ function ConsentStatusBox({ consent }: { consent: ConsentStatus | null }) {
           : `${!aiAgreed ? "AI 데이터 이용 동의" : ""}${!aiAgreed && !resumeAgreed ? "와 " : ""}${!resumeAgreed ? "이력서 분석 동의" : ""}가 필요합니다. 수동 프로필 편집은 계속 사용할 수 있습니다.`}
       </p>
       {!agreed && (
-        <Link className="mt-2 inline-flex text-xs font-bold text-blue-600 hover:underline" to={aiAgreed ? "/settings?tab=privacy" : "/settings?tab=ai-consent"}>
+        <Link className="mt-2 inline-flex text-xs font-bold text-blue-600 hover:underline" to={aiAgreed ? "/settings/privacy" : "/settings/ai-consent"}>
           동의 설정으로 이동
         </Link>
       )}
@@ -2040,6 +2295,32 @@ function serializeProfileForm(form: ProfileForm): string {
   return JSON.stringify(toRequest(form));
 }
 
+/** 서버 최신 기준본에 import 도중 생긴 로컬 편집만 다시 얹는다. */
+function mergeServerProfileForm(
+  local: ProfileForm,
+  baseline: ProfileForm,
+  server: ProfileForm,
+  localAtImportStart: ProfileForm,
+  importedField: keyof ProfileForm,
+): { form: ProfileForm; conflicted: boolean } {
+  const merged: ProfileForm = { ...server };
+  let conflicted = false;
+  for (const key of Object.keys(emptyForm) as (keyof ProfileForm)[]) {
+    // 사용자가 '기존 내용 대체'를 확인한 import 대상은 서버 결과를 채택한다. 다만 요청 대기 중
+    // 새로 편집한 값은 보존한다. 비대상 필드는 저장 기준본 이후의 모든 로컬 편집을 보존한다.
+    const comparison = key === importedField ? localAtImportStart[key] : baseline[key];
+    const localChanged = JSON.stringify(local[key]) !== JSON.stringify(comparison);
+    const serverChanged = JSON.stringify(server[key]) !== JSON.stringify(baseline[key]);
+    if (localChanged) {
+      Object.assign(merged, { [key]: local[key] });
+    }
+    if (localChanged && serverChanged && JSON.stringify(local[key]) !== JSON.stringify(server[key])) {
+      conflicted = true;
+    }
+  }
+  return { form: merged, conflicted };
+}
+
 function mergeUniqueLines(currentText: string, nextItems: string[]): string[] {
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -2085,7 +2366,7 @@ function toForm(profile: UserProfile): ProfileForm {
   };
 }
 
-function toRequest(form: ProfileForm): UserProfile {
+function toRequest(form: ProfileForm, versionNo?: number | null): UserProfile {
   return {
     desiredJob: blankToNull(form.desiredJob),
     desiredIndustry: blankToNull(form.desiredIndustry),
@@ -2099,6 +2380,7 @@ function toRequest(form: ProfileForm): UserProfile {
     preferences: stripEmptyObject(form.preferences),
     resumeText: blankToNull(form.resumeText),
     selfIntro: blankToNull(form.selfIntro),
+    ...(versionNo == null ? {} : { versionNo }),
   };
 }
 
@@ -2191,22 +2473,63 @@ function blankToNull(value: string): string | null {
   return trimmed ? trimmed : null;
 }
 
-function validateProfile(form: ProfileForm): string | null {
-  if (!form.desiredJob.trim()) {
-    return "희망 직무는 필수입니다.";
+// 탭 저장 시 함께 전송할 필드 — 각 탭이 편집하는 필드와 1:1.
+const TAB_FIELDS: Record<Exclude<ProfileTab, "ai">, (keyof ProfileForm)[]> = {
+  basic: ["desiredJob", "desiredIndustry", "preferences"],
+  resume: ["resumeText"],
+  selfIntro: ["selfIntro"],
+  skills: ["skillsText"],
+  experience: ["career", "experiences", "portfolioLinksText"],
+  certificates: ["certificatesText", "languagesText", "education"],
+};
+
+function pickTabFields(form: ProfileForm, tab: Exclude<ProfileTab, "ai">): Partial<ProfileForm> {
+  const picked: Partial<ProfileForm> = {};
+  for (const key of TAB_FIELDS[tab]) {
+    (picked as Record<string, unknown>)[key] = form[key];
   }
-  if (form.desiredJob.trim().length > 80 || form.desiredIndustry.trim().length > 80) {
-    return "희망 직무와 산업은 80자 이하로 입력해 주세요.";
+  return picked;
+}
+
+function validateProfileTab(form: ProfileForm, tab: ProfileTab): string | null {
+  switch (tab) {
+    case "basic":
+      if (!form.desiredJob.trim()) return "희망 직무는 필수입니다.";
+      if (form.desiredJob.trim().length > 80 || form.desiredIndustry.trim().length > 80) {
+        return "희망 직무와 산업은 80자 이하로 입력해 주세요.";
+      }
+      return null;
+    case "resume":
+      return form.resumeText.length > RESUME_TEXT_MAX_LENGTH
+        ? `이력서 원문이 ${form.resumeText.length.toLocaleString("ko-KR")}자입니다. ${RESUME_TEXT_MAX_LENGTH.toLocaleString("ko-KR")}자 이하로 줄여 주세요.`
+        : null;
+    case "selfIntro":
+      return form.selfIntro.length > SELF_INTRO_MAX_LENGTH
+        ? `자기소개가 ${form.selfIntro.length.toLocaleString("ko-KR")}자입니다. ${SELF_INTRO_MAX_LENGTH.toLocaleString("ko-KR")}자 이하로 줄여 주세요.`
+        : null;
+    case "experience": {
+      if (form.career.some((item) => !isValidRange(item.startDate, item.endDate))) {
+        return "경력 종료월은 시작월보다 빠를 수 없습니다.";
+      }
+      if (form.experiences.some((item) => !isValidRange(item.startDate, item.endDate))) {
+        return "경험/프로젝트/활동 종료월은 시작월보다 빠를 수 없습니다.";
+      }
+      return null;
+    }
+    case "certificates":
+      return form.education.some((item) => !isValidRange(item.startDate, item.endDate))
+        ? "학력 종료월은 시작월보다 빠를 수 없습니다."
+        : null;
+    default:
+      return null;
   }
-  if (form.resumeText.length > 20000 || form.selfIntro.length > 10000) {
-    return "이력서 원문은 20,000자 이하, 자기소개는 10,000자 이하로 입력해 주세요.";
+}
+
+function validateProfile(form: ProfileForm): { tab: ProfileTab; message: string } | null {
+  for (const tab of profileTabValues) {
+    const message = validateProfileTab(form, tab);
+    if (message) return { tab, message };
   }
-  const invalidEducation = form.education.find((item) => !isValidRange(item.startDate, item.endDate));
-  if (invalidEducation) return "학력 종료월은 시작월보다 빠를 수 없습니다.";
-  const invalidCareer = form.career.find((item) => !isValidRange(item.startDate, item.endDate));
-  if (invalidCareer) return "경력 종료월은 시작월보다 빠를 수 없습니다.";
-  const invalidExperience = form.experiences.find((item) => !isValidRange(item.startDate, item.endDate));
-  if (invalidExperience) return "경험/프로젝트/활동 종료월은 시작월보다 빠를 수 없습니다.";
   return null;
 }
 

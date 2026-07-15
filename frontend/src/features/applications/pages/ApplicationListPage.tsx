@@ -112,7 +112,7 @@ function ApplicationCard({
   busy: boolean;
   retryingExtraction: boolean;
   mode: ListMode;
-  /** 헤더 메뉴 의도(?tab=fit|strategy|learning) — 카드 클릭 시 이동할 상세 섹션. */
+  /** 구형 query 딥링크 의도 — 카드 클릭 시 이동할 상세 섹션. */
   detailSection?: string;
   onToggleFavorite(applicationCase: ApplicationCase): void;
   onRestore(applicationCase: ApplicationCase): void;
@@ -233,11 +233,11 @@ function ApplicationCard({
 
 export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
   const navigate = useNavigate();
-  // 헤더 하위메뉴(내 스펙과 비교·지원 전략·학습/자격증 추천)의 ?tab= 의도를 카드 클릭 목적지로 연결한다.
-  // 세 항목 모두 상세의 '적합도' 탭(비교/전략/학습 패널이 그 안에 있음)으로 딥링크.
+  // 헤더 하위메뉴가 ?tab= 로 넘어온 경우(구 링크 호환) 카드 클릭 목적지를 상세의 해당 탭으로 연결한다.
+  // 신규 진입은 전용 집계 페이지(/applications/compare|strategy|learning)로 직접 가므로 여기선 목록만 보여준다.
   const [searchParams] = useSearchParams();
   const tabIntent = searchParams.get("tab");
-  const detailSection = tabIntent === "fit" || tabIntent === "strategy" || tabIntent === "learning" ? "fit" : "overview";
+  const detailSection = tabIntent === "fit" || tabIntent === "strategy" || tabIntent === "learning" ? tabIntent : "overview";
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const isTrash = mode === "trash";
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -387,7 +387,7 @@ export function ApplicationListPage({ mode = "active" }: { mode?: ListMode }) {
             </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button variant="outline" onClick={() => navigate(isTrash ? "/applications" : "/applications/trash")}>
+            <Button variant="outline" onClick={() => navigate(isTrash ? "/applications/list" : "/applications/trash")}>
               {isTrash ? <Briefcase className="size-4" /> : <Trash2 className="size-4" />}
               {isTrash ? "활성 목록" : "삭제함"}
             </Button>

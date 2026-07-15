@@ -26,7 +26,9 @@ CareerTuner는 기능 단위로 작업을 배분한다. 각 담당자는 해당 
 | 관리자 백엔드 | `backend/src/main/java/com/careertuner/admin/<backend-domain>/` |
 | 관리자 MyBatis XML | `backend/src/main/resources/mapper/admin/<backend-domain>/` |
 
-현재 보이는 앱에는 초기 프로토타입 페이지가 `frontend/src/app/pages`에 남아 있다. 기능이 성숙해지면 페이지 내부 구현을 `frontend/src/features/<feature>`로 옮기고, `frontend/src/app`에는 라우트 수준의 연결만 남긴다.
+`frontend/src/app/pages`에는 기능 폴더로 위임하는 얇은 라우트 어댑터와 아직 자체 구현을 가진 전환 대상 페이지가
+섞여 있다. 이를 전부 초기 프로토타입으로 보지 않는다. 새 도메인 로직은 `frontend/src/features/<feature>`에
+두고, 기존 페이지를 수정할 때는 기능 구현을 점진적으로 옮겨 `app/pages`에는 라우트 연결만 남긴다.
 관리자 라우트 수준의 연결은 `frontend/src/admin`에 유지하고, 메인 라우터에서 `/admin/**` 아래로 마운트한다.
 
 ## 2. 기능 맵
@@ -37,6 +39,7 @@ CareerTuner는 기능 단위로 작업을 배분한다. 각 담당자는 해당 
 | `home` | 공개 홈, 온보딩 진입, 기본 준비 현황 요약 | `home` |
 | `dashboard` | 대시보드 요약, 알림 | `dashboard` |
 | `profile` | 기본 정보, 이력서, 자기소개서, 경력/프로젝트, 기술스택, 자격증/학력 | `profile` |
+| `catalog` | NCS 직무능력표준, 국가·민간 자격증 검색·상세 | `catalog` |
 | `applications` | 지원 건, 공고 업로드, 분석 결과, 적합도 비교, 전략, 학습/자격증 추천, 기록 | `applicationcase`, `jobposting`, `jobanalysis`, `companyanalysis`, `fitanalysis` |
 | `interview` | 면접 모드, 질문, 연습, 음성, 아바타, 평가, 리포트 | `interview` |
 | `correction` | 답변, 자기소개서, 이력서, 포트폴리오 설명 첨삭 | `correction` |
@@ -140,13 +143,14 @@ frontend/src/admin/
 버튼, 다이얼로그, 테이블, API 클라이언트 헬퍼 같은 공용 기본 요소는 관리자 전용이 아닌 한
 기존 공통 프런트엔드 경로(`frontend/src/app/components/ui`, `frontend/src/app/lib`)에 유지한다.
 
-작업이 시작되면 모든 기능 폴더는 아래 형태를 유지해야 한다:
+기능 폴더는 필요한 레이어만 만들되 아래 이름을 표준으로 사용한다:
 
 ```text
 pages/ components/ api/ hooks/ types/
 ```
 
-리포지토리는 기능 담당자가 새로운 로컬 구조를 임의로 만들지 않고 바로 작업을 시작할 수 있도록 이 폴더들을 명시적인 플레이스홀더로 유지한다.
+빈 `pages/components/api/hooks/types` 플레이스홀더를 일괄 유지할 필요는 없다. 실제 코드가 생길 때 표준 이름으로
+추가하고, 기능별로 다른 임의의 레이어 이름을 만들지 않는다.
 서비스 소개는 프런트엔드에서 `frontend/src/features/service`를, 백엔드 도메인 패키지로는 `serviceinfo`를 사용한다.
 `frontend/src/features/serviceinfo` 폴더를 새로 만들지 않는다.
 
@@ -175,12 +179,13 @@ pages/ components/ api/ hooks/ types/
 - 관리자 기능이 있는 경우 관리자 엔드포인트의 역할/권한 동작
 - 기능이 AI를 호출하는 경우 AI 프롬프트/사용량 로깅 동작
 
-## 7. 관리자 골격 담당
+## 7. 관리자 패키지 소유권 빠른 참조
 
-현재 저장소의 추가 관리자 골격은 아래처럼 담당한다. 분석 통계 명칭은 `analytics`로 통일한다.
+현재 저장소의 관리자 패키지는 아래처럼 담당한다. 일부는 API·화면이 구현되어 있고 일부는 예약 패키지만
+남아 있으므로 이 표는 완료 상태가 아니라 소유권을 나타낸다. 분석 통계 명칭은 `analytics`로 통일한다.
 분석 계열의 레이어별 이름은 `FEATURE_MODULE_STRUCTURE.md`의 "분석 계열 명명 규칙"을 따른다.
 
-| 관리자 골격 | 담당 |
+| 관리자 패키지 | 담당 |
 | --- | --- |
 | `backend/src/main/java/com/careertuner/admin/auth` | A |
 | `backend/src/main/java/com/careertuner/admin/profile` | A |

@@ -34,7 +34,7 @@
             </intent-filter>
 
             <!-- 네이티브 OAuth handoff 전용 verified App Link.
-                 release 서명 fingerprint가 careertuner.kro.kr/.well-known/assetlinks.json에 게시되어야
+                 release 서명 fingerprint가 careertuner.example.com/.well-known/assetlinks.json에 게시되어야
                  OS가 이 앱만 callback 소유자로 인정한다. 일반 웹 경로는 이 filter가 가로채지 않는다. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
@@ -42,7 +42,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="careertuner.kro.kr"
+                    android:host="careertuner.example.com"
                     android:path="/auth/callback" />
             </intent-filter>
 
@@ -53,7 +53,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="careertuner.kro.kr"
+                    android:host="careertuner.example.com"
                     android:path="/profile/detail" />
             </intent-filter>
 

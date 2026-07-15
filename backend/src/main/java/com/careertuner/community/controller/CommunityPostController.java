@@ -46,6 +46,15 @@ public class CommunityPostController {
         return ApiResponse.ok(postService.getHotPosts(authUser != null ? authUser.id() : null));
     }
 
+    /** 카테고리 탭 뱃지용 전수 집계 — 목록과 동일하게 PUBLISHED 만 센다(enum명 키). */
+    @GetMapping("/category-counts")
+    public ApiResponse<Map<String, Long>> getCategoryCounts(
+            @AuthenticationPrincipal AuthUser authUser
+    ) {
+        Long viewerId = authUser != null ? authUser.id() : null;
+        return ApiResponse.ok(postService.getCategoryCounts(viewerId));
+    }
+
     @GetMapping
     public ApiResponse<PostPageResponse> getPosts(
             @RequestParam(required = false) String category,

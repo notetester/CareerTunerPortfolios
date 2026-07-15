@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { transformWithEsbuild } from "vite";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
@@ -55,8 +56,13 @@ const tokenStoreSource = read("src/app/lib/tokenStore.ts");
 const mainSource = read("src/main.tsx");
 const serviceWorkerUpdateSource = read("src/app/lib/serviceWorkerUpdate.ts");
 const viteConfigSource = read("vite.config.ts");
+const serviceWorkerUpdateJavaScript = await transformWithEsbuild(
+  serviceWorkerUpdateSource,
+  "serviceWorkerUpdate.ts",
+  { loader: "ts", format: "esm", target: "es2022" },
+);
 const serviceWorkerUpdateModule = await import(
-  `data:text/javascript;base64,${Buffer.from(serviceWorkerUpdateSource).toString("base64")}`
+  `data:text/javascript;base64,${Buffer.from(serviceWorkerUpdateJavaScript.code).toString("base64")}`
 );
 
 function sorted(values) {
@@ -337,6 +343,155 @@ function fakeServiceWorker(initialController) {
   };
 }
 
+function fakeEventTarget() {
+  const listeners = new Map();
+  return {
+    addEventListener(event, listener) {
+      listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+    },
+    dispatch(event, payload) {
+      for (const listener of listeners.get(event) ?? []) listener(payload);
+    },
+  };
+}
+
+function fakeStorage() {
+  const values = new Map();
+  return {
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    setItem(key, value) {
+      values.set(key, value);
+    },
+  };
+}
+
+function fakeHistory(initialState) {
+  return {
+    state: initialState,
+    replaceState(nextState, unused) {
+      assert.equal(unused, "");
+      this.state = nextState;
+    },
+  };
+}
+
+function assertHistoryFallbackPreventsReloadLoop(storage) {
+  const routerState = {
+    idx: 7,
+    key: "applications-learning",
+    usr: { from: "/applications" },
+  };
+  const history = fakeHistory(routerState);
+  const firstDocument = fakeEventTarget();
+  let firstReloadCount = 0;
+  serviceWorkerUpdateModule.installStaleChunkReload(
+    firstDocument,
+    storage,
+    () => firstReloadCount++,
+    () => 10_000,
+    serviceWorkerUpdateModule.createHistoryStateAdapter(history),
+  );
+  firstDocument.dispatch("vite:preloadError", { preventDefault() {} });
+  assert.equal(firstReloadCount, 1);
+
+  const markerKey = serviceWorkerUpdateModule.STALE_CHUNK_RELOAD_HISTORY_STATE_KEY;
+  const { [markerKey]: marker, ...preservedRouterState } = history.state;
+  assert.equal(marker, "10000");
+  assert.deepEqual(preservedRouterState, routerState, "기존 React Router history.state를 보존해야 한다");
+
+  const reloadedDocument = fakeEventTarget();
+  let immediateReloadCount = 0;
+  serviceWorkerUpdateModule.installStaleChunkReload(
+    reloadedDocument,
+    storage,
+    () => immediateReloadCount++,
+    () => 10_001,
+    serviceWorkerUpdateModule.createHistoryStateAdapter(history),
+  );
+  reloadedDocument.dispatch("vite:preloadError", { preventDefault() {} });
+  assert.equal(immediateReloadCount, 0, "reload 뒤 즉시 같은 chunk가 실패해도 반복 reload하지 않아야 한다");
+
+  const laterDocument = fakeEventTarget();
+  let laterReloadCount = 0;
+  serviceWorkerUpdateModule.installStaleChunkReload(
+    laterDocument,
+    storage,
+    () => laterReloadCount++,
+    () => 10_000 + serviceWorkerUpdateModule.STALE_CHUNK_RELOAD_COOLDOWN_MS,
+    serviceWorkerUpdateModule.createHistoryStateAdapter(history),
+  );
+  laterDocument.dispatch("vite:preloadError", { preventDefault() {} });
+  assert.equal(laterReloadCount, 1, "쿨다운 뒤의 새 배포 실패는 다시 복구해야 한다");
+}
+
+test("오래된 Vite lazy chunk는 최신 문서를 한 번 다시 받는다", () => {
+  const eventTarget = fakeEventTarget();
+  const storage = fakeStorage();
+  let reloadCount = 0;
+  let preventedCount = 0;
+  const event = { preventDefault: () => preventedCount++ };
+
+  serviceWorkerUpdateModule.installStaleChunkReload(
+    eventTarget,
+    storage,
+    () => reloadCount++,
+    () => 10_000,
+  );
+  eventTarget.dispatch("vite:preloadError", event);
+  eventTarget.dispatch("vite:preloadError", event);
+
+  assert.equal(reloadCount, 1);
+  assert.equal(preventedCount, 2);
+  assert.equal(
+    storage.getItem(serviceWorkerUpdateModule.STALE_CHUNK_RELOAD_STORAGE_KEY),
+    "10000",
+  );
+});
+
+test("오래된 chunk 복구 직후 새 문서에서도 reload 루프를 막고 쿨다운 뒤 다시 복구한다", () => {
+  const storage = fakeStorage();
+  storage.setItem(serviceWorkerUpdateModule.STALE_CHUNK_RELOAD_STORAGE_KEY, "10000");
+  let reloadCount = 0;
+
+  const reloadedDocument = fakeEventTarget();
+  serviceWorkerUpdateModule.installStaleChunkReload(
+    reloadedDocument,
+    storage,
+    () => reloadCount++,
+    () => 10_001,
+  );
+  reloadedDocument.dispatch("vite:preloadError", { preventDefault() {} });
+  assert.equal(reloadCount, 0, "같은 세션의 즉시 재실패는 reload하지 않아야 한다");
+
+  const laterDocument = fakeEventTarget();
+  serviceWorkerUpdateModule.installStaleChunkReload(
+    laterDocument,
+    storage,
+    () => reloadCount++,
+    () => 10_000 + serviceWorkerUpdateModule.STALE_CHUNK_RELOAD_COOLDOWN_MS,
+  );
+  laterDocument.dispatch("vite:preloadError", { preventDefault() {} });
+  assert.equal(reloadCount, 1, "쿨다운 뒤의 별도 배포 실패는 다시 복구할 수 있어야 한다");
+});
+
+test("sessionStorage가 없는 WebView는 history.state fallback으로 reload 루프를 막는다", () => {
+  assertHistoryFallbackPreventsReloadLoop(null);
+});
+
+test("sessionStorage 접근이 예외를 내도 history.state fallback으로 reload 루프를 막는다", () => {
+  const throwingStorage = {
+    getItem() {
+      throw new Error("sessionStorage is unavailable");
+    },
+    setItem() {
+      throw new Error("sessionStorage is unavailable");
+    },
+  };
+  assertHistoryFallbackPreventsReloadLoop(throwingStorage);
+});
+
 test("서비스워커 미지원과 최초 설치는 불필요한 새로고침을 하지 않는다", () => {
   let reloadCount = 0;
   serviceWorkerUpdateModule.installServiceWorkerUpdateReload(null, () => reloadCount++);
@@ -364,6 +519,11 @@ test("기존 서비스워커 교체는 controller identity가 바뀔 때 한 번
 
 test("서비스워커 갱신 감시는 자동 업데이트 등록과 React 렌더보다 먼저 연결된다", () => {
   assert.match(viteConfigSource, /registerType:\s*'autoUpdate'/);
+  assert.match(mainSource, /installStaleChunkReload\(\);/);
+  assert.ok(
+    mainSource.indexOf("installStaleChunkReload();") < mainSource.indexOf("createRoot("),
+    "Vite preload 오류 감시는 React 렌더링 전에 설치되어야 한다",
+  );
   assert.ok(
     mainSource.indexOf("installServiceWorkerUpdateReload();") < mainSource.indexOf("createRoot("),
     "서비스워커 갱신 감시는 React 렌더링 전에 설치되어야 한다",

@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.dao.DuplicateKeyException;
@@ -44,17 +43,12 @@ import com.careertuner.payment.domain.Payment;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * 결제/구독/크레딧 도메인 서비스.
- * 개발 단계에서는 외부 PG(토스 등) 연동 없이 구매를 즉시 PAID 로 기록한다.
- * 실제 PG 연동 시 subscribe/purchaseCredits 의 결제 승인 단계만 교체하면 된다.
- */
+/** 결제 승인 후 구독/크레딧 반영과 결제 조회를 담당하는 도메인 서비스. */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class BillingServiceImpl implements BillingService, AiBenefitUsageService {
 
-    private static final String DEV_PROVIDER = "DEV";
     private static final String DEFAULT_PLAN = "FREE";
     private static final String TRANSACTION_GRANT = "GRANT";
     private static final String TRANSACTION_CONSUME = "CONSUME";
@@ -244,35 +238,6 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
 
     @Override
     @Transactional
-    public MyBillingResponse subscribe(Long userId, String planCode, String cycle) {
-        String code = planCode == null ? "" : planCode.trim().toUpperCase();
-        // FREE 선택은 구독 해지로 간주한다.
-        if (DEFAULT_PLAN.equals(code)) {
-            return cancelSubscription(userId);
-        }
-        SubscriptionPlan plan = billingPolicyService.activePlanByCode(code);
-        if (plan == null || !plan.isActive()) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "요금제를 찾을 수 없습니다.");
-        }
-        boolean yearly = cycle != null && cycle.trim().equalsIgnoreCase("YEARLY");
-        int amount = yearly
-                ? (plan.getYearlyPrice() != null ? plan.getYearlyPrice() : 0)
-                : (plan.getMonthlyPrice() != null ? plan.getMonthlyPrice() : 0);
-
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime end = yearly ? now.plusYears(1) : now.plusMonths(1);
-        String policySnapshotJson = billingPolicyService.subscriptionSnapshotJson(code);
-
-        Payment payment = recordPayment(userId, code, amount, code, null, policySnapshotJson);
-        activateSubscription(userId, payment.getId(), code, now, end, policySnapshotJson);
-
-        notify(userId, "PAYMENT_COMPLETE", "구독이 시작되었습니다",
-                "%s 플랜(%s) 구독이 활성화되었습니다.".formatted(plan.getName(), yearly ? "연간" : "월간"));
-        return getMyBilling(userId);
-    }
-
-    @Override
-    @Transactional
     public MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, Long paymentId, String planCode,
                                                                String policySnapshotJson) {
         String code = normalizePlanCode(planCode);
@@ -311,24 +276,6 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
                 .reason((isBlank(productCode) ? "크레딧" : productCode) + " 결제 충전")
                 .build());
         return balanceAfter;
-    }
-
-    @Override
-    @Transactional
-    public MyBillingResponse purchaseCredits(Long userId, String productCode) {
-        String code = productCode == null ? "" : productCode.trim().toUpperCase();
-        CreditProduct product = billingPolicyService.enabledCreditProductByCode(code);
-        if (product == null || !product.isEnabled()) {
-            throw new BusinessException(ErrorCode.NOT_FOUND, "충전 상품을 찾을 수 없습니다.");
-        }
-        grantCreditsAfterPayment(userId, product.getName(), product.getCreditAmount());
-
-        recordPayment(userId, code, product.getPrice(), null, product.getCreditAmount(),
-                billingPolicyService.creditProductSnapshotJson(product));
-
-        notify(userId, "CREDIT_RECHARGED", "크레딧이 충전되었습니다",
-                "크레딧 %d개가 충전되어 현재 %d개 보유 중입니다.".formatted(product.getCreditAmount(), balanceOf(userId)));
-        return getMyBilling(userId);
     }
 
     @Override
@@ -527,26 +474,6 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
         return balance != null ? balance : 0;
     }
 
-    private Payment recordPayment(Long userId, String productCode, int amount, String plan, Integer creditAmount,
-                                  String policySnapshotJson) {
-        LocalDateTime now = LocalDateTime.now();
-        Payment payment = new Payment();
-        payment.setUserId(userId);
-        payment.setProvider(DEV_PROVIDER);
-        payment.setProductType(plan == null ? "CREDIT" : "SUBSCRIPTION");
-        payment.setProductCode(productCode);
-        payment.setOrderId("DEV-" + UUID.randomUUID());
-        payment.setPaymentKey("DEVKEY-" + UUID.randomUUID());
-        payment.setAmount(amount);
-        payment.setPlan(plan);
-        payment.setCreditAmount(creditAmount);
-        payment.setPolicySnapshotJson(policySnapshotJson);
-        payment.setStatus("PAID");
-        payment.setPaidAt(now);
-        billingMapper.insertPayment(payment);
-        return payment;
-    }
-
     private void notify(Long userId, String type, String title, String message) {
         notificationService.notify(Notification.builder()
                 .userId(userId)
@@ -554,7 +481,7 @@ public class BillingServiceImpl implements BillingService, AiBenefitUsageService
                 .targetType("BILLING")
                 .title(title)
                 .message(message)
-                .link("/billing?tab=history")
+                .link("/billing/history")
                 .build());
     }
 

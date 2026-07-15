@@ -4,9 +4,11 @@ C 영역 fit-analysis evidence gate(`fit_analysis_gate_result`)의 **진짜(real
 합성 생성기(`gen_synth_gate_data.py`)의 분포는 **추정치**이고, 이 런북은 그 추정을 실측으로 교정하기 위한 것이다.
 
 - **OFFLINE 파트(GPU 불필요)**: 픽스처 작성·검증, seed SQL 생성, 이 문서. → 지금 커밋 가능.
-- **GPU-gated 파트(Ollama UP 필요)**: 실제 생성 run + 저장 rows 판독 + 실측 vs 추정 비교. → Ollama DOWN 이면 실행 금지.
+- **GPU-gated 파트(Ollama UP 필요)**: 실제 생성 run + 저장 rows 판독 + 실측 vs 추정 비교. → Ollama DOWN 이면 재실행 금지.
 
-현재 상태: **Ollama DOWN → GPU-gated 파트 미실행.** 아래 §3~§6 는 GPU 확보 후 실행하는 절차 기술이다.
+현재 상태: **2026-07-07 공유 4090에서 v1 24건·v2 52건 실측 완료.** 결과와 한계는
+[`GATE_ADVERSARIAL_LIVE_RESULT.md`](GATE_ADVERSARIAL_LIVE_RESULT.md)에 기록했다. 아래 §3~§6은 동일 조건을
+다시 측정할 때의 재현 절차이며, 현재 Ollama 가용성을 보장하는 문구가 아니다.
 
 ---
 
@@ -56,17 +58,19 @@ gate 전용 주석 키(`gateBand`, `expectedReasonTypes`, `expectedMaxSeverity`,
 
 ## §2. (OFFLINE) seed SQL 생성 — GPU 없이 지금 실행
 
-`run_e2e_production_baseline.py seed-sql` 은 `a_only_baseline_v1.jsonl` 을 하드코딩해 읽는다(`FIXTURE` 상수).
-gate 픽스처로 seed 하려면 실행 전 그 상수를 `gate_adversarial_v1.jsonl` 로 바꾸거나, 아래처럼 env 오버라이드 없이 임시 심볼릭/복사 대신 **드라이버의 FIXTURE 경로만 바꾼 뒤** 실행한다.
+`run_e2e_production_baseline.py seed-sql`은 기본적으로 `a_only_baseline_v1.jsonl`을 읽고,
+`--fixture`로 gate 픽스처를 명시할 수 있다. 소스 상수나 파일을 임시 교체하지 않는다.
 
 ```bash
 # 정적 seed SQL 출력(모델 호출 없음, DB 접속 없음 — 순수 파일 생성)
 python ml/career-strategy-llm/scripts/run_e2e_production_baseline.py seed-sql \
+  --fixture ml/career-strategy-llm/data/evidence_attribution_baseline/gate_adversarial_v1.jsonl \
   --out ml/career-strategy-llm/scripts/gate_e2e_seed.sql
 # 생성물: users(id 911001~) + user_profile + application_case(id 910001~) + job_analysis. INSERT IGNORE 멱등.
 ```
 
-DB 적용은 dev 에 mysql CLI 가 없으므로 `backend/tools/ApplySqlPatch.java`(JDBC) 로 적용한다.
+생성 SQL은 관리형 schema patch가 아닌 합성 E2E seed다. 로컬 MySQL client나 IDE Database Console에서
+검토 후 대상 개발 DB에만 적용한다. 운영 DB와 `.github/scripts/apply-db-patches.sh`에는 넣지 않는다.
 **seed SQL·raw output 은 커밋하지 않는다**(§7).
 
 ---
@@ -111,7 +115,8 @@ python ml/career-strategy-llm/scripts/run_e2e_production_baseline.py run \
 1. **modelDistribution 이 3B 만인지 확인.** 폴백 rows(3B 태그가 아닌 것)는 **genuine gate 아님** → 집계에서 제외.
    폴백이 섞였으면 그 케이스만 재실행하거나 결과에서 필터한 뒤 분포를 다시 낸다.
 2. **저장된 rows 판독**: `fit_analysis_gate_result`(gate_status, max_severity, reason_count, gate_reasons_json, evidence_gate_version)를
-   `ApplySqlPatch`/read 쿼리로 되읽어 run summary 와 일치하는지 교차확인(응답에만 있고 저장 안 된 케이스 색출).
+   읽기 전용 SQL이나 IDE Database Console로 되읽어 run summary 와 일치하는지 교차확인한다
+   (응답에만 있고 저장 안 된 케이스 색출).
 3. **실측 vs 추정 대조**:
    - 실측 `gate_status` 분포(PASSED/REVIEW_REQUIRED/REJECTED) ↔ `gen_synth_gate_data.py` 의 **55/40/5** 추정.
    - 실측 `max_severity` 분포(warning/critical) ↔ 합성 생성기 reason 의 **70/30**(warning:critical) 추정.
@@ -132,6 +137,6 @@ python ml/career-strategy-llm/scripts/run_e2e_production_baseline.py run \
 ## §8. 실행 순서 요약
 
 ```
-[OFFLINE 지금]  §1 validate → §2 seed-sql 생성
-[GPU 확보 후]   §3 ollama+3B → §4 backend oss:8081 → §5 load-test→run → §6 genuine 판정·판독·대조 → 요약 커밋
+[OFFLINE 재실행]  §1 validate → §2 seed-sql 생성·개발 DB 적용
+[GPU 재실행]      §3 ollama+3B → §4 backend oss:8081 → §5 load-test→run → §6 genuine 판정·판독·대조 → 요약 갱신
 ```

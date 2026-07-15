@@ -64,7 +64,7 @@ public class CompanyApplicationNotifyListener {
                     .targetId(event.applicationId())
                     .title(title)
                     .message(message)
-                    .link("/company")
+                    .link("/company/manage")
                     .build());
         } catch (Exception ex) {
             log.error("기업 신청 결과 알림 실패 applicationId={}", event.applicationId(), ex);

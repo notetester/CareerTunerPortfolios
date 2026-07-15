@@ -65,6 +65,15 @@ public interface FileAssetMapper {
             @Param("ownerUserId") Long ownerUserId,
             @Param("cutoff") LocalDateTime cutoff);
 
+    List<FileAsset> findStalePendingProfileImports(
+            @Param("cutoff") LocalDateTime cutoff,
+            @Param("limit") int limit);
+
+    int deleteStalePendingProfileImport(
+            @Param("id") Long id,
+            @Param("ownerUserId") Long ownerUserId,
+            @Param("cutoff") LocalDateTime cutoff);
+
     List<FileAsset> findStalePendingInterviewMedia(
             @Param("cutoff") LocalDateTime cutoff,
             @Param("limit") int limit);

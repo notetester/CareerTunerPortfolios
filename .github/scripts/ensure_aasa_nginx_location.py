@@ -202,7 +202,7 @@ def install(hostname: str, config_paths: list[Path], *, validate: bool = True) -
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hostname", default="careertuner.kro.kr")
+    parser.add_argument("--hostname", default="careertuner.example.com")
     parser.add_argument("configs", nargs="+", type=Path)
     args = parser.parse_args()
     configs = {path.resolve(): path.resolve().read_text(encoding="utf-8") for path in args.configs}

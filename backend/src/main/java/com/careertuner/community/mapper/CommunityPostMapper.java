@@ -2,29 +2,41 @@ package com.careertuner.community.mapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.careertuner.community.domain.CommunityInterviewReview;
 import com.careertuner.community.domain.CommunityPost;
+import com.careertuner.privacy.domain.ContentAuthorRow;
 
 @Mapper
 public interface CommunityPostMapper {
 
-    // viewerId(nullable): 뷰어가 개별 차단한 작성자 글 제외 — findAll/countAll 동일 조건(페이지 total 정합)
+    /** 개인정보 정책을 벌크 평가할 후보 작성자·표면. findAll/countAll과 같은 검색 조건을 쓴다. */
+    List<ContentAuthorRow> findAuthorSurfaces(@Param("category") String category,
+                                              @Param("status") String status,
+                                              @Param("keyword") String keyword);
+
+    // 차단 작성자 집합은 JSON 배열 1개씩 전달해 작성자 수와 무관하게 SQL placeholder 수를 고정한다.
     List<CommunityPost> findAll(@Param("category") String category,
                                 @Param("status") String status,
                                 @Param("sort") String sort,
                                 @Param("keyword") String keyword,
                                 @Param("offset") int offset,
                                 @Param("limit") int limit,
-                                @Param("viewerId") Long viewerId);
+                                @Param("blockedNamedAuthorIdsJson") String blockedNamedAuthorIdsJson,
+                                @Param("blockedAnonymousAuthorIdsJson") String blockedAnonymousAuthorIdsJson);
 
-    /** id 목록 조회(챗봇 추천 모아보기). status·뷰어 차단 조건은 findAll 과 동일, 입력 id 순서 보존. */
+    /** id 목록 조회(챗봇 추천 모아보기). 서비스가 최대 20건을 조회한 뒤 전체 개인정보 정책을 적용한다. */
     List<CommunityPost> findByIds(@Param("ids") List<Long> ids,
-                                  @Param("status") String status,
-                                  @Param("viewerId") Long viewerId);
+                                  @Param("status") String status);
+
+    /** 카테고리 탭 뱃지용 전수 집계. 목록과 동일한 차단 집합을 집계 전에 적용한다. */
+    List<Map<String, Object>> countPublishedByCategory(
+            @Param("blockedNamedAuthorIdsJson") String blockedNamedAuthorIdsJson,
+            @Param("blockedAnonymousAuthorIdsJson") String blockedAnonymousAuthorIdsJson);
 
     /**
      * 개인화 피드 후보 — 뷰어의 희망 직무/스킬 토큰(제목·태그·회사·직무 부분일치)이나
@@ -41,6 +53,8 @@ public interface CommunityPostMapper {
                                                    @Param("category") String category,
                                                    @Param("tokens") List<String> tokens,
                                                    @Param("categories") List<String> categories,
+                                                   @Param("blockedNamedAuthorIdsJson") String blockedNamedAuthorIdsJson,
+                                                   @Param("blockedAnonymousAuthorIdsJson") String blockedAnonymousAuthorIdsJson,
                                                    @Param("limit") int limit);
 
     /**
@@ -53,6 +67,8 @@ public interface CommunityPostMapper {
      */
     List<CommunityPost> findFreshPopular(@Param("category") String category,
                                          @Param("excludeIds") List<Long> excludeIds,
+                                         @Param("blockedNamedAuthorIdsJson") String blockedNamedAuthorIdsJson,
+                                         @Param("blockedAnonymousAuthorIdsJson") String blockedAnonymousAuthorIdsJson,
                                          @Param("limit") int limit);
 
     /**
@@ -62,10 +78,18 @@ public interface CommunityPostMapper {
     List<String> findRecentReactedCategories(@Param("userId") Long userId,
                                              @Param("limit") int limit);
 
+    /** 사용자 목록 total — findAll과 같은 개인정보 차단 집합을 적용한다. */
+    int countVisible(@Param("category") String category,
+                     @Param("status") String status,
+                     @Param("keyword") String keyword,
+                     @Param("blockedNamedAuthorIdsJson") String blockedNamedAuthorIdsJson,
+                     @Param("blockedAnonymousAuthorIdsJson") String blockedAnonymousAuthorIdsJson);
+
+    /** 관리자 전역 집계 호환 경로 — 개인화 차단 없이 센다. */
     int countAll(@Param("category") String category,
                  @Param("status") String status,
                  @Param("keyword") String keyword,
-                 @Param("viewerId") Long viewerId);
+                 @Param("ignoredViewerId") Long ignoredViewerId);
 
     /** 작성 rate-limit — since 이후 사용자가 올린 글 수(삭제 제외). */
     int countRecentPostsByUser(@Param("userId") Long userId, @Param("since") LocalDateTime since);
@@ -81,9 +105,15 @@ public interface CommunityPostMapper {
 
     void incrementViewCount(Long id);
 
-    // 인기글 조회
+    /** 인기글 기간에 해당하는 후보 작성자·표면 — 개인정보 정책을 LIMIT 전에 평가한다. */
+    List<ContentAuthorRow> findHotAuthorSurfaces(@Param("status") String status,
+                                                 @Param("since") LocalDateTime since);
+
+    // 인기글 조회 — 개인정보 차단을 LIMIT 전에 적용
     List<CommunityPost> findHotPosts(@Param("status") String status,
                                      @Param("since") LocalDateTime since,
+                                     @Param("blockedNamedAuthorIdsJson") String blockedNamedAuthorIdsJson,
+                                     @Param("blockedAnonymousAuthorIdsJson") String blockedAnonymousAuthorIdsJson,
                                      @Param("limit") int limit);
 
     // 댓글 수 증감

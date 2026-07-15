@@ -392,7 +392,7 @@ export function DashboardPage() {
                       )}
                       {urgentGap && (
                         <Link
-                          to="/analysis?tab=weakness"
+                          to="/analysis/weaknesses"
                           className="block rounded-lg border border-amber-100 bg-amber-50/90 p-3 transition-colors hover:bg-amber-50"
                         >
                           <div className="text-[11px] font-semibold text-amber-600">가장 시급한 보완 역량</div>

@@ -48,7 +48,7 @@ public class PlannerReminderScheduler {
                         .targetId(item.getId())
                         .title("일정 알림: " + item.getTitle())
                         .message(message(item))
-                        .link("/planner?item=" + item.getId())
+                        .link("/planner/schedule?item=" + item.getId())
                         .build());
                 plannerMapper.markReminderSent(reminder.getId());
             } catch (RuntimeException ex) {

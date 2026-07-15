@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
+import com.careertuner.community.domain.CommunityAuthorVisibility;
 import com.careertuner.community.domain.CommunityInterviewReview;
 import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.domain.PostCategory;
@@ -45,6 +46,7 @@ import com.careertuner.community.moderation.event.PostTagRequiredEvent;
 import com.careertuner.nickname.dto.DisplayNameQuery;
 import com.careertuner.nickname.dto.DisplayNameResponse;
 import com.careertuner.nickname.service.NicknameProfileService;
+import com.careertuner.privacy.domain.ContentAuthorRow;
 import com.careertuner.privacy.service.PrivacyPolicyService;
 import com.careertuner.privacy.service.PrivacySurfaces;
 import com.careertuner.reward.service.RewardService;
@@ -99,17 +101,24 @@ public class CommunityPostServiceImpl implements CommunityPostService {
 
     @Override
     public PostPageResponse getPosts(String category, String keyword, String sort, int page, int size, Long viewerId) {
-        // 개인화 정렬 — 검색어가 없을 때만 7:3 혼합 피드로 위임(키워드 검색은 기존 LIKE 경로 유지).
-        if (SORT_PERSONALIZED.equals(sort) && (keyword == null || keyword.isBlank())) {
-            return personalizedFeed(category, page, size, viewerId);
-        }
-        int offset = page * size;
         String status = PostStatus.PUBLISHED.name();
         String kw = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-        // 개별 계정 차단은 SQL(viewerBlockFilter)이 목록·count 동일 조건으로 제거해 total 이 일치하고
-        // 페이지가 비지 않는다(P-14≡CC-17). 자바 필터는 SQL 로 못 거르는 잔여(IP 파생·관계정책)만 2차로 정리한다.
-        List<CommunityPost> posts = filterBlockedAuthors(postMapper.findAll(category, status, sort, kw, offset, size, viewerId), viewerId);
-        int total = postMapper.countAll(category, status, kw, viewerId);
+        CommunityAuthorVisibility visibility = viewerId == null
+                ? CommunityAuthorVisibility.visibleToAll()
+                : resolveAuthorVisibility(viewerId, postMapper.findAuthorSurfaces(category, status, kw));
+
+        // 개인화 정렬 — 검색어가 없을 때만 7:3 혼합 피드로 위임(키워드 검색은 기존 LIKE 경로 유지).
+        if (SORT_PERSONALIZED.equals(sort) && (keyword == null || keyword.isBlank())) {
+            return personalizedFeed(category, page, size, viewerId, visibility);
+        }
+        int offset = page * size;
+        String blockedNamedAuthorIdsJson = visibility.blockedNamedAuthorIdsJson();
+        String blockedAnonymousAuthorIdsJson = visibility.blockedAnonymousAuthorIdsJson();
+        // 개인정보 정책 전체를 먼저 벌크 평가한 같은 차단 집합을 목록 LIMIT/OFFSET과 total에 함께 적용한다.
+        List<CommunityPost> posts = postMapper.findAll(category, status, sort, kw, offset, size,
+                blockedNamedAuthorIdsJson, blockedAnonymousAuthorIdsJson);
+        int total = postMapper.countVisible(category, status, kw,
+                blockedNamedAuthorIdsJson, blockedAnonymousAuthorIdsJson);
         // 비익명 작성자 표시명을 닉네임 프로필로 벌크 해석(N+1 방지). 익명 글은 해석 대상에서 제외.
         Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
         return new PostPageResponse(
@@ -119,8 +128,7 @@ public class CommunityPostServiceImpl implements CommunityPostService {
     }
 
     /**
-     * id 목록 조회(챗봇 추천 모아보기). SQL 이 입력 순서(FIELD)와 status·뷰어 차단 조건을 처리하고,
-     * 목록과 동일하게 자바 2차 차단 필터 + 표시명 벌크 해석을 얹는다. 상한 20건(URL 조작 방어).
+     * id 목록 조회(챗봇 추천 모아보기). 입력 순서(FIELD)를 보존하고 최대 20건에 개인정보 정책을 벌크 적용한다.
      */
     @Override
     public PostPageResponse getPostsByIds(List<Long> ids, Long viewerId) {
@@ -130,23 +138,111 @@ public class CommunityPostServiceImpl implements CommunityPostService {
             return new PostPageResponse(List.of(), 0, 0, 0);
         }
         List<CommunityPost> posts = filterBlockedAuthors(
-                postMapper.findByIds(distinct, PostStatus.PUBLISHED.name(), viewerId), viewerId);
+                postMapper.findByIds(distinct, PostStatus.PUBLISHED.name()), viewerId);
         Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
         List<PostListResponse> items = posts.stream()
                 .map(post -> toListResponse(post, resolved, viewerId)).toList();
         return new PostPageResponse(items, items.size(), 0, items.size());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Long> getCategoryCounts(Long viewerId) {
+        Map<String, Long> counts = new java.util.LinkedHashMap<>();
+        CommunityAuthorVisibility visibility = viewerId == null
+                ? CommunityAuthorVisibility.visibleToAll()
+                : resolveAuthorVisibility(viewerId,
+                        postMapper.findAuthorSurfaces(null, PostStatus.PUBLISHED.name(), null));
+        for (Map<String, Object> row : postMapper.countPublishedByCategory(
+                visibility.blockedNamedAuthorIdsJson(), visibility.blockedAnonymousAuthorIdsJson())) {
+            String category = stringValue(row, "category");
+            Long count = longValue(row, "cnt");
+            if (category != null && count != null) {
+                counts.put(category, count);
+            }
+        }
+        return counts;
+    }
+
+    /** 작성자 표면 후보를 고정 크기로 나눠 개인정보 매퍼의 IN 절을 제한하면서 전체 정책 판정 결과를 만든다. */
+    private CommunityAuthorVisibility resolveAuthorVisibility(Long viewerId, List<ContentAuthorRow> authorSurfaces) {
+        if (viewerId == null || authorSurfaces == null || authorSurfaces.isEmpty()) {
+            return CommunityAuthorVisibility.visibleToAll();
+        }
+        Set<Long> namedAuthors = new HashSet<>();
+        Set<Long> anonymousAuthors = new HashSet<>();
+        for (ContentAuthorRow row : authorSurfaces) {
+            if (row == null || row.getUserId() == null) {
+                continue;
+            }
+            (row.isAnonymous() ? anonymousAuthors : namedAuthors).add(row.getUserId());
+        }
+        Set<Long> blockedNamed = blockedAuthorsInBatches(
+                viewerId, namedAuthors, PrivacySurfaces.CONTENT_POST);
+        Set<Long> blockedAnonymous = blockedAuthorsInBatches(
+                viewerId, anonymousAuthors, PrivacySurfaces.CONTENT_POST + ".anonymous");
+        return new CommunityAuthorVisibility(blockedNamed, blockedAnonymous);
+    }
+
+    /** 임의 상한 없이 모든 후보를 500명 이하로 평가하고 차단 결과를 합친다. */
+    private Set<Long> blockedAuthorsInBatches(Long viewerId, Set<Long> authorIds, String surface) {
+        if (authorIds.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> blocked = new HashSet<>();
+        for (Set<Long> batch : CommunityAuthorVisibility.partition(authorIds)) {
+            Set<Long> batchResult = privacyPolicyService.blockedAuthorsAmong(viewerId, batch, surface);
+            if (batchResult != null) {
+                blocked.addAll(batchResult);
+            }
+        }
+        return Set.copyOf(blocked);
+    }
+
+    /** MyBatis map 은 JDBC 드라이버에 따라 alias 대소문자가 달라질 수 있어 키를 대소문자 무시로 읽는다. */
+    private static Object rowValue(Map<String, Object> row, String key) {
+        if (row.containsKey(key)) {
+            return row.get(key);
+        }
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(key)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static String stringValue(Map<String, Object> row, String key) {
+        Object value = rowValue(row, key);
+        return value == null ? null : value.toString();
+    }
+
+    private static Long longValue(Map<String, Object> row, String key) {
+        Object value = rowValue(row, key);
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String string) {
+            try {
+                return Long.valueOf(string);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     /**
      * 개인화 7:3 혼합 피드. PersonalizedFeedService 가 만든 블렌디드 순서를 그대로 유지한 채
-     * (재정렬하지 않음) 차단 작성자 필터 → 표시명 벌크 해석만 얹어 응답한다.
+     * (재정렬하지 않음) 표시명 벌크 해석만 얹어 응답한다. 차단은 후보 LIMIT 전에 이미 적용됐다.
      * 카테고리 필터는 서비스 계층 정규화(null/blank → null)를 따른다.
      */
-    private PostPageResponse personalizedFeed(String category, int page, int size, Long viewerId) {
+    private PostPageResponse personalizedFeed(String category, int page, int size, Long viewerId,
+                                              CommunityAuthorVisibility visibility) {
         String cat = (category == null || category.isBlank()) ? null : category;
-        PersonalizedFeedService.FeedPage feed = personalizedFeedService.blendedFeed(viewerId, cat, page, size);
-        // 차단 작성자 제거는 순서를 보존한다(stream filter). 총계는 피드 total 을 그대로 사용.
-        List<CommunityPost> posts = filterBlockedAuthors(feed.posts(), viewerId);
+        PersonalizedFeedService.FeedPage feed = personalizedFeedService.blendedFeed(
+                viewerId, cat, page, size, visibility);
+        List<CommunityPost> posts = feed.posts();
         Map<DisplayNameQuery, DisplayNameResponse> resolved = resolveAuthorNames(posts);
         return new PostPageResponse(
                 posts.stream().map(post -> toListResponse(post, resolved, viewerId)).toList(),
@@ -189,17 +285,14 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         if (viewerId == null || posts.isEmpty()) {
             return posts;
         }
-        Set<Long> anonymousAuthors = new HashSet<>();
-        Set<Long> namedAuthors = new HashSet<>();
-        for (CommunityPost post : posts) {
-            (post.isAnonymous() ? anonymousAuthors : namedAuthors).add(post.getUserId());
-        }
-        Set<Long> blockedAnonymous = privacyPolicyService.blockedAuthorsAmong(
-                viewerId, anonymousAuthors, PrivacySurfaces.CONTENT_POST + ".anonymous");
-        Set<Long> blockedNamed = privacyPolicyService.blockedAuthorsAmong(
-                viewerId, namedAuthors, PrivacySurfaces.CONTENT_POST);
+        List<ContentAuthorRow> surfaces = posts.stream()
+                .map(post -> new ContentAuthorRow(post.getUserId(), post.isAnonymous()))
+                .toList();
+        CommunityAuthorVisibility visibility = resolveAuthorVisibility(viewerId, surfaces);
         return posts.stream()
-                .filter(post -> !(post.isAnonymous() ? blockedAnonymous : blockedNamed).contains(post.getUserId()))
+                .filter(post -> !(post.isAnonymous()
+                        ? visibility.blockedAnonymousAuthorIds()
+                        : visibility.blockedNamedAuthorIds()).contains(post.getUserId()))
                 .toList();
     }
 
@@ -358,18 +451,21 @@ public class CommunityPostServiceImpl implements CommunityPostService {
         eventPublisher.publishEvent(new PostEditedEvent(postId));
     }
 
-    /** 인기글 후보 여유분 — 뷰어 차단 작성자 제거 후에도 노출 5건을 채우기 위한 조회 상한. */
-    private static final int HOT_POST_FETCH_SIZE = 20;
     private static final int HOT_POST_DISPLAY_SIZE = 5;
 
     @Override
     public List<HotPostResponse> getHotPosts(Long viewerId) {
         LocalDateTime since = LocalDateTime.now().minusDays(7);
-        // 뷰어 필터(P-13≡CC-18): 여유분을 뽑아 차단 작성자를 제거한 뒤 5건으로 자른다(비로그인은 무필터).
-        List<CommunityPost> posts = filterBlockedAuthors(
-                postMapper.findHotPosts(PostStatus.PUBLISHED.name(), since, HOT_POST_FETCH_SIZE), viewerId);
+        CommunityAuthorVisibility visibility = viewerId == null
+                ? CommunityAuthorVisibility.visibleToAll()
+                : resolveAuthorVisibility(
+                        viewerId, postMapper.findHotAuthorSurfaces(PostStatus.PUBLISHED.name(), since));
+        // 동일 차단 집합을 인기 점수 LIMIT 전에 적용하므로 허용 글이 20위 밖에 있어도 최대 5건을 채운다.
+        List<CommunityPost> posts = postMapper.findHotPosts(
+                PostStatus.PUBLISHED.name(), since,
+                visibility.blockedNamedAuthorIdsJson(), visibility.blockedAnonymousAuthorIdsJson(),
+                HOT_POST_DISPLAY_SIZE);
         return posts.stream()
-                .limit(HOT_POST_DISPLAY_SIZE)
                 .map(p -> new HotPostResponse(p.getId(), p.getTitle(), p.getCommentCount(), p.getViewCount()))
                 .toList();
     }

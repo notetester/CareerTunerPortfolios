@@ -49,14 +49,19 @@ function formatDate(value: string): string {
 export function CompanyPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const pathname = location.pathname as keyof typeof sectionMeta;
+  const socialChannelId = location.pathname.startsWith("/company/social/")
+    ? location.pathname.split("/").filter(Boolean).at(-1) ?? null
+    : searchParams.get("channel");
+  const pathname = (location.pathname.startsWith("/company/social/")
+    ? "/company/social"
+    : location.pathname) as keyof typeof sectionMeta;
   const meta = sectionMeta[pathname] ?? sectionMeta["/company/about"];
   const Icon = meta.icon;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <section className="border-b border-slate-200 bg-card">
-        <div className="mx-auto max-w-[1180px] px-4 py-10 sm:px-6 sm:py-14">
+        <div className="mx-auto max-w-[1400px] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
           <div className="flex items-center gap-2 text-sm font-bold text-teal-700">
             <Icon className="size-4" />
             {meta.eyebrow}
@@ -72,13 +77,13 @@ export function CompanyPage() {
         </div>
       </section>
 
-      <main className="mx-auto w-full max-w-[1180px] px-4 py-10 sm:px-6">
+      <main className="mx-auto w-full max-w-[1400px] px-4 py-10 sm:px-6 lg:px-8">
         {pathname === "/company/about" && <AboutContent />}
         {pathname === "/company/team" && <TeamContent />}
         {pathname === "/company/careers" && <CareersContent selectedSlug={searchParams.get("role")} />}
         {pathname === "/company/blog" && <ArticleCollection kind="blog" selectedSlug={searchParams.get("post")} />}
         {pathname === "/company/press" && <ArticleCollection kind="press" selectedSlug={searchParams.get("post")} />}
-        {pathname === "/company/social" && <SocialContent selectedId={searchParams.get("channel")} />}
+        {pathname === "/company/social" && <SocialContent selectedId={socialChannelId} />}
       </main>
     </div>
   );
@@ -334,7 +339,7 @@ function SocialContent({ selectedId }: { selectedId: string | null }) {
           const ChannelIcon = channelIcons[channel.id];
           return (
             <Button key={channel.id} asChild variant={channel.id === selected.id ? "default" : "outline"} className="w-full justify-start">
-              <Link to={`/company/social?channel=${channel.id}`}><ChannelIcon className="size-4" />{channel.label}</Link>
+              <Link to={`/company/social/${channel.id}`}><ChannelIcon className="size-4" />{channel.label}</Link>
             </Button>
           );
         })}

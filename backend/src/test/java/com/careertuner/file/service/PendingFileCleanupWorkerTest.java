@@ -30,6 +30,9 @@ class PendingFileCleanupWorkerTest {
                 "cleanupStalePendingAutoPrepAttachments", int.class, int.class)
                 .getAnnotation(Transactional.class)).isNull();
         assertThat(FileService.class.getMethod(
+                "cleanupStalePendingProfileImports", int.class, int.class)
+                .getAnnotation(Transactional.class)).isNull();
+        assertThat(FileService.class.getMethod(
                 "cleanupStalePendingInterviewMedia", int.class, int.class)
                 .getAnnotation(Transactional.class)).isNull();
         assertThat(FileService.class.getMethod(
@@ -41,6 +44,9 @@ class PendingFileCleanupWorkerTest {
                 .getAnnotation(Transactional.class).propagation()).isEqualTo(Propagation.REQUIRES_NEW);
         assertThat(PendingFileCleanupWorker.class.getMethod(
                 "deleteStaleAutoPrepAttachment", FileAsset.class, LocalDateTime.class)
+                .getAnnotation(Transactional.class).propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+        assertThat(PendingFileCleanupWorker.class.getMethod(
+                "deleteStaleProfileImport", FileAsset.class, LocalDateTime.class)
                 .getAnnotation(Transactional.class).propagation()).isEqualTo(Propagation.REQUIRES_NEW);
         assertThat(PendingFileCleanupWorker.class.getMethod(
                 "deleteStaleInterviewMedia", FileAsset.class, LocalDateTime.class)
@@ -72,6 +78,18 @@ class PendingFileCleanupWorkerTest {
 
         verify(storage).snapshotIfExists("7/file-24");
         verify(storage).delete("7/file-24");
+    }
+
+    @Test
+    void profileImportDeleteRemovesStoredBytesOnlyAfterAtomicRowDelete() {
+        FileAsset asset = asset(25L, "RESUME");
+        LocalDateTime cutoff = LocalDateTime.now().minusHours(24);
+        when(mapper.deleteStalePendingProfileImport(25L, 7L, cutoff)).thenReturn(1);
+
+        assertThat(worker.deleteStaleProfileImport(asset, cutoff)).isTrue();
+
+        verify(storage).snapshotIfExists("7/file-25");
+        verify(storage).delete("7/file-25");
     }
 
     @Test

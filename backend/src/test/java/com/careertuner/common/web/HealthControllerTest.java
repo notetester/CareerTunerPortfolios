@@ -24,6 +24,9 @@ class HealthControllerTest {
         var response = controller.ready();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().success()).isTrue();
+        assertThat(response.getBody().data())
+                .containsEntry("status", "UP")
+                .containsEntry("db", "UP");
     }
 
     @Test

@@ -113,7 +113,7 @@ def static_checks(repo_root: Path) -> list[ReadinessCheck]:
             "python scripts/17_run_worker_drills.py",
             "python scripts/19_run_synthetic_stabilization_fixture.py --count 43",
             "python scripts/18_check_release_readiness.py",
-            "docker compose config",
+            "docker compose -f docker-compose.yml -f docker-compose.prod.yml config --no-env-resolution",
             "python ml/job-posting-worker/scripts/23_run_worker_docker_smoke.py",
             "--install-ocr",
             "import paddle, paddleocr, paddlex, fitz, cv2",

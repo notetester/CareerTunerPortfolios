@@ -27,8 +27,8 @@ class SitesFinancialMutationEnvelopeTest {
     @BeforeEach
     void setUp() {
         CareerTunerProperties props = new CareerTunerProperties();
-        props.getApp().setFrontendUrl("https://careertuner.kro.kr");
-        props.getApp().setSitesFrontendUrl("https://careertuner.career-tuner-4654.chatgpt.site");
+        props.getApp().setFrontendUrl("https://careertuner.example.com");
+        props.getApp().setSitesFrontendUrl("https://sites.example.com");
         var interceptor = new SitesFinancialMutationInterceptor(new FrontendReturnUrlResolver(props));
         mockMvc = MockMvcBuilders.standaloneSetup(new TestFinancialController())
                 .addInterceptors(interceptor)

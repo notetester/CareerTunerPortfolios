@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Browser } from "@capacitor/browser";
 import { useLocation, useNavigate } from "react-router";
-import { AtSign, KeyRound, Link2, MailCheck, Phone, ShieldCheck } from "lucide-react";
+import { AtSign, CheckCircle2, KeyRound, Link2, Loader2, MailCheck, Phone, ShieldCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -12,15 +12,18 @@ import { useOAuthProviderAvailability } from "@/app/auth/useOAuthProviderAvailab
 import { useOutageFallback } from "@/app/lib/outageFallback";
 import { isNativeApp } from "@/platform/capacitor";
 import { validateAuthorizationUrl, type NativeOAuthProvider } from "@/platform/nativeOAuthCore.mjs";
-import { getAccountInfo, getSocialLinkUrl, requestEmailRegistration, setLoginId, setPhone, unlinkSocial } from "../api/nicknameProfileApi";
+import { getAccountInfo, getSocialLinkUrl, requestEmailRegistration, setLoginId, unlinkSocial } from "../api/nicknameProfileApi";
 import { PROVIDER_LABELS, type AccountInfo } from "../types/nicknameProfile";
+import { RECAPTCHA_CONTAINER_ID, usePhoneVerification } from "../hooks/usePhoneVerification";
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
 /**
- * 계정 정보 카드 — 로그인 아이디(최초 1회 설정), 전화번호, 연결된 소셜 계정.
+ * 계정 정보 카드 — 로그인 아이디(최초 1회 설정), 전화번호 인증, 연결된 소셜 계정.
  *
- * 아이디는 설정 후 변경 불가, 전화번호는 언제든 변경 가능(인증은 선택적·스텁).
+ * 아이디는 설정 후 변경 불가. 전화번호는 SMS/Firebase 인증으로 등록하며,
+ * 인증 성공 시 백엔드가 번호 저장과 인증 상태(users.phone/phone_verified)를 함께 처리한다.
+ * Settings 계정 탭과 ProfileDetail 계정 탭이 이 카드를 공유한다.
  */
 export function AccountInfoCard() {
   const location = useLocation();
@@ -38,11 +41,9 @@ export function AccountInfoCard() {
 
   const [loginIdDraft, setLoginIdDraft] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
-  const [phoneDraft, setPhoneDraft] = useState("");
   const [savingLoginId, setSavingLoginId] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendingPassword, setSendingPassword] = useState(false);
-  const [savingPhone, setSavingPhone] = useState(false);
   const [socialBusy, setSocialBusy] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<AccountInfo | null> => {
@@ -52,7 +53,6 @@ export function AccountInfoCard() {
       const next = await getAccountInfo();
       setInfo(next);
       setEmailDraft(next.temporaryEmail ? "" : next.email ?? "");
-      setPhoneDraft(next.phone ?? "");
       return next;
     } catch (e) {
       setError(e instanceof Error ? e.message : "계정 정보를 불러오지 못했습니다.");
@@ -61,6 +61,9 @@ export function AccountInfoCard() {
       setLoading(false);
     }
   }, []);
+
+  // 전화번호 인증 — 성공 시 백엔드가 번호 저장 + 인증 상태를 함께 갱신하므로 계정 정보를 다시 불러온다.
+  const phoneVerify = usePhoneVerification({ onVerified: () => void load() });
 
   useEffect(() => {
     void load();
@@ -175,25 +178,6 @@ export function AccountInfoCard() {
       setError(e instanceof Error ? e.message : "비밀번호 설정 메일 발송에 실패했습니다.");
     } finally {
       setSendingPassword(false);
-    }
-  };
-
-  const submitPhone = async () => {
-    const value = phoneDraft.trim();
-    if (!value) {
-      setError("전화번호를 입력해 주세요.");
-      return;
-    }
-    setSavingPhone(true);
-    setError(null);
-    setMessage(null);
-    try {
-      setInfo(await setPhone(value));
-      setMessage("전화번호를 저장했습니다.");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "전화번호 저장에 실패했습니다.");
-    } finally {
-      setSavingPhone(false);
     }
   };
 
@@ -356,28 +340,111 @@ export function AccountInfoCard() {
           )}
         </div>
 
-        {/* 전화번호 */}
+        {/* 전화번호 — 인증하기(인증 성공 시 번호 저장 + 인증 상태 통합) */}
         <div className="space-y-2">
           <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
             <Phone className="size-3.5" />
             전화번호
           </span>
+
+          {/* Firebase invisible reCAPTCHA 앵커 — 화면에 보이지 않지만 발송 시점에 DOM 에 있어야 한다. */}
+          {phoneVerify.isFirebase && <div id={RECAPTCHA_CONTAINER_ID} />}
+
           <div className="flex flex-wrap items-center gap-2">
             <Input
               className="max-w-xs"
-              value={phoneDraft}
-              onChange={(e) => setPhoneDraft(e.target.value)}
+              value={phoneVerify.phone}
+              onChange={(e) => phoneVerify.setPhone(e.target.value)}
               placeholder="010-1234-5678"
+              inputMode="tel"
+              disabled={phoneVerify.requesting}
             />
-            <Button size="sm" variant="outline" onClick={() => void submitPhone()} disabled={savingPhone}>
-              {savingPhone ? "저장 중..." : "저장"}
+            <Button
+              size="sm"
+              className="bg-blue-600 text-white hover:bg-blue-700"
+              onClick={() => void phoneVerify.handleRequest()}
+              disabled={phoneVerify.requesting || phoneVerify.cooldown > 0}
+            >
+              {phoneVerify.requesting ? (
+                <>
+                  <Loader2 className="mr-1 size-4 animate-spin" />
+                  발송 중...
+                </>
+              ) : phoneVerify.cooldown > 0 ? (
+                `재발송 (${phoneVerify.cooldown}s)`
+              ) : phoneVerify.codeSent ? (
+                "재발송"
+              ) : phoneVerify.status?.phoneVerified ? (
+                "재인증"
+              ) : (
+                "인증하기"
+              )}
             </Button>
-            {info?.phone && (
-              <Badge className={info.phoneVerified ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"}>
-                {info.phoneVerified ? "인증됨" : "미인증"}
+            {phoneVerify.status?.phoneVerified ? (
+              <Badge className="bg-green-100 text-green-700">
+                <CheckCircle2 className="mr-1 size-3.5" />
+                인증됨
               </Badge>
-            )}
+            ) : phoneVerify.status?.phone || info?.phone ? (
+              <Badge className="bg-slate-100 text-slate-600">미인증</Badge>
+            ) : null}
           </div>
+
+          {/* Mock(데모) 안내 배지 */}
+          {phoneVerify.devCode && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <Sparkles className="size-4 shrink-0" />
+              <span>
+                데모 모드(실 제공자 키 미설정)로 발송된 인증번호:{" "}
+                <span className="font-mono font-bold tracking-widest">{phoneVerify.devCode}</span>
+              </span>
+            </div>
+          )}
+
+          {/* 코드 입력 + 검증 */}
+          {phoneVerify.codeSent && (
+            <div className="space-y-2">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+                <ShieldCheck className="size-3.5" />
+                인증번호
+                {phoneVerify.provider && (
+                  <span className="font-normal text-slate-400">
+                    · {phoneVerify.realSending ? `${phoneVerify.provider} 실발송` : `${phoneVerify.provider} 데모`}
+                  </span>
+                )}
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  className="max-w-[10rem] font-mono tracking-widest"
+                  value={phoneVerify.code}
+                  onChange={(e) => phoneVerify.setCode(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                  placeholder="6자리 코드"
+                  inputMode="numeric"
+                  maxLength={6}
+                  disabled={phoneVerify.verifying}
+                />
+                <Button
+                  size="sm"
+                  className="bg-blue-600 text-white hover:bg-blue-700"
+                  onClick={() => void phoneVerify.handleVerify()}
+                  disabled={phoneVerify.verifying || phoneVerify.code.trim().length === 0}
+                >
+                  {phoneVerify.verifying ? (
+                    <>
+                      <Loader2 className="mr-1 size-4 animate-spin" />
+                      확인 중...
+                    </>
+                  ) : (
+                    "확인"
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 전화번호 인증 전용 안내 — 계정 상단 메시지와 분리 */}
+          {phoneVerify.error && <p className="text-xs text-red-600">{phoneVerify.error}</p>}
+          {phoneVerify.message && !phoneVerify.error && <p className="text-xs text-green-600">{phoneVerify.message}</p>}
         </div>
 
         {/* 연결된 소셜 계정 */}

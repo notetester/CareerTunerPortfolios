@@ -55,10 +55,12 @@ import { collaborationRoutes } from "./domains/collaboration";
 import { privacyRoutes } from "./domains/privacy";
 import { mfaRoutes } from "./domains/mfa";
 import { companyRoutes } from "./domains/company";
+import { catalogRoutes } from "./domains/catalog";
 import { legalRoutes } from "./domains/legal";
 import { adsRoutes } from "./domains/ads";
 import { nicknameProfileRoutes } from "./domains/nicknameProfile";
 import { plannerRoutes, rewardRoutes } from "./domains/planner";
+import { autoprepRoutes } from "./domains/autoprep";
 import { adminRoutes } from "./domains/admin";
 
 /** 등록된 핸들러가 없을 때 반환하는 sentinel. */
@@ -546,6 +548,7 @@ const coreRoutes: MockRoute[] = [
 // 핵심(인증·C·B·D) + 도메인별 라우트를 모두 합친 최종 레지스트리. 앞에 오는 핸들러가 우선 매칭된다.
 const routes: MockRoute[] = [
   ...coreRoutes,
+  ...autoprepRoutes,
   ...applicationsExtraRoutes,
   ...interviewExtraRoutes,
   ...billingRoutes,
@@ -559,6 +562,7 @@ const routes: MockRoute[] = [
   ...privacyRoutes,
   ...mfaRoutes,
   ...companyRoutes,
+  ...catalogRoutes,
   ...legalRoutes,
   ...adsRoutes,
   ...nicknameProfileRoutes,

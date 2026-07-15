@@ -10,6 +10,10 @@ const adminApplicationCasesSource = await readFile(
   new URL("../src/admin/features/application-cases/pages/AdminApplicationCasesPage.tsx", import.meta.url),
   "utf8",
 );
+const learningRecommendationSource = await readFile(
+  new URL("../src/features/applications/components/LearningRecommendationPanel.tsx", import.meta.url),
+  "utf8",
+);
 const responsiveGridContract = "grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3";
 assert.equal(
   applicationListSource.split(responsiveGridContract).length - 1,
@@ -30,6 +34,16 @@ assert.match(
   applicationListSource,
   /min-h-44 min-w-0 w-full flex-col/,
   "새 지원 건 카드도 모바일 열 너비를 넘지 않아야 한다",
+);
+assert.match(
+  learningRecommendationSource,
+  /to=\{`\/applications\/\$\{analysis\.applicationCaseId\}`\}[\s\S]{0,180}지원 건 상세 보기/,
+  "학습 추천의 각 지원 건 카드에서 원본 지원 건 상세로 돌아갈 수 있어야 한다",
+);
+assert.equal(
+  learningRecommendationSource.split("지원 건 상세 보기").length - 1,
+  1,
+  "학습 추천 카드 반복문 안에는 상세 연결 계약이 정확히 한 번 선언되어야 한다",
 );
 
 const viteServer = await createServer({ server: { middlewareMode: true }, appType: "custom" });

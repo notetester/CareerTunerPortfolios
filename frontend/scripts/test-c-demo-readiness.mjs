@@ -48,7 +48,13 @@ try {
   assert.ok(modelPicker.includes("bg-card") && modelPicker.includes("text-foreground"));
   assert.ok(routes.includes('withConsentGate(DashboardPage, ["AI_DATA"])'));
   assert.ok(routes.includes('withConsentGate(CareerRoadmapPage, ["AI_DATA"])'));
-  assert.ok(routes.includes("withAuthGate(PlannerPage)") && routes.includes("withAuthGate(CertificateSearchPage)"));
+  assert.ok(
+    routes.includes("withAuthGate(PlannerHubPage)")
+      && routes.includes("withAuthGate(PlannerSchedulePage)")
+      && routes.includes("withAuthGate(PlannerMemosPage)")
+      && routes.includes("withAuthGate(PlannerOverlaysPage)")
+      && routes.includes("withAuthGate(CertificateSearchPage)"),
+  );
   assert.ok(homePage.includes('consentStatus?.aiDataAgreed !== true'));
   assert.ok(homePage.includes('<ConsentGate requirements={["AI_DATA"]}>'));
   assert.ok(theme.includes("--color-slate-50: var(--surface-2)"));

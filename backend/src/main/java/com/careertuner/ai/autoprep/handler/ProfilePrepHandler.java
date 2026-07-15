@@ -35,10 +35,12 @@ public class ProfilePrepHandler implements PrepStepHandler {
     public PrepStepResult handle(PrepStepContext context, PrepProgress progress) {
         long start = System.nanoTime();
         progress.substep("프로필 로드", "보유 스펙·경력 불러오기");
+        context.checkActive();
         UserProfile profile = profileMapper.findByUserId(context.userId());
         if (profile == null) {
             return PrepStepResult.skipped("PROFILE", "프로필이 없어 건너뜀 — 프로필을 먼저 입력하세요.");
         }
+        context.checkActive();
         String portfolioEvidence = profilePortfolioService.evidenceText(context.userId());
         if (portfolioEvidence != null && !portfolioEvidence.isBlank()) {
             // resumeText/selfIntro 와 섞지 않고 명시적인 PORTFOLIO 컨텍스트로 직렬화해 오분류를 막는다.
@@ -46,6 +48,7 @@ public class ProfilePrepHandler implements PrepStepHandler {
             progress.substep("포트폴리오 연결", "프로필 포트폴리오 파일을 별도 근거로 불러오기");
         }
         progress.substep("역량 정리", "AI 요약·역량 추출");
+        context.checkActive();
         ProfileAiResult result = profileAiService.evaluate(profile, "PROFILE_SUMMARY");
         long ms = (System.nanoTime() - start) / 1_000_000;
         return PrepStepResult.done("PROFILE", "프로필 요약·역량 정리 완료", result, ms);

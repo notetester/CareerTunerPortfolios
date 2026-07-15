@@ -105,16 +105,21 @@ function parseArgs(argv) {
   return args;
 }
 
+export function addGitFileList(files, output) {
+  for (const file of output.split(/\r?\n/)) if (file) files.add(file);
+}
+
 function gitFiles(args) {
   const files = new Set(args.files);
   if (args.base) {
     const diff = execFileSync("git", ["diff", "--name-only", `${args.base}...${args.head}`], { encoding: "utf8" });
-    for (const file of diff.split(/\r?\n/)) if (file) files.add(file);
+    addGitFileList(files, diff);
   }
   if (args.workingTree) {
-    const tracked = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" });
+    const unstaged = execFileSync("git", ["diff", "--name-only"], { encoding: "utf8" });
+    const staged = execFileSync("git", ["diff", "--cached", "--name-only"], { encoding: "utf8" });
     const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], { encoding: "utf8" });
-    for (const file of `${tracked}\n${untracked}`.split(/\r?\n/)) if (file) files.add(file);
+    addGitFileList(files, `${unstaged}\n${staged}\n${untracked}`);
   }
   if (files.size === 0) throw new Error("--base, --working-tree 또는 --file로 변경 파일을 지정하세요.");
   return [...files].sort();

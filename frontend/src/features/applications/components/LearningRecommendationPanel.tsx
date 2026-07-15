@@ -26,9 +26,11 @@ interface LearningRecommendationPanelProps {
   /** 학습 80% 이상 완료 시 재분석 유도 버튼에 연결. 미전달이면 안내 문구만 표시한다. */
   onReanalyze?: () => void;
   reanalyzing?: boolean;
+  /** 집계 페이지처럼 상위에서 이미 제목을 그릴 때 패널 자체 제목을 숨긴다. */
+  hideHeading?: boolean;
 }
 
-export function LearningRecommendationPanel({ analyses, loading, error, onReanalyze, reanalyzing = false }: LearningRecommendationPanelProps) {
+export function LearningRecommendationPanel({ analyses, loading, error, onReanalyze, reanalyzing = false, hideHeading = false }: LearningRecommendationPanelProps) {
   const [tasks, setTasks] = useState<Record<number, FitAnalysisLearningTask[]>>({});
   const [updatingTaskId, setUpdatingTaskId] = useState<number | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
@@ -61,10 +63,12 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-lg font-bold text-slate-900">학습/자격증 추천</h2>
-        <p className="mt-1 text-sm text-slate-500">지원 건별 부족 역량을 학습 과제와 자격증 추천으로 연결합니다.</p>
-      </div>
+      {!hideHeading && (
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">학습/자격증 추천</h2>
+          <p className="mt-1 text-sm text-slate-500">지원 건별 부족 역량을 학습 과제와 자격증 추천으로 연결합니다.</p>
+        </div>
+      )}
       {taskError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">{taskError}</div>}
 
       <CareerStrategyCard />
@@ -133,6 +137,10 @@ export function LearningRecommendationPanel({ analyses, loading, error, onReanal
                 )}
                 <CertificateList recommendations={detailedCertificates} fallbackItems={certificates} />
                 <CertificateEvidenceSection snapshot={analysis.certificateEvidence ?? null} fitAnalysisId={analysis.id} applicationCaseId={analysis.applicationCaseId} />
+
+                <Link to={`/applications/${analysis.applicationCaseId}`} className="inline-flex text-sm font-semibold text-blue-600 hover:text-blue-700">
+                  지원 건 상세 보기
+                </Link>
               </CardContent>
             </Card>
           );

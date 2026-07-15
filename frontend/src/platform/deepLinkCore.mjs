@@ -1,4 +1,4 @@
-const CANONICAL_APP_LINK_HOST = "careertuner.kro.kr";
+const CANONICAL_APP_LINK_HOST = "careertuner.example.com";
 const NATIVE_OAUTH_CALLBACK_PATH = "/auth/callback";
 const NATIVE_SOCIAL_LINK_CALLBACK_PATH = "/profile/detail";
 const ALLOWED_ROUTE_ROOTS = new Set([

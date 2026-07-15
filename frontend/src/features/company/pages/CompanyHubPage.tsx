@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import { Building2, Clock3, PencilLine, Plus, RefreshCw } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, Building2, Clock3, PencilLine, Plus, RefreshCw } from "lucide-react";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
@@ -39,6 +39,46 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
   REJECTED: "bg-red-100 text-red-700",
   CLOSED: "bg-slate-300 text-slate-700",
 };
+
+/** 기업 서비스 대분류 허브. 신청·공고 관리와 공개 채용공고 탐색을 서로 다른 화면으로 안내한다. */
+export function CompanyServiceOverviewPage() {
+  const destinations = [
+    {
+      href: "/company/manage",
+      title: "기업 계정 신청·공고 관리",
+      description: "기업 계정 전환을 신청하고 승인 상태, 내 채용공고 작성·수정·마감을 관리합니다.",
+      icon: Building2,
+    },
+    {
+      href: "/jobs",
+      title: "채용공고 게시판",
+      description: "승인된 기업이 공개한 채용공고를 검색하고 상세 모집 조건을 확인합니다.",
+      icon: BriefcaseBusiness,
+    },
+  ] as const;
+
+  return (
+    <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+      <header>
+        <h1 className="flex items-center gap-2 text-2xl font-black text-slate-900">
+          <Building2 className="size-6 text-blue-600" />
+          기업 서비스
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">기업 계정 신청과 공고 운영, 구직자용 채용공고 탐색을 목적에 맞는 독립 화면에서 이용합니다.</p>
+      </header>
+      <section className="grid gap-4 md:grid-cols-2" aria-label="기업 서비스 기능">
+        {destinations.map((item) => (
+          <Link key={item.href} to={item.href} className="group rounded-2xl border border-slate-200 bg-card p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+            <span className="flex size-12 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><item.icon className="size-6" /></span>
+            <h2 className="mt-5 text-lg font-black text-slate-900">{item.title}</h2>
+            <p className="mt-2 min-h-12 text-sm leading-6 text-slate-500">{item.description}</p>
+            <span className="mt-5 inline-flex items-center gap-1 text-sm font-bold text-blue-700">화면 열기 <ArrowRight className="size-4" /></span>
+          </Link>
+        ))}
+      </section>
+    </div>
+  );
+}
 
 /** 기업 허브 — 일반 회원에게는 기업 신청 폼/상태, 승인된 기업에게는 내 공고 관리를 보여준다. */
 export function CompanyHubPage() {
@@ -135,11 +175,11 @@ export function CompanyHubPage() {
   };
 
   if (loading) {
-    return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-slate-500">불러오는 중...</div>;
+    return <div className="mx-auto w-full max-w-[1400px] px-4 py-16 text-center text-slate-500 sm:px-6 lg:px-8">불러오는 중...</div>;
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 px-4 py-8">
+    <div className="mx-auto w-full max-w-[1400px] space-y-4 px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between gap-3">
         <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
           <Building2 className="size-5" />

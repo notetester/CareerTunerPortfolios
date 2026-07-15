@@ -76,7 +76,7 @@ export function RecentInterviewCard({ interview }: RecentInterviewCardProps) {
             )}
 
             <div className="flex items-center gap-3 text-sm font-semibold">
-              <Link to="/interview?tab=report" className="text-purple-600 hover:text-purple-700">
+              <Link to="/interview/reports" className="text-purple-600 hover:text-purple-700">
                 리포트 보기
               </Link>
               <Link to={`/applications/${interview.applicationCaseId}`} className="text-slate-500 hover:text-slate-700">

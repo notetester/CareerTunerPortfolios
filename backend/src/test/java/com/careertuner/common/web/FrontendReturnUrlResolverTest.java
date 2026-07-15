@@ -20,8 +20,8 @@ class FrontendReturnUrlResolverTest {
 
     @BeforeEach
     void setUp() {
-        props.getApp().setFrontendUrl("https://careertuner.kro.kr/");
-        props.getApp().setSitesFrontendUrl("https://careertuner.career-tuner-4654.chatgpt.site/");
+        props.getApp().setFrontendUrl("https://careertuner.example.com/");
+        props.getApp().setSitesFrontendUrl("https://sites.example.com/");
         resolver = new FrontendReturnUrlResolver(props);
     }
 
@@ -30,7 +30,7 @@ class FrontendReturnUrlResolverTest {
         HttpServletRequest request = mock(HttpServletRequest.class);
 
         assertThat(resolver.resolve(request))
-                .isEqualTo(new FrontendReturnTarget("primary", "https://careertuner.kro.kr"));
+                .isEqualTo(new FrontendReturnTarget("primary", "https://careertuner.example.com"));
     }
 
     @Test
@@ -42,7 +42,7 @@ class FrontendReturnUrlResolverTest {
 
         assertThat(target.client()).isEqualTo("sites");
         assertThat(target.absoluteUrl("/auth/callback"))
-                .isEqualTo("https://careertuner.career-tuner-4654.chatgpt.site/auth/callback");
+                .isEqualTo("https://sites.example.com/auth/callback");
     }
 
     @Test
@@ -54,14 +54,14 @@ class FrontendReturnUrlResolverTest {
 
         assertThat(target.client()).isEqualTo("native");
         assertThat(target.absoluteUrl("/auth/reset-password?token=opaque"))
-                .isEqualTo("https://careertuner.kro.kr/auth/reset-password?token=opaque");
+                .isEqualTo("https://careertuner.example.com/auth/reset-password?token=opaque");
         assertThat(target.baseUrl()).startsWith("https://");
     }
 
     @Test
     void storedNativeClientFallsBackToPrimaryForEmailCallback() {
         assertThat(resolver.resolveStoredClient("native"))
-                .isEqualTo(new FrontendReturnTarget("primary", "https://careertuner.kro.kr"));
+                .isEqualTo(new FrontendReturnTarget("primary", "https://careertuner.example.com"));
     }
 
     @Test

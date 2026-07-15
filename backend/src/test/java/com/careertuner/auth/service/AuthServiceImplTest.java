@@ -80,7 +80,7 @@ class AuthServiceImplTest {
     void defaultPolicy() {
         when(loginRiskPolicyService.isLockoutEnabled()).thenReturn(false);
         when(frontendReturnUrlResolver.primary())
-                .thenReturn(new FrontendReturnTarget("primary", "https://careertuner.kro.kr"));
+                .thenReturn(new FrontendReturnTarget("primary", "https://careertuner.example.com"));
     }
 
     @Test
@@ -200,7 +200,7 @@ class AuthServiceImplTest {
         EmailVerification verification = captor.getValue();
         org.assertj.core.api.Assertions.assertThat(verification.getPurpose()).isEqualTo("FIND_ID");
         verify(emailService).sendFindIdEmail(eq(EMAIL), eq(verification.getToken()),
-                eq(new FrontendReturnTarget("primary", "https://careertuner.kro.kr")));
+                eq(new FrontendReturnTarget("primary", "https://careertuner.example.com")));
     }
 
     @Test

@@ -16,7 +16,8 @@ import {
 } from "@/app/profile/profileApi";
 import { mergeApprovedProfileDraft, type DraftApplyOpts } from "@/app/profile/profileDraftMerge";
 import {
-  createCaseFromFile, createCaseFromText, createCaseFromUrl, fetchGithubReadme, getLatestExtractionStatus,
+  AUTO_PREP_PENDING_REF_TYPE, createCaseFromFile, createCaseFromText, createCaseFromUrl,
+  fetchGithubReadme, getLatestExtractionStatus, PROFILE_IMPORT_PENDING_REF_TYPE,
   uploadDocument, type UploadedFile,
 } from "../api/onboardingApi";
 import {
@@ -229,7 +230,11 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
       try {
         const res: UploadedFile = slot === "portfolio"
           ? await uploadProfilePortfolioFile(file)
-          : await uploadDocument(file, kind);
+          : await uploadDocument(
+              file,
+              kind,
+              slot === "resume" ? PROFILE_IMPORT_PENDING_REF_TYPE : AUTO_PREP_PENDING_REF_TYPE,
+            );
         if (!isDocCurrent(clientId, generation)) {
           // 닫기/reset 중 완료된 업로드는 UI에 되살리지 않고 즉시 정리한다.
           await deleteDocFile({ kind, id: res.id }).catch(() => undefined);
@@ -239,7 +244,12 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
 
         if (slot === "resume" && res.id != null) {
           try {
-            const imported = await importProfileDocument(res.id, "RESUME_TEXT");
+            const profileBeforeImport = await getProfile();
+            const imported = await importProfileDocument(
+              res.id,
+              "RESUME_TEXT",
+              profileBeforeImport.versionNo ?? null,
+            );
             if (!isDocCurrent(clientId, generation)) {
               await deleteUnlinkedProfileFile(res.id).catch(() => undefined);
               return;
@@ -307,7 +317,12 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
           }
         } else if (slot === "cover" && res.id != null) {
           try {
-            const imported = await importProfileDocument(res.id, "SELF_INTRO");
+            const profileBeforeImport = await getProfile();
+            const imported = await importProfileDocument(
+              res.id,
+              "SELF_INTRO",
+              profileBeforeImport.versionNo ?? null,
+            );
             if (!isDocCurrent(clientId, generation)) return;
             setProfileImportNotice(
               imported.truncated
@@ -596,7 +611,11 @@ export function useOnboardingGuide(initialStep: GuideStep = "role") {
     const generation = docGenerationRef.current;
     const clientId = ++nextDocClientIdRef.current;
     activeDocIdsRef.current.add(clientId);
-    const uploaded: UploadedFile = await uploadDocument(file, "ATTACHMENT");
+    const uploaded: UploadedFile = await uploadDocument(
+      file,
+      "ATTACHMENT",
+      AUTO_PREP_PENDING_REF_TYPE,
+    );
     if (!isDocCurrent(clientId, generation)) {
       await deleteUnlinkedProfileFile(uploaded.id).catch(() => undefined);
       return;

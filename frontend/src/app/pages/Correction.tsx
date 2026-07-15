@@ -7,10 +7,12 @@ import {
   LoaderCircle,
   PenLine,
   Sparkles,
+  UserRound,
 } from "lucide-react";
 import { listApplicationCases } from "@/features/applications/api/applicationCasesApi";
 import type { ApplicationCase } from "@/features/applications/types/applicationCase";
 import { getInterviewAnswerCorrectionSource, warmupCorrectionModel } from "@/features/correction/api/correctionApi";
+import { getProfile, type UserProfile } from "@/app/profile/profileApi";
 import { AiChargeCostBadge } from "@/features/billing/components/AiChargeCostBadge";
 import { ModelPicker, type AiModelChoice } from "@/app/components/ai/ModelPicker";
 import { CorrectionHistoryList } from "@/features/correction/components/CorrectionHistoryList";
@@ -94,6 +96,9 @@ export function CorrectionPage() {
   const [linkedInterviewSource, setLinkedInterviewSource] = useState<CorrectionInterviewSource | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceError, setSourceError] = useState<string | null>(null);
+  const [profileData, setProfileData] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileNotice, setProfileNotice] = useState<string | null>(null);
 
   const requestedTab = searchParams.get("tab") ?? "answer";
   const activeTab: CorrectionTab = CORRECTION_TABS.includes(requestedTab as CorrectionTab)
@@ -131,6 +136,10 @@ export function CorrectionPage() {
       // 워밍업 실패는 실제 첨삭 요청의 8B → 3B → Haiku → OpenAI 폴백에 맡긴다.
     });
   }, []);
+
+  useEffect(() => {
+    setProfileNotice(null);
+  }, [activeTab]);
 
   useEffect(() => {
     let activeRequest = true;
@@ -235,6 +244,33 @@ export function CorrectionPage() {
     updateSearchParam("sourceRefId", null);
   };
 
+  const handleProfileLoad = async () => {
+    setProfileNotice(null);
+    setProfileLoading(true);
+    try {
+      const data = profileData ?? (await getProfile());
+      setProfileData(data);
+      const text = profilePrefillText(data, activeTab);
+      if (!text) {
+        setProfileNotice(`프로필에 저장된 ${active.title.replace(" 첨삭", "")} 내용이 없습니다. 내 프로필에서 먼저 작성해 주세요.`);
+        return;
+      }
+      if (
+        draft.originalText.trim() &&
+        draft.originalText.trim() !== text &&
+        !window.confirm("작성 중인 원문을 프로필 내용으로 덮어씁니다. 계속할까요?")
+      ) {
+        return;
+      }
+      updateDraft("originalText", text.slice(0, ORIGINAL_TEXT_MAX_LENGTH));
+      setProfileNotice("프로필에서 불러왔습니다. 내용을 확인·수정한 뒤 실행하세요.");
+    } catch (error: unknown) {
+      setProfileNotice(error instanceof Error ? error.message : "프로필을 불러오지 못했습니다.");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto w-full max-w-[1200px] space-y-6 px-4 py-8 sm:px-6">
@@ -311,7 +347,21 @@ export function CorrectionPage() {
                 )}
 
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-800" htmlFor="correction-original">첨삭할 원문</label>
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm font-bold text-slate-800" htmlFor="correction-original">첨삭할 원문</label>
+                    {activeTab !== "answer" && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleProfileLoad()}
+                        disabled={submitting || profileLoading}
+                      >
+                        {profileLoading ? <LoaderCircle className="size-3.5 animate-spin" /> : <UserRound className="size-3.5" />}
+                        프로필에서 불러오기
+                      </Button>
+                    )}
+                  </div>
                   <Textarea
                     id="correction-original"
                     value={draft.originalText}
@@ -329,6 +379,10 @@ export function CorrectionPage() {
                   </div>
                   {sourceLoading && <p className="text-xs text-blue-700">면접 답변 원문을 불러오는 중입니다.</p>}
                   {sourceError && <p className="text-xs text-red-600">{sourceError}</p>}
+                  {profileNotice && <p className="text-xs text-slate-500">{profileNotice}</p>}
+                  {activeTab === "answer" && !linkedInterviewSource && !sourceLoading && (
+                    <p className="text-xs text-slate-400">면접 연습의 답변 첨삭에서 열면 답변과 질문이 자동으로 채워집니다.</p>
+                  )}
                   {linkedInterviewSource && (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
                       <span>면접 답변 #{linkedInterviewSource.sourceRefId} 원문·평가 맥락을 사용합니다.</span>
@@ -409,4 +463,33 @@ function parseCaseId(value: string | null) {
   if (!value) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function profilePrefillText(profile: UserProfile, tab: CorrectionTab): string {
+  if (tab === "cover") return (profile.selfIntro ?? "").trim();
+  if (tab === "resume") return (profile.resumeText ?? "").trim();
+  if (tab === "portfolio") return composePortfolioText(profile);
+  return "";
+}
+
+/** 프로필 projects(JSON 배열)·portfolioLinks 를 첨삭 원문으로 합성. 필드가 없거나 형태가 달라도 조용히 건너뛴다. */
+function composePortfolioText(profile: UserProfile): string {
+  const projects = Array.isArray(profile.projects) ? profile.projects : [];
+  const blocks = projects
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item) => {
+      const text = (key: string) => (typeof item[key] === "string" ? (item[key] as string).trim() : "");
+      const head = [text("title"), text("type"), text("role"), text("period")].filter(Boolean).join(" · ");
+      const result = text("result");
+      const body = [text("description"), result ? `성과: ${result}` : ""].filter(Boolean).join("\n");
+      return [head, body].filter(Boolean).join("\n");
+    })
+    .filter(Boolean);
+  const links = Array.isArray(profile.portfolioLinks)
+    ? profile.portfolioLinks.filter((link): link is string => typeof link === "string" && link.trim() !== "")
+    : [];
+  if (links.length > 0) {
+    blocks.push(`포트폴리오 링크: ${links.join(", ")}`);
+  }
+  return blocks.join("\n\n").trim();
 }

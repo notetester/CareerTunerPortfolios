@@ -33,7 +33,7 @@ class OAuthMockSafetyGuardTest {
 
     @Test
     void rejectsPublicApiBaseEvenInLocalProfile() {
-        CareerTunerProperties properties = mockEnabled("https://careertuner.kro.kr");
+        CareerTunerProperties properties = mockEnabled("https://careertuner.example.com");
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles("local");
 
@@ -77,18 +77,18 @@ class OAuthMockSafetyGuardTest {
 
         assertThat(base).contains("mock-enabled: ${OAUTH_MOCK_ENABLED:false}");
         assertThat(local).contains("mock-enabled: ${OAUTH_MOCK_ENABLED:true}");
-        assertThat(aws).contains("https://careertuner.careertuner.chatgpt.site");
+        assertThat(aws).contains("https://sites.example.com");
         assertThat(aws)
-                .contains("OAUTH_GOOGLE_REDIRECT_URI:https://careertuner.kro.kr/api/auth/oauth/google/callback")
-                .contains("OAUTH_KAKAO_REDIRECT_URI:https://careertuner.kro.kr/api/auth/oauth/kakao/callback")
-                .contains("OAUTH_NAVER_REDIRECT_URI:https://careertuner.kro.kr/api/auth/oauth/naver/callback");
+                .contains("OAUTH_GOOGLE_REDIRECT_URI:https://careertuner.example.com/api/auth/oauth/google/callback")
+                .contains("OAUTH_KAKAO_REDIRECT_URI:https://careertuner.example.com/api/auth/oauth/kakao/callback")
+                .contains("OAUTH_NAVER_REDIRECT_URI:https://careertuner.example.com/api/auth/oauth/naver/callback");
         assertThat(compose)
                 .contains("SPRING_PROFILES_ACTIVE: aws")
                 .contains("OAUTH_MOCK_ENABLED: \"false\"")
-                .contains("APP_SITES_FRONTEND_URL: https://careertuner.careertuner.chatgpt.site")
-                .contains("OAUTH_GOOGLE_REDIRECT_URI: https://careertuner.kro.kr/api/auth/oauth/google/callback")
-                .contains("OAUTH_KAKAO_REDIRECT_URI: https://careertuner.kro.kr/api/auth/oauth/kakao/callback")
-                .contains("OAUTH_NAVER_REDIRECT_URI: https://careertuner.kro.kr/api/auth/oauth/naver/callback");
+                .contains("APP_SITES_FRONTEND_URL: https://sites.example.com")
+                .contains("OAUTH_GOOGLE_REDIRECT_URI: https://careertuner.example.com/api/auth/oauth/google/callback")
+                .contains("OAUTH_KAKAO_REDIRECT_URI: https://careertuner.example.com/api/auth/oauth/kakao/callback")
+                .contains("OAUTH_NAVER_REDIRECT_URI: https://careertuner.example.com/api/auth/oauth/naver/callback");
     }
 
     private static CareerTunerProperties mockEnabled(String apiBaseUrl) {

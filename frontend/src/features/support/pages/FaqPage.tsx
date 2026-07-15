@@ -15,7 +15,7 @@ export default function FaqPage() {
   const items = faqs;
 
   return (
-    <div className="ct-page ct-support ct-support--narrow">
+    <div className="ct-page ct-support">
       <div className="ct-pagehead">
         <h1>자주 묻는 질문</h1>
         <p>CareerTuner 이용에 대해 자주 묻는 질문들을 모았습니다.</p>

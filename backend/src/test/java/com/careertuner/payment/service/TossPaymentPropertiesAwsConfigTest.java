@@ -33,8 +33,8 @@ class TossPaymentPropertiesAwsConfigTest {
                 .bind("careertuner.toss.payments", Bindable.of(TossPaymentProperties.class))
                 .orElseThrow(() -> new AssertionError("AWS Toss payment configuration was not bound"));
 
-        assertThat(properties.getSuccessUrl()).isEqualTo("https://careertuner.kro.kr/billing/success");
-        assertThat(properties.getFailUrl()).isEqualTo("https://careertuner.kro.kr/billing/fail");
+        assertThat(properties.getSuccessUrl()).isEqualTo("https://careertuner.example.com/billing/success");
+        assertThat(properties.getFailUrl()).isEqualTo("https://careertuner.example.com/billing/fail");
     }
 
     @Test
@@ -42,7 +42,7 @@ class TossPaymentPropertiesAwsConfigTest {
         String compose = Files.readString(Path.of("../docker-compose.prod.yml"));
 
         assertThat(compose)
-                .contains("CAREERTUNER_TOSS_PAYMENTS_SUCCESS_URL: https://careertuner.kro.kr/billing/success")
-                .contains("CAREERTUNER_TOSS_PAYMENTS_FAIL_URL: https://careertuner.kro.kr/billing/fail");
+                .contains("CAREERTUNER_TOSS_PAYMENTS_SUCCESS_URL: https://careertuner.example.com/billing/success")
+                .contains("CAREERTUNER_TOSS_PAYMENTS_FAIL_URL: https://careertuner.example.com/billing/fail");
     }
 }

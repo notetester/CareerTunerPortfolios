@@ -1,5 +1,10 @@
 # CareerTuner — 담당별 자체 LLM 운영안
 
+> **문서 상태:** A~F가 맞춰야 할 목표 계약과 인수인계 기준이다. 예시 provider·모델명과 “현재 상태” 표는
+> 작성 시점 스냅샷이므로 라이브 레지스트리로 사용하지 않는다. 2026-07 현재 구현은
+> [`ml/README.md`](../../ml/README.md), [`backend/README.md`](../../backend/README.md),
+> [`docs/AI_ORCHESTRATOR.md`](../AI_ORCHESTRATOR.md)를 우선한다.
+
 > 작성 기준: 기존 `README.md`, `backend/README.md`, `frontend/README.md`, `docs/ARCHITECTURE.md`, `docs/TEAM_WORK_DISTRIBUTION.md`, `docs/FEATURE_MODULE_STRUCTURE.md`, `docs/planning/자체LLM_팀_도입안.md`, 현재 런타임 소스를 함께 검토해 정리한 실행 운영안.
 > 문서 목적: A~F 담당자가 각자 자기 도메인용 자체 모델을 운용할 때 필요한 모델 범위, 입력/출력, 검증, 저장, fallback, 산출물 기준을 프로젝트 구조에 맞춰 통일한다.
 > 문서 성격: `docs/planning/자체LLM_팀_도입안.md`가 선택 근거와 팀 결정표라면, 이 문서는 결정 이후 실제 작업과 인수인계에 쓰는 상세 운영 기준이다.
@@ -29,7 +34,7 @@
 
 이 문서는 다음을 직접 변경하지 않는다.
 
-- 공통 `ai/common`, `ai/prompt`, `application.yaml`, `schema.sql` 구현
+- 공통 `ai/common`, 공통 프롬프트 엔진 예약 경계인 `ai/prompt`, `application.yaml`, `schema.sql` 구현
 - 실제 모델 가중치, LoRA adapter, GGUF 파일
 - 운영 DB 구조
 

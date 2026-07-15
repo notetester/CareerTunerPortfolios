@@ -1,7 +1,12 @@
-# 면접 브리핑 Contract (QGEN 학습 입력 = 런타임 조립기 출력)
+# 면접 학습 브리핑 Contract
 
-> **단일 스키마.** 백엔드 런타임 조립기(`InterviewBriefingAssembler`)와 Python 합성기(`generate_synthetic.py`)가
-> **똑같은 브리핑 형식**을 만든다. 그래야 합성으로 학습한 모델이 런타임 입력을 그대로 이해한다.
+> **현재 범위:** 이 문서는 Python 합성 파이프라인의 QGEN 입력 계약이다. 조립기는
+> [`briefing.py`](briefing.py)이고 [`assemble_dataset.py`](assemble_dataset.py)가 이를 호출한다.
+> 백엔드에는 같은 출력을 만드는 `InterviewBriefingAssembler`가 아직 없으며, 현재 런타임 입력은
+> [`InterviewServiceImpl.capturePreparationContext`](../../backend/src/main/java/com/careertuner/interview/service/InterviewServiceImpl.java)와
+> [`InterviewOpenAiClient`](../../backend/src/main/java/com/careertuner/interview/service/InterviewOpenAiClient.java)가 별도로 조립한다.
+> 따라서 학습 입력과 런타임 프롬프트가 byte-identical하다고 주장하지 않는다. 런타임 QGEN을 자체 모델의
+> 기본 경로로 승격하기 전에 Java parity adapter와 고정 fixture 비교 테스트를 추가해야 한다.
 >
 > **핵심 원칙(RAG 논리):** 면접 회사는 무한대(외국 포함) → 모델이 회사를 외우면 안 된다.
 > 회사 정보는 **입력으로 매번 주입**, 모델은 **"브리핑 → 질문" 변환 능력만** 학습한다.
@@ -47,7 +52,7 @@
 
 ---
 
-## 4. 정제·압축 규칙 (조립기 = 코드, LLM 아님)
+## 4. 정제·압축 규칙 (Python 학습 조립기 = 코드, LLM 아님)
 
 1. **선별**: facts 5 / inferences 3 / preferred_skills 8 / ambiguous 2 (앞에서 자름)
 2. **정제**: `"외부 검색을 하지 않았으므로"`, `"입력 공고 기준"` 류 분석 메타 서술 정규식 컷
@@ -116,7 +121,7 @@
 
 ---
 
-## 8. 자체 LLM 6 task (멀티태스크 · 같은 JSONL에 task 혼합)
+## 8. 자체 LLM task (현재 5개 생성 + PLAN 계획)
 
 | task | 입력(user) | 출력(assistant) | 데이터 |
 | --- | --- | --- | --- |
@@ -125,7 +130,7 @@
 | **EVAL** | 질문+답변(+모범답안 기준) | `{score, feedback}` | **실데이터 59건** + 합성 |
 | **PROBE** | (압박) 질문+답변 | 반박 꼬리질문 | 합성 |
 | **REPORT** | 전체 Q&A | 총평·항목 점수 | 합성 |
-| **PLAN** | 면접 상태 | 다음 액션 JSON | 합성 |
+| **PLAN** | 면접 상태 | 다음 액션 JSON | **미생성·계획** |
 
 > EVAL은 `interview_training_sample`(실사용 {질문/답변/점수/피드백})을 백엔드 export로 뽑아 합성과 합친다.
 > "잘함/망함/애매함" 점수 구간을 합성에서 의도적으로 섞어 채점 모델이 구간을 학습하게 한다.

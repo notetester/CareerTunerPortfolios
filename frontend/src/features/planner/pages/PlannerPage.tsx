@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   Bell,
   CalendarClock,
@@ -52,9 +52,18 @@ import type {
   PlannerTimingPrecision,
 } from "../types/planner";
 import { REMINDER_CHANNEL_LABELS } from "../types/planner";
+import {
+  PLANNER_EDIT_QUERY_PARAM,
+  PLANNER_SECTION_PATHS,
+  findPlannerEditTarget,
+  parsePlannerItemId,
+  plannerEditHref,
+  type PlannerTab,
+} from "../lib/plannerNavigation";
 import "../styles/planner.css";
 
-type PlannerTab = "schedule" | "memo" | "overlay";
+export { PLANNER_SECTION_PATHS } from "../lib/plannerNavigation";
+export type { PlannerTab } from "../lib/plannerNavigation";
 
 const CHANNELS: PlannerReminderChannel[] = [
   "WEB_TOAST",
@@ -125,16 +134,13 @@ function emptySchedule(): ScheduleForm {
   };
 }
 
-function parsePlannerItemId(value: string | null): number | null {
-  if (!value || !/^\d+$/.test(value)) return null;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-export function PlannerPage() {
-  const [searchParams] = useSearchParams();
+export function PlannerPage({ section }: { section?: PlannerTab } = {}) {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestedItemId = parsePlannerItemId(searchParams.get("item"));
-  const [tab, setTab] = useState<PlannerTab>("schedule");
+  const requestedEditId = parsePlannerItemId(searchParams.get(PLANNER_EDIT_QUERY_PARAM));
+  const [legacyTab, setLegacyTab] = useState<PlannerTab>("schedule");
+  const tab = section ?? legacyTab;
   const [data, setData] = useState<PlannerDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -148,6 +154,30 @@ export function PlannerPage() {
   const [calendarAnchor, setCalendarAnchor] = useState<Date>(() => new Date());
   // 최신 조회만 반영 — 뷰/월을 빠르게 바꿀 때 늦게 도착한 이전 범위 응답이 현재 뷰 데이터를 덮어쓰지 않게.
   const loadSeq = useRef(0);
+  const hydratedEditKey = useRef<string | null>(null);
+
+  const selectSection = (next: PlannerTab) => {
+    if (section) {
+      if (section !== next) navigate(PLANNER_SECTION_PATHS[next]);
+      return;
+    }
+    const nextParams = new URLSearchParams(searchParams);
+    if (next === "schedule") nextParams.delete("tab");
+    else nextParams.set("tab", next);
+    if (next !== "schedule") nextParams.delete("item");
+    nextParams.delete(PLANNER_EDIT_QUERY_PARAM);
+    setSearchParams(nextParams);
+    setLegacyTab(next);
+  };
+
+  const clearEditContext = () => {
+    hydratedEditKey.current = null;
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete(PLANNER_EDIT_QUERY_PARAM);
+      return next;
+    }, { replace: true });
+  };
 
   const load = async () => {
     const seq = ++loadSeq.current;
@@ -179,13 +209,50 @@ export function PlannerPage() {
   useEffect(() => {
     const requested = searchParams.get("tab");
     if (requestedItemId != null) {
-      setTab("schedule");
+      setLegacyTab("schedule");
     } else if (requested === "memo" || requested === "overlay" || requested === "schedule") {
-      setTab(requested);
+      setLegacyTab(requested);
+    } else {
+      setLegacyTab("schedule");
     }
   }, [searchParams, requestedItemId]);
 
-  // 알림의 /planner?item={id} 딥링크가 해당 일정을 실제로 보여주도록 렌더 후 스크롤한다.
+  // 오버레이에서 독립 편집 화면으로 이동하면 이전 wrapper의 state는 사라진다.
+  // URL의 편집 ID를 현재 API 응답에 다시 결합해 새로고침/뒤로 가기에도 동일한 폼을 복원한다.
+  useEffect(() => {
+    if (requestedEditId == null) {
+      hydratedEditKey.current = null;
+      return;
+    }
+    if (loading || !data || (tab !== "memo" && tab !== "schedule")) return;
+
+    const editKey = `${tab}:${requestedEditId}`;
+    if (hydratedEditKey.current === editKey) return;
+
+    if (tab === "memo") {
+      const memo = findPlannerEditTarget(data.memos, requestedEditId);
+      if (!memo) {
+        toast.error("편집할 메모를 찾지 못했습니다.");
+        clearEditContext();
+        return;
+      }
+      setEditingMemoId(memo.id);
+      setMemoForm(memoToRequest(memo));
+    } else {
+      const item = findPlannerEditTarget(data.scheduleItems, requestedEditId);
+      if (!item) {
+        toast.error("편집할 일정을 현재 조회 범위에서 찾지 못했습니다.");
+        clearEditContext();
+        return;
+      }
+      setEditingScheduleId(item.id);
+      setScheduleForm(scheduleToForm(item));
+    }
+
+    hydratedEditKey.current = editKey;
+  }, [data, loading, requestedEditId, tab]);
+
+  // 알림의 /planner/schedule?item={id} 딥링크가 해당 일정을 실제로 보여주도록 렌더 후 스크롤한다.
   useEffect(() => {
     if (loading || tab !== "schedule" || requestedItemId == null) return;
     if (!data?.scheduleItems.some((item) => item.id === requestedItemId)) return;
@@ -210,6 +277,7 @@ export function PlannerPage() {
       toast.success(editingMemoId ? "메모를 수정했습니다." : "메모를 추가했습니다.");
       setMemoForm(emptyMemo);
       setEditingMemoId(null);
+      clearEditContext();
       await load();
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "메모를 저장하지 못했습니다.");
@@ -236,6 +304,7 @@ export function PlannerPage() {
       toast.success(editingScheduleId ? "일정을 수정했습니다." : "일정을 추가했습니다.");
       setScheduleForm(emptySchedule());
       setEditingScheduleId(null);
+      clearEditContext();
       await load();
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "일정을 저장하지 못했습니다.");
@@ -245,27 +314,23 @@ export function PlannerPage() {
   };
 
   const editMemo = (memo: PlannerMemo) => {
+    if (section && section !== "memo") {
+      navigate(plannerEditHref("memo", memo.id));
+      return;
+    }
     setEditingMemoId(memo.id);
-    setMemoForm({
-      title: memo.title ?? "",
-      content: memo.content ?? "",
-      color: memo.color,
-      pinned: memo.pinned,
-      overlayVisible: memo.overlayVisible,
-      opacity: memo.opacity,
-      applicationCaseId: memo.applicationCaseId,
-      fitAnalysisId: memo.fitAnalysisId,
-    });
-    setTab("memo");
+    setMemoForm(memoToRequest(memo));
+    selectSection("memo");
   };
 
   const editSchedule = (item: PlannerScheduleItem) => {
+    if (section && section !== "schedule") {
+      navigate(plannerEditHref("schedule", item.id));
+      return;
+    }
     setEditingScheduleId(item.id);
-    setScheduleForm({
-      ...itemToRequest(item),
-      reminderMode: item.reminders.some((reminder) => reminder.remindAt) ? "exact" : "offset",
-    });
-    setTab("schedule");
+    setScheduleForm(scheduleToForm(item));
+    selectSection("schedule");
   };
 
   const removeMemo = async (memoId: number) => {
@@ -318,7 +383,7 @@ export function PlannerPage() {
           ].map((item) => (
             <button
               key={item.key}
-              onClick={() => setTab(item.key)}
+              onClick={() => selectSection(item.key)}
               className={`flex shrink-0 items-center gap-1.5 rounded-md px-3 py-2 text-sm font-semibold ${
                 tab === item.key ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-50"
               }`}
@@ -345,7 +410,11 @@ export function PlannerPage() {
               editing={editingScheduleId != null}
               saving={saving}
               onSave={() => void saveSchedule()}
-              onCancel={() => { setEditingScheduleId(null); setScheduleForm(emptySchedule()); }}
+              onCancel={() => {
+                setEditingScheduleId(null);
+                setScheduleForm(emptySchedule());
+                clearEditContext();
+              }}
             />
             <div className="min-w-0 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -418,7 +487,11 @@ export function PlannerPage() {
               editing={editingMemoId != null}
               saving={saving}
               onSave={() => void saveMemo()}
-              onCancel={() => { setEditingMemoId(null); setMemoForm(emptyMemo); }}
+              onCancel={() => {
+                setEditingMemoId(null);
+                setMemoForm(emptyMemo);
+                clearEditContext();
+              }}
             />
             <MemoList memos={data?.memos ?? []} onEdit={editMemo} onDelete={(id) => void removeMemo(id)} />
           </div>
@@ -704,14 +777,16 @@ function MemoList({ memos, onEdit, onDelete }: { memos: PlannerMemo[]; onEdit: (
     <div className="grid gap-3 md:grid-cols-2">
       {memos.map((memo) => (
         <div key={memo.id} className={`planner-memo planner-memo--${memo.color}`} style={{ opacity: memo.opacity }}>
+          {/* 배경이 테마와 무관한 고정 파스텔이므로 글씨·아이콘도 고정 잉크색으로 —
+              slate·blue 계열 유틸리티는 다크 팔레트 브리지에서 밝은색으로 뒤집혀 파스텔 위에서 사라진다. */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-sm font-bold text-slate-900">{memo.title || "제목 없는 메모"}</div>
-              <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{memo.content || "내용 없음"}</div>
+              <div className="truncate text-sm font-bold text-[#0f172a]">{memo.title || "제목 없는 메모"}</div>
+              <div className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[#475569]">{memo.content || "내용 없음"}</div>
             </div>
             <div className="flex shrink-0 gap-1">
-              {memo.pinned && <Pin className="size-4 text-amber-600" />}
-              {memo.overlayVisible ? <Eye className="size-4 text-blue-600" /> : <EyeOff className="size-4 text-slate-300" />}
+              {memo.pinned && <Pin className="size-4 text-[#b45309]" />}
+              {memo.overlayVisible ? <Eye className="size-4 text-[#2563eb]" /> : <EyeOff className="size-4 text-[#94a3b8]" />}
             </div>
           </div>
           <div className="mt-3 flex justify-end gap-1">
@@ -786,6 +861,19 @@ function defaultReminder(offsetMinutes: number): PlannerScheduleReminderRequest 
   };
 }
 
+function memoToRequest(memo: PlannerMemo): PlannerMemoRequest {
+  return {
+    title: memo.title ?? "",
+    content: memo.content ?? "",
+    color: memo.color,
+    pinned: memo.pinned,
+    overlayVisible: memo.overlayVisible,
+    opacity: memo.opacity,
+    applicationCaseId: memo.applicationCaseId,
+    fitAnalysisId: memo.fitAnalysisId,
+  };
+}
+
 function itemToRequest(item: PlannerScheduleItem): PlannerScheduleItemRequest {
   return {
     title: item.title,
@@ -813,6 +901,13 @@ function itemToRequest(item: PlannerScheduleItem): PlannerScheduleItemRequest {
       soundEnabled: reminder.soundEnabled,
       vibrationEnabled: reminder.vibrationEnabled,
     })),
+  };
+}
+
+function scheduleToForm(item: PlannerScheduleItem): ScheduleForm {
+  return {
+    ...itemToRequest(item),
+    reminderMode: item.reminders.some((reminder) => reminder.remindAt) ? "exact" : "offset",
   };
 }
 

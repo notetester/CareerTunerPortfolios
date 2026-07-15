@@ -3,7 +3,7 @@
 //   동작: 웹을 mock(데모) 모드로 빌드 → 커밋된 Capacitor android 플랫폼 동기화
 //         → 디버그 APK 조립 → frontend/dist-apk/CareerTuner-demo.apk 로 복사.
 //
-// 목적: 웹 GitHub Pages 데모(https://notetester.github.io/CareerTunerPortfolios/)와 "같은 mock 빌드"를
+// 목적: 웹 GitHub Pages 데모(https://notetester.github.io/CareerTunerDemo/)와 "같은 mock 빌드"를
 //       그대로 설치형 Android 앱으로 패키징한다. 백엔드가 없어도 mock 레지스트리(VITE_USE_MOCK=true)
 //       로 동작하므로, 사이드로드 후 모든 데모 화면을 데이터가 있는 것처럼 클릭하며 시연·테스트할 수 있다.
 //       (로그인은 아무 이메일/비밀번호나 입력하면 데모 계정으로 통과)
@@ -83,7 +83,7 @@ function removeUnusedFlatDirRepositories() {
 // ── 1) 웹 빌드 (mock 데모 모드) ────────────────────────────────────────────
 // --mode mock → .env.mock(VITE_USE_MOCK=true) 로드. VITE_USE_MOCK 은 환경변수로도 명시(belt & suspenders).
 // --base / → 네이티브 WebView 는 앱 루트에서 서빙되므로 항상 루트 베이스로 빌드한다
-//            (웹 데모의 /CareerTunerPortfolios/ 서브패스 설정이 환경에 새어들어와도 무시).
+//            (웹 데모의 /CareerTunerDemo/ 서브패스 설정이 환경에 새어들어와도 무시).
 section("1/4 · 웹 빌드 (mock 데모 모드)");
 if (flags.has("--skip-web")) {
   console.log("⏭  --skip-web: 기존 dist 사용");

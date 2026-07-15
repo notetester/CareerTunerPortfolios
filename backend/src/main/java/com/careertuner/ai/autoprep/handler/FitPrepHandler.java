@@ -35,6 +35,7 @@ public class FitPrepHandler implements PrepStepHandler {
         progress.substep("근거 검색", "지식베이스 근거 주입");
         progress.substep("채점", "요건 매칭 점수화");
         progress.substep("검증", "근거 가드 적용");
+        context.checkActive();
         FitAnalysisDetailResponse result =
                 fitAnalysisService.generate(context.userId(), context.applicationCaseId());
         long ms = (System.nanoTime() - start) / 1_000_000;

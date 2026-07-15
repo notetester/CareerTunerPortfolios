@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.careertuner.catalog.mapper.CatalogMapper">
+
+    <!-- NCS 세분류 검색: 세분류명 우선, 능력단위/기술 키워드(search_text) 포함 -->
+    <select id="searchNcs" resultType="com.careertuner.catalog.dto.CatalogDtos$NcsSearchItem">
+        SELECT id, ncs_code, major_name, middle_name, minor_name, sub_name,
+               unit_count, element_count, min_level, max_level
+        FROM ncs_classification
+        <where>
+            <if test="q != null and q != ''">
+                (sub_name LIKE CONCAT('%', #{q}, '%') OR search_text LIKE CONCAT('%', #{q}, '%'))
+            </if>
+        </where>
+        ORDER BY (sub_name LIKE CONCAT('%', #{q}, '%')) DESC, element_count DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findNcsSummary" resultType="com.careertuner.catalog.dto.CatalogDtos$NcsSearchItem">
+        SELECT id, ncs_code, major_name, middle_name, minor_name, sub_name,
+               unit_count, element_count, min_level, max_level
+        FROM ncs_classification WHERE id = #{id}
+    </select>
+
+    <select id="findNcsDetailJson" resultType="string">
+        SELECT detail_json FROM ncs_classification WHERE id = #{id}
+    </select>
+
+    <!-- 자격증 검색: 이름 우선, 설명/키워드(search_text) 포함, 유형 필터 -->
+    <select id="searchCertificates" resultType="com.careertuner.catalog.dto.CatalogDtos$CertSearchItem">
+        SELECT id, cert_type, name, grade, authority, official, has_schedule,
+               SUBSTRING(description, 1, 140) AS description_snippet
+        FROM certificate
+        <where>
+            <if test="type != null and type != ''">cert_type = #{type}</if>
+            <if test="q != null and q != ''">
+                AND (name LIKE CONCAT('%', #{q}, '%') OR search_text LIKE CONCAT('%', #{q}, '%'))
+            </if>
+        </where>
+        ORDER BY (name LIKE CONCAT('%', #{q}, '%')) DESC, has_schedule DESC, name ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findCertificateById" resultType="com.careertuner.catalog.dto.CatalogDtos$CertDetail">
+        SELECT id, cert_type, name, grade, authority, issuer_org, series, jm_cd, reg_no,
+               official, status, description, ncs_sub_name, has_schedule
+        FROM certificate WHERE id = #{id}
+    </select>
+
+    <select id="findExamSchedules" resultType="com.careertuner.catalog.dto.CatalogDtos$ExamSchedule">
+        SELECT cert_name, year, round_name, doc_reg_start, doc_reg_end, doc_exam, doc_pass,
+               prac_exam_start, prac_exam_end, prac_pass
+        FROM certificate_exam_schedule WHERE cert_name = #{certName}
+        ORDER BY year, round_name
+    </select>
+
+</mapper>

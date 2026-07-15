@@ -28,6 +28,9 @@ class ProfileVersionMapperXmlTest {
                 .contains("CONSTRAINT fk_profile_ai_profile_version")
                 .contains("idx_user_profile_version_deleted");
         assertThat(profileMapper)
+                .contains("<select id=\"findByUserIdForUpdate\"")
+                .contains("FOR UPDATE")
+                .contains("<update id=\"initialize\"")
                 .contains("version_no = user_profile.version_no + 1")
                 .contains("<insert id=\"insertVersionFromCurrent\">")
                 .contains("<insert id=\"insertVersionSnapshot\">")

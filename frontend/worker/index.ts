@@ -1,4 +1,4 @@
-const AWS_ORIGIN = "https://careertuner.kro.kr";
+const AWS_ORIGIN = "https://careertuner.example.com";
 const FRONTEND_CLIENT_HEADER = "X-CareerTuner-Frontend-Client";
 const FRONTEND_ORIGIN_HEADER = "X-CareerTuner-Frontend-Origin";
 const HEALTH_TIMEOUT_MS = 5_000;

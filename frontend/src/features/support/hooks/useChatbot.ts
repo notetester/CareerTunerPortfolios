@@ -150,6 +150,7 @@ export function useChatbot() {
   function takePendingAutoPrepFileIds(): number[] {
     const ids = new Set<number>(pendingAttachmentIdsRef.current);
     for (const fileId of lastRunRequestRef.current?.attachmentFileIds ?? []) ids.add(fileId);
+    for (const fileId of lastRunRequestRef.current?.jobPostingFileIds ?? []) ids.add(fileId);
     pendingAttachmentIdsRef.current = [];
     lastRunRequestRef.current = null;
     return [...ids];
@@ -640,7 +641,7 @@ export function useChatbot() {
     void run.start(req);
   }, [run]);
 
-  /* ── 자소서 첨부: 업로드 → 마지막 실행 요청에 첨부를 얹어 재실행(WRITE 가 소비). ── */
+  /* ── 자소서 첨부: 읽지 못한 이전 pending을 최신 파일 하나로 교체해 재실행(WRITE 가 소비). ── */
   const attachCoverLetter = useCallback(async (file: File) => {
     const req = lastRunRequestRef.current;
     if (!req) {
@@ -655,11 +656,13 @@ export function useChatbot() {
         await deletePendingAutoPrepFile(uploaded.id).catch(() => {});
         return;
       }
+      const supersededIds = (req.attachmentFileIds ?? []).filter((fileId) => fileId !== uploaded.id);
       const next: AutoPrepRequest = {
         ...req,
-        attachmentFileIds: [...(req.attachmentFileIds ?? []), uploaded.id],
+        attachmentFileIds: [uploaded.id],
       };
-      lastRunRequestRef.current = next; // 이후 재시도도 첨부를 유지하도록 최종본으로 갱신
+      lastRunRequestRef.current = next;
+      if (supersededIds.length > 0) void discardPendingAutoPrepFiles(supersededIds);
       void run.start(next);
     } finally {
       requestScope.finish(request);

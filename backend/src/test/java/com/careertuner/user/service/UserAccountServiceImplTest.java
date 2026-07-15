@@ -54,7 +54,7 @@ class UserAccountServiceImplTest {
             fileService);
 
     private User user(Long id, String loginId, String phone) {
-        return User.builder().id(id).email("redacted-826b0cff85484558@example.com").name("홍길동")
+        return User.builder().id(id).email("u@x.com").name("홍길동")
                 .loginId(loginId).phone(phone).password("encoded")
                 .passwordEnabled(true).status("ACTIVE").build();
     }
@@ -198,7 +198,7 @@ class UserAccountServiceImplTest {
         ArgumentCaptor<EmailVerification> captor = ArgumentCaptor.forClass(EmailVerification.class);
 
         FrontendReturnTarget target = new FrontendReturnTarget(
-                "sites", "https://careertuner.career-tuner-4654.chatgpt.site");
+                "sites", "https://sites.example.com");
         service.requestEmailRegistration(1L, " New@Example.COM ", target);
 
         verify(authMapper).insertEmailVerification(captor.capture());

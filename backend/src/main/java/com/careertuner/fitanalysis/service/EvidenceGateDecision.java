@@ -7,7 +7,7 @@ import java.util.List;
  *
  * <p>적합도 분석 AI 설명 출력의 결정론 후처리 결과다. gate 는 점수/applyDecision/matchedSkills/missingSkills 를
  * <b>바꾸지 않고</b> 노출·검토 상태만 기록한다. RAG runtime 자동주입과 rewrite 자동노출은 이 단계에서 하지 않는다
- * (reports/60 결론 · {@code docs/AI_CAREER_STRATEGY_EVIDENCE_GATE_DESIGN.md} 비목표).
+ * (reports/60 결론 · {@code docs/archive/2026-06/c-evidence-gate-r3-pre-design.md} 비목표).
  *
  * @param gateStatus       PASSED / REVIEW_REQUIRED / REJECTED
  * @param needsHumanReview REVIEW_REQUIRED·REJECTED 면 true

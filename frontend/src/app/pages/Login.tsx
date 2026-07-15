@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "../auth/AuthContext";
 import { Button } from "../components/ui/button";
@@ -11,14 +11,6 @@ import { useOutageFallback } from "../lib/outageFallback";
 import { checkEmailDuplicate, checkLoginIdDuplicate } from "../auth/authApi";
 import { useOAuthProviderAvailability } from "../auth/useOAuthProviderAvailability";
 import { Sparkles, Mail, Lock, Eye, EyeOff, CheckCircle2, ArrowRight, Loader2, UserRound } from "lucide-react";
-import {
-  PUBLIC_DEMO_PASSWORD,
-  consumePublicDemoAutoEntry,
-  getPublicDemoAccount,
-  getPublicDemoAccounts,
-  resolvePublicDemoDestination,
-  type PublicDemoRole,
-} from "./publicDemoLogin";
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === "true";
 
@@ -41,7 +33,6 @@ export function LoginPage() {
   const [dormantEmail, setDormantEmail] = useState<string | null>(null);
   const [emailDuplicate, setEmailDuplicate] = useState(false);
   const [loginIdDuplicate, setLoginIdDuplicate] = useState(false);
-  const autoDemoEntryAttempted = useRef(false);
   const navigate = useNavigate();
   const { login, register, socialLogin } = useAuth();
   const { socialOAuthBlocked } = useOutageFallback();
@@ -50,7 +41,6 @@ export function LoginPage() {
     loading: oauthProvidersLoading,
     error: oauthProvidersError,
   } = useOAuthProviderAvailability();
-  const demoAccounts = getPublicDemoAccounts(USE_MOCK);
 
   const switchMode = (nextMode: "login" | "signup") => {
     setMode(nextMode);
@@ -58,46 +48,6 @@ export function LoginPage() {
     setEmailDuplicate(false);
     setLoginIdDuplicate(false);
   };
-
-  const handlePublicDemoLogin = useCallback(async (
-    role: PublicDemoRole,
-    requestedReturnTo?: string | null,
-  ) => {
-    const account = getPublicDemoAccount(role);
-    const returnTo = requestedReturnTo === undefined
-      ? new URLSearchParams(window.location.search).get("returnTo")
-      : requestedReturnTo;
-
-    setSubmitting(true);
-    setError(null);
-    setDormantEmail(null);
-    try {
-      const result = await login(account.email, account.password);
-      if (!result.token) throw new Error("데모 로그인 토큰이 없습니다.");
-      navigate(resolvePublicDemoDestination(role, returnTo), { replace: true });
-    } catch {
-      setError("데모 로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.");
-    } finally {
-      setSubmitting(false);
-    }
-  }, [login, navigate]);
-
-  useEffect(() => {
-    const autoEntry = consumePublicDemoAutoEntry(
-      window.location.search,
-      USE_MOCK,
-      autoDemoEntryAttempted.current,
-    );
-    if (!autoEntry) return;
-
-    autoDemoEntryAttempted.current = true;
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${autoEntry.searchAfterConsumption}${window.location.hash}`,
-    );
-    void handlePublicDemoLogin(autoEntry.role, autoEntry.returnTo);
-  }, [handlePublicDemoLogin]);
 
   // 회원가입 시 이메일 입력을 벗어나면 중복 여부를 미리 확인한다(가입 전 즉시 피드백).
   const handleEmailBlur = async () => {
@@ -328,47 +278,6 @@ export function LoginPage() {
                 회원가입
               </button>
             </div>
-
-            {USE_MOCK && mode === "login" && demoAccounts.length > 0 && (
-              <section
-                className="space-y-3 rounded-2xl border border-blue-200 bg-blue-50/80 p-4 dark:border-blue-800 dark:bg-blue-950/30"
-                aria-labelledby="public-demo-login-title"
-                data-testid="public-demo-login"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="size-4 text-blue-600 dark:text-blue-300" />
-                    <h3 id="public-demo-login-title" className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                      공개 포트폴리오 데모
-                    </h3>
-                  </div>
-                  <p className="text-xs leading-5 text-slate-600 dark:text-slate-300">
-                    체험할 역할을 직접 선택하세요. 모든 동작은 공개 목 데이터 안에서만 처리됩니다.
-                  </p>
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {demoAccounts.map((account) => (
-                    <button
-                      key={account.role}
-                      type="button"
-                      disabled={submitting}
-                      onClick={() => void handlePublicDemoLogin(account.role)}
-                      className="rounded-xl border border-blue-200 bg-card p-3 text-left transition hover:border-blue-400 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:border-blue-800"
-                      data-testid={`public-demo-${account.role}`}
-                    >
-                      <span className="block text-sm font-bold text-blue-700 dark:text-blue-300">{account.label}</span>
-                      <span className="mt-1 block text-[11px] leading-4 text-slate-500 dark:text-slate-400">{account.description}</span>
-                      <span className="mt-2 block break-all font-mono text-[10px] text-slate-500 dark:text-slate-400">{account.email}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  안내 비밀번호 <code className="rounded bg-card px-1 py-0.5 font-mono">{PUBLIC_DEMO_PASSWORD}</code> — 목 데모에서는 입력 없이 바로 시작합니다.
-                </p>
-              </section>
-            )}
 
             {/* Social login */}
             <div className="space-y-2.5">

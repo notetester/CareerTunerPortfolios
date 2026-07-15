@@ -3,7 +3,7 @@
   "title": "CareerTuner demo readiness regression map",
   "lastFullAudit": {
     "date": "2026-07-12",
-    "source": "docs/C_FEATURE_VERIFICATION.md#6-전-영역af-시연-준비도-검증-2026-07-12-영역별-전담-에이전트-8",
+    "source": "docs/verification/c-feature-verification.md#6-전-영역af-시연-준비도-검증-2026-07-12-영역별-전담-에이전트-8",
     "basePr": 391,
     "baseCommit": "dba92c3150676b21f1b0c3efff8244c3a5fd2260"
   },
@@ -13,22 +13,39 @@
     "commit": "30a5511a13a6a304fdf13231bfea1afe7a335c2e",
     "status": "PASS"
   },
+  "documentationAuditSource": {
+    "date": "2026-07-14",
+    "pr": 417,
+    "commit": "8ab96cc52b06d9144ed09662bd62a9f6001c6e3c",
+    "status": "INCREMENTAL_VERIFICATION_REQUIRED",
+    "note": "문서 최신화 시작 시점의 origin/dev. 마지막 전체 검증과 운영 배포 검증은 각각 lastFullAudit와 lastReleaseGate에 별도로 보존한다."
+  },
   "ignoredPaths": [
+    "docs/ai-reports",
     "docs/ai-reports/**",
+    "docs/ai-artifacts",
     "docs/ai-artifacts/**",
+    "docs/storyboard",
     "docs/storyboard/**",
+    "docs/obsidian-vault",
     "docs/obsidian-vault/**",
     "**/*.md",
     "**/*.png",
     "**/*.jpg",
-    "**/*.html"
+    "**/*.html",
+    "**/*.pdf",
+    "**/.env.example",
+    "logs/**"
   ],
   "globalRules": [
     {
       "paths": [
         "backend/src/main/java/com/careertuner/common/**",
         "backend/src/main/resources/application.yaml",
+        "backend/src/main/resources/application-*.yaml",
+        "backend/src/test/resources/application.properties",
         "backend/src/test/java/com/careertuner/common/**",
+        "config/environments.json",
         "backend/src/main/java/com/careertuner/billing/policy/**",
         "frontend/src/app/lib/api.ts",
         "frontend/src/app/lib/apiClientCore.mjs",
@@ -40,9 +57,20 @@
     {
       "paths": [
         "backend/src/main/java/com/careertuner/ai/autoprep/**",
-        "backend/src/test/java/com/careertuner/ai/autoprep/**"
+        "backend/src/test/java/com/careertuner/ai/autoprep/**",
+        "frontend/src/features/autoprep/**",
+        "frontend/scripts/test-pending-auto-prep-files.mjs"
       ],
-      "checks": ["D-INTERVIEW", "E-CORRECTION", "E-BILLING-CREDITS", "F-SUPPORT-CONTENT"]
+      "checks": [
+        "A-PROFILE",
+        "B-JOB-ANALYSIS",
+        "C-FIT-ANALYSIS",
+        "D-INTERVIEW",
+        "E-CORRECTION",
+        "E-BILLING-CREDITS",
+        "F-COMMUNITY",
+        "F-SUPPORT-CONTENT"
+      ]
     },
     {
       "paths": [
@@ -52,6 +80,10 @@
         "backend/src/test/java/com/careertuner/ai/intake/**"
       ],
       "checks": ["F-SUPPORT-CONTENT"]
+    },
+    {
+      "paths": ["frontend/package.json", "frontend/package-lock.json"],
+      "checks": ["PLATFORM-WEB", "PLATFORM-MOBILE", "RELEASE-GATE"]
     },
     {
       "paths": ["backend/src/main/resources/db/schema.sql", "backend/src/main/resources/db/patches/**"],
@@ -65,9 +97,14 @@
       "paths": [
         ".github/workflows/**",
         ".github/actionlint.yaml",
+        ".github/dependabot.yml",
+        ".gitignore",
         "docker-compose.yml",
+        "docker-compose.prod.yml",
         "DEPLOY.md",
+        "docs/**/*.svg",
         "docs/verification/demo-readiness-checks.json",
+        "scripts/docs/**",
         "scripts/verification/**"
       ],
       "checks": ["RELEASE-GATE"]
@@ -112,7 +149,10 @@
         "backend/src/test/java/com/careertuner/profile/**",
         "frontend/src/app/pages/Profile.tsx",
         "frontend/src/app/profile/**",
-        "frontend/src/features/profile/**"
+        "frontend/src/features/profile/**",
+        "frontend/scripts/test-profile-save-boundaries.mjs",
+        "frontend/scripts/test-profile-section-contracts.mjs",
+        "docs/ai-training/**"
       ],
       "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "DATA-LIFECYCLE"]
     },
@@ -207,6 +247,8 @@
         "backend/src/test/java/com/careertuner/fitanalysis/**",
         "backend/src/test/resources/db/testfixture/admin_fitanalysis**",
         "backend/src/main/java/com/careertuner/certificate/**",
+        "ml/ncs-catalog/**",
+        "ml/career-strategy-llm/**",
         "frontend/src/features/analysis/**",
         "frontend/src/admin/features/fit-analysis/**"
       ],
@@ -238,6 +280,7 @@
         "backend/src/main/resources/mapper/interview/**",
         "backend/src/test/java/com/careertuner/interview/**",
         "frontend/src/features/interview/**",
+        "ml/interview-finetune/**",
         "desktop/core/InterviewSession**",
         "desktop/qml/SessionThread.qml",
         "desktop/qml/InputBar.qml"
@@ -296,10 +339,14 @@
         "backend/src/main/java/com/careertuner/billing/**",
         "backend/src/main/java/com/careertuner/payment/**",
         "backend/src/main/java/com/careertuner/credit/**",
+        "backend/src/test/java/com/careertuner/billing/**",
+        "backend/src/test/java/com/careertuner/payment/**",
         "backend/src/main/resources/mapper/billing/**",
         "backend/src/main/resources/mapper/payment/**",
         "frontend/src/features/billing/**",
+        "frontend/src/app/lib/mock/domains/billing.ts",
         "frontend/src/app/pages/Billing.tsx",
+        "frontend/scripts/test-billing-payment-boundary.mjs",
         "frontend/src/admin/features/billing/**",
         "desktop/core/AiChargeCoordinator**"
       ],
@@ -332,6 +379,7 @@
         "frontend/src/admin/features/support/**",
         "frontend/src/admin/features/notices/**",
         "frontend/src/admin/features/faq/**",
+        "backend/src/main/java/com/careertuner/admin/chatbot/**",
         "frontend/scripts/test-f-demo-readiness.mjs"
       ],
       "requires": ["PLATFORM-WEB", "PLATFORM-MOBILE", "DATA-LIFECYCLE"]
@@ -378,6 +426,7 @@
         "frontend/capacitor.config**",
         "frontend/src/platform/**",
         "frontend/scripts/cap**",
+        "frontend/scripts/test-mobile-platform.mjs",
         "frontend/scripts/*ios*",
         "frontend/scripts/*app-link*",
         ".github/workflows/android-release.yml",
@@ -407,7 +456,7 @@
       "id": "RELEASE-GATE",
       "area": "CROSS",
       "name": "CI, 빌드, 배포, 운영 헬스와 공개 데모",
-      "paths": [".github/workflows/**", "docker-compose.yml", "frontend/package.json", "backend/build.gradle", "desktop/CMakeLists.txt"],
+      "paths": [".github/workflows/**", ".github/dependabot.yml", "docs/**/*.svg", "docker-compose.yml", "docker-compose.prod.yml", "frontend/package.json", "backend/build.gradle", "desktop/CMakeLists.txt"],
       "requires": []
     }
   ]

@@ -391,7 +391,7 @@ public class RefundRequestService {
     private void notifyResult(Long userId, Long refundId, String title, String message) {
         notificationService.notify(Notification.builder()
                 .userId(userId).type("REFUND_RESULT").targetType("REFUND_REQUEST").targetId(refundId)
-                .title(title).message(message).link("/billing?tab=history").build());
+                .title(title).message(message).link("/billing/history").build());
     }
 
     private void requireUser(Long userId) {

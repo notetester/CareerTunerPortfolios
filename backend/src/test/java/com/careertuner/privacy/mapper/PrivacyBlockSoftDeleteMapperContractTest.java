@@ -11,14 +11,12 @@ class PrivacyBlockSoftDeleteMapperContractTest {
 
     private static final Path SCHEMA = Path.of("src/main/resources/db/schema.sql");
     private static final Path PRIVACY_MAPPER = Path.of("src/main/resources/mapper/privacy/PrivacyMapper.xml");
-    private static final Path COMMUNITY_MAPPER = Path.of("src/main/resources/mapper/community/CommunityPostMapper.xml");
     private static final Path PATCH = Path.of("src/main/resources/db/patches/20260712_privacy_block_soft_delete.sql");
 
     @Test
     void allPersonalBlockRelationsUseSoftDeleteAndRestoreTheUniqueRow() throws Exception {
         String schema = Files.readString(SCHEMA);
         String mapper = Files.readString(PRIVACY_MAPPER);
-        String communityMapper = Files.readString(COMMUNITY_MAPPER);
 
         assertThat(schema)
                 .contains("CREATE TABLE IF NOT EXISTS user_block")
@@ -40,7 +38,6 @@ class PrivacyBlockSoftDeleteMapperContractTest {
                 .doesNotContain("DELETE FROM user_block")
                 .doesNotContain("DELETE FROM user_ip_block")
                 .doesNotContain("DELETE FROM conversation_block");
-        assertThat(communityMapper).contains("AND ub.deleted_at IS NULL");
     }
 
     @Test

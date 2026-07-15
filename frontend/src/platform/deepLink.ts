@@ -2,7 +2,7 @@
  * 딥링크 어댑터 (docs/planning/모바일 고려.md §5/§8).
  * Capacitor App 플러그인의 appUrlOpen(실행 중 수신) + getLaunchUrl(콜드 스타트)로
  * 일반 앱 경로용 careertuner:// 커스텀 스킴과 네이티브 OAuth/소셜 계정 연결 결과 전용
- * https://careertuner.kro.kr verified App Link를 앱 내 경로로 변환해 navigate 한다.
+ * https://careertuner.example.com verified App Link를 앱 내 경로로 변환해 navigate 한다.
  * 웹/PWA 에서는 isNativeApp()=false 라 전부 건너뛰어 무해하다.
  * 공식 App 플러그인을 직접 import해 번들 등록과 네이티브 브리지 호출을 보장한다.
  */
@@ -24,8 +24,8 @@ export { toAppPath } from "./deepLinkCore.mjs";
 /**
  * 딥링크 URL → 앱 내 경로 변환.
  * - careertuner://applications/3 → /applications/3
- * - https://careertuner.kro.kr/auth/callback?handoffCode=... → /auth/callback?handoffCode=...
- * - https://careertuner.kro.kr/profile/detail?socialLinked=KAKAO → /profile/detail?socialLinked=KAKAO
+ * - https://careertuner.example.com/auth/callback?handoffCode=... → /auth/callback?handoffCode=...
+ * - https://careertuner.example.com/profile/detail?socialLinked=KAKAO → /profile/detail?socialLinked=KAKAO
  * 변환할 수 없는 URL(다른 호스트/스킴)은 null — 호출부가 무시한다.
  */
 let initialized = false;

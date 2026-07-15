@@ -521,7 +521,7 @@ export function ChatbotPanel({ chatbot, embedded = false }: ChatbotPanelProps) {
                             // caseId 가 있으면 E 첨삭 페이지로 결정적 딥링크(자소서 탭+지원건 프리셀렉트).
                             // 없을 때만 기존 자연어 재진입 폴백(LLM 재해석 의존).
                             const cid = m.interviewReport?.caseId;
-                            if (cid != null) navigateFromWork(`/correction?tab=cover&caseId=${cid}`);
+                            if (cid != null) navigateFromWork(`/correction/cover-letter?caseId=${cid}`);
                             else sendMessage("이 면접 결과로 자소서 첨삭 이어서 해줘");
                           }}
                           onOpenCase={(cid) => navigateFromWork(`/applications/${cid}`)}

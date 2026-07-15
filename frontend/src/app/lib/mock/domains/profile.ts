@@ -25,6 +25,7 @@ import type {
   UserProfileVersion,
 } from "@/app/profile/profileApi";
 import type { ConsentStatus, ConsentView } from "@/app/auth/consentApi";
+import { ApiError } from "@/app/lib/api";
 
 const USER_ID = 9001;
 let portfolioFileSeq = 7900;
@@ -174,7 +175,16 @@ const demoProfileVersions: UserProfileVersion[] = [{
 
 // PUT /profile 요청을 반영한다(목이므로 세션 내 메모리에만). 요청에 없는 필드는 기존 값 유지.
 function applyProfileUpdate(body: unknown): UserProfile {
-  const patch = (body ?? {}) as Partial<UserProfile>;
+  const { baseVersionNo, ...patch } = (body ?? {}) as Partial<UserProfile> & {
+    baseVersionNo?: number | null;
+  };
+  if (baseVersionNo == null || baseVersionNo !== demoProfile.versionNo) {
+    throw new ApiError(
+      "프로필이 다른 화면에서 변경되었습니다. 최신 내용을 다시 불러온 뒤 저장해 주세요.",
+      "CONFLICT",
+      409,
+    );
+  }
   const versionNo = (demoProfile.versionNo ?? 0) + 1;
   const createdAt = new Date().toISOString();
   Object.assign(demoProfile, patch, { versionNo, updatedAt: createdAt });

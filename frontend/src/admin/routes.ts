@@ -1,10 +1,7 @@
 import { createElement, lazy, Suspense, type ComponentType } from "react";
-import { Navigate } from "react-router";
-
 import { PageFallback } from "../app/pages/pageFallback";
 import { AdminRouteBoundary } from "./auth/AdminRouteBoundary";
 import { adminRoutePolicy, type AdminRoutePath } from "./auth/adminAccess";
-import { useAdminAuthorization } from "./auth/useAdminAuthorization";
 
 function lazyAdminPage(loader: () => Promise<{ default: ComponentType }>): ComponentType {
   const LazyPage = lazy(loader);
@@ -25,25 +22,7 @@ function adminRoute(path: AdminRoutePath, Component: ComponentType) {
   return { path, Component: GuardedAdminRoute, handle: { adminAccess } };
 }
 
-function AdminEntryRoute() {
-  const authorization = useAdminAuthorization();
-
-  if (authorization.status === "idle" || authorization.status === "loading") {
-    return createElement(PageFallback);
-  }
-
-  const destinations = [
-    { path: "/admin/dashboard", permissions: ["USER_READ", "AI_READ"] as const },
-    { path: "/admin/security", permissions: ["SECURITY_READ"] as const },
-    { path: "/admin/payments", permissions: ["BILLING_READ"] as const },
-    { path: "/admin/community", permissions: ["CONTENT_READ"] as const },
-    { path: "/admin/policies", permissions: ["POLICY_READ"] as const },
-    { path: "/admin/audit/security", permissions: ["AUDIT_READ"] as const },
-  ];
-  const destination = destinations.find((candidate) => authorization.can(...candidate.permissions));
-
-  return createElement(Navigate, { to: destination?.path ?? "/dashboard", replace: true });
-}
+const AdminPortalPage = lazyAdminPage(() => import("./features/portal/pages/AdminPortalPage").then((module) => ({ default: module.AdminPortalPage })));
 const AdminHomePage = lazyAdminPage(() => import("./features/home/pages/AdminHomePage").then((module) => ({ default: module.AdminHomePage })));
 const AdminOpsDashboardPage = lazyAdminPage(() => import("./features/dashboard/pages/AdminOpsDashboardPage").then((module) => ({ default: module.AdminOpsDashboardPage })));
 const AdminAnalyticsPage = lazyAdminPage(() => import("./features/analytics/pages/AdminAnalyticsPage").then((module) => ({ default: module.AdminAnalyticsPage })));
@@ -99,7 +78,7 @@ const AdminInterviewPromptsPage = lazyAdminPage(() => import("./features/prompts
 const AdminLogsPage = lazyAdminPage(() => import("./features/system-logs/pages/AdminLogsPage").then((module) => ({ default: module.AdminLogsPage })));
 
 export const adminRoutes = [
-  adminRoute("admin", AdminEntryRoute),
+  adminRoute("admin", AdminPortalPage),
   adminRoute("admin/home", AdminHomePage),
   adminRoute("admin/dashboard", AdminOpsDashboardPage),
   // C 분석 통계 전용 화면. 백엔드/api/types는 완비됐으나 전용 페이지·라우트가 없어 연결한다.

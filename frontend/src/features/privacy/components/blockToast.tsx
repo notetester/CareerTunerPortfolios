@@ -8,7 +8,7 @@ export function showBlockManageToast(message: string, note?: string) {
       {message}
       {note ? <span style={{ display: "block", fontSize: 12, opacity: 0.85 }}>{note}</span> : null}
       <a
-        href="/settings?tab=blocks"
+        href="/settings/blocks"
         style={{ display: "block", marginTop: 2, fontWeight: 600, textDecoration: "underline" }}
       >
         차단 관리에서 세부 조정

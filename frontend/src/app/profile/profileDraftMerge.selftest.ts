@@ -24,6 +24,7 @@ assert(pick.projects === false, "projects pick false when count 0");
 assert(pick.skills === true, "skills pick true when count > 0");
 
 const cur = {
+  versionNo: 7,
   education: [{ school: "Keep Me U" }],
   career: [{ company: "Keep Co" }],
   projects: [{ title: "Keep Proj" }],
@@ -67,6 +68,7 @@ assert(
     merged.skills.includes("Java"),
   "skills union",
 );
+assert(merged.versionNo === 7, "draft merge must preserve optimistic-lock version");
 
 const filled = mergeApprovedProfileDraft(
   cur,

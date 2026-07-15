@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { runStream } from "../api/autoPrepApi";
+import { cancelAutoPrepRun, runStream } from "../api/autoPrepApi";
 import type { AutoPrepRequest, PrepEvent, PrepPlan, PrepStepResult } from "../types/autoPrep";
 
 export type PartUiStatus = "pending" | "running" | "done" | "skipped" | "failed";
@@ -28,6 +28,13 @@ const INITIAL: AutoPrepRunState = {
   error: null,
 };
 
+function createRunId(): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  return randomUuid
+    ? randomUuid.replaceAll("-", "_")
+    : `autoprep_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
 /**
  * 무이벤트 워치독 — 마지막 SSE 이벤트 후 이 시간 동안 침묵이면 스트림 사망으로 판정하고 강제 종료.
  * 산정 근거: 서버 SseEmitter 총 타임아웃이 300초(AutoPrepOrchestrator.SSE_TIMEOUT_MS=300_000L)라
@@ -36,6 +43,11 @@ const INITIAL: AutoPrepRunState = {
  * 서버 상한 × 1.1 = 330초를 클라 판정선으로 둔다(서버보다 작으면 정상 진행을 오판할 수 있음).
  */
 export const STREAM_SILENCE_TIMEOUT_MS = 330_000;
+
+export interface AutoPrepStreamLifecycleDependencies {
+  stream?: typeof runStream;
+  cancel?: typeof cancelAutoPrepRun;
+}
 
 /** 브라우저 fetch 계열 원문("Failed to fetch" 등 영문)은 그대로 노출하지 않는다 — 한글 없는 메시지는 일반 안내로. */
 function toFriendlyError(err: Error): string {
@@ -54,9 +66,14 @@ export async function driveRunStream(
   apply: (updater: (prev: AutoPrepRunState) => AutoPrepRunState) => void,
   ac: AbortController,
   silenceTimeoutMs: number = STREAM_SILENCE_TIMEOUT_MS,
+  dependencies: AutoPrepStreamLifecycleDependencies = {},
 ): Promise<void> {
+  const stream = dependencies.stream ?? runStream;
+  const cancelServerRun = dependencies.cancel ?? cancelAutoPrepRun;
   // 워치독: 이벤트가 올 때마다 재장전. 발화하면 abort 로 reader 를 깨워 아래 catch 에서 정리.
   let silenceFired = false;
+  let terminalReceived = false;
+  let serverCloseRequested = false;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   const armWatchdog = () => {
     clearTimeout(watchdog);
@@ -67,18 +84,32 @@ export async function driveRunStream(
   };
   armWatchdog();
 
+  const closeOrphanedServerRun = async () => {
+    if (terminalReceived || serverCloseRequested || !req.runId) return;
+    serverCloseRequested = true;
+    await cancelServerRun(req.runId).catch(() => undefined);
+  };
+
   try {
-    await runStream(
+    await stream(
       req,
       (e) => {
-        armWatchdog();
+        if (e.type === "done" || e.type === "error") {
+          terminalReceived = true;
+          clearTimeout(watchdog);
+        } else {
+          armWatchdog();
+        }
         apply((prev) => reduce(prev, e));
       },
       ac.signal,
     );
+    // non-abort EOF/network error는 autoPrepApi.runStream이 서버 취소 접수까지 마친 뒤 반환한다.
     // 스트림 정상 종료 — 이후 이벤트는 올 수 없으므로 미결 파트는 여기서 실패로 확정(림보 차단).
     apply((prev) => settleDanglingParts(prev, null));
   } catch (err) {
+    // 사용자 cancel/reset/retry는 해당 액션과 api abort listener가 취소한다. watchdog abort만 여기서 await 보강한다.
+    if (!terminalReceived && silenceFired) await closeOrphanedServerRun();
     if (silenceFired) {
       apply((prev) =>
         settleDanglingParts(prev, "응답이 오래 없어 분석을 중단했어요. 다시 시도해 주세요."));
@@ -96,32 +127,69 @@ export async function driveRunStream(
 export function useAutoPrepRun() {
   const [state, setState] = useState<AutoPrepRunState>(INITIAL);
   const abortRef = useRef<AbortController | null>(null);
+  const runIdRef = useRef<string | null>(null);
   // 실행 세대 — 재시도(start 재호출)로 이전 스트림을 abort 했을 때, 이전 호출의 늦은 정리가
   // 새 실행의 상태(running 등)를 덮어쓰지 않게 한다.
   const runSeqRef = useRef(0);
 
-  const start = useCallback(async (req: AutoPrepRequest) => {
+  // 패널 자체가 라우트 전환으로 unmount되면 모달 close 콜백을 거치지 않을 수 있다.
+  // 진행 중 SSE를 끊고 세대를 폐기해 숨은 AI 실행과 unmount 후 상태 반영을 막는다.
+  useEffect(() => () => {
+    runSeqRef.current += 1;
+    const runId = runIdRef.current;
+    runIdRef.current = null;
+    if (runId) void cancelAutoPrepRun(runId, true).catch(() => undefined);
     abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
+
+  const start = useCallback(async (req: AutoPrepRequest) => {
     const seq = ++runSeqRef.current;
+    const previousRunId = runIdRef.current;
+    runIdRef.current = null;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    // 재시도는 이전 실행의 서버 취소 접수 뒤 시작해 같은 유료 파트가 동시에 새로 출발하는 창을 줄인다.
+    if (previousRunId) {
+      await cancelAutoPrepRun(previousRunId).catch(() => undefined);
+      if (runSeqRef.current !== seq) return;
+    }
     const ac = new AbortController();
     abortRef.current = ac;
+    const executionRequest: AutoPrepRequest = { ...req, runId: createRunId() };
+    runIdRef.current = executionRequest.runId as string;
     setState({ ...INITIAL, running: true });
-    await driveRunStream(
-      req,
-      (updater) => {
-        if (runSeqRef.current === seq) setState(updater);
-      },
-      ac,
-    );
+    try {
+      await driveRunStream(
+        executionRequest,
+        (updater) => {
+          if (runSeqRef.current === seq) setState(updater);
+        },
+        ac,
+      );
+    } finally {
+      if (runSeqRef.current === seq && abortRef.current === ac) {
+        abortRef.current = null;
+        runIdRef.current = null;
+      }
+    }
   }, []);
 
   const cancel = useCallback(() => {
+    const runId = runIdRef.current;
+    runIdRef.current = null;
+    if (runId) void cancelAutoPrepRun(runId, true).catch(() => undefined);
     abortRef.current?.abort();
+    abortRef.current = null;
     setState((prev) => ({ ...prev, running: false }));
   }, []);
 
   const reset = useCallback(() => {
+    const runId = runIdRef.current;
+    runIdRef.current = null;
+    if (runId) void cancelAutoPrepRun(runId, true).catch(() => undefined);
     abortRef.current?.abort();
+    abortRef.current = null;
     setState(INITIAL);
   }, []);
 

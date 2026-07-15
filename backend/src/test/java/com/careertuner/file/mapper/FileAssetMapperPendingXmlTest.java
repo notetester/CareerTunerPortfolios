@@ -56,6 +56,26 @@ class FileAssetMapperPendingXmlTest {
     }
 
     @Test
+    void profileImportCleanupIsLimitedAndRechecksExactPendingScope() throws Exception {
+        String xml = Files.readString(MAPPER);
+        String find = statement(xml, "select", "findStalePendingProfileImports");
+        String delete = statement(xml, "delete", "deleteStalePendingProfileImport");
+
+        assertThat(find)
+                .contains("kind = 'RESUME'")
+                .contains("ref_type = 'PROFILE_IMPORT_PENDING'")
+                .contains("ref_id IS NULL")
+                .contains("created_at &lt; #{cutoff}")
+                .contains("LIMIT #{limit}");
+        assertThat(delete)
+                .contains("owner_user_id = #{ownerUserId}")
+                .contains("kind = 'RESUME'")
+                .contains("ref_type = 'PROFILE_IMPORT_PENDING'")
+                .contains("ref_id IS NULL")
+                .contains("created_at &lt; #{cutoff}");
+    }
+
+    @Test
     void interviewMediaClaimAndCleanupRequireDeclaredPurposeAndPendingReference() throws Exception {
         String xml = Files.readString(MAPPER);
         String claim = statement(xml, "update", "claimOwnedPendingFile");

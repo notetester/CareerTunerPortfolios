@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI 오케스트레이터 — 설계·개발 가이드 (F 인테이크 챗봇 포함)</title>
+<style>
+  :root{
+    --bg:#08090a; --card:#141517; --card2:#1a1c1f; --code:#0e0f11; --border:#23252a; --border2:#2c2f3d;
+    --ink:#f7f8f8; --muted:#8a8f98; --muted2:#62666d;
+    --accent:#5e6ad2; --accent2:#7170ff; --halo:#a3a2ff;
+    --ok:#3fb950; --skip:#6e7681; --warn:#d29922; --err:#f85149;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Pretendard","Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.6}
+  a{color:var(--halo);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:"JetBrains Mono","SF Mono",Consolas,monospace;font-size:.88em;
+    background:var(--code);border:1px solid var(--border);border-radius:5px;padding:1px 6px;color:var(--halo)}
+  pre{background:var(--code);border:1px solid var(--border);border-radius:10px;padding:15px 16px;overflow-x:auto;margin:12px 0}
+  pre code{background:0;border:0;padding:0;color:#cdd3de;font-size:12.5px;line-height:1.65}
+  .k{color:#7170ff}.s{color:#3fb950}.c{color:#62666d;font-style:italic}.n{color:#d29922}.f{color:#56b6c2}
+
+  /* layout */
+  .shell{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:230px 1fr;gap:0}
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:26px 16px 40px;border-right:1px solid var(--border)}
+  .toc .brand{font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .toc .dot{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 12px var(--accent2)}
+  .toc .sub{font-size:11px;color:var(--muted2);margin-bottom:20px}
+  .toc a{display:block;font-size:12.5px;color:var(--muted);padding:6px 10px;border-radius:7px;border-left:2px solid transparent}
+  .toc a:hover{color:var(--ink);background:var(--card);text-decoration:none}
+  .toc a.act{color:var(--ink);background:var(--card2);border-left-color:var(--accent2)}
+  .toc a.fkey{color:var(--halo)}
+  .main{padding:34px 40px 120px;min-width:0}
+
+  .hero{border:1px solid var(--border2);border-radius:18px;padding:30px 28px;margin-bottom:14px;
+    background:linear-gradient(135deg,rgba(94,106,210,.16),rgba(113,112,255,.04))}
+  .hero h1{font-size:26px;margin:0 0 8px;font-weight:800;letter-spacing:-.02em}
+  .hero p{margin:0;color:var(--muted);font-size:14px;max-width:680px}
+  .hero .one{margin-top:16px;background:var(--code);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13.5px}
+  .hero .one b{color:var(--halo)}
+
+  section{margin-top:40px;scroll-margin-top:18px}
+  h2.sec{font-size:20px;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;margin:0 0 4px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+  h2.sec .num{font-size:12px;color:var(--accent2);border:1px solid var(--border2);border-radius:7px;padding:2px 8px;font-weight:700}
+  h3{font-size:15.5px;font-weight:700;margin:24px 0 8px}
+  p{font-size:13.5px;color:#cfd3da}
+  .lead{color:var(--muted);font-size:13.5px}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:920px){.grid2{grid-template-columns:1fr}}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px}
+  .card h4{margin:0 0 8px;font-size:13.5px;font-weight:700}
+
+  /* callouts */
+  .call{border-radius:11px;padding:13px 15px 13px 14px;margin:14px 0;font-size:13px;border:1px solid;display:flex;gap:11px}
+  .call .ci{font-size:16px;flex:none;line-height:1.4}
+  .call.todo{background:rgba(113,112,255,.08);border-color:rgba(113,112,255,.32)}
+  .call.todo b{color:var(--halo)}
+  .call.warn{background:rgba(210,153,34,.08);border-color:rgba(210,153,34,.34)}
+  .call.warn b{color:var(--warn)}
+  .call.tip{background:rgba(63,185,80,.07);border-color:rgba(63,185,80,.3)}
+  .call.tip b{color:var(--ok)}
+  .call.trap{background:rgba(248,81,73,.07);border-color:rgba(248,81,73,.32)}
+  .call.trap b{color:var(--err)}
+
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600;background:var(--card);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
+  td b{color:var(--ink)}
+  .req{color:var(--err);font-weight:700}.opt{color:var(--muted2)}.cond{color:var(--warn);font-weight:700}
+
+  /* flow diagram */
+  .flow{display:flex;flex-direction:column;gap:0;margin:18px 0}
+  .fbox{border:1px solid var(--border2);border-radius:11px;padding:13px 16px;background:var(--card);position:relative}
+  .fbox .ft{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .fbox .fd{font-size:12px;color:var(--muted);margin-top:3px}
+  .fbox .owner{margin-left:auto;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px}
+  .ow-f{background:rgba(113,112,255,.16);color:var(--halo);border:1px solid rgba(113,112,255,.3)}
+  .ow-d{background:rgba(63,185,80,.13);color:var(--ok);border:1px solid rgba(63,185,80,.28)}
+  .ow-c{background:rgba(210,153,34,.13);color:var(--warn);border:1px solid rgba(210,153,34,.28)}
+  .farrow{text-align:center;color:var(--muted2);font-size:15px;padding:5px 0}
+  .farrow .lbl{font-size:11px;color:var(--accent2);font-family:monospace}
+
+  /* ===== interactive intake sim ===== */
+  .sim{border:1px solid var(--border2);border-radius:16px;overflow:hidden;margin:18px 0;background:var(--card)}
+  .simbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card2)}
+  .simbar .st{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+  .simbar .ctrls{margin-left:auto;display:flex;gap:7px}
+  .btn{font-size:12px;font-weight:600;border:1px solid var(--border2);background:var(--card);color:var(--ink);
+    border-radius:8px;padding:6px 13px;cursor:pointer;transition:.12s}
+  .btn:hover{border-color:var(--accent2);color:var(--halo)}
+  .btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));border:0;color:#fff}
+  .btn.primary:hover{filter:brightness(1.1);color:#fff}
+  .btn:disabled{opacity:.4;cursor:default}
+  .simgrid{display:grid;grid-template-columns:1.15fr .85fr;min-height:430px}
+  @media(max-width:860px){.simgrid{grid-template-columns:1fr}}
+  .simchat{padding:16px;display:flex;flex-direction:column;gap:11px;border-right:1px solid var(--border);overflow-y:auto;max-height:480px;background:#0b0c0e}
+  .simside{padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--card)}
+
+  .row{display:flex;gap:8px;animation:slide .25s ease}
+  .row.me{justify-content:flex-end}
+  .bub{max-width:84%;font-size:13px;line-height:1.5;padding:9px 12px;border-radius:13px}
+  .row.ai .bub{background:var(--card2);border:1px solid var(--border);border-bottom-left-radius:4px}
+  .row.me .bub{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-bottom-right-radius:4px}
+  .av{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:13px;background:rgba(113,112,255,.14)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{font-size:12px;border:1px solid var(--border2);background:var(--card);border-radius:999px;padding:5px 11px;color:var(--muted)}
+  .chip.case{border-radius:9px;text-align:left;padding:6px 10px;color:var(--ink)}
+  .chip.case b{display:block;font-size:12px}.chip.case span{font-size:10.5px;color:var(--muted)}
+  .chip.pick{border-color:var(--accent2);color:var(--halo)}
+
+  .slotboard h5,.apimirror h5{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .slot{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:7px;background:var(--code);font-size:12.5px;transition:.25s}
+  .slot .nm{font-family:monospace;color:var(--muted)}
+  .slot .vl{margin-left:auto;font-weight:700}
+  .slot.empty .vl{color:var(--muted2)}
+  .slot.filled{border-color:rgba(63,185,80,.4);background:rgba(63,185,80,.06)}
+  .slot.filled .nm{color:var(--ink)}.slot.filled .vl{color:var(--ok)}
+  .slot .tag{font-size:9.5px;padding:1px 6px;border-radius:5px;border:1px solid var(--border2);color:var(--muted2)}
+  .slot.filled .tag{border-color:rgba(63,185,80,.4);color:var(--ok)}
+  .apimirror pre{margin:0;font-size:11.5px}
+  .readypill{margin-top:auto;font-size:12px;font-weight:700;text-align:center;padding:9px;border-radius:9px;border:1px dashed var(--border2);color:var(--muted2)}
+  .readypill.go{border-style:solid;border-color:var(--ok);color:var(--ok);background:rgba(63,185,80,.08)}
+
+  /* run sim */
+  .pg{padding:10px 0 2px}
+  .pg .ph{font-size:12px;font-weight:700;display:flex;gap:7px;align-items:center}
+  .pg .ph .pt{font-size:10px;color:var(--muted2)}
+  .pg .ph .ps{margin-left:auto;font-size:10.5px;font-weight:700}
+  .ssub{display:flex;gap:10px;padding:5px 0 5px 2px;animation:slide .25s}
+  .ssub .ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;background:rgba(113,112,255,.13);color:var(--halo);flex:none}
+  .ssub.sk .ic{background:var(--card2);color:var(--muted2)}
+  .ssub .sn{font-size:12px;font-weight:600}.ssub .sd{font-size:11px;color:var(--muted)}
+  .ebar{height:3px;border-radius:99px;background:var(--card2);overflow:hidden;margin-top:4px}
+  .ebar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .12s}
+  .spin{width:11px;height:11px;border:2px solid var(--border);border-top-color:var(--accent2);border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+
+  .steps{counter-reset:s;margin:14px 0;padding:0;list-style:none}
+  .steps li{position:relative;padding:11px 0 11px 42px;border-bottom:1px solid var(--border);font-size:13px}
+  .steps li:before{counter-increment:s;content:counter(s);position:absolute;left:0;top:9px;width:27px;height:27px;
+    border-radius:50%;background:var(--card2);border:1px solid var(--border2);color:var(--halo);font-weight:700;font-size:12px;display:grid;place-items:center}
+  .steps li b{color:var(--ink)}
+  .steps li code{font-size:11.5px}
+
+  .pill{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-block}
+  .pill.a{background:rgba(94,106,210,.15);color:#9aa4e8}.pill.req{background:rgba(248,81,73,.13);color:var(--err)}
+  .pill.opt{background:var(--card2);color:var(--muted)}.pill.cond{background:rgba(210,153,34,.13);color:var(--warn)}
+
+  .chk{list-style:none;padding:0;margin:12px 0}
+  .chk li{padding:8px 0 8px 28px;position:relative;font-size:13px;border-bottom:1px solid var(--border)}
+  .chk li:before{content:"☐";position:absolute;left:4px;top:7px;color:var(--accent2);font-size:15px}
+
+  .tabs{display:flex;gap:6px;margin:14px 0 0}
+  .tab{font-size:12.5px;font-weight:600;padding:8px 14px;border:1px solid var(--border);border-bottom:0;border-radius:9px 9px 0 0;background:var(--card);color:var(--muted);cursor:pointer}
+  .tab.on{background:var(--code);color:var(--ink);border-color:var(--border2)}
+  .tabwrap{border:1px solid var(--border2);border-radius:0 10px 10px 10px;padding:4px 16px 16px;background:var(--code)}
+  .tabpane{display:none}.tabpane.on{display:block}
+
+  .foot{margin-top:50px;padding-top:20px;border-top:1px solid var(--border);font-size:12px;color:var(--muted2)}
+  @keyframes slide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media(max-width:760px){.shell{grid-template-columns:1fr}.toc{display:none}.main{padding:24px 18px 80px}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- ===== 목차 ===== -->
+  <nav class="toc" id="toc">
+    <div class="brand"><span class="dot"></span> CareerTuner</div>
+    <div class="sub">AI 오케스트레이터 개발 가이드</div>
+    <a href="#s1">1. 큰 그림</a>
+    <a href="#s2" class="fkey">2. 인테이크 챗봇 ★ (F)</a>
+    <a href="#s3">3. 오케스트레이터 작동</a>
+    <a href="#s4">4. 부분 슬롯도 OK</a>
+    <a href="#s5">5. 폴백 체인 (Haiku)</a>
+    <a href="#s6">6. 세션 자동저장 (C)</a>
+    <a href="#s7">7. API · 파일 · 용어</a>
+  </nav>
+
+  <main class="main">
+    <div class="call warn"><span class="ci">⚠️</span><div><b>2026-06 보관 스냅샷</b> — 이 HTML은 당시 설계 설명을 보존한다. 현재 구현·API·폴백 계약은 <a href="../../AI_ORCHESTRATOR.md">현재 Markdown 운영 가이드</a>를 따른다.</div></div>
+    <div class="hero">
+      <h1>AI 오케스트레이터</h1>
+      <p>사용자의 한 줄 요청을 받아 취업 준비 <b>6개 영역</b>(프로필·공고·적합도·자소서·면접·커뮤니티)을 한 번에 자동으로 돌리는 기능. 이 문서는 그 설계와 개발 가이드이고, 특히 <b style="color:var(--halo)">F가 만들 인테이크 챗봇</b>을 눈으로 보이게 정리했다.</p>
+      <div class="one">예시 입력 — <b>"네이버 백엔드 신입 통째로 준비해줘"</b> &nbsp;→&nbsp; 6개 AI가 알아서 준비 → 면접 시작</div>
+    </div>
+    <p class="lead">📌 이 문서는 2026-06 당시의 <b>구현 상태</b>와 <b>구상</b>을 구분한 기록이다. 구상은 <span class="pill cond">예정</span> 표시를 붙였다. 현재 문서와 같은 내용으로 간주하지 않는다.</p>
+
+    <!-- ============ 1. 큰 그림 ============ -->
+    <section id="s1">
+      <h2 class="sec"><span class="num">1</span> 한눈에 보는 큰 그림</h2>
+      <p>오케스트레이터는 오케스트라 지휘자다. 직접 연주(AI 호출)는 각 담당자의 기존 도메인 서비스가 하고, 지휘자는 "누가 먼저, 누가 동시에, 누가 나중에"만 통제한다. <b>새 AI 로직을 따로 만든 게 아니라 기존 기능을 묶는다.</b></p>
+
+      <div class="flow">
+        <div class="fbox">
+          <div class="ft">🧑 사용자 입력 <span class="owner">+ 파일 첨부 가능</span></div>
+          <div class="fd">"네이버 백엔드 신입 통째로 준비해줘"</div>
+        </div>
+        <div class="farrow">▼</div>
+        <div class="fbox" style="border-color:rgba(113,112,255,.4)">
+          <div class="ft">① 인테이크 챗봇 <span class="owner ow-f">F 담당 · 확장 예정</span></div>
+          <div class="fd">사용자와 대화하며 부족한 정보(슬롯)를 채운다 → <code>AutoPrepRequest</code> 완성</div>
+        </div>
+        <div class="farrow"><span class="lbl">AutoPrepRequest { query, applicationCaseId, mode, ... }</span><br>▼</div>
+        <div class="fbox">
+          <div class="ft">② 두뇌 / 플래너 <code>AutoPrepPlanner</code> <span class="owner ow-d">D</span></div>
+          <div class="fd">한 줄 문장을 AI로 해석 → 슬롯 추출 + "어떤 파트를 어떤 순서로" 실행계획 생성</div>
+        </div>
+        <div class="farrow"><span class="lbl">PrepPlan { steps: ["PROFILE","JOB","FIT", ...] }</span><br>▼</div>
+        <div class="fbox">
+          <div class="ft">③ 오케스트레이터 <code>AutoPrepOrchestrator</code> <span class="owner ow-d">D</span></div>
+          <div class="fd">steps를 의존 그래프대로 병렬 실행 → 진행 상황을 SSE로 실시간 전송</div>
+        </div>
+        <div class="farrow">▼ &nbsp; <span style="font-size:11px;color:var(--muted)">독립 파트는 동시에 / FIT·INTERVIEW는 JOB 끝난 뒤</span></div>
+        <div class="fbox" style="background:var(--code)">
+          <div class="ft" style="font-size:12px;flex-wrap:wrap;gap:6px">
+            <span class="pill a">PROFILE·A</span><span class="pill a">JOB·B</span><span class="pill a">FIT·C</span>
+            <span class="pill a">WRITE·E</span><span class="pill a">INTERVIEW·D</span><span class="pill a">COMMUNITY·F</span>
+          </div>
+          <div class="fd">각 파트 = 담당자의 기존 도메인 서비스 호출. 화면엔 <code>AutoPrepWorkView</code> 타임라인이 실시간으로 채워짐</div>
+        </div>
+      </div>
+
+      <div class="call tip"><span class="ci">✅</span><div><b>지금 상태</b> — ②두뇌 + ③오케스트레이터는 <b>완성</b>돼 있다. ①인테이크는 지금 백엔드 되묻기 API(<code>AutoPrepIntakeService</code>)와 프론트 채팅 모달로 동작하고, F가 만드는 <b>대화형 인테이크 챗봇으로 확장 예정</b>이다.</div></div>
+    </section>
+
+    <!-- ============ 2. 인테이크 챗봇 (F) ============ -->
+    <section id="s2">
+      <h2 class="sec"><span class="num">2</span> 인테이크 챗봇 만들기 — F 가이드 ★</h2>
+      <p class="lead">이 장만 읽어도 인테이크 챗봇을 시작할 수 있게 썼다. <b>목표 한 문장:</b></p>
+      <div class="call todo"><span class="ci">🎯</span><div><b>사용자와 자연어로 대화해서, 결국 <code>AutoPrepRequest</code> 하나를 완성해 <code>POST /api/auto-prep/run/stream</code> 으로 넘기면 끝.</b> 두뇌·오케스트레이터는 그 그릇만 받으면 지금 코드 그대로 돈다. 즉 F와 D의 인터페이스는 <code>AutoPrepRequest</code> 하나로 고정이다.</div></div>
+
+      <h3>2.1 직접 만져보는 대화 시뮬레이터</h3>
+      <p>아래 <b>▶ 재생</b>을 눌러봐라. 왼쪽에 대화가 흐르고, 오른쪽 <b>슬롯 보드</b>가 하나씩 채워지며, 매 턴 <b>어떤 API를 쏘는지</b>가 그대로 보인다. 이게 네가 만들 흐름의 전부다.</p>
+
+      <div class="sim">
+        <div class="simbar">
+          <div class="st"><span>✦</span> 인테이크 대화 → 슬롯 → AutoPrepRequest</div>
+          <div class="ctrls">
+            <button class="btn" id="simStep">⏭ 한 단계</button>
+            <button class="btn primary" id="simPlay">▶ 재생</button>
+            <button class="btn" id="simReset">↻ 리셋</button>
+          </div>
+        </div>
+        <div class="simgrid">
+          <div class="simchat" id="simChat"></div>
+          <div class="simside">
+            <div class="slotboard">
+              <h5>슬롯 보드 (채워지는 중)</h5>
+              <div class="slot empty" id="slot-case"><span class="nm">applicationCaseId</span><span class="tag">필수*</span><span class="vl">—</span></div>
+              <div class="slot empty" id="slot-mode"><span class="nm">mode</span><span class="tag">면접 시 필수</span><span class="vl">—</span></div>
+              <div class="slot empty" id="slot-co"><span class="nm">company/jobTitle</span><span class="tag">선택</span><span class="vl">—</span></div>
+            </div>
+            <div class="apimirror">
+              <h5>지금 보내는 요청</h5>
+              <pre id="apiMirror"><code class="c">// ▶ 재생을 누르세요</code></pre>
+            </div>
+            <div class="readypill" id="readyPill">ready = false</div>
+          </div>
+        </div>
+      </div>
+      <p class="lead">* <code>applicationCaseId</code>는 "지원 건이 필요한 파트(JOB·FIT·INTERVIEW)"가 계획에 있을 때만 필수다. 프로필·자소서·커뮤니티만이면 없어도 바로 <code>ready</code>. (→ 4장)</p>
+
+      <h3>2.2 채워 넘겨야 할 그릇 — <code>AutoPrepRequest</code></h3>
+      <p>인테이크 챗봇이 최종적으로 만들어 넘기는 객체는 단 하나다. (<code>backend/.../ai/autoprep/dto/AutoPrepRequest.java</code>)</p>
+      <table>
+        <tr><th>필드</th><th>필수도</th><th>누가 채우나</th><th>설명</th></tr>
+        <tr><td><b>query</b></td><td><span class="pill a">권장</span></td><td>사용자 원문 그대로</td><td>"네이버 백엔드 통째로 준비해줘". 두뇌가 여기서 회사·직무·모드·파트를 추출. 비면 전체 파트 기본 실행</td></tr>
+        <tr><td><b>applicationCaseId</b></td><td><span class="pill req">조건부 필수</span></td><td>챗봇이 되묻기로 확정</td><td>JOB·FIT·INTERVIEW를 돌리려면 필요. 명시되면 query 파싱보다 우선</td></tr>
+        <tr><td><b>mode</b></td><td><span class="pill cond">면접 시 필수</span></td><td>챗봇이 되묻기로 확정</td><td>INTERVIEW가 있으면 필요. 6종 코드 중 하나</td></tr>
+        <tr><td><b>coverLetterText</b></td><td><span class="pill opt">선택</span></td><td>사용자 입력 / 첨부 추출</td><td>WRITE(자소서 교정)가 사용. 없으면 WRITE만 건너뜀</td></tr>
+        <tr><td><b>attachmentFileIds</b></td><td><span class="pill opt">선택</span></td><td><code>POST /api/file/upload</code> 결과 id</td><td>이력서·자소서 등. 무료 1개 / 유료 다수 게이팅</td></tr>
+      </table>
+      <p><b>면접 모드 6종</b> (<code>mode</code> 코드 → 사용자에게는 라벨로 묻고 코드로 넘긴다):</p>
+      <table>
+        <tr><th>코드</th><td><code>BASIC</code></td><td><code>JOB</code></td><td><code>PERSONALITY</code></td><td><code>PRESSURE</code></td><td><code>RESUME</code></td><td><code>COMPANY</code></td></tr>
+        <tr><th>라벨</th><td>기본 면접</td><td>직무 면접</td><td>인성 면접</td><td>압박 면접</td><td>자소서 기반</td><td>기업 맞춤</td></tr>
+      </table>
+
+      <div class="call tip"><span class="ci">✅</span><div><b>구현 현황(2026-06-24) — F가 이미 만듦.</b> 아래 경로 B는 "예정"이 아니라 <code>ai/intake</code> 패키지로 <b>이미 구현·머지됨</b>: <code>POST /api/chatbot/intake/ask</code> · <code>IntakeChatAgent</code>(LangChain4j) · 툴 3종 <code>listCases·chooseCase·chooseMode</code> · <code>IntakeSlotTrace</code>(슬롯 누적, 메모리 윈도우 40). 슬롯 다 모으면 <code>AutoPrepRequest</code> 조립 → <code>autoPrepIntakeService.intake()</code> → <code>ready</code>면 클라가 <code>/run/stream</code>. <b>남은 건 프론트 연결</b>(이 API를 호출하는 화면이 아직 없음) + 슬롯 영속화. 아래 경로 설명은 그 구조의 배경으로 읽으면 됨.</div></div>
+
+      <h3>2.3 두 가지 구현 경로 — 쉬운 길부터</h3>
+      <div class="tabs">
+        <div class="tab on" data-tab="A">경로 A · 되묻기 API 활용 <span style="color:var(--ok)">(권장 시작점)</span></div>
+        <div class="tab" data-tab="B">경로 B · 풀 LLM 에이전트 (고도화)</div>
+      </div>
+      <div class="tabwrap">
+        <div class="tabpane on" data-pane="A">
+          <p><b>핵심:</b> 백엔드 <code>/api/auto-prep/intake</code>가 "지금 뭘 더 물어야 하는지"(<code>nextAsk</code>)를 알려준다. 그래서 챗봇은 <b>자체 판단을 거의 안 하고</b>, 서버가 시키는 걸 자연어로 포장해 묻기만 하면 된다. <b>백엔드 추가 개발이 거의 없다.</b></p>
+          <pre><code><span class="c">// 인테이크 챗봇 한 턴 루프 (의사코드) — 시뮬레이터가 보여준 그 흐름</span>
+<span class="k">let</span> req = { query: 사용자_첫메시지 };
+
+<span class="k">while</span> (true) {
+  <span class="k">const</span> res = <span class="k">await</span> POST(<span class="s">"/api/auto-prep/intake"</span>, req);  <span class="c">// AutoPrepIntakeResponse</span>
+
+  <span class="k">if</span> (res.ready) {                          <span class="c">// 슬롯 다 참 → 실행으로</span>
+    <span class="k">await</span> POST_SSE(<span class="s">"/api/auto-prep/run/stream"</span>, req);
+    <span class="k">break</span>;
+  }
+  <span class="k">if</span> (res.nextAsk === <span class="s">"CASE"</span>) {           <span class="c">// 서버: 지원 건이 필요해</span>
+    챗봇이_묻기(res.message, res.candidates);  <span class="c">// "어느 지원 건?" + 후보 칩</span>
+    req.applicationCaseId = 사용자가_고른_id;   <span class="c">// 슬롯 채움</span>
+  } <span class="k">else if</span> (res.nextAsk === <span class="s">"MODE"</span>) {    <span class="c">// 서버: 면접 모드가 필요해</span>
+    챗봇이_묻기(res.message, res.modes);
+    req.mode = 사용자가_고른_코드;
+  }
+}</code></pre>
+          <div class="call tip"><span class="ci">💡</span><div>현재 프론트 <code>AutoPrepChatModal</code>이 정확히 이 방식이다. F의 인테이크 챗봇은 이 칩 선택을 <b>자연어 대화 + 기존 챗봇 메모리</b>로 감싸 더 똑똑하게 만드는 일이다. 출발은 이 루프면 충분하다.</div></div>
+        </div>
+        <div class="tabpane" data-pane="B">
+          <p><b>핵심:</b> 기존 커뮤니티 챗봇(<code>CommunityChatAgent</code>)과 똑같은 LangChain4j <code>@AiService</code> 패턴으로 <b>슬롯 추출 에이전트</b>를 새로 만든다. LLM이 대화에서 회사·직무·모드를 뽑고, 지원 건 조회는 <code>@Tool</code>로 한다.</p>
+          <pre><code><span class="c">// IntakeAgent — 기존 CommunityChatAgent 와 같은 구조 (예시 골격)</span>
+<span class="k">public interface</span> <span class="f">IntakeAgent</span> {
+  <span class="n">@SystemMessage</span>(fromResource = <span class="s">"prompts/intake-system.txt"</span>)
+  String chat(<span class="n">@MemoryId</span> Long conversationId, <span class="n">@UserMessage</span> String userMessage);
+}
+
+<span class="c">// IntakeTools — 지원 건 후보를 LLM 에게 제공 (읽기 전용)</span>
+<span class="k">class</span> <span class="f">IntakeTools</span> {
+  <span class="n">@Tool</span>(<span class="s">"사용자의 지원 건 목록을 조회한다"</span>)
+  List&lt;CaseHit&gt; <span class="f">listCases</span>(Long userId) { ... }
+}
+
+<span class="c">// 대화로 모은 슬롯 → AutoPrepRequest 로 변환 후 오케스트레이터 호출</span>
+<span class="k">var</span> req = <span class="k">new</span> AutoPrepRequest(query, caseId, mode, <span class="k">null</span>, <span class="k">null</span>);
+orchestrator.runStream(userId, req);</code></pre>
+          <div class="call warn"><span class="ci">⚠️</span><div><b>qwen3 JSON 스키마 함정</b> — 현재 챗봇이 <code>String</code>을 반환하는 이유가 있다. qwen3:8b는 JSON 스키마를 강제받으면 <code>@Tool</code> 호출을 건너뛰고 JSON만 뱉는 버그가 있다. 그래서 <b>슬롯도 구조화 출력으로 강제하지 말고</b>, String 답변을 받은 뒤 별도 상태 객체에 누적하는 방식이 안전하다.</div></div>
+        </div>
+      </div>
+
+      <h3>2.4 기존 챗봇에서 그대로 재사용할 것</h3>
+      <p>F의 커뮤니티 챗봇은 이미 LangChain4j 툴호출 에이전트다. 인테이크 챗봇에 바로 끌어 쓸 자산이 있다.</p>
+      <table>
+        <tr><th>자산</th><th>위치</th><th>재사용도</th><th>이유</th></tr>
+        <tr><td><b>세션 메모리(DB 영속)</b></td><td><code>MyBatisChatMemoryStore</code> + <code>chatbot_conversation_memory</code></td><td>★★★</td><td><code>conversation_id</code> 기반으로 이미 영속화. 슬롯 상태도 같은 테이블 확장 가능 (→ 6장)</td></tr>
+        <tr><td><b>메시지 윈도우</b></td><td><code>ChatMemoryConfig</code> (최근 20개)</td><td>★★★</td><td>대화 맥락 자동 관리</td></tr>
+        <tr><td><b>@AiService 빌더</b></td><td><code>CommunityAgentConfig</code></td><td>★★★</td><td>같은 패턴으로 IntakeAgent 빈만 추가</td></tr>
+        <tr><td><b>@Tool 호출</b></td><td><code>CommunityTools</code></td><td>★★</td><td>지원 건 조회 툴 추가 패턴 동일</td></tr>
+      </table>
+      <div class="call warn"><span class="ci">📌</span><div><b>모델 현황 — 알고 시작해라.</b> 챗봇 <b>본답변 모델은 이미 <code>qwen3:8b</code>로 전환</b>됐다(LangChain4j 전환 커밋). <code>gemma4</code>는 검열·추천칩·임베딩 보조로 남아 있다. "gemma 쓰는 중"이라고 알고 있었다면 메인은 바뀐 상태다. <b>최종 모델 선택은 F가 결정</b>한다.</div></div>
+
+      <h3>2.5 단계별 체크리스트</h3>
+      <ul class="chk">
+        <li><b>1.</b> 경로 A 루프부터 동작시킨다 — <code>/intake</code> 호출 → <code>nextAsk</code> 분기 → <code>ready</code>면 <code>/run/stream</code></li>
+        <li><b>2.</b> 챗봇 대화 UI에 후보 칩(CASE)·모드 칩(MODE)을 자연어 메시지와 함께 띄운다</li>
+        <li><b>3.</b> <code>conversation_id</code>로 대화·슬롯 상태를 이어간다 (새로고침해도 유지)</li>
+        <li><b>4.</b> (고도화) IntakeAgent로 "네이버 백엔드 압박면접"을 한 번에 파싱해 되묻기 횟수를 줄인다</li>
+        <li><b>5.</b> 자소서·첨부는 선택이니 나중에. 먼저 caseId+mode 확정 흐름을 완성한다</li>
+      </ul>
+
+      <h3>2.6 흔한 함정</h3>
+      <div class="call trap"><span class="ci">🚫</span><div><b>모든 슬롯을 다 받으려 하지 마라.</b> 시스템은 부분 슬롯으로도 돈다(4장). <code>applicationCaseId</code>와 (면접이면) <code>mode</code>만 확정하면 출발. 자소서·첨부까지 다 모으려고 대화를 길게 끌면 사용자가 이탈한다.</div></div>
+      <div class="call trap"><span class="ci">🚫</span><div><b>지원 건이 0개인 사용자</b>는 <code>candidates</code>가 빈 배열로 온다. 이때 서버 <code>message</code>가 "채용공고로 지원 건을 먼저 만들어 주세요"다. 챗봇은 이 경우 지원 건 생성 화면으로 안내해야 한다(무한 되묻기 금지).</div></div>
+
+      <div class="call tip"><span class="ci">🏁</span><div><b>완성 기준</b> — "사용자와 대화해서 <code>applicationCaseId</code>(+면접이면 <code>mode</code>)를 확정 → <code>/run/stream</code>이 떠서 6파트 타임라인이 흐른다." 여기까지면 인테이크 챗봇 1차 완료다.</div></div>
+    </section>
+
+    <!-- ============ 3. 오케스트레이터 작동 ============ -->
+    <section id="s3">
+      <h2 class="sec"><span class="num">3</span> 오케스트레이터는 뭘 하나 (참고)</h2>
+      <p>F가 <code>/run/stream</code>을 부르면 그 뒤에서 벌어지는 일이다. 직접 만질 일은 없지만, 화면 흐름을 알면 인테이크를 어디서 끊어 넘길지 감이 온다. <b>▶ 재생</b>을 눌러봐라.</p>
+
+      <div class="sim">
+        <div class="simbar">
+          <div class="st" id="runSt"><span>⚙️</span> 6파트 의존 그래프 병렬 실행 (SSE)</div>
+          <div class="ctrls"><button class="btn primary" id="runPlay">▶ 재생</button><button class="btn" id="runReset">↻ 리셋</button></div>
+        </div>
+        <div style="padding:16px 18px;min-height:200px" id="runBody"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h4>의존 그래프 — 딱 두 줄</h4>
+          <pre style="margin:6px 0"><code><span class="n">DEPS</span> = {
+  <span class="s">"FIT"</span>:       [<span class="s">"JOB"</span>],
+  <span class="s">"INTERVIEW"</span>: [<span class="s">"JOB"</span>]
+}</code></pre>
+          <p style="font-size:12px;margin:6px 0 0">FIT·INTERVIEW는 공고 분석(JOB) 결과가 필요해 JOB 완료 후 시작. 나머지(PROFILE·WRITE·COMMUNITY·JOB)는 의존이 없어 <b>동시 출발</b>. 구현은 <code>CompletableFuture.allOf().thenRunAsync()</code>.</p>
+        </div>
+        <div class="card">
+          <h4>SSE 이벤트 순서</h4>
+          <table style="margin:0">
+            <tr><td><code>plan</code></td><td>실행계획 확정</td></tr>
+            <tr><td><code>part-start</code></td><td>파트 시작</td></tr>
+            <tr><td><code>substep</code></td><td>세부 작업 보고</td></tr>
+            <tr><td><code>part-done</code></td><td>파트 완료</td></tr>
+            <tr><td><code>done</code></td><td>전체 종료</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="call tip"><span class="ci">🛟</span><div><b>한 파트가 죽어도 전체는 완주한다.</b> 결과는 <code>DONE</code> / <code>SKIPPED</code>(입력 없음·비활성) / <code>FAILED</code>(예외) 셋. 각 파트를 try-catch로 감싸 예외가 옆으로 번지지 않는다. 이게 다음 장의 근거다.</div></div>
+    </section>
+
+    <!-- ============ 4. 부분 슬롯 ============ -->
+    <section id="s4">
+      <h2 class="sec"><span class="num">4</span> "슬롯이 다 안 와도 작동한다"가 사실인 이유</h2>
+      <p>설계 의도이고 코드로 보장된다. 안전장치가 두 겹이다.</p>
+      <div class="grid2">
+        <div class="card">
+          <h4>① 인테이크 — 필요한 것만 되묻는다</h4>
+          <pre style="margin:6px 0"><code><span class="n">CASE_REQUIRED</span> = {<span class="s">"JOB"</span>,<span class="s">"FIT"</span>,<span class="s">"INTERVIEW"</span>}</code></pre>
+          <p style="font-size:12px;margin:6px 0 0">계획에 이 파트가 <b>하나도 없으면</b> <code>applicationCaseId</code> 없이도 바로 <code>ready</code>. 면접이 없으면 <code>mode</code>도 안 묻는다. 필요 없는 슬롯은 처음부터 요구하지 않는다.</p>
+        </div>
+        <div class="card">
+          <h4>② 실행 — 못 채운 파트만 건너뛴다</h4>
+          <p style="font-size:12px;margin:0">각 핸들러가 자기 입력이 없으면 스스로 <code>SKIPPED</code> 반환(예: 자소서 없으면 WRITE만 SKIPPED). 한 파트의 SKIPPED/FAILED는 다른 파트에 영향 없음. <b>"할 수 있는 것까지" 준비된다.</b></p>
+        </div>
+      </div>
+      <table>
+        <tr><th>사용자가 준 것</th><th>실행되는 파트</th><th>건너뛰는 파트</th></tr>
+        <tr><td><code>query</code>만, 지원 건 없음, 면접 미포함</td><td>PROFILE 등 지원 건 불필요 파트</td><td>JOB·FIT·INTERVIEW</td></tr>
+        <tr><td>지원 건 있음, 자소서 없음</td><td>JOB·FIT·INTERVIEW·PROFILE·COMMUNITY</td><td>WRITE</td></tr>
+        <tr><td>전부 다</td><td>6파트 전체</td><td>없음</td></tr>
+      </table>
+    </section>
+
+    <!-- ============ 5. 폴백 ============ -->
+    <section id="s5">
+      <h2 class="sec"><span class="num">5</span> AI 모델과 폴백 체인 (Haiku)</h2>
+      <p>폴백은 1순위가 실패하면 자동으로 다음으로 넘어가는 안전망이다. 이상적 순서:</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:14px 0;font-size:13px">
+        <span class="fbox" style="padding:9px 14px"><b>자체 LLM</b><br><span style="font-size:11px;color:var(--muted)">파인튜닝·서빙</span></span>
+        <span style="color:var(--accent2)">→ 실패 시 →</span>
+        <span class="fbox" style="padding:9px 14px;border-color:rgba(113,112,255,.4)"><b style="color:var(--halo)">1차 폴백 · Claude Haiku</b><br><span style="font-size:11px;color:var(--muted)">claude-haiku-4-5</span></span>
+        <span style="color:var(--accent2)">→ 실패 시 →</span>
+        <span class="fbox" style="padding:9px 14px"><b>2차 폴백 · OpenAI</b><br><span style="font-size:11px;color:var(--muted)">gpt-5</span></span>
+      </div>
+      <div class="call todo"><span class="ci">💸</span><div><b>왜 1차 폴백이 Haiku인가</b> — Haiku는 소형·고속·저비용 모델이다. 작은 작업에서 큰 모델과 체감 차이가 작으면서 빠르고 단가가 매우 싸다. 그래서 <b>자체 모델이 아직 없는 파트의 1차 폴백을 Haiku로 까는 방향</b>을 잡는다 <span class="pill cond">예정</span>. <b>호출 비용은 D(정원일)가 부담</b>한다.</div></div>
+
+      <h3>지금 실제 적용 현황 — 100%가 아니다</h3>
+      <table>
+        <tr><th>적용 수준</th><th>해당 기능</th></tr>
+        <tr><td><b style="color:var(--ok)">완전</b> (자체→Haiku→OpenAI)</td><td>면접 질문/꼬리질문/모범답안/리포트 (D) · 두뇌 플래너</td></tr>
+        <tr><td><b style="color:var(--warn)">부분</b> (자체→OpenAI, Haiku 건너뜀)</td><td>답변 채점, 적합도 분석 (C·D)</td></tr>
+        <tr><td><b style="color:var(--muted)">Mock 폴백만</b> (OpenAI 전용)</td><td>회사/직무 분석, 프로필, 대시보드, 자소서 교정</td></tr>
+        <tr><td><b style="color:var(--muted2)">폴백 없음</b></td><td>커뮤니티 챗봇 (F · Ollama 직접)</td></tr>
+      </table>
+      <div class="call warn"><span class="ci">🔧</span><div><b>할 일 <span class="pill cond">예정</span></b> — 현재 Haiku 폴백이 실제로 들어간 건 <b>면접(D) 도메인뿐</b>이다. A(프로필)·C(회사분석)·E(자소서)·F(챗봇)의 OpenAI 전용 경로에 1차 폴백 Haiku를 추가해 "자체 모델이 비거나 죽어도 Haiku가 받치는" 일관된 안전망을 만든다. 자체 면접 생성 모델은 학습 데이터 보강 전까지 화이트리스트가 비어 있어 사실상 Haiku부터 시작한다.</div></div>
+    </section>
+
+    <!-- ============ 6. 세션 저장 ============ -->
+    <section id="s6">
+      <h2 class="sec"><span class="num">6</span> 세션 자동저장 — ChatGPT식 디벨롭 (C 구상)</h2>
+      <p><b>원하는 것:</b> "구글 면접 준비해줘"로 만든 준비안을 사용자가 <b>나중에 다시 들어와 그대로 보는 것</b>. ChatGPT가 지난 대화를 왼쪽에 쌓아두는 그것.</p>
+      <div class="grid2">
+        <div class="card">
+          <h4>현재 상태</h4>
+          <p style="font-size:12.5px;margin:0">오케스트레이터(autoprep) <b>자체엔 세션 저장이 없다.</b> 모달 닫으면 사라지고, 전용 세션 테이블도 없다. <b>하지만</b> F의 챗봇엔 이미 세션 영속화가 있다 — 이게 핵심.</p>
+        </div>
+        <div class="card">
+          <h4>이미 있는 기반</h4>
+          <pre style="margin:6px 0"><code><span class="c">// 20260623_f_chatbot_memory.sql</span>
+<span class="f">chatbot_conversation_memory</span>
+  conversation_id  BIGINT PK   <span class="c">← 세션 ID</span>
+  messages_json    JSON        <span class="c">← 대화 전체</span>
+  updated_at       DATETIME</code></pre>
+        </div>
+      </div>
+      <p><code>conversation_id</code>가 곧 ChatGPT의 "대화 하나"와 같은 개념이다. 응답에 실려 나가고 다음 턴에 다시 보내 같은 세션을 이어간다.</p>
+      <div class="call tip"><span class="ci">🧩</span><div><b>방향 <span class="pill cond">예정</span></b> — 세션 자동저장은 새로 만들 게 거의 없다. <b>챗봇의 <code>conversation_id</code> 구조를 오케스트레이터로 끌어오면 된다.</b> ① 인테이크 챗봇이 만든 <code>conversation_id</code>를 준비안의 세션 키로 사용 ② 그 세션에 확정 슬롯 + 결과 요약 저장 ③ 재방문 시 복원 ④ 홈에 "최근 준비 세션" 목록. 결국 <b>인테이크(F)·세션(C)·오케스트레이터(D)가 <code>conversation_id</code> + <code>AutoPrepRequest</code> 두 계약으로 맞물린다.</b></div></div>
+    </section>
+
+    <!-- ============ 7. 레퍼런스 ============ -->
+    <section id="s7">
+      <h2 class="sec"><span class="num">7</span> API · 파일 · 용어</h2>
+      <h3>API</h3>
+      <table>
+        <tr><th>엔드포인트</th><th>메서드</th><th>요청 → 응답</th><th>용도</th></tr>
+        <tr><td><code>/api/auto-prep/intake</code></td><td>POST</td><td>AutoPrepRequest → AutoPrepIntakeResponse</td><td>되묻기. <code>ready</code>/<code>nextAsk</code>/후보</td></tr>
+        <tr><td><code>/api/auto-prep/run</code></td><td>POST</td><td>AutoPrepRequest → AutoPrepResponse</td><td>동기 실행(한 번에)</td></tr>
+        <tr><td><code>/api/auto-prep/run/stream</code></td><td>POST</td><td>AutoPrepRequest → SSE</td><td><b>실제 화면이 쓰는 것</b></td></tr>
+        <tr><td><code>/api/file/upload</code></td><td>POST</td><td>multipart → 파일 정보</td><td>첨부 업로드 → id</td></tr>
+      </table>
+      <p style="font-size:12.5px"><code>AutoPrepIntakeResponse</code> 필드: <code>plan</code>, <code>ready</code>(bool), <code>message</code>, <code>nextAsk</code>(<code>"CASE"</code>|<code>"MODE"</code>|<code>null</code>), <code>candidates</code>(지원 건 후보), <code>modes</code>(모드 선택지).</p>
+
+      <h3>파일 위치</h3>
+      <div class="grid2">
+        <div class="card">
+          <h4>백엔드 — 오케스트레이터</h4>
+          <p style="font-size:11.5px;color:var(--muted);margin:0 0 6px"><code>backend/.../ai/autoprep/</code></p>
+          <table style="margin:0;font-size:11.5px">
+            <tr><td><code>AutoPrepController</code></td><td>엔드포인트</td></tr>
+            <tr><td><code>AutoPrepPlanner</code></td><td>두뇌</td></tr>
+            <tr><td><code>AutoPrepOrchestrator</code></td><td>병렬 실행+SSE</td></tr>
+            <tr><td><code>AutoPrepIntakeService</code></td><td>되묻기</td></tr>
+            <tr><td><code>PrepSlots</code> / <code>dto/AutoPrepRequest</code></td><td>슬롯·요청</td></tr>
+            <tr><td><code>handler/*PrepHandler</code></td><td>6파트</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <h4>챗봇 — F (재사용 대상)</h4>
+          <p style="font-size:11.5px;color:var(--muted);margin:0 0 6px"><code>backend/.../ai/chat/</code></p>
+          <table style="margin:0;font-size:11.5px">
+            <tr><td><code>CommunityChatAgent</code></td><td>@AiService</td></tr>
+            <tr><td><code>CommunityAgentConfig</code></td><td>빌더</td></tr>
+            <tr><td><code>CommunityTools</code></td><td>@Tool 3종</td></tr>
+            <tr><td><code>MyBatisChatMemoryStore</code></td><td>세션 메모리</td></tr>
+            <tr><td><code>ChatMemoryConfig</code></td><td>윈도우 20</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <h4>프론트 — <code>frontend/src/features/autoprep/</code></h4>
+        <table style="margin:0;font-size:11.5px">
+          <tr><td><code>components/AutoPrepLauncher</code></td><td>한 줄 입력 + 첨부</td><td><code>components/AutoPrepChatModal</code></td><td>되묻기 채팅(경로 A 구현체)</td></tr>
+          <tr><td><code>components/AutoPrepWorkView</code></td><td>6파트 타임라인</td><td><code>hooks/useAutoPrepRun</code></td><td>SSE 수신</td></tr>
+          <tr><td><code>api/autoPrepApi</code></td><td>intake/runStream</td><td><code>types/autoPrep</code></td><td>타입+PREP_PARTS</td></tr>
+        </table>
+      </div>
+
+      <h3>용어</h3>
+      <table>
+        <tr><td><b>오케스트레이터</b></td><td>여러 AI 작업의 순서·동시성을 지휘하는 코드</td></tr>
+        <tr><td><b>슬롯</b></td><td>작업에 필요한 빈칸(지원 건·모드 등)</td></tr>
+        <tr><td><b>되묻기(intake)</b></td><td>부족한 슬롯을 사용자에게 묻는 단계</td></tr>
+        <tr><td><b>의존 그래프</b></td><td>"A 끝나야 B 시작"(FIT·INTERVIEW ← JOB)</td></tr>
+        <tr><td><b>SSE</b></td><td>서버가 진행 상황을 실시간으로 밀어 보내는 단방향 스트림</td></tr>
+        <tr><td><b>폴백</b></td><td>1순위 실패 시 다음 순위로 자동 전환</td></tr>
+      </table>
+
+      <div class="foot">CareerTuner · AI 오케스트레이터 개발 가이드 · 관련 문서: <code>docs/AI_ORCHESTRATOR.md</code>(텍스트), <code>docs/ARCHITECTURE.md</code>, <code>docs/planning/면접 자율 에이전트 로드맵.md</code>, 시안 <code>docs/planning/prototypes/orchestrator-{chat,screen}.html</code></div>
+    </section>
+  </main>
+</div>
+
+<script>
+  /* ===== scroll spy ===== */
+  const links = [...document.querySelectorAll('.toc a')];
+  const secs = links.map(a => document.querySelector(a.getAttribute('href')));
+  const spy = () => {
+    let i = secs.length - 1;
+    for (let k = 0; k < secs.length; k++){ if (secs[k].getBoundingClientRect().top <= 120) i = k; }
+    links.forEach(l => l.classList.remove('act')); links[i] && links[i].classList.add('act');
+  };
+  document.addEventListener('scroll', spy, {passive:true}); spy();
+
+  /* ===== tabs ===== */
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+    const id = t.dataset.tab;
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+    document.querySelectorAll('.tabpane').forEach(p => p.classList.toggle('on', p.dataset.pane === id));
+  });
+
+  /* ===== intake simulator ===== */
+  const SCRIPT = [
+    { who:'user', text:'구글 백엔드 면접 준비해줘',
+      api:{ query:'구글 백엔드 면접 준비해줘' }, resp:'nextAsk: "CASE"  (구글 지원 건 없음)' },
+    { who:'ai', text:'"구글" 지원 건을 못 찾았어요. 어느 지원 건으로 준비할까요?',
+      chips:{ kind:'case', items:[['네이버','백엔드'],['토스','서버']] } },
+    { who:'user', text:'네이버 백엔드', pick:true,
+      api:{ query:'구글 백엔드 면접 준비해줘', applicationCaseId:101 }, resp:'nextAsk: "MODE"',
+      slots:{ case:'101', co:'네이버 / 백엔드' } },
+    { who:'ai', text:'네이버 백엔드로 준비할게요. 면접 모드는 어떤 걸로 할까요?',
+      chips:{ kind:'mode', items:[['기본','BASIC'],['직무','JOB'],['압박','PRESSURE']] } },
+    { who:'user', text:'직무 면접', pick:true,
+      api:{ query:'구글 백엔드 면접 준비해줘', applicationCaseId:101, mode:'JOB' }, resp:'ready: true ✓',
+      slots:{ mode:'JOB' }, ready:true },
+    { who:'ai', text:'좋아요 — 네이버 백엔드 / 직무 면접 기준으로 지금 바로 준비를 시작할게요 🚀',
+      final:true }
+  ];
+  const sc = document.getElementById('simChat');
+  const mirror = document.getElementById('apiMirror');
+  const readyPill = document.getElementById('readyPill');
+  let si = 0;
+
+  function setSlot(id, val){
+    const el = document.getElementById('slot-'+id); if(!el) return;
+    el.classList.remove('empty'); el.classList.add('filled');
+    el.querySelector('.vl').textContent = val;
+  }
+  function paintApi(api, resp, ready){
+    const j = JSON.stringify(api, null, 2)
+      .replace(/"(\w+)":/g, '<span class="f">"$1"</span>:')
+      .replace(/: "([^"]*)"/g, ': <span class="s">"$1"</span>')
+      .replace(/: (\d+)/g, ': <span class="n">$1</span>');
+    mirror.innerHTML = '<code><span class="c">// POST /api/auto-prep/'+(ready?'run/stream':'intake')+'</span>\n'
+      + j + '\n\n<span class="c">// ← 응답: '+resp+'</span></code>';
+    readyPill.textContent = ready ? '▶ run/stream 호출 — 오케스트레이터로!' : 'ready = false · 더 물어봐야 함';
+    readyPill.classList.toggle('go', !!ready);
+  }
+  function bubble(step){
+    const r = document.createElement('div'); r.className = 'row ' + (step.who==='user'?'me':'ai');
+    let inner = step.who==='ai' ? '<div class="av">✦</div>' : '';
+    inner += '<div class="bub">'+step.text+'</div>';
+    r.innerHTML = inner;
+    if(step.chips){
+      const wrap = document.createElement('div'); wrap.className='chips';
+      step.chips.items.forEach(it=>{
+        const b=document.createElement('span');
+        if(step.chips.kind==='case'){ b.className='chip case'; b.innerHTML='<b>'+it[0]+'</b><span>'+it[1]+'</span>'; }
+        else { b.className='chip'; b.textContent=it[0]+' 면접'; }
+        wrap.appendChild(b);
+      });
+      r.querySelector('.bub').appendChild(wrap);
+    }
+    sc.appendChild(r); sc.scrollTop = sc.scrollHeight;
+  }
+  function step(){
+    if(si >= SCRIPT.length) return false;
+    const s = SCRIPT[si++];
+    bubble(s);
+    if(s.slots){ if(s.slots.case) setSlot('case', s.slots.case);
+      if(s.slots.mode) setSlot('mode', s.slots.mode);
+      if(s.slots.co) setSlot('co', s.slots.co); }
+    if(s.api) paintApi(s.api, s.resp, s.ready);
+    return si < SCRIPT.length;
+  }
+  function resetSim(){
+    si = 0; sc.innerHTML = '';
+    ['case','mode','co'].forEach(id=>{ const el=document.getElementById('slot-'+id);
+      el.classList.add('empty'); el.classList.remove('filled'); el.querySelector('.vl').textContent='—'; });
+    mirror.innerHTML = '<code class="c">// ▶ 재생을 누르세요</code>';
+    readyPill.textContent='ready = false'; readyPill.classList.remove('go');
+  }
+  document.getElementById('simStep').onclick = () => step();
+  document.getElementById('simReset').onclick = resetSim;
+  document.getElementById('simPlay').onclick = async () => {
+    resetSim();
+    while(true){ const more = step(); await new Promise(r=>setTimeout(r,1100)); if(!more) break; }
+  };
+
+  /* ===== run simulator (6 parts) ===== */
+  const RUN_PARTS = [
+    {key:'PROFILE',name:'프로필·역량 정리',tag:'A',subs:[['📥','프로필 로드'],['🧩','역량 추출']]},
+    {key:'JOB',name:'공고 분석',tag:'B',subs:[['📄','공고 파싱'],['🗝️','핵심 요건 추출']]},
+    {key:'FIT',name:'적합도 분석',tag:'C',dep:true,subs:[['🔍','근거 검색'],['📋','채점'],['🛡️','검증']]},
+    {key:'WRITE',name:'자소서 교정',tag:'E',skip:true,subs:[['✍️','원문 미입력 — 건너뜀']]},
+    {key:'INTERVIEW',name:'예상 면접 질문',tag:'D',dep:true,subs:[['🎙️','질문 생성'],['↪','꼬리질문 준비']]},
+    {key:'COMMUNITY',name:'커뮤니티 큐레이션',tag:'F',subs:[['🔎','관련 글 검색'],['⭐','인기순 정렬']]}
+  ];
+  const runBody = document.getElementById('runBody');
+  const runSt = document.getElementById('runSt');
+  const wait = ms => new Promise(r=>setTimeout(r,ms));
+  let running = false;
+  async function runPlay(){
+    if(running) return; running = true;
+    runBody.innerHTML = ''; runSt.innerHTML = '<span class="spin"></span> 진행 중';
+    let done=0, skip=0;
+    for(const p of RUN_PARTS){
+      const g = document.createElement('div'); g.className='pg';
+      g.innerHTML = '<div class="ph">'+p.name+' <span class="pt">·'+p.tag+(p.dep?' · JOB 후':'')+'</span>'
+        + '<span class="ps" id="rps-'+p.key+'" style="color:var(--accent2)">진행</span></div>';
+      runBody.appendChild(g);
+      for(const [ic,nm] of p.subs){
+        const sub=document.createElement('div'); sub.className='ssub'+(p.skip?' sk':'');
+        sub.innerHTML='<div class="ic">'+(p.skip?'⤼':'<span class="spin"></span>')+'</div>'
+          +'<div style="flex:1"><div class="sn">'+nm+'</div><div class="ebar"><i></i></div></div>';
+        g.appendChild(sub);
+        if(!p.skip){
+          const bar=sub.querySelector('.ebar>i');
+          for(let w=0;w<=100;w+=25){ bar.style.width=w+'%'; await wait(55); }
+          sub.querySelector('.ic').textContent=ic;
+        } else await wait(260);
+      }
+      const ps=document.getElementById('rps-'+p.key);
+      if(p.skip){ ps.outerHTML='<span class="ps" style="color:var(--skip)">⤼ 건너뜀</span>'; skip++; }
+      else { ps.outerHTML='<span class="ps" style="color:var(--ok)">✓ 완료</span>'; done++; }
+    }
+    runSt.innerHTML='<span style="color:var(--ok)">✓</span> 완료 · 완료 '+done+' · 건너뜀 '+skip;
+    running=false;
+  }
+  document.getElementById('runPlay').onclick = runPlay;
+  document.getElementById('runReset').onclick = () => { runBody.innerHTML=''; runSt.innerHTML='<span>⚙️</span> 6파트 의존 그래프 병렬 실행 (SSE)'; };
+</script>
+</body>
+</html>

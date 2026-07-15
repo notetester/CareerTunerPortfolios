@@ -97,7 +97,7 @@ class BlockRuleMatcherTest {
     @Test
     void userAndEmailRules_notEvaluatedForRequestBlocking() {
         // USER/EMAIL 규칙은 요청 차단 대상이 아니라 매칭에서 제외된다.
-        var rules = List.of(rule("EMAIL", "redacted-970907fd1e409029@example.com", "BLOCK", 100), rule("USER", "42", "BLOCK", 100));
+        var rules = List.of(rule("EMAIL", "spam@x.com", "BLOCK", 100), rule("USER", "42", "BLOCK", 100));
         assertThat(matcher.evaluate("1.2.3.4", "KR", "AS1", rules).blocked()).isFalse();
     }
 }

@@ -4,26 +4,52 @@
 <mapper namespace="com.careertuner.community.mapper.CommunityPostMapper">
 
     <!--
-      뷰어 개별 계정 차단 필터 (P-14≡CC-17) — findAll/countAll 이 동일 조건을 공유해 total 이 목록과 일치한다.
-      user_block 의 명시 flags(점 표기 상속: content.post(.anonymous) → content.post)가 allow 면 통과,
-      그 외(명시 block 또는 미설정=blockedAccount 기본 block)는 제외. 뷰어 전역 관계정책(blockedAccount 완화)과
-      IP 파생/관계정책 차단은 SQL 로 어려워 자바 2차 필터(filterBlockedAuthors)가 담당한다(절충안).
+      PrivacyPolicyService가 개별 플래그 → IP → 관계 정책 → 시스템 기본값을 모두 평가한 결과.
+      익명·비익명 표면을 분리해 같은 필터를 목록·total·집계·후보 LIMIT 전에 적용한다.
+      작성자 수와 무관하게 각 JSON 배열은 placeholder 1개이며 MySQL 8 JSON_TABLE로 전량 평가한다.
     -->
-    <sql id="viewerBlockFilter">
-        <if test="viewerId != null">
+    <sql id="blockedAuthorFilter">
+        <if test="blockedNamedAuthorIdsJson != null">
            AND NOT EXISTS (
-               SELECT 1 FROM user_block ub
-                WHERE ub.user_id = #{viewerId}
-                  AND ub.blocked_user_id = cp.user_id
-                  AND ub.deleted_at IS NULL
-                  AND COALESCE(
-                        CASE WHEN cp.is_anonymous = 1
-                             THEN JSON_UNQUOTE(JSON_EXTRACT(ub.flags_json, '$."content.post.anonymous"')) END,
-                        JSON_UNQUOTE(JSON_EXTRACT(ub.flags_json, '$."content.post"')),
-                        'block') = 'block'
+               SELECT 1
+                 FROM JSON_TABLE(
+                          #{blockedNamedAuthorIdsJson},
+                          '$[*]' COLUMNS (author_id BIGINT PATH '$')
+                      ) AS blocked_named_author
+                WHERE cp.is_anonymous = 0
+                  AND blocked_named_author.author_id = cp.user_id
+           )
+        </if>
+        <if test="blockedAnonymousAuthorIdsJson != null">
+           AND NOT EXISTS (
+               SELECT 1
+                 FROM JSON_TABLE(
+                          #{blockedAnonymousAuthorIdsJson},
+                          '$[*]' COLUMNS (author_id BIGINT PATH '$')
+                      ) AS blocked_anonymous_author
+                WHERE cp.is_anonymous = 1
+                  AND blocked_anonymous_author.author_id = cp.user_id
            )
         </if>
     </sql>
+
+    <!-- 목록/total과 같은 조건의 후보 작성자 표면. 개인정보 판정은 서비스가 표면별 제한 크기 배치로 전량 수행한다. -->
+    <select id="findAuthorSurfaces" resultType="com.careertuner.privacy.domain.ContentAuthorRow">
+        SELECT DISTINCT cp.user_id AS userId,
+                        cp.is_anonymous AS anonymous
+          FROM community_post cp
+         WHERE cp.status = #{status}
+        <if test="category != null">
+           AND cp.category = #{category}
+        </if>
+        <if test="keyword != null">
+           AND (cp.title LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.content LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.company_name LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.job_title LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.tags_json LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
 
     <!-- 게시글 목록 조회 (정렬 옵션 지원, is_anonymous 는 자동매핑 불가라 별칭 필수) -->
     <select id="findAll" resultType="com.careertuner.community.domain.CommunityPost">
@@ -44,7 +70,7 @@
                 OR cp.job_title LIKE CONCAT('%', #{keyword}, '%')
                 OR cp.tags_json LIKE CONCAT('%', #{keyword}, '%'))
         </if>
-        <include refid="viewerBlockFilter"/>
+        <include refid="blockedAuthorFilter"/>
         <choose>
             <when test="sort == 'popular'">
                 ORDER BY cp.like_count DESC, cp.created_at DESC
@@ -62,8 +88,7 @@
          LIMIT #{limit} OFFSET #{offset}
     </select>
 
-    <!-- 챗봇 추천 모아보기: id 목록 조회. findAll 과 동일한 status·뷰어 차단 조건,
-         ORDER BY FIELD 로 추천(입력) 순서를 보존한다. 호출부(서비스)가 개수 상한을 강제. -->
+    <!-- 챗봇 추천 모아보기: 최대 20건 조회 후 서비스가 개인정보 정책을 벌크 적용한다. -->
     <select id="findByIds" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
                cp.is_anonymous AS anonymous,
@@ -74,11 +99,28 @@
          WHERE cp.status = #{status}
            AND cp.id IN
            <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
-        <include refid="viewerBlockFilter"/>
          ORDER BY FIELD(cp.id<foreach collection="ids" item="id" open="," separator=",">#{id}</foreach>)
     </select>
 
-    <!-- 게시글 총 개수 (findAll 과 동일한 뷰어 차단 조건 — 페이지네이션 total 정합) -->
+    <!-- 사용자 목록 총 개수 (findAll 과 동일한 전체 개인정보 차단 집합 — 페이지네이션 total 정합) -->
+    <select id="countVisible" resultType="int">
+        SELECT COUNT(*)
+          FROM community_post cp
+         WHERE cp.status = #{status}
+        <if test="category != null">
+           AND cp.category = #{category}
+        </if>
+        <if test="keyword != null">
+           AND (cp.title LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.content LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.company_name LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.job_title LIKE CONCAT('%', #{keyword}, '%')
+                OR cp.tags_json LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <include refid="blockedAuthorFilter"/>
+    </select>
+
+    <!-- 관리자 전역 집계 — 개인 차단과 무관하게 상태/검색 조건만 센다. -->
     <select id="countAll" resultType="int">
         SELECT COUNT(*)
           FROM community_post cp
@@ -93,7 +135,15 @@
                 OR cp.job_title LIKE CONCAT('%', #{keyword}, '%')
                 OR cp.tags_json LIKE CONCAT('%', #{keyword}, '%'))
         </if>
-        <include refid="viewerBlockFilter"/>
+    </select>
+
+    <!-- 카테고리 탭 뱃지용 전수 집계 — 목록과 같은 개인정보 차단 집합을 GROUP BY 전에 적용 -->
+    <select id="countPublishedByCategory" resultType="map">
+        SELECT cp.category, COUNT(*) AS cnt
+          FROM community_post cp
+         WHERE cp.status = 'PUBLISHED'
+        <include refid="blockedAuthorFilter"/>
+         GROUP BY cp.category
     </select>
 
     <!-- 작성 rate-limit — since 이후 사용자가 올린 글 수(삭제 제외) -->
@@ -113,6 +163,7 @@
     -->
     <select id="findPersonalizedCandidates" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
+               cp.is_anonymous AS anonymous,
                u.name AS user_name,
                u.status AS user_status
           FROM community_post cp
@@ -142,8 +193,9 @@
                <if test="(tokens == null or tokens.isEmpty()) and (categories == null or categories.isEmpty())">
                    1 = 0
                </if>
-               </trim>
-           )
+                </trim>
+            )
+        <include refid="blockedAuthorFilter"/>
          ORDER BY cp.created_at DESC
          LIMIT #{limit}
     </select>
@@ -154,6 +206,7 @@
     -->
     <select id="findFreshPopular" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
+               cp.is_anonymous AS anonymous,
                u.name AS user_name,
                u.status AS user_status
           FROM community_post cp
@@ -168,6 +221,7 @@
                #{pid}
            </foreach>
         </if>
+        <include refid="blockedAuthorFilter"/>
          ORDER BY cp.created_at DESC, cp.like_count DESC
          LIMIT #{limit}
     </select>
@@ -235,7 +289,16 @@
          WHERE id = #{id}
     </update>
 
-    <!-- 인기글 조회 (가중치 점수: 추천*5(가중 최대) + 좋아요*3 + 댓글*2 + 조회수, 최근 7일. is_anonymous 별칭은 뷰어 차단 필터 근거) -->
+    <!-- 인기글 후보 작성자 표면. 차단 집합을 인기 점수 LIMIT 전에 계산하기 위한 고정 1회 조회. -->
+    <select id="findHotAuthorSurfaces" resultType="com.careertuner.privacy.domain.ContentAuthorRow">
+        SELECT DISTINCT cp.user_id AS userId,
+                        cp.is_anonymous AS anonymous
+          FROM community_post cp
+         WHERE cp.status = #{status}
+           AND cp.created_at &gt;= #{since}
+    </select>
+
+    <!-- 인기글 조회 (가중치 점수: 추천*5 + 좋아요*3 + 댓글*2 + 조회수, 최근 7일) -->
     <select id="findHotPosts" resultType="com.careertuner.community.domain.CommunityPost">
         SELECT cp.*,
                cp.is_anonymous AS anonymous,
@@ -245,6 +308,7 @@
           JOIN users u ON cp.user_id = u.id
          WHERE cp.status = #{status}
            AND cp.created_at >= #{since}
+        <include refid="blockedAuthorFilter"/>
          ORDER BY (cp.recommend_count * 5 + cp.like_count * 3 + cp.comment_count * 2 + cp.view_count) DESC
          LIMIT #{limit}
     </select>

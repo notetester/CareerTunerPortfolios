@@ -32,7 +32,7 @@ export function HotPostsSidebar({ onActivity, onGuidelines }: HotPostsSidebarPro
         <div className="av-list">
           {hotPosts.map((post, i) => (
             <Link
-              key={post.id ?? i} // 구버전 백엔드 응답에는 id가 없어 undefined일 수 있다
+              key={post.id}
               to={`/community/posts/${post.id}`}
             >
               <span className="av-rank num">{i + 1}</span>

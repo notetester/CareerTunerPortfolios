@@ -1015,7 +1015,7 @@ public class PostModerationService {
                 .title("게시글이 커뮤니티 가이드라인 검토 대기 상태로 전환되었습니다")
                 .message("'" + postTitle + "' 게시글이 자동 검수에 의해 검토 대기 상태로 전환되었습니다. "
                         + "관리자 검토 후 복원되거나 삭제될 수 있습니다.")
-                .link("/community?view=guidelines")
+                .link("/community/guidelines")
                 .build();
         notificationService.notify(noti);
     }
@@ -1031,7 +1031,7 @@ public class PostModerationService {
                 .title("게시글이 커뮤니티 가이드라인에 따라 숨김 처리되었습니다")
                 .message("'" + postTitle + "' 게시글이 관리자 검토 결과 숨김 처리되었습니다. "
                         + "운영 정책에 관한 내용은 커뮤니티 가이드라인에서 확인할 수 있습니다.")
-                .link("/community?view=guidelines")
+                .link("/community/guidelines")
                 .build();
         notificationService.notify(noti);
         try {

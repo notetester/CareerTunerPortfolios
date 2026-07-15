@@ -7,13 +7,13 @@ from ensure_aasa_nginx_location import choose_tls_server, ensure_aasa_location, 
 HTTP_AND_TLS = """
 server {
     listen 80;
-    server_name careertuner.kro.kr;
+    server_name careertuner.example.com;
     return 301 https://$host$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name careertuner.kro.kr;
+    server_name careertuner.example.com;
     root /var/www/careertuner;
     location /api/ { proxy_pass http://127.0.0.1:8080; }
 }
@@ -23,7 +23,7 @@ server {
 class EnsureAasaNginxLocationTest(unittest.TestCase):
     def test_selects_tls_server_and_inserts_exact_json_location(self):
         path = Path("/etc/nginx/sites-enabled/careertuner")
-        selected_path, block = choose_tls_server({path: HTTP_AND_TLS}, "careertuner.kro.kr")
+        selected_path, block = choose_tls_server({path: HTTP_AND_TLS}, "careertuner.example.com")
         updated, changed = ensure_aasa_location(HTTP_AND_TLS, block)
 
         self.assertEqual(selected_path, path)
@@ -79,7 +79,7 @@ class EnsureAasaNginxLocationTest(unittest.TestCase):
     def test_rejects_ambiguous_tls_servers(self):
         duplicate = HTTP_AND_TLS + "\n" + HTTP_AND_TLS.split("server {", 1)[1].join(["server {", ""])
         with self.assertRaisesRegex(ValueError, "하나로 결정"):
-            choose_tls_server({Path("/etc/nginx/conf.d/duplicate.conf"): duplicate}, "careertuner.kro.kr")
+            choose_tls_server({Path("/etc/nginx/conf.d/duplicate.conf"): duplicate}, "careertuner.example.com")
 
 
 if __name__ == "__main__":

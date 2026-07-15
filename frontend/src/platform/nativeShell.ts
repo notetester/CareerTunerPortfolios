@@ -14,6 +14,7 @@ import {
   consumeNativeOverlayBack,
   suspendNativeOverlays,
 } from "./nativeOverlayLifecycle";
+import { allowNativeAppExit } from "./nativeExitGuard";
 
 let initialized = false;
 
@@ -99,7 +100,7 @@ export function initNativeShell(): void {
       const goBack = canGoBack ?? (typeof window !== "undefined" && window.history.length > 1);
       if (goBack) {
         window.history.back();
-      } else {
+      } else if (allowNativeAppExit()) {
         void App.exitApp().catch(() => {});
       }
     }).catch(() => {});

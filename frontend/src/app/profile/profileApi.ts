@@ -6,11 +6,15 @@ function modelQuery(model: AiModelChoice): string {
   return model && model !== "AUTO" ? `?model=${model}` : "";
 }
 
+/** 프로필 import 완료 전 원본임을 표시해 강제 종료 시 TTL 정리 대상에 포함한다. */
+export const PROFILE_IMPORT_PENDING_REF_TYPE = "PROFILE_IMPORT_PENDING";
+
 /** 프로필 문서 업로드 — 기존 POST /file/upload 재사용. */
 export function uploadProfileFile(file: File, kind: "RESUME" | "ATTACHMENT" = "RESUME") {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("kind", kind);
+  fd.append("refType", PROFILE_IMPORT_PENDING_REF_TYPE);
   return api<{ id: number; originalName?: string }>("/file/upload", { method: "POST", body: fd });
 }
 
@@ -145,7 +149,11 @@ export function getProfile(): Promise<UserProfile> {
 }
 
 export function saveProfile(profile: UserProfile): Promise<UserProfile> {
-  return api<UserProfile>("/profile", { method: "PUT", body: JSON.stringify(profile) });
+  const { id: _id, userId: _userId, versionNo, updatedAt: _updatedAt, ...editable } = profile;
+  return api<UserProfile>("/profile", {
+    method: "PUT",
+    body: JSON.stringify({ ...editable, baseVersionNo: versionNo ?? null }),
+  });
 }
 
 export function getProfileVersions(limit = 20): Promise<UserProfileVersion[]> {
@@ -219,10 +227,11 @@ export interface ProfileAnalyzeResponse {
 export function importProfileDocument(
   fileId: number,
   target: ProfileImportTarget,
+  baseVersionNo: number | null,
 ): Promise<ProfileImportResponse> {
   return api<ProfileImportResponse>("/profile/import", {
     method: "POST",
-    body: JSON.stringify({ fileId, target }),
+    body: JSON.stringify({ fileId, target, baseVersionNo }),
   });
 }
 

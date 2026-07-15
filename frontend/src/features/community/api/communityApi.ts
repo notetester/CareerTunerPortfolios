@@ -110,6 +110,14 @@ export async function getPostsPage(
   return { posts: data.posts.map(mapPost), total: data.total };
 }
 
+/** 카테고리 탭 뱃지용 카운트 — 서버 전수 집계(enum명 키)를 slug 키로 변환해 반환. */
+export async function getCategoryCounts(): Promise<Record<string, number>> {
+  const counts = await api<Record<string, number>>("/community/posts/category-counts");
+  const bySlug: Record<string, number> = {};
+  for (const [key, value] of Object.entries(counts)) bySlug[enumToSlug(key)] = value;
+  return bySlug;
+}
+
 /** 목록 조회(글 배열만). total 이 필요하면 getPostsPage 를 쓴다. */
 export async function getPosts(
   category?: CommunityCategory,
@@ -134,9 +142,11 @@ export async function getPostDetail(id: number) {
 }
 
 export async function getHotPosts() {
-  return api<{ id: number; title: string; comments: number; views: number }[]>(
-    "/community/posts/hot", {}, { auth: false },
+  const posts = await api<{ id: number; title: string; comments: number; views: number }[]>(
+    "/community/posts/hot", {}, { auth: true },
   );
+  // 오래된 mock/서버가 id 없는 항목을 내려도 깨진 /undefined 링크를 만들지 않는다.
+  return posts.filter((post) => Number.isSafeInteger(post.id) && post.id > 0);
 }
 
 export async function createPost(data: {

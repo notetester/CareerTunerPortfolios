@@ -14,6 +14,22 @@ public record PrepStepContext(
     PrepSlots slots,
     String coverLetterText,
     List<PrepAttachment> attachments,
-    Map<String, Object> prior
+    Map<String, Object> prior,
+    AutoPrepCancellation cancellation
 ) {
+    /** 기존 핸들러 단위 테스트·직접 호출은 취소되지 않는 독립 실행으로 호환한다. */
+    public PrepStepContext(Long userId,
+                           Long applicationCaseId,
+                           PrepSlots slots,
+                           String coverLetterText,
+                           List<PrepAttachment> attachments,
+                           Map<String, Object> prior) {
+        this(userId, applicationCaseId, slots, coverLetterText, attachments, prior,
+                new AutoPrepCancellation());
+    }
+
+    /** 유료 제공자 호출 또는 DB 변경 직전에 호출하는 협력적 취소 경계. */
+    public void checkActive() {
+        cancellation.checkActive();
+    }
 }

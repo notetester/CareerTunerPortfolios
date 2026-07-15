@@ -74,6 +74,8 @@ public class SecurityConfig {
                                 "/api/community/guidelines/published").permitAll()
                         // 공개 채용 게시판 조회(목록·상세) — 비로그인 브라우징 허용, /{id}/analyze(POST)는 인증 필요
                         .requestMatchers(HttpMethod.GET, "/api/job-board", "/api/job-board/**").permitAll()
+                        // NCS·자격증 카탈로그 검색/조회 공개(비로그인 참고 가능한 레퍼런스 데이터)
+                        .requestMatchers(HttpMethod.GET, "/api/catalog/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/ads").permitAll()
                         // 노출·클릭 집계는 비로그인 광고 수신자도 발사(공개 서빙 대칭). 엔드포인트는 /impression·/click.
                         .requestMatchers(HttpMethod.POST, "/api/ads/*/impression", "/api/ads/*/click").permitAll()

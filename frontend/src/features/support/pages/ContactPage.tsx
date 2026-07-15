@@ -309,7 +309,7 @@ export function ContactPage() {
             </div>
             <div className="ct-aside-row">
               <span className="ct-aside-row__ic"><Mail /></span>
-              <div><div className="ct-aside-row__t">이메일</div><div className="ct-aside-row__v">redacted-4aa1cbad30049583@example.com</div></div>
+              <div><div className="ct-aside-row__t">이메일</div><div className="ct-aside-row__v">support@careertuner.example.com</div></div>
             </div>
             <div className="ct-aside-row">
               <span className="ct-aside-row__ic"><MessageCircle /></span>

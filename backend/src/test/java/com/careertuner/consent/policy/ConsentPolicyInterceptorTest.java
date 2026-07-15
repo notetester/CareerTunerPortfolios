@@ -16,9 +16,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.method.HandlerMethod;
 
 import com.careertuner.ai.autoprep.AutoPrepController;
+import com.careertuner.ai.autoprep.AutoPrepAttachmentLoader;
+import com.careertuner.ai.autoprep.AutoPrepCaseCreationService;
 import com.careertuner.ai.autoprep.AutoPrepIntakeService;
 import com.careertuner.ai.autoprep.AutoPrepOrchestrator;
 import com.careertuner.ai.autoprep.dto.AutoPrepRequest;
+import com.careertuner.ai.autoprep.dto.AutoPrepCancelRequest;
 import com.careertuner.common.exception.BusinessException;
 import com.careertuner.common.exception.ErrorCode;
 import com.careertuner.common.security.AuthUser;
@@ -102,7 +105,8 @@ class ConsentPolicyInterceptorTest {
         when(consentService.hasCurrentConsent(7L, ConsentType.RESUME_ANALYSIS)).thenReturn(false);
 
         AutoPrepController autoPrepController = new AutoPrepController(
-                mock(AutoPrepOrchestrator.class), mock(AutoPrepIntakeService.class));
+                mock(AutoPrepOrchestrator.class), mock(AutoPrepIntakeService.class),
+                mock(AutoPrepAttachmentLoader.class), mock(AutoPrepCaseCreationService.class));
         HandlerMethod autoPrepRun = new HandlerMethod(
                 autoPrepController,
                 AutoPrepController.class.getMethod("run", AuthUser.class, AutoPrepRequest.class));
@@ -118,6 +122,27 @@ class ConsentPolicyInterceptorTest {
                 request("POST", "/api/auto-prep/run/stream"), new MockHttpServletResponse(), autoPrepStream))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode").isEqualTo(ErrorCode.CONSENT_REQUIRED);
+    }
+
+    @Test
+    void autoPrepCancelRemainsAvailableAfterAllConsentsAreWithdrawn() throws Exception {
+        when(consentService.hasRequiredConsents(7L)).thenReturn(false);
+        when(consentService.hasCurrentConsent(7L, ConsentType.AI_DATA)).thenReturn(false);
+
+        AutoPrepController autoPrepController = new AutoPrepController(
+                mock(AutoPrepOrchestrator.class), mock(AutoPrepIntakeService.class),
+                mock(AutoPrepAttachmentLoader.class), mock(AutoPrepCaseCreationService.class));
+        HandlerMethod autoPrepCancel = new HandlerMethod(
+                autoPrepController,
+                AutoPrepController.class.getMethod("cancelRun", AuthUser.class, AutoPrepCancelRequest.class));
+
+        interceptor.preHandle(
+                request("POST", "/api/auto-prep/run/cancel"),
+                new MockHttpServletResponse(),
+                autoPrepCancel);
+
+        verify(consentService, never()).hasRequiredConsents(7L);
+        verify(consentService, never()).hasCurrentConsent(7L, ConsentType.AI_DATA);
     }
 
     private MockHttpServletRequest request(String method, String uri) {

@@ -63,7 +63,7 @@ function faqAnswer(q: string): { message: string; links: { url: string; label: s
     return {
       message:
         "회원 탈퇴는 설정 > 계정 설정에서 진행할 수 있습니다. 탈퇴 시 프로필·분석 기록이 모두 삭제되며 복구되지 않습니다.",
-      links: [{ url: "/settings?tab=account", label: "계정 설정" }],
+      links: [{ url: "/settings/account", label: "계정 설정" }],
     };
   }
   if (has("무료", "공짜", "어디까지")) {

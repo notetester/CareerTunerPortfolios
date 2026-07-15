@@ -1,12 +1,12 @@
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 import { Badge } from "@/app/components/ui/badge";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { BarChart3, Briefcase, CheckCircle2, MessageSquare, PenLine, Sparkles, Target, TrendingUp } from "lucide-react";
 
 const featureCards = [
-  { title: "공고 분석", href: "/applications?tab=analysis", icon: Briefcase, desc: "공고 원문을 구조화하고 필수/우대 역량과 난이도를 분리합니다." },
-  { title: "내 스펙 비교", href: "/applications?tab=fit", icon: Target, desc: "프로필과 공고 요구사항을 비교해 강점과 부족 역량을 보여줍니다." },
+  { title: "공고 분석", href: "/job-analysis", icon: Briefcase, desc: "공고 원문을 구조화하고 필수/우대 역량과 난이도를 분리합니다." },
+  { title: "내 스펙 비교", href: "/applications/compare", icon: Target, desc: "프로필과 공고 요구사항을 비교해 강점과 부족 역량을 보여줍니다." },
   { title: "AI 가상 면접", href: "/interview", icon: MessageSquare, desc: "직무, 인성, 실전, 음성, 아바타 면접 흐름을 제공합니다." },
   { title: "AI 첨삭", href: "/correction", icon: PenLine, desc: "답변, 자기소개서, 이력서, 포트폴리오 설명을 개선합니다." },
   { title: "취업 분석", href: "/analysis", icon: TrendingUp, desc: "여러 지원 건을 종합해 지원 경향과 장기 전략을 제공합니다." },
@@ -14,14 +14,11 @@ const featureCards = [
 ];
 
 export function ServiceInfoPage() {
-  const location = useLocation();
-  const isFeatures = location.pathname === "/features";
-
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto w-full max-w-[1200px] space-y-8 px-4 py-10 sm:px-6">
+      <div className="mx-auto w-full max-w-[1400px] space-y-8 px-4 py-10 sm:px-6 lg:px-8">
         <section className="space-y-4">
-          <Badge className="bg-blue-100 text-blue-700">{isFeatures ? "기능 소개" : "서비스 소개"}</Badge>
+          <Badge className="bg-blue-100 text-blue-700">기능 소개</Badge>
           <h1 className="max-w-3xl text-3xl font-black leading-tight text-slate-900">
             CareerTuner는 지원 건 하나를 중심으로 공고 분석부터 면접 준비까지 이어지는 취업 전략 작업공간입니다
           </h1>

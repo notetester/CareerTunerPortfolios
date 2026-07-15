@@ -103,7 +103,23 @@ function isHttpPostingUrl(value: string): boolean {
   }
 }
 
-export function NewApplicationPage() {
+export interface NewApplicationPageProps {
+  pageTitle?: string;
+  pageDescription?: string;
+  loginTitle?: string;
+  loginDescription?: string;
+  backHref?: string;
+  backLabel?: string;
+}
+
+export function NewApplicationPage({
+  pageTitle = "새 지원 건",
+  pageDescription = "공고문을 먼저 추출한 뒤 지원 건 정보를 확인합니다.",
+  loginTitle = "새 지원 건은 로그인 후 만들 수 있습니다",
+  loginDescription = "지원 건은 사용자별 데이터로 저장됩니다.",
+  backHref = "/applications/list",
+  backLabel = "목록으로",
+}: NewApplicationPageProps = {}) {
   const navigate = useNavigate();
   const { loading: authLoading, isAuthenticated } = useAuth();
   const { maxBytes: uploadMaxBytes, label: uploadLimitLabel, loading: uploadLimitLoading } = useJobPostingUploadLimit();
@@ -493,7 +509,7 @@ export function NewApplicationPage() {
   if (authLoading) {
     return (
       <div className="min-h-[calc(100vh-72px)] bg-slate-50 px-4 py-10">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto w-full max-w-[1440px]">
           <div className="h-96 animate-pulse rounded-lg bg-slate-200" />
         </div>
       </div>
@@ -503,28 +519,28 @@ export function NewApplicationPage() {
   if (!isAuthenticated) {
     return (
       <LoginRequiredState
-        title="새 지원 건은 로그인 후 만들 수 있습니다"
-        description="지원 건은 사용자별 데이터로 저장됩니다."
+        title={loginTitle}
+        description={loginDescription}
       />
     );
   }
 
   return (
     <div className="min-h-[calc(100vh-72px)] bg-slate-50">
-      <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-[1440px] space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <Button asChild variant="ghost" className="px-0 text-slate-600 hover:bg-transparent hover:text-blue-700">
-          <Link to="/applications">
+          <Link to={backHref}>
             <ArrowLeft className="size-4" />
-            목록으로
+            {backLabel}
           </Link>
         </Button>
 
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-950">
             <Briefcase className="size-6 text-blue-600" />
-            새 지원 건
+            {pageTitle}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">공고문을 먼저 추출한 뒤 지원 건 정보를 확인합니다.</p>
+          <p className="mt-1 text-sm text-slate-500">{pageDescription}</p>
         </div>
 
         <div className="grid gap-2 sm:grid-cols-3">
@@ -682,7 +698,7 @@ export function NewApplicationPage() {
                 <StepActions
                   busy={busy}
                   primaryLabel={busy ? "지원 건 생성 및 추출 준비 중" : "공고문 추출 시작"}
-                  onCancel={() => navigate("/applications")}
+                  onCancel={() => navigate(backHref)}
                   primaryIcon={Upload}
                 />
               </form>

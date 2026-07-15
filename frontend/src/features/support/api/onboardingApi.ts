@@ -1,11 +1,18 @@
 import { ApiError, api } from "@/app/lib/api";
 
-// 파일 업로드 계약(조사 확정): POST /api/file/upload, multipart(file + kind) → FileAssetResponse.
+// 파일 업로드 계약(조사 확정): POST /api/file/upload, multipart(file + kind + refType) → FileAssetResponse.
 // autoprep 의 uploadAttachment(kind=ATTACHMENT 고정)과 동일 엔드포인트지만, 서류 종류별 kind 를
 // 실어야 해서 support 로컬로 얇게 둔다(autoprep 파일 미수정).
 
 /** FileAsset.kind (백엔드 enum): AUDIO/VIDEO/RESUME/PORTFOLIO/POSTING/ATTACHMENT. 서류 업로드에 쓰는 것만. */
 export type UploadKind = "RESUME" | "PORTFOLIO" | "POSTING" | "ATTACHMENT";
+
+/** 강제 종료 뒤에도 기존 24시간 TTL 정리기가 용도를 좁혀 회수할 수 있는 임시 파일 표식. */
+export const PROFILE_IMPORT_PENDING_REF_TYPE = "PROFILE_IMPORT_PENDING";
+export const AUTO_PREP_PENDING_REF_TYPE = "AUTO_PREP_PENDING";
+export type OnboardingPendingRefType =
+  | typeof PROFILE_IMPORT_PENDING_REF_TYPE
+  | typeof AUTO_PREP_PENDING_REF_TYPE;
 
 /** 업로드 응답(백엔드 FileAssetResponse 중 프론트가 쓰는 필드). */
 export interface UploadedFile {
@@ -16,10 +23,11 @@ export interface UploadedFile {
 }
 
 /** 파일 업로드 → fileId. 플랜 게이팅(무료 1개 등)은 실행 시 백엔드가 적용. */
-export function uploadDocument(file: File, kind: UploadKind) {
+export function uploadDocument(file: File, kind: UploadKind, refType: OnboardingPendingRefType) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("kind", kind);
+  fd.append("refType", refType);
   // api() 래퍼가 FormData 면 Content-Type 을 자동 생략(boundary 유지)한다.
   return api<UploadedFile>("/file/upload", { method: "POST", body: fd });
 }

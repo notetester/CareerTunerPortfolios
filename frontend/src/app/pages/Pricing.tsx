@@ -176,7 +176,7 @@ export function PricingPage() {
                       <Button
                         className={`w-full ${highlighted ? "bg-primary" : ""}`}
                         variant={highlighted ? "default" : "outline"}
-                        onClick={() => navigate("/billing?tab=plans")}
+                        onClick={() => navigate("/billing/plans")}
                       >
                         {plan.monthlyPrice === 0 ? "무료 시작" : "시작하기"}
                       </Button>
@@ -247,7 +247,7 @@ export function PricingPage() {
                         <Button
                           className={`w-full ${popular ? "bg-primary" : best ? "bg-primary" : ""}`}
                           variant={popular || best ? "default" : "outline"}
-                          onClick={() => navigate("/billing?tab=credits")}
+                          onClick={() => navigate("/billing/credits")}
                         >
                           구매하기
                         </Button>

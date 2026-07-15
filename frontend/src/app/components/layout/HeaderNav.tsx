@@ -56,7 +56,10 @@ export function HeaderNav({ items, pathname }: { items: NavItem[]; pathname: str
     return () => ro.disconnect();
   }, [items]);
 
-  const isActive = (href: string) => pathname === href.split("?")[0];
+  const isActive = (href: string) => {
+    const target = href.split("?")[0];
+    return pathname === target || pathname.startsWith(`${target}/`);
+  };
   const shown = items.slice(0, visible);
   const overflow = items.slice(visible);
 

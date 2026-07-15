@@ -206,6 +206,6 @@ class InterviewServiceSoftDeleteTest {
         verify(notificationService).notify(notification.capture());
         assertThat(notification.getValue().getType()).isEqualTo("INTERVIEW_REPORT_READY");
         assertThat(notification.getValue().getLink())
-                .isEqualTo("/interview?session=10&tab=report");
+                .isEqualTo("/interview/reports?session=10");
     }
 }

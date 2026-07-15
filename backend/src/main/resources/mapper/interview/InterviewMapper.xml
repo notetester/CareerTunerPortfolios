@@ -97,7 +97,9 @@
           AND ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
           AND s.deleted_at IS NULL
-        FOR UPDATE
+        <!-- 세션 행만 잠근다(소유권 검증용 케이스 조인은 잠금 대상 아님). FOR UPDATE(OF 없이)면
+             케이스 행까지 잠겨, 같은 케이스의 다른 세션 작업이 AI 생성(수십초) 동안 대기하다 타임아웃난다. -->
+        FOR UPDATE OF s
     </select>
 
     <update id="updateSessionResult">
@@ -288,7 +290,11 @@
           AND ac.user_id = #{userId}
           AND ac.deleted_at IS NULL
           AND s.deleted_at IS NULL
-        FOR UPDATE
+        <!-- 질문 행만 잠근다(소유권 검증용 조인은 잠금 대상 아님). FOR UPDATE(OF 없이)는
+             조인된 세션·케이스 행까지 잠가, 같은 케이스의 다른 질문을 동시에 답변/모범답안
+             요청하면 뒤 요청이 공통 케이스 행 락을 AI 생성(수십초) 내내 기다리다
+             30s statement-timeout으로 500(서버 오류)이 났다. -->
+        FOR UPDATE OF q
     </select>
 
     <select id="hasQuestionRegenerationBlockers" resultType="boolean">

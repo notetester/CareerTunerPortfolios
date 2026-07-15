@@ -11,39 +11,39 @@
     },
     "tailscale": {
       "description": "팀 표준 개발 환경 — 팀 DB(AWS) + 공유 4090 Ollama(Tailscale) + tailscale serve(HTTPS) 원격 접속",
-      "backendApi": "https://careertuner-dev.example.invalid/api",
+      "backendApi": "https://localhost/api",
       "backendApiLocal": "http://localhost:8080",
-      "frontendWeb": "https://careertuner-dev.example.invalid",
-      "db": "mysql://localhost:3306/team1_db",
+      "frontendWeb": "https://localhost",
+      "db": "env://DB_HOST:DB_PORT/DB_NAME",
       "ollama": "http://localhost:11434",
       "ollamaFallback": ["http://localhost:11434"]
     },
     "aws": {
       "description": "AWS 통합 배포 — nginx가 웹과 /api를 같은 HTTPS 도메인에서 제공",
-      "backendApi": "https://careertuner.kro.kr/api",
-      "frontendWeb": "https://careertuner.kro.kr",
-      "db": "mysql://localhost:3306/team1_db",
+      "backendApi": "https://careertuner.example.com/api",
+      "frontendWeb": "https://careertuner.example.com",
+      "db": "env://DB_HOST:DB_PORT/DB_NAME",
       "ollama": "http://localhost:11434",
       "ollamaFallback": ["http://localhost:11434"],
       "notes": "AWS 서버가 tailnet 에 조인되어 있어야 4090 Ollama 에 닿는다."
     },
     "domain": {
-      "description": "도메인 네임 기반 운영(HTTPS) — 도메인 미확정(careertuner.kr 은 예시 플레이스홀더)",
-      "backendApi": "https://api.careertuner.kr",
-      "frontendWeb": "https://careertuner.kr",
-      "db": "mysql://localhost:3306/team1_db",
+      "description": "도메인 네임 기반 운영(HTTPS) — 도메인 미확정(careertuner.example.com 은 예시 플레이스홀더)",
+      "backendApi": "https://api.careertuner.example.com",
+      "frontendWeb": "https://careertuner.example.com",
+      "db": "env://DB_HOST:DB_PORT/DB_NAME",
       "ollama": "http://localhost:11434",
       "ollamaFallback": ["http://localhost:11434"],
       "notes": "운영 서버가 tailnet 에 조인되어 있어야 4090 Ollama 에 닿는다."
     },
     "sites": {
       "description": "Codex Sites 보조 프런트 — AWS 우선, 전체 장애 확인 후 비영속 mock 체험",
-      "backendApi": "https://careertuner.kro.kr/api",
-      "frontendWeb": "https://careertuner.careertuner.chatgpt.site",
-      "db": "mysql://localhost:3306/team1_db",
+      "backendApi": "https://careertuner.example.com/api",
+      "frontendWeb": "https://sites.example.com",
+      "db": "env://DB_HOST:DB_PORT/DB_NAME",
       "ollama": "http://localhost:11434",
       "ollamaFallback": ["http://localhost:11434"],
-      "notes": "결제·구독·환불 mutation은 차단하며 기본 접근 범위는 소유자 전용이다."
+      "notes": "결제·구독·환불 mutation은 차단한다. 공개 범위는 Sites 배포 설정을 따르며 2026-07-14 공개 root와 백업 health를 확인했다."
     }
   }
 }

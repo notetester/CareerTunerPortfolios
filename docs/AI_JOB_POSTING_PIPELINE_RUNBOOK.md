@@ -61,7 +61,7 @@ docker build --build-arg PYTHON_VERSION=3.12 --build-arg INSTALL_OCR=true -t car
 ```
 
 The worker uses existing OCR text first, then local PaddleOCR when `paddleocr`, `paddlepaddle`, and PDF support through `PyMuPDF` are installed. If the OCR engine is missing and no existing OCR text is available, OCR-candidate files fail closed with `ocr_not_executed`; OpenAI is not called automatically.
-The default non-OCR Dockerfile build and CI unit-test runtime use the current Python runtime line. OCR-capable images support Python 3.12 and 3.13 because `paddlepaddle` does not publish Python 3.14 wheels yet. Docker Compose and production deploys pin `PYTHON_VERSION=3.12` to avoid the Python 3.13 native installation crashes observed on the WSL2 self-hosted runner.
+The default non-OCR Dockerfile build and CI unit-test runtime use Python 3.14. OCR-capable images support Python 3.12 and 3.13 because `paddlepaddle` does not publish Python 3.14 wheels yet. Docker Compose and production deploys pin `PYTHON_VERSION=3.12` to avoid the Python 3.13 native installation crashes observed on the WSL2 self-hosted runner.
 
 The HTTP health endpoint starts before OCR model warm-up, so the worker remains observable while models initialize in the background. `JOB_POSTING_AI_CACHE_DIR` must point to a writable path. PaddleOCR and PaddleX store downloaded models under this path; Docker Compose mounts the persistent `job_posting_ai_cache` volume there to avoid re-downloading models on every worker restart.
 
@@ -239,10 +239,18 @@ Analysis through the B-owned Ollama adapter is **enabled by default** (`B_ANALYS
 
 ## Stabilization Check
 
-Run the 20-file baseline:
+The repository tracks the validators and the expected dataset layout, but it does **not** track the real
+20-file/43-file job-posting datasets or any `.tmp/` evidence artifacts. A fresh clone therefore cannot claim
+the real-data release gate. Obtain an approved, locally retained dataset, then point the commands at it with
+`JOB_POSTING_REAL_RAW_DIR` and `JOB_POSTING_REAL_OCR_DIR`. The repo-owned synthetic 43-file drill validates
+the pipeline mechanics only; it is not a substitute for the 43 unique real postings required by the release gate.
+
+Run the 20-file baseline from the repository root after setting those two environment variables:
 
 ```powershell
-python ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir personal\experiments\b_hybrid_ai\data\real_validation\raw_ocr_inputs_selected_20 --existing-ocr-dir personal\experiments\b_hybrid_ai\data\real_validation\ocr_postings_selected_20 --output-dir .tmp\job_posting_stabilization --report .tmp\job_posting_stabilization\document_pipeline_stabilization.md --min-files 20
+$env:JOB_POSTING_REAL_RAW_DIR = Read-Host "Approved raw job-posting directory"
+$env:JOB_POSTING_REAL_OCR_DIR = Read-Host "Approved OCR text directory"
+python ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir $env:JOB_POSTING_REAL_RAW_DIR --existing-ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --output-dir .tmp\job_posting_stabilization --report .tmp\job_posting_stabilization\document_pipeline_stabilization.md --min-files 20
 ```
 
 Current release gate:
@@ -263,7 +271,7 @@ Use `--min-files 43` for the production release gate.
 Audit the currently available real-file inventory:
 
 ```powershell
-python ml\job-posting-worker\scripts\20_audit_real_regression_inventory.py --output .tmp\job_posting_real_regression_inventory.json
+python ml\job-posting-worker\scripts\20_audit_real_regression_inventory.py --raw-dir $env:JOB_POSTING_REAL_RAW_DIR --ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --output .tmp\job_posting_real_regression_inventory.json
 ```
 
 The inventory separates actual job-posting candidates from company-info or tip/reference documents and lists OCR backfill targets. A file counts toward the 43-file production gate only when it is a real job-posting candidate and has usable OCR/text input for the document pipeline.
@@ -271,7 +279,8 @@ The inventory separates actual job-posting candidates from company-info or tip/r
 Import additional real job-posting files and backfill OCR text with the self-hosted OCR pipeline:
 
 ```powershell
-python ml\job-posting-worker\scripts\28_import_real_regression_candidates.py --source-dir "<input-directory>" --output .tmp\job_posting_real_import.json
+$env:JOB_POSTING_IMPORT_SOURCE_DIR = Read-Host "Directory containing approved new postings"
+python ml\job-posting-worker\scripts\28_import_real_regression_candidates.py --source-dir $env:JOB_POSTING_IMPORT_SOURCE_DIR --raw-dir $env:JOB_POSTING_REAL_RAW_DIR --ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --output .tmp\job_posting_real_import.json
 ```
 
 The importer skips non-job reference documents, duplicate file content, and filename conflicts. PDF/image files are copied into the raw regression directory only when OCR can produce `PASS` or `REVIEW_REQUIRED` text; OpenAI is not called.
@@ -282,7 +291,7 @@ The inventory audit fingerprints normalized OCR/text output and the regression-s
 Prepare the reproducible real regression input set from the ready audited files:
 
 ```powershell
-python ml\job-posting-worker\scripts\25_prepare_real_regression_set.py --target-count 43 --output .tmp\job_posting_real_regression_set\manifest.json
+python ml\job-posting-worker\scripts\25_prepare_real_regression_set.py --raw-dir $env:JOB_POSTING_REAL_RAW_DIR --ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --target-count 43 --output .tmp\job_posting_real_regression_set\manifest.json
 ```
 
 The manifest writes copied raw/OCR directories under `.tmp/job_posting_real_regression_set/` and includes the exact `16_run_stabilization_check.py` command for that set.
@@ -293,8 +302,8 @@ The manifest writes copied raw/OCR directories under `.tmp/job_posting_real_regr
 # Python contracts and stabilization helpers
 python -m unittest discover -s ml\job-posting-worker\tests
 
-# Real baseline gate
-python ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir personal\experiments\b_hybrid_ai\data\real_validation\raw_ocr_inputs_selected_20 --existing-ocr-dir personal\experiments\b_hybrid_ai\data\real_validation\ocr_postings_selected_20 --output-dir .tmp\job_posting_stabilization --report .tmp\job_posting_stabilization\document_pipeline_stabilization.md --min-files 20
+# Real baseline gate (requires locally supplied, approved data)
+python ml\job-posting-worker\scripts\16_run_stabilization_check.py --input-dir $env:JOB_POSTING_REAL_RAW_DIR --existing-ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --output-dir .tmp\job_posting_stabilization --report .tmp\job_posting_stabilization\document_pipeline_stabilization.md --min-files 20
 
 # Worker operational drills
 python ml\job-posting-worker\scripts\17_run_worker_drills.py --output .tmp\job_posting_worker_drills.json
@@ -302,30 +311,33 @@ python ml\job-posting-worker\scripts\17_run_worker_drills.py --output .tmp\job_p
 # Repo-owned synthetic 43-file stabilization drill
 python ml\job-posting-worker\scripts\19_run_synthetic_stabilization_fixture.py --count 43 --output-dir .tmp\job_posting_synthetic_stabilization --report .tmp\job_posting_synthetic_stabilization\document_pipeline_stabilization.md
 
-# Release readiness evidence
+# Release readiness evidence for the local 20-file baseline
 python ml\job-posting-worker\scripts\18_check_release_readiness.py --include-artifacts --min-files 20 --output .tmp\job_posting_release_readiness.json
 
-# Collect all production-readiness evidence in one pass
-python ml\job-posting-worker\scripts\26_run_release_evidence.py --output .tmp\job_posting_release_evidence.json
+# Collect all production-readiness evidence in one pass (real input paths are explicit)
+python ml\job-posting-worker\scripts\26_run_release_evidence.py --raw-dir $env:JOB_POSTING_REAL_RAW_DIR --ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --target-count 43 --output .tmp\job_posting_release_evidence.json
 
 # Collect release evidence against a non-default staging DB/client
+$env:DB_HOST = Read-Host "Staging DB host"
+$env:DB_NAME = Read-Host "Staging DB name"
+$env:DB_USERNAME = Read-Host "Staging DB user"
 $env:DB_PASSWORD = "..."
-python ml\job-posting-worker\scripts\26_run_release_evidence.py --db-host 127.0.0.1 --db-name team1_db --db-user root --mysql-bin mysql --output .tmp\job_posting_release_evidence.json
+python ml\job-posting-worker\scripts\26_run_release_evidence.py --raw-dir $env:JOB_POSTING_REAL_RAW_DIR --ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --target-count 43 --db-host $env:DB_HOST --db-name $env:DB_NAME --db-user $env:DB_USERNAME --mysql-bin mysql --output .tmp\job_posting_release_evidence.json
 
 # Release evidence Markdown report
 python ml\job-posting-worker\scripts\27_summarize_release_evidence.py --input .tmp\job_posting_release_evidence.json --output .tmp\job_posting_release_evidence.md
 
 # Real regression inventory audit
-python ml\job-posting-worker\scripts\20_audit_real_regression_inventory.py --output .tmp\job_posting_real_regression_inventory.json
+python ml\job-posting-worker\scripts\20_audit_real_regression_inventory.py --raw-dir $env:JOB_POSTING_REAL_RAW_DIR --ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --output .tmp\job_posting_real_regression_inventory.json
 
 # Import additional real postings and OCR backfill
-python ml\job-posting-worker\scripts\28_import_real_regression_candidates.py --source-dir "<input-directory>" --output .tmp\job_posting_real_import.json
+python ml\job-posting-worker\scripts\28_import_real_regression_candidates.py --source-dir $env:JOB_POSTING_IMPORT_SOURCE_DIR --raw-dir $env:JOB_POSTING_REAL_RAW_DIR --ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --output .tmp\job_posting_real_import.json
 
 # Prepare 43-file real regression set
-python ml\job-posting-worker\scripts\25_prepare_real_regression_set.py --target-count 43 --output .tmp\job_posting_real_regression_set\manifest.json
+python ml\job-posting-worker\scripts\25_prepare_real_regression_set.py --raw-dir $env:JOB_POSTING_REAL_RAW_DIR --ocr-dir $env:JOB_POSTING_REAL_OCR_DIR --target-count 43 --output .tmp\job_posting_real_regression_set\manifest.json
 
 # Full production readiness audit
-python ml\job-posting-worker\scripts\21_audit_production_readiness.py --output .tmp\job_posting_production_readiness.json
+python ml\job-posting-worker\scripts\21_audit_production_readiness.py --target-count 43 --output .tmp\job_posting_production_readiness.json
 
 # Worker Docker runtime smoke evidence
 python ml\job-posting-worker\scripts\23_run_worker_docker_smoke.py --output .tmp\job_posting_worker_docker_smoke.json
@@ -335,7 +347,7 @@ python ml\job-posting-worker\scripts\24_run_ocr_runtime_smoke.py --output .tmp\j
 
 # Staging DB migration evidence
 $env:DB_PASSWORD = "..."
-python ml\job-posting-worker\scripts\22_verify_mysql_pipeline_schema.py --host 127.0.0.1 --database team1_db --user root --output .tmp\application_case_pipeline_db_migration.json
+python ml\job-posting-worker\scripts\22_verify_mysql_pipeline_schema.py --host $env:DB_HOST --database $env:DB_NAME --user $env:DB_USERNAME --output .tmp\application_case_pipeline_db_migration.json
 
 # Backend
 cd backend
@@ -366,10 +378,12 @@ npm.cmd run typecheck
 The final release audit is:
 
 ```powershell
-python ml\job-posting-worker\scripts\21_audit_production_readiness.py --output .tmp\job_posting_production_readiness.json
+python ml\job-posting-worker\scripts\21_audit_production_readiness.py --target-count 43 --output .tmp\job_posting_production_readiness.json
 ```
 
-It must pass before this pipeline is considered production-ready. Required evidence:
+It must pass before this pipeline is considered production-ready. These generated files are ignored local/CI
+artifacts and are intentionally absent from a fresh clone; a missing artifact is a blocker, not an implicit pass.
+Required evidence:
 
 - `.tmp/job_posting_release_readiness_43.json`: release readiness with `--min-files 43`.
 - `.tmp/job_posting_real_regression_inventory.json`: at least 43 ready real job-posting files and zero OCR backfill gaps.

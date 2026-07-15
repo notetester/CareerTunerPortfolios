@@ -3,19 +3,28 @@ package com.careertuner.community.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 
+import com.careertuner.community.domain.CommunityAuthorVisibility;
 import com.careertuner.community.domain.CommunityPost;
 import com.careertuner.community.domain.PostStatus;
 import com.careertuner.community.dto.PostDetailResponse;
@@ -28,6 +37,8 @@ import com.careertuner.community.mapper.ReactionMapper;
 import com.careertuner.community.moderation.mapper.PostAiResultMapper;
 import com.careertuner.nickname.service.NicknameProfileService;
 import com.careertuner.privacy.service.PrivacyPolicyService;
+import com.careertuner.privacy.service.PrivacySurfaces;
+import com.careertuner.privacy.domain.ContentAuthorRow;
 import com.careertuner.reward.service.RewardService;
 
 import tools.jackson.databind.ObjectMapper;
@@ -70,6 +81,14 @@ class CommunityPostServiceImplMineAndPagingTest {
                 .id(POST_ID).userId(AUTHOR).category("FREE")
                 .title("제목").content("본문")
                 .status(PostStatus.PUBLISHED.name()).anonymous(true)
+                .build();
+    }
+
+    private CommunityPost post(long id, long authorId, boolean anonymous) {
+        return CommunityPost.builder()
+                .id(id).userId(authorId).category("FREE")
+                .title("제목 " + id).content("본문")
+                .status(PostStatus.PUBLISHED.name()).anonymous(anonymous)
                 .build();
     }
 
@@ -124,9 +143,11 @@ class CommunityPostServiceImplMineAndPagingTest {
         when(moderationSettingService.getReportBlurThreshold()).thenReturn(1000);
         when(nicknameProfileService.bulkResolveDisplayNames(any())).thenReturn(Map.of());
         // page=2, size=20 → offset=40. 뷰어 null 이면 차단 필터 생략.
-        when(postMapper.findAll(isNull(), eq("PUBLISHED"), eq("latest"), isNull(), eq(40), eq(20), isNull()))
+        when(postMapper.findAll(isNull(), eq("PUBLISHED"), eq("latest"), isNull(), eq(40), eq(20),
+                isNull(), isNull()))
                 .thenReturn(List.of(anonymousPost(), anonymousPost()));
-        when(postMapper.countAll(isNull(), eq("PUBLISHED"), isNull(), isNull())).thenReturn(250);
+        when(postMapper.countVisible(isNull(), eq("PUBLISHED"), isNull(), isNull(), isNull()))
+                .thenReturn(250);
 
         PostPageResponse resp = service.getPosts(null, null, "latest", 2, 20, null);
 
@@ -135,6 +156,150 @@ class CommunityPostServiceImplMineAndPagingTest {
         assertThat(resp.size()).isEqualTo(20);
         assertThat(resp.posts()).hasSize(2);
         // 3번째 페이지(0-based 2)는 offset 40 으로 조회됐음을 확정.
-        verify(postMapper).findAll(isNull(), eq("PUBLISHED"), eq("latest"), isNull(), eq(40), eq(20), isNull());
+        verify(postMapper).findAll(isNull(), eq("PUBLISHED"), eq("latest"), isNull(), eq(40), eq(20),
+                isNull(), isNull());
+        verify(postMapper, never()).findAuthorSurfaces(any(), anyString(), any());
+    }
+
+    @Test
+    void getPosts_appliesNamedAndAnonymousPrivacyBeforePagingAndTotal() {
+        when(moderationSettingService.getReportBlurThreshold()).thenReturn(1000);
+        when(nicknameProfileService.bulkResolveDisplayNames(any())).thenReturn(Map.of());
+        when(postMapper.findAuthorSurfaces(null, "PUBLISHED", null)).thenReturn(List.of(
+                new ContentAuthorRow(10L, false),
+                new ContentAuthorRow(11L, true),
+                // 12/13은 명시 allow 완화 또는 운영자 예외처럼 PrivacyPolicyService가 허용한 후보를 대표한다.
+                new ContentAuthorRow(12L, false),
+                new ContentAuthorRow(13L, true)));
+        when(privacyPolicyService.blockedAuthorsAmong(
+                7L, Set.of(10L, 12L), PrivacySurfaces.CONTENT_POST)).thenReturn(Set.of(10L));
+        when(privacyPolicyService.blockedAuthorsAmong(
+                7L, Set.of(11L, 13L), PrivacySurfaces.CONTENT_POST + ".anonymous")).thenReturn(Set.of(11L));
+        when(postMapper.findAll(null, "PUBLISHED", "latest", null, 40, 20,
+                "[10]", "[11]")).thenReturn(List.of(
+                        post(12L, 12L, false), post(13L, 13L, true)));
+        when(postMapper.countVisible(null, "PUBLISHED", null,
+                "[10]", "[11]")).thenReturn(42);
+
+        PostPageResponse resp = service.getPosts(null, null, "latest", 2, 20, 7L);
+
+        assertThat(resp.posts()).extracting(post -> post.id()).containsExactly(12L, 13L);
+        assertThat(resp.total()).isEqualTo(42);
+        verify(privacyPolicyService, times(1)).blockedAuthorsAmong(
+                7L, Set.of(10L, 12L), PrivacySurfaces.CONTENT_POST);
+        verify(privacyPolicyService, times(1)).blockedAuthorsAmong(
+                7L, Set.of(11L, 13L), PrivacySurfaces.CONTENT_POST + ".anonymous");
+        verify(postMapper).findAll(null, "PUBLISHED", "latest", null, 40, 20,
+                "[10]", "[11]");
+        verify(postMapper).countVisible(null, "PUBLISHED", null,
+                "[10]", "[11]");
+    }
+
+    @Test
+    void getPosts_chunksLargeAuthorSetsWithoutDroppingCandidatesAndReusesVisibility() {
+        List<ContentAuthorRow> surfaces = new ArrayList<>();
+        Set<Long> namedAuthors = new HashSet<>();
+        Set<Long> anonymousAuthors = new HashSet<>();
+        for (long id = 1; id <= 1_201; id++) {
+            namedAuthors.add(id);
+            surfaces.add(new ContentAuthorRow(id, false));
+        }
+        for (long id = 10_001; id <= 11_001; id++) {
+            anonymousAuthors.add(id);
+            surfaces.add(new ContentAuthorRow(id, true));
+        }
+        when(postMapper.findAuthorSurfaces(null, "PUBLISHED", null)).thenReturn(surfaces);
+        when(privacyPolicyService.blockedAuthorsAmong(eq(7L), anySet(), eq(PrivacySurfaces.CONTENT_POST)))
+                .thenAnswer(invocation -> Set.copyOf(invocation.<Set<Long>>getArgument(1)));
+        when(privacyPolicyService.blockedAuthorsAmong(
+                eq(7L), anySet(), eq(PrivacySurfaces.CONTENT_POST + ".anonymous")))
+                .thenAnswer(invocation -> Set.copyOf(invocation.<Set<Long>>getArgument(1)));
+        when(postMapper.findAll(isNull(), eq("PUBLISHED"), eq("latest"), isNull(), eq(0), eq(20),
+                anyString(), anyString())).thenReturn(List.of());
+        when(postMapper.countVisible(isNull(), eq("PUBLISHED"), isNull(), anyString(), anyString()))
+                .thenReturn(0);
+        when(nicknameProfileService.bulkResolveDisplayNames(any())).thenReturn(Map.of());
+
+        service.getPosts(null, null, "latest", 0, 20, 7L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Set<Long>> namedPrivacyBatches = ArgumentCaptor.forClass(Set.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Set<Long>> anonymousPrivacyBatches = ArgumentCaptor.forClass(Set.class);
+        verify(privacyPolicyService, times(3)).blockedAuthorsAmong(
+                eq(7L), namedPrivacyBatches.capture(), eq(PrivacySurfaces.CONTENT_POST));
+        verify(privacyPolicyService, times(3)).blockedAuthorsAmong(
+                eq(7L), anonymousPrivacyBatches.capture(), eq(PrivacySurfaces.CONTENT_POST + ".anonymous"));
+        assertBoundedCoverage(namedPrivacyBatches.getAllValues(), namedAuthors);
+        assertBoundedCoverage(anonymousPrivacyBatches.getAllValues(), anonymousAuthors);
+
+        ArgumentCaptor<String> namedSqlJson = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> anonymousSqlJson = ArgumentCaptor.forClass(String.class);
+        verify(postMapper).findAll(isNull(), eq("PUBLISHED"), eq("latest"), isNull(), eq(0), eq(20),
+                namedSqlJson.capture(), anonymousSqlJson.capture());
+        assertJsonCoverage(namedSqlJson.getValue(), namedAuthors);
+        assertJsonCoverage(anonymousSqlJson.getValue(), anonymousAuthors);
+        verify(postMapper).countVisible(isNull(), eq("PUBLISHED"), isNull(),
+                same(namedSqlJson.getValue()), same(anonymousSqlJson.getValue()));
+    }
+
+    @Test
+    void categoryCounts_anonymousViewer_usesFastGlobalAggregation() {
+        // JDBC 드라이버가 alias 를 대문자로 돌려줘도 안정적으로 해석한다.
+        when(postMapper.countPublishedByCategory(null, null)).thenReturn(List.of(
+                Map.of("CATEGORY", "FREE", "CNT", 5L),
+                Map.of("CATEGORY", "JOB_REVIEW", "CNT", 3L)));
+
+        Map<String, Long> counts = service.getCategoryCounts(null);
+
+        assertThat(counts).containsExactly(
+                org.assertj.core.api.Assertions.entry("FREE", 5L),
+                org.assertj.core.api.Assertions.entry("JOB_REVIEW", 3L));
+        verify(postMapper, never()).findAuthorSurfaces(any(), anyString(), any());
+    }
+
+    @Test
+    void categoryCounts_loggedInViewer_appliesNamedAndAnonymousPrivacySurfaces() {
+        when(postMapper.findAuthorSurfaces(null, "PUBLISHED", null)).thenReturn(List.of(
+                new ContentAuthorRow(10L, false), new ContentAuthorRow(11L, false),
+                new ContentAuthorRow(12L, true), new ContentAuthorRow(13L, true)));
+        when(privacyPolicyService.blockedAuthorsAmong(
+                7L, Set.of(10L, 11L), PrivacySurfaces.CONTENT_POST)).thenReturn(Set.of(11L));
+        when(privacyPolicyService.blockedAuthorsAmong(
+                7L, Set.of(12L, 13L), PrivacySurfaces.CONTENT_POST + ".anonymous")).thenReturn(Set.of(12L));
+        when(postMapper.countPublishedByCategory("[11]", "[12]")).thenReturn(List.of(
+                Map.of("category", "FREE", "cnt", 3L),
+                Map.of("category", "INTERVIEW_REVIEW", "cnt", 4L)));
+
+        Map<String, Long> counts = service.getCategoryCounts(7L);
+
+        assertThat(counts).containsExactly(
+                org.assertj.core.api.Assertions.entry("FREE", 3L),
+                org.assertj.core.api.Assertions.entry("INTERVIEW_REVIEW", 4L));
+        verify(postMapper).countPublishedByCategory("[11]", "[12]");
+        verify(privacyPolicyService).blockedAuthorsAmong(
+                7L, Set.of(10L, 11L), PrivacySurfaces.CONTENT_POST);
+        verify(privacyPolicyService).blockedAuthorsAmong(
+                7L, Set.of(12L, 13L), PrivacySurfaces.CONTENT_POST + ".anonymous");
+    }
+
+    private static void assertBoundedCoverage(List<Set<Long>> batches, Set<Long> expected) {
+        assertThat(batches).isNotEmpty().allSatisfy(batch ->
+                assertThat(batch).hasSizeLessThanOrEqualTo(CommunityAuthorVisibility.AUTHOR_BATCH_SIZE));
+        Set<Long> actual = new HashSet<>();
+        batches.forEach(actual::addAll);
+        assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
+    }
+
+    private static void assertJsonCoverage(String json, Set<Long> expected) {
+        assertThat(json).startsWith("[").endsWith("]");
+        Set<Long> actual = new HashSet<>();
+        String body = json.substring(1, json.length() - 1);
+        if (!body.isBlank()) {
+            for (String value : body.split(",")) {
+                actual.add(Long.valueOf(value));
+            }
+        }
+        assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
     }
 }

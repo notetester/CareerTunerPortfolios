@@ -315,7 +315,7 @@ public class PostImageModerationService {
                 .title("게시글이 커뮤니티 가이드라인 검토 대기 상태로 전환되었습니다")
                 .message("'" + title + "' 게시글의 첨부 이미지가 자동 검수에서 유해로 판정되어 검토 대기 상태로 전환되었습니다. "
                         + "관리자 검토 후 복원되거나 삭제될 수 있습니다.")
-                .link("/community?view=guidelines")
+                .link("/community/guidelines")
                 .build();
         notificationService.notify(noti);
     }

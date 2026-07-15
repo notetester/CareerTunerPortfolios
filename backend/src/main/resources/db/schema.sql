@@ -307,6 +307,22 @@ CREATE TABLE IF NOT EXISTS application_case (
     CONSTRAINT fk_application_case_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
+-- AutoPrep 텍스트 공고 fileId별 지원 건 생성 멱등성 예약/매핑.
+-- file_id는 성공 후 pending file_asset이 삭제되어도 재시도 매핑을 유지해야 하므로 논리 참조만 둔다.
+CREATE TABLE IF NOT EXISTS auto_prep_case_dedupe (
+    user_id             BIGINT NOT NULL,
+    file_id             BIGINT NOT NULL,
+    application_case_id BIGINT NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, file_id),
+    KEY idx_auto_prep_case_dedupe_case (application_case_id),
+    CONSTRAINT fk_auto_prep_case_dedupe_user
+        FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_auto_prep_case_dedupe_case
+        FOREIGN KEY (application_case_id) REFERENCES application_case (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS job_posting (
     id                  BIGINT NOT NULL AUTO_INCREMENT,
     application_case_id BIGINT NOT NULL,
@@ -649,6 +665,75 @@ CREATE TABLE IF NOT EXISTS fit_analysis_gate_result (
     KEY idx_fit_gate_result_status (gate_status, created_at),
     KEY idx_fit_gate_result_review (review_status, created_at),
     CONSTRAINT fk_fit_gate_result_analysis FOREIGN KEY (fit_analysis_id) REFERENCES fit_analysis (id) ON DELETE CASCADE
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- C 영역 NCS(국가직무능력표준) 세분류 카탈로그. patches/20260713_c_ncs_classification.sql 과 동일하게 관리한다.
+-- 공고→직무→세분류 매핑·적합도 grounding(evidence-gated)·NCS 검색용. 출처: NCS정보망DB(2026-02) 정규화 1,109 세분류.
+-- 재현: ml/ncs-catalog/scripts/{ncs_normalize.py(xlsx→JSONL), load_ncs_db.py(JSONL→DB)}. 원자료 JSONL 은 ai-artifacts.
+CREATE TABLE IF NOT EXISTS ncs_classification (
+    id            BIGINT NOT NULL AUTO_INCREMENT,
+    ncs_code      VARCHAR(60)  NOT NULL,               -- 복합 세분류 코드(대-중-소-세)
+    major_code    VARCHAR(20)  NOT NULL,
+    major_name    VARCHAR(100) NOT NULL,
+    middle_code   VARCHAR(20)  NOT NULL,
+    middle_name   VARCHAR(100) NOT NULL,
+    minor_code    VARCHAR(20)  NOT NULL,
+    minor_name    VARCHAR(100) NOT NULL,
+    sub_code      VARCHAR(20)  NOT NULL,
+    sub_name      VARCHAR(200) NOT NULL,               -- 세분류명(직무명)
+    unit_count    INT NOT NULL DEFAULT 0,              -- 능력단위 수
+    element_count INT NOT NULL DEFAULT 0,              -- 능력단위요소 수
+    min_level     INT NULL,                            -- 최저 NCS 수준
+    max_level     INT NULL,                            -- 최고 NCS 수준
+    search_text   MEDIUMTEXT NULL,                     -- 능력단위명+요소명+기술 키워드(검색)
+    detail_json   MEDIUMTEXT NOT NULL,                 -- units[]→elements[]→{수행준거/지식/기술/태도}
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_ncs_code (ncs_code),
+    KEY idx_ncs_sub_name (sub_name),
+    KEY idx_ncs_major (major_code, middle_code)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- C 영역 통합 자격증 카탈로그(국가+민간) + 국가 시험일정. patches/20260713_c_certificate_catalog.sql 과 동일하게 관리.
+-- "설명 붙은" 자격증 검색·AI 추천 근거. 민간=개요·직무내용(공공데이터), 국가=구분/계열+NCS 세분류 매칭 설명, 국가만 시험일정.
+-- 적재(dev): NATIONAL_TECH 513·NATIONAL_PROF 100·PRIVATE 60,528(등록완료). 재현: ml/ncs-catalog/scripts/load_cert_db.py.
+CREATE TABLE IF NOT EXISTS certificate (
+    id           BIGINT NOT NULL AUTO_INCREMENT,
+    cert_type    VARCHAR(20)   NOT NULL,               -- NATIONAL_TECH / NATIONAL_PROF / PRIVATE
+    name         VARCHAR(300)  NOT NULL,
+    grade        VARCHAR(1000) NULL,                   -- 등급(민간 다등급은 길다)
+    authority    VARCHAR(200)  NULL,                   -- 주무부처/소관
+    issuer_org   VARCHAR(300)  NULL,                   -- 신청기관(민간)/한국산업인력공단(국가)
+    series       VARCHAR(100)  NULL,                   -- 계열(국가기술자격)
+    jm_cd        VARCHAR(20)   NULL,                   -- 국가 종목코드
+    reg_no       VARCHAR(40)   NULL,                   -- 민간 등록번호
+    official     VARCHAR(20)   NULL,                   -- 공인/등록/N
+    status       VARCHAR(20)   NULL,                   -- ACTIVE/등록완료/등록폐지
+    description  MEDIUMTEXT    NULL,                   -- 개요+직무내용(민간)/구분+계열+NCS(국가)
+    ncs_sub_name VARCHAR(200)  NULL,                   -- best-effort NCS 세분류 매칭(국가)
+    has_schedule TINYINT(1)    NOT NULL DEFAULT 0,     -- 국가 시험일정 보유
+    search_text  MEDIUMTEXT    NULL,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_cert_type_name (cert_type, name),
+    KEY idx_cert_name (name),
+    KEY idx_cert_jmcd (jm_cd)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS certificate_exam_schedule (
+    id              BIGINT NOT NULL AUTO_INCREMENT,
+    cert_name       VARCHAR(300) NOT NULL,
+    year            INT NOT NULL,
+    round_name      VARCHAR(100) NULL,
+    doc_reg_start   VARCHAR(8) NULL,
+    doc_reg_end     VARCHAR(8) NULL,
+    doc_exam        VARCHAR(8) NULL,
+    doc_pass        VARCHAR(8) NULL,
+    prac_exam_start VARCHAR(8) NULL,
+    prac_exam_end   VARCHAR(8) NULL,
+    prac_pass       VARCHAR(8) NULL,
+    PRIMARY KEY (id),
+    KEY idx_ces_name_year (cert_name, year)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS career_goal (

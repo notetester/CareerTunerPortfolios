@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router";
-import { AlertTriangle, Database, History, Lock, RefreshCw, Save, Shield, UserCog } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router";
+import { AlertTriangle, Building2, Database, History, Lock, RefreshCw, Save, Shield, UserCog } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -28,13 +28,15 @@ import { DeleteAccountCard } from "@/features/profile/components/DeleteAccountCa
 import { MfaSettingsCard } from "@/features/profile/components/MfaSettingsCard";
 import { AppLockSettings } from "../components/AppLockSettings";
 
-const tabs = ["account", "privacy", "ai-consent", "notifications", "blocks"] as const;
+const tabs = ["account", "privacy", "ai-consent", "notifications", "blocks", "company"] as const;
 type SettingsTab = (typeof tabs)[number];
 
 export function SettingsPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const requestedTab = searchParams.get("tab") ?? "account";
-  const activeTab: SettingsTab = tabs.includes(requestedTab as SettingsTab) ? (requestedTab as SettingsTab) : "account";
+  const location = useLocation();
+  const routeSegment = location.pathname.split("/").filter(Boolean).at(-1);
+  const activeTab: SettingsTab | "overview" = tabs.includes(routeSegment as SettingsTab)
+    ? (routeSegment as SettingsTab)
+    : "overview";
   const { logout, logoutAll } = useAuth();
   const { status: consent, loading, error: consentLoadError, refresh, save, revoke } = useConsent();
   const navigate = useNavigate();
@@ -112,14 +114,14 @@ export function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto w-full max-w-[1200px] space-y-6 px-4 py-8 sm:px-6">
+      <div className="mx-auto w-full max-w-[1400px] space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-black text-foreground">
               <UserCog className="size-6 text-blue-600" />
               설정
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">계정, 개인정보, AI 데이터 사용 동의, 알림, 차단을 관리합니다.</p>
+            <p className="mt-1 text-sm text-muted-foreground">계정, 개인정보, AI 데이터 사용 동의, 알림, 차단과 기업 서비스 진입점을 관리합니다.</p>
           </div>
           <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
             <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
@@ -130,13 +132,75 @@ export function SettingsPage() {
         {(error || consentLoadError) && <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error || consentLoadError}</div>}
         {message && <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{message}</div>}
 
-        <Tabs value={activeTab} onValueChange={(value) => setSearchParams({ tab: value })}>
+        {activeTab === "overview" ? (
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="설정 기능">
+            {[
+              {
+                href: "/settings/account",
+                title: "계정 설정",
+                description: "계정 정보, 로그인 보안, 연결 계정과 탈퇴를 관리합니다.",
+                status: "보안 및 계정",
+                icon: UserCog,
+              },
+              {
+                href: "/settings/privacy",
+                title: "개인정보 관리",
+                description: "필수·선택 동의와 이력서 분석 범위를 확인하고 변경합니다.",
+                status: consent?.privacyAgreed ? "개인정보 동의 중" : "확인 필요",
+                icon: Shield,
+              },
+              {
+                href: "/settings/ai-consent",
+                title: "AI 데이터 동의",
+                description: "AI 기능에 사용할 데이터 범위를 동의하거나 즉시 철회합니다.",
+                status: consent?.aiDataAgreed ? "AI 기능 사용 가능" : "동의 필요",
+                icon: Database,
+              },
+              {
+                href: "/settings/notifications",
+                title: "알림 설정",
+                description: "채널과 알림 유형별 수신 여부를 세밀하게 조정합니다.",
+                status: "채널별 설정",
+                icon: History,
+              },
+              {
+                href: "/settings/blocks",
+                title: "차단 관리",
+                description: "차단한 사용자와 채팅방을 확인하고 필요할 때 해제합니다.",
+                status: "사용자·채팅방",
+                icon: Lock,
+              },
+              {
+                href: "/settings/company",
+                title: "기업 서비스 안내",
+                description: "기업 계정 신청 절차와 채용공고 관리·게시판 진입점을 확인합니다.",
+                status: "신청 및 공고",
+                icon: Building2,
+              },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                to={item.href}
+                className="group flex min-h-56 flex-col rounded-2xl border border-border bg-card p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+              >
+                <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <item.icon className="size-5" />
+                </span>
+                <h2 className="mt-5 text-lg font-black text-foreground">{item.title}</h2>
+                <p className="mt-2 flex-1 text-sm leading-6 text-muted-foreground">{item.description}</p>
+                <Badge className="mt-4 w-fit bg-muted text-muted-foreground">{item.status}</Badge>
+              </Link>
+            ))}
+          </section>
+        ) : (
+        <Tabs value={activeTab} onValueChange={(value) => navigate(`/settings/${value}`)}>
           <TabsList className="h-auto w-full justify-start overflow-x-auto border border-border bg-card p-1">
             <TabsTrigger value="account">계정 설정</TabsTrigger>
             <TabsTrigger value="privacy">개인정보 관리</TabsTrigger>
             <TabsTrigger value="ai-consent">AI 데이터 동의</TabsTrigger>
             <TabsTrigger value="notifications">알림 설정</TabsTrigger>
             <TabsTrigger value="blocks">차단 관리</TabsTrigger>
+            <TabsTrigger value="company">기업 서비스</TabsTrigger>
           </TabsList>
 
           <TabsContent value="account" className="mt-5 space-y-4">
@@ -246,7 +310,33 @@ export function SettingsPage() {
           <TabsContent value="blocks" className="mt-5">
             <PrivacySettings />
           </TabsContent>
+
+          <TabsContent value="company" className="mt-5 space-y-4">
+            <Card className="border border-border bg-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Building2 className="size-4 text-blue-600" />
+                  기업 서비스
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  일반 회원이 기업 계정 전환을 신청하고, 관리자 승인을 받으면 채용공고 게시판에 공고를
+                  등록할 수 있습니다. 신청 검토 결과는 알림으로 안내됩니다.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => navigate("/company/manage")}>
+                    기업 계정 신청·공고 관리
+                  </Button>
+                  <Button variant="outline" onClick={() => navigate("/jobs")}>
+                    채용공고 게시판 보기
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
+        )}
 
         <AlertDialog open={confirmRequiredWithdrawal} onOpenChange={setConfirmRequiredWithdrawal}>
           <AlertDialogContent>

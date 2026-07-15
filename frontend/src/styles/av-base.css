@@ -22,9 +22,10 @@
 .av-btn:hover { border-color: var(--av-ink-3); color: var(--av-ink); }
 .av-btn svg { width: 13px; height: 13px; stroke-width: 2; }
 .av-btn--ink { background: var(--av-ink); border-color: var(--av-ink); color: var(--av-bg); }
-.av-btn--ink:hover { opacity: 0.9; }
+/* .av-btn:hover(0,2,0)가 variant(0,1,0)의 색을 덮어 잉크 배경 위 잉크 글자가 되므로 variant hover에서 색을 재선언 */
+.av-btn--ink:hover { opacity: 0.9; border-color: var(--av-ink); color: var(--av-bg); }
 .av-btn--red { background: var(--av-red); border-color: var(--av-red); color: #fff; }
-.av-btn--red:hover { opacity: 0.9; }
+.av-btn--red:hover { opacity: 0.9; border-color: var(--av-red); color: #fff; }
 .av-search { position: relative; width: 230px; }
 .av-search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 13px; height: 13px;
   color: var(--av-ink-3); stroke-width: 2; pointer-events: none; }

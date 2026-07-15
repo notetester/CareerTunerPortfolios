@@ -1,6 +1,7 @@
 package com.careertuner.community.service;
 
 import java.util.List;
+import java.util.Map;
 
 import com.careertuner.community.dto.CreatePostRequest;
 import com.careertuner.community.dto.HotPostResponse;
@@ -14,6 +15,9 @@ public interface CommunityPostService {
 
     /** id 목록으로 조회(챗봇 추천 모아보기). 입력 순서 보존, status·뷰어 차단 조건은 목록과 동일. 최대 20건. */
     PostPageResponse getPostsByIds(List<Long> ids, Long viewerId);
+
+    /** 카테고리 탭 뱃지용 전수 집계(enum명 키). 로그인 뷰어는 목록과 동일한 개인 차단 정책을 적용한다. */
+    Map<String, Long> getCategoryCounts(Long viewerId);
 
     PostDetailResponse getPostDetail(Long postId, Long currentUserId);
 

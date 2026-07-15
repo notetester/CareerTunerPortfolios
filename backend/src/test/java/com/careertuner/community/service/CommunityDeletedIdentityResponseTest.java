@@ -63,9 +63,10 @@ class CommunityDeletedIdentityResponseTest {
                 .reportCount(0)
                 .createdAt(LocalDateTime.now())
                 .build();
-        when(postMapper.findAll(null, PostStatus.PUBLISHED.name(), "latest", null, 0, 20, null))
+        when(postMapper.findAll(null, PostStatus.PUBLISHED.name(), "latest", null, 0, 20,
+                null, null))
                 .thenReturn(List.of(deletedAuthorPost));
-        when(postMapper.countAll(null, PostStatus.PUBLISHED.name(), null, null)).thenReturn(1);
+        when(postMapper.countVisible(null, PostStatus.PUBLISHED.name(), null, null, null)).thenReturn(1);
         when(nicknameProfileService.bulkResolveDisplayNames(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Map.of());
         when(moderationSettingService.getReportBlurThreshold()).thenReturn(3);

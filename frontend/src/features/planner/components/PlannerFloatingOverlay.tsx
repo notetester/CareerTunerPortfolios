@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import { Link } from "react-router";
-import { CalendarClock, GripHorizontal, Layers, Pin, StickyNote, X } from "lucide-react";
+import { CalendarClock, GripHorizontal, Layers, MousePointerClick, Pin, StickyNote, X } from "lucide-react";
 import { haptic } from "@/platform/haptics";
 import { notifyPlannerReminderNative, stopPlannerResident, syncPlannerResident } from "@/platform/plannerNative";
 import { toast } from "@/features/notification/components/toast";
@@ -18,17 +18,34 @@ interface OverlayPosition {
   y: number;
 }
 
+const OVERLAY_WIDTH = 340;
+
+/** 바(닫기 버튼 포함)가 항상 화면 안에 남도록 위치를 클램프한다 — 드래그로 X 를 화면 밖에 못 밀어낸다. */
+function clampPosition(position: OverlayPosition): OverlayPosition {
+  const viewportWidth = typeof window === "undefined" ? 1280 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? 800 : window.innerHeight;
+  return {
+    x: Math.max(8, Math.min(viewportWidth - OVERLAY_WIDTH - 8, position.x)),
+    y: Math.max(8, Math.min(viewportHeight - 52, position.y)),
+  };
+}
+
 export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
   const [data, setData] = useState<PlannerDashboard | null>(null);
   const [visible, setVisible] = useState(() => readOverlayEnabled());
   const [collapsed, setCollapsed] = useState(false);
-  const [position, setPosition] = useState<OverlayPosition>(() => readPosition());
+  const [position, setPosition] = useState<OverlayPosition>(() => clampPosition(readPosition()));
   const dragRef = useRef<{ dx: number; dy: number } | null>(null);
   const positionRef = useRef(position);
 
   const overlayItems = useMemo(() => {
-    const memos = data?.memos.filter((memo) => memo.overlayVisible) ?? [];
-    const schedules = data?.scheduleItems.filter((item) => item.overlayVisible && item.status !== "CANCELED") ?? [];
+    // 고정(pinned) 항목을 위로 — "핀 고정"에 실제 정렬 의미를 준다.
+    const pinnedFirst = <T extends { pinned: boolean }>(list: T[]): T[] =>
+      list.slice().sort((left, right) => Number(right.pinned) - Number(left.pinned));
+    const memos = pinnedFirst(data?.memos.filter((memo) => memo.overlayVisible) ?? []);
+    const schedules = pinnedFirst(
+      data?.scheduleItems.filter((item) => item.overlayVisible && item.status !== "CANCELED") ?? [],
+    );
     return { memos, schedules };
   }, [data]);
 
@@ -67,6 +84,13 @@ export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
     positionRef.current = position;
   }, [position]);
 
+  // 창 크기가 줄어도 바가 화면 밖으로 나가지 않게 재클램프.
+  useEffect(() => {
+    const onResize = () => setPosition((current) => clampPosition(current));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   useEffect(() => {
     void syncPlannerResident(enabled && visible, data);
   }, [data, enabled, visible]);
@@ -86,10 +110,10 @@ export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!dragRef.current) return;
-    const next = {
-      x: Math.max(8, Math.min(window.innerWidth - 280, event.clientX - dragRef.current.dx)),
-      y: Math.max(80, Math.min(window.innerHeight - 140, event.clientY - dragRef.current.dy)),
-    };
+    const next = clampPosition({
+      x: event.clientX - dragRef.current.dx,
+      y: event.clientY - dragRef.current.dy,
+    });
     positionRef.current = next;
     setPosition(next);
   };
@@ -125,13 +149,18 @@ export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
       style={{ left: position.x, top: position.y }}
       aria-label="플래너 오버레이"
     >
-      <div
-        className="ct-planner-overlay__bar"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-      >
-        <GripHorizontal className="size-4" />
+      <div className="ct-planner-overlay__bar">
+        <div
+          className="ct-planner-overlay__grip"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          role="button"
+          aria-label="드래그해서 이동"
+          title="드래그해서 이동"
+        >
+          <GripHorizontal className="size-4" />
+        </div>
         <button type="button" onClick={() => setCollapsed((value) => !value)} className="ct-planner-overlay__title">
           플래너
         </button>
@@ -146,23 +175,23 @@ export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
           {overlayItems.schedules.slice(0, 5).map((item) => (
             <div
               key={`schedule-${item.id}`}
-              className={`ct-planner-overlay__item ${item.clickThrough ? "ct-planner-overlay__item--pass" : ""}`}
+              className={`ct-planner-overlay__item ${item.clickThrough ? "ct-planner-overlay__item--pass" : ""} ${item.pinned ? "ct-planner-overlay__item--pinned" : ""}`}
               style={{ opacity: item.opacity }}
             >
               <div className="ct-planner-overlay__meta">
                 <CalendarClock className="size-3.5" />
                 {timeLabel(item)}
-                {item.pinned && <Pin className="size-3" />}
+                <ItemFlags pinned={item.pinned} clickThrough={item.clickThrough} opacity={item.opacity} />
               </div>
               <div className="ct-planner-overlay__item-title">{item.title}</div>
               {item.applicationCompanyName && <div className="ct-planner-overlay__sub">{item.applicationCompanyName} · {item.applicationJobTitle}</div>}
             </div>
           ))}
           {overlayItems.memos.slice(0, 5).map((memo) => (
-            <div key={`memo-${memo.id}`} className={`ct-planner-overlay__memo ct-planner-overlay__memo--${memo.color}`} style={{ opacity: memo.opacity }}>
+            <div key={`memo-${memo.id}`} className={`ct-planner-overlay__memo ct-planner-overlay__memo--${memo.color} ${memo.pinned ? "ct-planner-overlay__memo--pinned" : ""}`} style={{ opacity: memo.opacity }}>
               <div className="ct-planner-overlay__meta">
                 <StickyNote className="size-3.5" />
-                {memo.pinned && <Pin className="size-3" />}
+                <ItemFlags pinned={memo.pinned} opacity={memo.opacity} />
               </div>
               <div className="ct-planner-overlay__item-title">{memo.title || "메모"}</div>
               {memo.content && <div className="ct-planner-overlay__sub">{memo.content}</div>}
@@ -171,6 +200,29 @@ export function PlannerFloatingOverlay({ enabled }: { enabled: boolean }) {
         </div>
       )}
     </aside>
+  );
+}
+
+/** 항목별로 적용된 설정(고정/클릭 통과/투명도)을 배지로 — 어느 항목에 무엇이 걸렸는지 한눈에. */
+function ItemFlags({ pinned, clickThrough, opacity }: { pinned?: boolean; clickThrough?: boolean; opacity: number }) {
+  const dimmed = opacity < 0.999;
+  if (!pinned && !clickThrough && !dimmed) return null;
+  return (
+    <div className="ct-planner-overlay__flags">
+      {pinned && (
+        <span className="ct-planner-overlay__flag ct-planner-overlay__flag--pin">
+          <Pin className="size-3" />
+          고정
+        </span>
+      )}
+      {clickThrough && (
+        <span className="ct-planner-overlay__flag ct-planner-overlay__flag--pass">
+          <MousePointerClick className="size-3" />
+          클릭 통과
+        </span>
+      )}
+      {dimmed && <span className="ct-planner-overlay__flag">{Math.round(opacity * 100)}%</span>}
+    </div>
   );
 }
 

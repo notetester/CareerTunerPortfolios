@@ -41,14 +41,10 @@ public interface BillingService {
 
     List<BenefitTransactionResponse> myBenefitTransactions(Long userId, int limit);
 
-    MyBillingResponse subscribe(Long userId, String planCode, String cycle);
-
     MyBenefitsResponse activateSubscriptionAfterPayment(Long userId, Long paymentId, String planCode,
                                                         String policySnapshotJson);
 
     int grantCreditsAfterPayment(Long userId, String productCode, int creditAmount);
-
-    MyBillingResponse purchaseCredits(Long userId, String productCode);
 
     MyBillingResponse cancelSubscription(Long userId);
 

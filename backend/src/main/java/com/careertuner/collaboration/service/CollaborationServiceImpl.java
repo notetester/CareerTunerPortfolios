@@ -1000,6 +1000,7 @@ public class CollaborationServiceImpl implements CollaborationService {
 
     private void notifyUser(Long userId, Long actorId, String type, String targetType,
                             Long targetId, String title, String message) {
+        String link = type.startsWith("FRIEND_") ? "/messenger/friends" : "/messenger/rooms";
         notificationService.notify(Notification.builder()
                 .userId(userId)
                 .actorId(actorId)
@@ -1008,7 +1009,7 @@ public class CollaborationServiceImpl implements CollaborationService {
                 .targetId(targetId)
                 .title(title)
                 .message(message)
-                .link("/messenger")  // 프론트 라우트는 /messenger (구 /collaboration 은 미존재 — 알림 클릭 404 방지)
+                .link(link)
                 .build());
     }
 

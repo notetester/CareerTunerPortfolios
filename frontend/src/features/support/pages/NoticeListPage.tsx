@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router";
 import { Pin, ChevronLeft, ChevronRight, List } from "lucide-react";
 import { useSupportStore } from "../hooks/useSupportStore";
-import NoticeDetailPage from "./NoticeDetailPage";
 import "../styles/support.css";
 
 const PAGE_SIZE = 6;
@@ -16,7 +16,7 @@ function tagStyle(tag: string) {
 }
 
 export default function NoticeListPage() {
-  const [openId, setOpenId] = useState<number | null>(null);
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const { notices, noticeLoading, noticeError, fetchNotices } = useSupportStore();
 
@@ -30,37 +30,12 @@ export default function NoticeListPage() {
   const totalPages = Math.max(1, Math.ceil(normal.length / PAGE_SIZE));
   const slice = normal.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  // 브라우저 뒤로가기 지원
-  useEffect(() => {
-    const onPopState = () => {
-      setOpenId(null);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
   const handleOpen = useCallback((id: number) => {
-    setOpenId(id);
-    window.history.pushState({ noticeId: id }, "");
-    window.scrollTo(0, 0);
-  }, []);
-
-  const handleBack = useCallback(() => {
-    window.history.back();
-  }, []);
-
-  const handleNavigate = useCallback((id: number) => {
-    setOpenId(id);
-    window.history.replaceState({ noticeId: id }, "");
-    window.scrollTo(0, 0);
-  }, []);
-
-  if (openId !== null) {
-    return <NoticeDetailPage noticeId={openId} onBack={handleBack} onNavigate={handleNavigate} />;
-  }
+    navigate(`/support/notices/${id}`);
+  }, [navigate]);
 
   return (
-    <div className="ct-page ct-support ct-notices">
+    <div className="ct-page ct-support">
       <div className="ct-pagehead">
         <h1>공지사항</h1>
         <p>서비스 업데이트와 점검·이벤트 소식을 안내해드립니다.</p>

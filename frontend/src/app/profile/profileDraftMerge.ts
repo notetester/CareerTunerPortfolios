@@ -54,6 +54,9 @@ export function mergeApprovedProfileDraft(
   opts: DraftApplyOpts,
 ): UserProfile {
   return {
+    // saveProfile()이 이 값을 baseVersionNo로 변환한다. 승인 초안 GET→merge→PUT도
+    // 일반 프로필 편집과 같은 optimistic-lock 기준을 잃으면 안 된다.
+    versionNo: cur.versionNo,
     desiredJob: cur.desiredJob ?? null,
     desiredIndustry: cur.desiredIndustry ?? null,
     education:

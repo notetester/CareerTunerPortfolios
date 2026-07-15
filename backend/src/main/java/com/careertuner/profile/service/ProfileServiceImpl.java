@@ -102,6 +102,13 @@ public class ProfileServiceImpl implements ProfileService {
     @Transactional
     public UserProfileResponse save(AuthUser authUser, UserProfileRequest request) {
         Long userId = requireUser(authUser);
+        int insertedRows = profileMapper.insertEmptyIfAbsent(userId);
+        UserProfile current = profileMapper.findByUserIdForUpdate(userId);
+        if (current == null) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR, "프로필을 준비하지 못했습니다.");
+        }
+        requireMatchingBaseVersion(current, request.baseVersionNo());
+
         UserProfile profile = UserProfile.builder()
                 .userId(userId)
                 .desiredJob(blankToNull(request.desiredJob()))
@@ -117,7 +124,11 @@ public class ProfileServiceImpl implements ProfileService {
                 .selfIntro(blankToNull(request.selfIntro()))
                 .preferences(json(request.preferences()))
                 .build();
-        profileMapper.upsert(profile);
+        if (insertedRows > 0) {
+            profileMapper.initialize(profile);
+        } else {
+            profileMapper.upsert(profile);
+        }
         profileMapper.insertVersionFromCurrent(userId, "MANUAL_SAVE");
         return toResponse(profileMapper.findByUserId(userId));
     }
@@ -169,7 +180,12 @@ public class ProfileServiceImpl implements ProfileService {
         final String finalText = text;
 
         UserProfileResponse saved = transactionTemplate.execute(status -> {
-            UserProfile cur = findOrEmpty(userId);
+            int insertedRows = profileMapper.insertEmptyIfAbsent(userId);
+            UserProfile cur = profileMapper.findByUserIdForUpdate(userId);
+            if (cur == null) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR, "프로필을 준비하지 못했습니다.");
+            }
+            requireMatchingBaseVersion(cur, request.baseVersionNo());
             String resumeText = "RESUME_TEXT".equals(target) ? finalText : blankToNull(cur.getResumeText());
             String selfIntro = "SELF_INTRO".equals(target) ? finalText : blankToNull(cur.getSelfIntro());
             UserProfile profile = UserProfile.builder()
@@ -187,7 +203,11 @@ public class ProfileServiceImpl implements ProfileService {
                     .selfIntro(selfIntro)
                     .preferences(cur.getPreferences())
                     .build();
-            profileMapper.upsert(profile);
+            if (insertedRows > 0) {
+                profileMapper.initialize(profile);
+            } else {
+                profileMapper.upsert(profile);
+            }
             profileMapper.insertVersionFromCurrent(userId, "DOCUMENT_IMPORT");
             return toResponse(profileMapper.findByUserId(userId));
         });
@@ -351,6 +371,41 @@ public class ProfileServiceImpl implements ProfileService {
     private UserProfile findOrEmpty(Long userId) {
         UserProfile profile = profileMapper.findByUserId(userId);
         return profile != null ? profile : UserProfile.builder().userId(userId).build();
+    }
+
+    /**
+     * 전체 프로필 PUT은 읽은 버전과 현재 버전이 같을 때만 허용한다.
+     * 포트폴리오 업로드 등으로 미리 만들어진 완전한 빈 행은 아직 편집 기준이 없으므로 null도 허용한다.
+     */
+    private void requireMatchingBaseVersion(UserProfile current, Integer baseVersionNo) {
+        if (baseVersionNo == null && isInitialEmptyProfile(current)) {
+            return;
+        }
+        if (baseVersionNo == null || !baseVersionNo.equals(current.getVersionNo())) {
+            throw new BusinessException(
+                    ErrorCode.CONFLICT,
+                    "프로필이 다른 화면에서 변경되었습니다. 최신 내용을 다시 불러온 뒤 저장해 주세요.");
+        }
+    }
+
+    private boolean isInitialEmptyProfile(UserProfile profile) {
+        return Integer.valueOf(1).equals(profile.getVersionNo())
+                && isBlank(profile.getDesiredJob())
+                && isBlank(profile.getDesiredIndustry())
+                && isBlank(profile.getEducation())
+                && isBlank(profile.getCareer())
+                && isBlank(profile.getProjects())
+                && isBlank(profile.getSkills())
+                && isBlank(profile.getCertificates())
+                && isBlank(profile.getLanguages())
+                && isBlank(profile.getPortfolioLinks())
+                && isBlank(profile.getResumeText())
+                && isBlank(profile.getSelfIntro())
+                && isBlank(profile.getPreferences());
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private ProfileAiResponse toAiResponse(ProfileEvaluation evaluation) {

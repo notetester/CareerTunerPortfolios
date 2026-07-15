@@ -155,6 +155,16 @@ const POSTS: BackendPost[] = [
 
 const POST_BY_ID = new Map<number, BackendPost>(POSTS.map((p) => [p.id, p]));
 
+/** 운영 category-counts API 와 같은 enum명 키/PUBLISHED 전수 집계 계약. */
+function publishedCategoryCounts(): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const post of POSTS) {
+    if (post.status !== "PUBLISHED") continue;
+    counts[post.category] = (counts[post.category] ?? 0) + 1;
+  }
+  return counts;
+}
+
 /* ── 댓글 (게시글별) ── */
 const COMMENTS: Record<number, CommunityComment[]> = {
   5101: [
@@ -174,10 +184,10 @@ const COMMENTS: Record<number, CommunityComment[]> = {
 };
 
 /* ── 인기글 ── */
-const HOT_POSTS: { title: string; comments: number; views: number }[] = [
-  { title: "네이버 프론트엔드 최종 합격 후기 — 6개월 준비 회고", comments: 2, views: 5120 },
-  { title: "카카오 프론트엔드 1차 기술면접 후기 (React 상태관리 집중 질문)", comments: 3, views: 3284 },
-  { title: "토스 코딩테스트 통과 전략 — 자료구조보다 구현력", comments: 0, views: 2190 },
+const HOT_POSTS: { id: number; title: string; comments: number; views: number }[] = [
+  { id: 5102, title: "네이버 프론트엔드 최종 합격 후기 — 6개월 준비 회고", comments: 2, views: 5120 },
+  { id: 5101, title: "카카오 프론트엔드 1차 기술면접 후기 (React 상태관리 집중 질문)", comments: 3, views: 3284 },
+  { id: 5104, title: "토스 코딩테스트 통과 전략 — 자료구조보다 구현력", comments: 0, views: 2190 },
 ];
 
 /* ── AI 추천 태그 (resultJson 은 {tags,confidence,applied} 의 JSON 문자열) ── */
@@ -464,6 +474,12 @@ export const communityRoutes: MockRoute[] = [
       const filtered = categoryEnum ? POSTS.filter((p) => p.category === categoryEnum) : POSTS;
       return { posts: filtered, total: filtered.length, page, size };
     },
+  },
+  // 탭 뱃지 전수 집계 — 운영 API 와 동일하게 PUBLISHED 게시글만 enum명 키로 반환
+  {
+    method: "GET",
+    pattern: /^\/community\/posts\/category-counts$/,
+    handler: () => publishedCategoryCounts(),
   },
   // 인기글 (숫자가 아니라 'hot' 이므로 상세 패턴과 충돌하지 않음)
   {

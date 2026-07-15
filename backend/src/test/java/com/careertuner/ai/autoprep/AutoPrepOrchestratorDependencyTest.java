@@ -28,14 +28,15 @@ class AutoPrepOrchestratorDependencyTest {
                 "CUSTOM_PREP",
                 new PrepSlots("테스트 회사", "백엔드", "BASIC", 10L),
                 List.of("JOB", "FIT")));
-        when(attachmentLoader.load(1L, List.of())).thenReturn(List.of());
+        when(attachmentLoader.loadForRequest(1L, List.of(), null, List.of())).thenReturn(List.of());
         when(job.key()).thenReturn("JOB");
         when(job.enabled()).thenReturn(true);
         when(job.handle(any(), any())).thenReturn(PrepStepResult.failed("JOB", "공고 분석 실패", 1L));
         when(fit.key()).thenReturn("FIT");
         when(fit.enabled()).thenReturn(true);
 
-        AutoPrepOrchestrator orchestrator = new AutoPrepOrchestrator(planner, attachmentLoader, List.of(job, fit));
+        AutoPrepOrchestrator orchestrator = new AutoPrepOrchestrator(
+                planner, attachmentLoader, List.of(job, fit), new AutoPrepRunCancellationRegistry());
         try {
             AutoPrepResponse response = orchestrator.run(1L, request);
 
