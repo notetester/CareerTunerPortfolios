@@ -34,13 +34,15 @@
 | `billing` | 결제/구독 | `billing` | `payment`, `billing`, `credit` | 2차 |
 | `settings` | 설정 | `settings` | `settings`, `consent`, `notification` | 1차 계정·동의 / 2차 알림 고도화 |
 | `support` | 고객센터 | `support` | `support` | 2차 |
-| `company` | 회사/브랜드 소개 | `company` | `company` | 2차 |
+| `company` | 회사/브랜드 소개 · 기업 서비스 허브 | `company` | `company`, `companyjobposting` | 2차 소개 / 기업 허브 확장 |
+| `jobboard` | 채용공고 게시판 | `jobboard` | `companyjobposting` | 기업·공고 확장 |
+| `ads` | 광고 슬롯 | `ads` | `ads` | 광고 확장 |
 | `legal` | 약관/정책 | `legal` | `legal`, `consent` | 1차 최소 약관·동의 / 2차 고도화 |
 | `notification` | 알림 | `notification` | `notification` | 2차 |
 | `file` | 파일 업로드 | 공통 컴포넌트 | `file` | 2차 |
 | `ai` | 직접 메뉴 없음 | 내부 API | `ai` | 1차~2차 |
 
-`company`와 `companyanalysis`는 반드시 구분한다. `company`는 CareerTuner 회사/브랜드 소개이고, `companyanalysis`는 사용자가 지원하는 기업 분석이다.
+`company`, `companyanalysis`, `companyjobposting`는 서로 다른 영역이므로 반드시 구분한다. `company` 프런트 폴더는 (1) CareerTuner 회사/브랜드 소개(공개 `company/about` 계열)와 (2) 고용주용 기업 서비스 허브·기업 공고 등록(CompanyHubPage·JobPostingForm, 라우트 `company`·`company/manage`)을 함께 담는다. 후자의 공고 등록·검수·게시 백엔드는 `companyjobposting` 도메인(사용자 `/api/company/job-postings`, 게시판 노출 `/api/job-board`)이 담당한다. `companyanalysis`는 사용자가 지원하는 기업을 분석하는 별개 도메인이다. 채용공고 게시판(`jobboard` 프런트, `companyjobposting`의 `JobBoardController`)은 검수를 통과한 기업 공고를 구직자에게 노출한다.
 연관 백엔드 도메인은 대표 호출 범위이며 전체 의존성이나 소유권 목록이 아니다. 실제 소유권은 아래 표준 폴더 소유권을 따른다.
 출시 범위는 기능군의 세부 기능별 목표 시점을 요약한 것이며, 폴더 소유권이나 모든 하위 기능의 동시 완료를 의미하지 않는다.
 

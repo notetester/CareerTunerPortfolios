@@ -40,6 +40,36 @@ Qdrant·Ollama·외부 모델의 실행 데이터나 모델 weight를 본체에 
 
 다른 영역도 같은 원칙을 적용한다. 영역별 정본 위치는 해당 submodule의 `areas/<area-slug>/README.md`에서 안내한다.
 
+## 자체모델 최종 백업과 재현성 (2026-07-14)
+
+자체 파인튜닝 4모델(C career-strategy, E correction, D interview, B jobposting)의 최종 백업은
+`docs/ai-artifacts`(=`CareerTunerAI`) submodule의 `results/2026-07-14-final-model-backup/`에 착지한다.
+재료 백업은 2026-07-14 17:44, E 어댑터 실물은 18:03에 기록했다. 본체(main repo)에는 재현용 스크립트·validator·
+짧은 상태 문서와 artifact commit 링크만 남기고, 대용량 가중치와 raw 백업은 이 submodule에 둔다.
+
+merged `model.safetensors`(모델당 약 6GB)와 GGUF(Ollama blob)는 용량상 어느 git 저장소에도 백업하지 않으며
+4090 운영기 전용이다. submodule 백업에 실제 들어 있는 재현 재료는 다음과 같다.
+
+- C·E 학습 datasets
+- Ollama modelfiles(`ollama show` 17종)
+- 실행 환경 스냅샷(pip freeze, nvidia-smi)
+- adapter manifest
+- E delivery-s 어댑터 실물(`adapters/e-correction-delivery-s/adapter_model.safetensors`, 유일한 실물 어댑터)
+
+### 모델별 재현성 원장
+
+| 모델 | 재현 가능성 | 재현 재료 위치 | 비고 |
+| --- | --- | --- | --- |
+| C career-strategy (`careertuner-c-career-strategy-3b`) | 재현 가능(기능적) | submodule datasets + 본체 `ml/career-strategy-llm/scripts` | QLoRA 재학습→merge→GGUF 재현. 랜덤성으로 byte-identical은 아니며, 재학습 eval loss가 프로덕션과 근접해 기능적 재현을 확인 |
+| E correction (`careertuner-e-correction-3b:latest` = delivery-s) | 정확 복원 가능 | submodule datasets + delivery-s 어댑터 실물 | base + 백업 어댑터로 배포 정본을 정확 복원 |
+| D interview | 재현 불가 | 학습 데이터 소실 | GGUF blob·Modelfile만 잔존, 스크립트·골든셋은 git에 있음 |
+| B jobposting | 재현 불가 | 학습 데이터 소실 | 원 학습 JSONL 미백업 |
+
+base Qwen2.5-3B의 공식 라이선스는 연구용(qwen-research, 비상업)이므로, 상용 배포는 상업 허가 base 재학습 또는
+외부 provider(Claude/OpenAI) 경로가 필요하다(상용화 P0 제약). 이 표는 재현 재료의 **저장소 경계**만 요약하며,
+실험 결론·모델카드 상세는 `docs/ai-reports`의 C 영역 deep-dive와 각 모델 카드를 정본으로 한다. raw output과
+benchmark 결과 자체는 수정하지 않는다.
+
 ## 필요한 서브모듈만 받기
 
 일반 개발은 모든 서브모듈을 내려받을 필요가 없다.

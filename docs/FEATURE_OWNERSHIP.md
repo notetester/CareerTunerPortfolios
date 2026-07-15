@@ -49,7 +49,9 @@ CareerTuner는 기능 단위로 작업을 배분한다. 각 담당자는 해당 
 | `settings` | 계정, 개인정보, AI 데이터 동의, 알림 | `settings`, `consent`, `notification` |
 | `service` | 기능 소개, 서비스 소개, 공개 서비스 내비게이션 | `serviceinfo` |
 | `support` | 고객센터, 사용자 가이드, FAQ, 공지, 문의 | `support` |
-| `company` | 서비스/회사 소개, 팀, 채용, 블로그, 보도자료, 소셜 채널 | `company` |
+| `company` | 서비스/회사 소개, 팀, 채용, 블로그, 보도자료, 소셜 채널, 기업 서비스 허브·기업 공고 등록(company/manage) | `company`, `companyjobposting` |
+| `jobboard` | 채용공고 게시판 목록·상세, 지원 건 가져오기 | `companyjobposting` |
+| `ads` | 목록 화면 광고 슬롯 노출·집계 | `ads` |
 | `legal` | 약관, 개인정보처리방침, AI 데이터 동의 문서, 저작권 정책 | `legal`, `consent` |
 | `notification` | 알림, 알림 설정 | `notification` |
 | `file` | 업로드/저장소 내부 구현 | `file` |
@@ -195,4 +197,7 @@ pages/ components/ api/ hooks/ types/
 | `backend/src/main/java/com/careertuner/admin/legal` | F |
 | `backend/src/main/java/com/careertuner/admin/company` | F |
 | `backend/src/main/java/com/careertuner/admin/serviceinfo` | F |
+| `backend/src/main/java/com/careertuner/admin/ads` | F |
 | `backend/src/main/java/com/careertuner/admin/analytics` | C |
+
+기업 서비스 허브·채용공고 게시판의 운영측(기업 공고 검수·게시 `AdminJobPostingReviewController`, 기업 지원 관리 `AdminCompanyApplicationController`)은 별도 관리자 패키지를 새로 만들지 않고 F 소유의 `admin/company` 아래에 둔다. 광고 소재 등록·집행은 `admin/ads`(F)가 담당한다.

@@ -20,7 +20,9 @@ CareerTuner E 영역(자기소개서, 면접 답변, 이력서 문장, 포트폴
 
 자체 모델 출력은 JSON 객체 하나여야 하며 서버가 필수 키·타입·허용 enum·원문 보존 여부를 검증한다.
 현재 서비스는 `latest` 부동 태그가 아니라 위 `delivery-s` 고정 태그를 사용한다. 모델 가중치와 대형
-평가 산출물은 저장소에 넣지 않고 `out/` 또는 `docs/ai-artifacts/`에 둔다.
+평가 산출물은 저장소에 넣지 않고 `out/` 또는 `docs/ai-artifacts/`에 둔다. 다만 배포 정본 `delivery-s`
+어댑터 실물(57.2MB)과 datasets 51종은 `docs/ai-artifacts/results/2026-07-14-final-model-backup/adapters/e-correction-delivery-s/`에
+백업돼 있어, 베이스에 이 어댑터를 얹으면 정확 복원할 수 있다(본체 git 미포함, 서브모듈 백업 존재).
 
 ## 폴더
 
