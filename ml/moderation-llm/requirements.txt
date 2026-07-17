@@ -1,0 +1,7 @@
+# 실측 학습 환경: Windows 11 + RTX 4090, CUDA 12.1
+# torch는 cu121 휠 사용: pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+unsloth==2026.6.9
+torch==2.5.1
+transformers==5.5.0
+trl==0.8.6
+datasets==4.3.0
