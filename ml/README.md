@@ -13,6 +13,7 @@
 | `interview-finetune/` | D 면접 질문·답변 평가 텍스트 모델 | [README](interview-finetune/README.md) · [학습 가이드](interview-finetune/TRAINING.md) |
 | `interview-nonverbal/` | D 음성·영상 비언어 평가 | [README](interview-nonverbal/README.md) |
 | `job-posting-worker/` | B 공고 문서·OCR 추출 worker | [README](job-posting-worker/README.md) · [운영 runbook](../docs/AI_JOB_POSTING_PIPELINE_RUNBOOK.md) |
+| `moderation-llm/` | F 커뮤니티 게시글 검열 모델 | [README](moderation-llm/README.md) |
 | `ncs-catalog/` | C NCS 직무능력표준 카탈로그 | [README](ncs-catalog/README.md) |
 
 A 영역 프로필 AI 학습 도구는 현재 [docs/ai-training/](../docs/ai-training/README.md)에 있다. 전체 A~F

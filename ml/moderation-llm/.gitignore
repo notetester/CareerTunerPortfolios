@@ -1,0 +1,10 @@
+# 원본 데이터셋 클론과 생성 산출물 (prepare_data.py로 재생성 가능, seed 고정)
+data/
+
+# 학습·변환 산출물 (어댑터, merged 16bit, GGUF — weight는 커밋 금지)
+out/
+*.gguf
+*.safetensors
+
+__pycache__/
+unsloth_compiled_cache/
