@@ -1,9 +1,9 @@
 # 면접 자체 모델 LoRA 파인튜닝 (D 담당)
 # 원격 RTX 4090 24GB(CHANSSICK)에서 설치. CUDA 12.x 기준. Qwen2.5-3B 4bit+LoRA 는 VRAM 여유.
 torch>=2.13.0
-transformers>=5.13.0
+transformers>=5.14.1
 peft>=0.19.1
-trl>=1.7.1
+trl>=1.8.0
 datasets>=5.0.0
 accelerate>=1.14.0
 bitsandbytes>=0.49.2
