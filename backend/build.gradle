@@ -21,7 +21,7 @@ repositories {
 dependencies {
     // Persistence: MyBatis only (JPA intentionally excluded — see 기획 가이드).
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
-    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.0.1'
+    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:4.1.0'
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     // Web / API
@@ -29,7 +29,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
-    implementation 'org.apache.pdfbox:pdfbox:3.0.7'
+    implementation 'org.apache.pdfbox:pdfbox:3.0.8'
     implementation 'org.jsoup:jsoup:1.22.2'
 
     // 관리자 그리드 내보내기(Excel .xlsx) — Apache POI (admin/common/grid/GridExporter)
@@ -45,7 +45,7 @@ dependencies {
     // Web Push (VAPID) — 브라우저/PWA 푸시 발송. BouncyCastle 은 암호화 provider 로 명시 추가.
     implementation 'nl.martijndwars:web-push:5.1.2'
     implementation 'org.bitbucket.b_c:jose4j:0.9.6'
-    implementation 'org.bouncycastle:bcprov-jdk18on:1.84'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.85'
 
     // 네이티브 푸시(FCM/APNs via Firebase). 서비스계정 미설정 시 빈 미생성 → 로깅 폴백(무해).
     implementation 'com.google.firebase:firebase-admin:9.10.0'
@@ -85,7 +85,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-    testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:4.0.1'
+    testImplementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter-test:4.1.0'
     // 관리자 SQL DB-fixture 통합테스트용 임베디드 DB(테스트 한정 — 운영 datasource 무영향)
     testRuntimeOnly 'com.h2database:h2'
     testCompileOnly 'org.projectlombok:lombok'
